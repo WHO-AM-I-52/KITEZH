@@ -11,7 +11,7 @@ set "APP_DIR=%~dp0"
 set "UPDATER=%APP_DIR%_updater.py"
 set "PYTHON="
 
-:: ── Автопоиск python.exe ──────────────────────────────────────
+:: ── Автопоиск python.exe ─────────────────────────────────────
 for /d %%A in ("%APP_DIR%WPy\python-*.amd64") do (
   if exist "%%A\python.exe" set "PYTHON=%%A\python.exe"
 )

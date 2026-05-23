@@ -11,9 +11,9 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 API_BASE = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}"
 
 # Папки и файлы, которые НЕ трогаем
-PROTECTED = {"db", "uploads", "reports", "WPy64-31100", "Bacup",
-             "_updater.py", "update.bat", "database.db",
-             "database.db-shm", "database.db-wal"}
+PROTECTED = {"db", "uploads", "reports", "WPy", "Bacup",
+             "_updater.py", "update.bat", ".env",
+             "database.db", "database.db-shm", "database.db-wal"}
 
 def get_json(url):
     req = urllib.request.Request(url, headers={"User-Agent": "SONAR-Updater"})
@@ -26,7 +26,7 @@ def download_file(download_url, dest_path):
     with urllib.request.urlopen(req, timeout=15) as r:
         with open(dest_path, "wb") as f:
             f.write(r.read())
-            
+
 def get_tree():
     data = get_json(f"{API_BASE}/git/trees/{BRANCH}?recursive=1")
     return data.get("tree", [])
@@ -47,13 +47,11 @@ def main():
         path = item["path"]
         item_type = item["type"]
 
-        # Пропускаем защищённые папки и файлы
         top_level = path.split("/")[0]
         if top_level in PROTECTED:
             skipped += 1
             continue
 
-        # Пропускаем __pycache__ и .pyc
         if "__pycache__" in path or path.endswith(".pyc"):
             continue
 
@@ -74,7 +72,7 @@ def main():
     print(f"  Обновлено файлов: {updated}")
     print(f"  Пропущено (защищённые): {skipped}")
     print()
-    print("  Обновление завершено. База данных и файлы пользователей не тронуты.")
+    print("  Обновление завершено. База данных и файлы пользователей не тронуты."
 
 if __name__ == "__main__":
     main()
