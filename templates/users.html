@@ -1,0 +1,540 @@
+{% extends 'base.html' %}
+{% block content %}
+
+{# ╔══════════════════════════════════════════════════════════════╗ #}
+{# ║                       users.html                            ║ #}
+{# ║  Управление пользователями:                                 ║ #}
+{# ║  - Форма добавления нового пользователя                     ║ #}
+{# ║  - Список пользователей с правами                           ║ #}
+{# ║  - Модалки: редактирование прав, смена пароля               ║ #}
+{# ║  - Журнал входов                                            ║ #}
+{# ║  - Журнал действий пользователей (v2.0) с фильтрами (v2.0.1)║ #}
+{# ╚══════════════════════════════════════════════════════════════╝ #}
+
+<style>
+  /* ── Вкладки журналов на тёмном фоне — Bootstrap override ── */
+  .journal-tabs .nav-link {
+    color: rgba(255,255,255,.65) !important;
+    border: none !important;
+    border-bottom: 2px solid transparent !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    font-size: 13px;
+    font-weight: normal !important;
+    transition: color .15s, border-color .15s, background .15s;
+  }
+  .journal-tabs .nav-link:hover {
+    color: #fff !important;
+    background: rgba(255,255,255,.08) !important;
+  }
+  .journal-tabs .nav-link.tab-active {
+    color: #fff !important;
+    font-weight: 600 !important;
+    border-bottom: 2px solid #fff !important;
+    background: rgba(255,255,255,.1) !important;
+  }
+</style>
+
+<div class="d-flex align-items-center mb-3">
+  <a href="{{ url_for('requests.index') }}" class="btn btn-sm btn-outline-secondary me-2">
+    <i class="bi bi-arrow-left"></i>
+  </a>
+  <h5 class="mb-0" style="color:#1B5E7B">
+    <i class="bi bi-people me-1"></i>Управление пользователями
+  </h5>
+</div>
+
+{% set perm_labels = [
+  ('can_create',      'Создавать обращения',          'bi-plus-circle',          'text-success'),
+  ('can_edit_others', 'Редактировать чужие',           'bi-pencil-square',        'text-primary'),
+  ('can_confirm',     'Принимать / отклонять',         'bi-check-circle',         'text-success'),
+  ('can_delete',      'Удалять обращения',             'bi-trash',                'text-danger'),
+  ('can_rollback',    'Откат истории',                 'bi-arrow-counterclockwise','text-warning'),
+  ('can_export',      'Экспорт в Excel',               'bi-file-excel',           'text-success'),
+  ('can_classifiers', 'Управление справочниками',      'bi-book',                 'text-info'),
+  ('can_users',       'Управление пользователями',     'bi-people',               'text-primary'),
+  ('can_view_all',    'Просмотр всех обращений',       'bi-eye',                  'text-secondary'),
+] %}
+
+<div class="row g-4">
+
+  {# ══ КОЛОНКА ЛЕВАЯ — форма добавления ══ #}
+  <div class="col-md-4">
+    <div class="card mb-4">
+      <div class="card-header fw-bold" style="background:#1B5E7B;color:#fff">
+        <i class="bi bi-person-plus me-1"></i>Добавить пользователя
+      </div>
+      <div class="card-body">
+        <form method="post" action="{{ url_for('admin.manage_users') }}">
+          <input type="hidden" name="action" value="add">
+
+          <div class="mb-2">
+            <label class="form-label">Логин</label>
+            <input type="text" name="username" class="form-control form-control-sm" required>
+          </div>
+
+          <div class="mb-2">
+            <label class="form-label">Пароль</label>
+            <div class="input-group input-group-sm">
+              <input type="text" name="password" id="newPwField"
+                     class="form-control" required placeholder="Введите или сгенерируйте">
+              <button type="button" class="btn btn-outline-secondary"
+                      onclick="genPassword()" title="Сгенерировать">
+                <i class="bi bi-shuffle"></i>
+              </button>
+            </div>
+            <div class="form-check mt-1">
+              <input class="form-check-input" type="checkbox"
+                     name="must_change_password" value="1" id="chkMustChange" checked>
+              <label class="form-check-label" for="chkMustChange" style="font-size:11px">
+                Потребовать смену при первом входе
+              </label>
+            </div>
+          </div>
+
+          <div class="mb-2">
+            <label class="form-label">ФИО</label>
+            <input type="text" name="full_name" class="form-control form-control-sm" required>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Пресет роли</label>
+            <select name="role" id="rolePreset" class="form-select form-select-sm"
+                    onchange="applyRolePreset(this.value)">
+              <option value="employee">Исполнитель</option>
+              <option value="manager">Руководитель</option>
+              <option value="admin">Администратор</option>
+            </select>
+          </div>
+
+          <div class="border rounded p-2 mb-3" style="background:#f8f9fa">
+            <div class="fw-bold mb-2"
+                 style="font-size:11px;color:#1B5E7B;text-transform:uppercase;letter-spacing:.5px">
+              <i class="bi bi-shield-check me-1"></i>Права доступа
+            </div>
+            {% for key, label, icon, cls in perm_labels %}
+            <div class="form-check form-switch mb-1">
+              <input class="form-check-input perm-new" type="checkbox"
+                     name="{{ key }}" value="1" id="new_{{ key }}"
+                     {% if key in ['can_create','can_export','can_view_all'] %}checked{% endif %}>
+              <label class="form-check-label" for="new_{{ key }}" style="font-size:12px">
+                <i class="bi {{ icon }} {{ cls }} me-1"></i>{{ label }}
+              </label>
+            </div>
+            {% endfor %}
+          </div>
+
+          <button class="btn btn-sm w-100" style="background:#1B5E7B;color:#fff">
+            <i class="bi bi-person-plus me-1"></i>Добавить
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  {# ══ КОЛОНКА ПРАВАЯ — список + журналы ══ #}
+  <div class="col-md-8">
+
+    {# ─── Таблица пользователей ─── #}
+    <div class="card mb-3">
+      <div class="card-header fw-bold" style="background:#1B5E7B;color:#fff">
+        <i class="bi bi-people me-1"></i>Пользователи
+      </div>
+      <div class="table-responsive">
+        <table class="table table-hover mb-0" style="font-size:13px">
+          <thead class="table-light">
+            <tr>
+              <th>ФИО</th><th>Логин</th><th>Роль</th><th>Права</th>
+              <th class="text-end">Действия</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for u in users %}
+          <tr>
+            <td>
+              {{ u.full_name }}
+              {% if u.must_change_password %}
+              <span class="badge bg-warning text-dark ms-1" style="font-size:10px"
+                    title="Не сменил временный пароль">
+                <i class="bi bi-key"></i>
+              </span>
+              {% endif %}
+            </td>
+            <td class="text-muted">{{ u.username }}</td>
+            <td>
+              {% if u.role == 'admin' %}
+                <span class="badge bg-danger">Администратор</span>
+              {% elif u.role == 'manager' %}
+                <span class="badge bg-primary">Руководитель</span>
+              {% else %}
+                <span class="badge bg-secondary">Исполнитель</span>
+              {% endif %}
+            </td>
+            <td>
+              {% for key, label, icon, cls in perm_labels %}
+                {% if u[key] %}
+                <i class="bi {{ icon }} {{ cls }} me-1" title="{{ label }}"
+                   style="font-size:13px"></i>
+                {% endif %}
+              {% endfor %}
+            </td>
+            <td class="text-end">
+              <button class="btn btn-sm btn-outline-primary py-0 px-1 me-1"
+                      data-bs-toggle="modal" data-bs-target="#editModal{{ u.id }}"
+                      title="Редактировать права">
+                <i class="bi bi-shield-check"></i>
+              </button>
+              <button class="btn btn-sm btn-outline-secondary py-0 px-1 me-1"
+                      data-bs-toggle="modal" data-bs-target="#pwModal{{ u.id }}"
+                      title="Сменить пароль">
+                <i class="bi bi-key"></i>
+              </button>
+              {% if u.id != session.user_id %}
+              <form method="post" class="d-inline"
+                    action="{{ url_for('admin.manage_users') }}"
+                    onsubmit="return confirm('Удалить пользователя {{ u.full_name }}?')">
+                <input type="hidden" name="action" value="delete">
+                <input type="hidden" name="user_id" value="{{ u.id }}">
+                <button class="btn btn-sm btn-outline-danger py-0 px-1" title="Удалить">
+                  <i class="bi bi-trash"></i>
+                </button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+
+          {# Модалка прав #}
+          <div class="modal fade" id="editModal{{ u.id }}" tabindex="-1">
+            <div class="modal-dialog"><div class="modal-content">
+              <form method="post" action="{{ url_for('admin.manage_users') }}">
+                <input type="hidden" name="action" value="edit_permissions">
+                <input type="hidden" name="user_id" value="{{ u.id }}">
+                <div class="modal-header">
+                  <h6 class="modal-title">
+                    <i class="bi bi-shield-check me-1"></i>{{ u.full_name }}
+                  </h6>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                  <div class="mb-3">
+                    <label class="form-label fw-bold">Роль</label>
+                    <select name="role" class="form-select form-select-sm">
+                      <option value="employee" {{ 'selected' if u.role=='employee' }}>Исполнитель</option>
+                      <option value="manager"  {{ 'selected' if u.role=='manager'  }}>Руководитель</option>
+                      <option value="admin"    {{ 'selected' if u.role=='admin'    }}>Администратор</option>
+                    </select>
+                  </div>
+                  <div class="fw-bold mb-2"
+                       style="font-size:11px;color:#1B5E7B;text-transform:uppercase;letter-spacing:.5px">
+                    Права доступа
+                  </div>
+                  {% for key, label, icon, cls in perm_labels %}
+                  <div class="form-check form-switch mb-1">
+                    <input class="form-check-input" type="checkbox"
+                           name="{{ key }}" value="1"
+                           id="edit_{{ u.id }}_{{ key }}"
+                           {{ 'checked' if u[key] }}>
+                    <label class="form-check-label"
+                           for="edit_{{ u.id }}_{{ key }}" style="font-size:12px">
+                      <i class="bi {{ icon }} {{ cls }} me-1"></i>{{ label }}
+                    </label>
+                  </div>
+                  {% endfor %}
+                </div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-secondary btn-sm"
+                          data-bs-dismiss="modal">Отмена</button>
+                  <button type="submit" class="btn btn-primary btn-sm">
+                    <i class="bi bi-check-circle me-1"></i>Сохранить
+                  </button>
+                </div>
+              </form>
+            </div></div>
+          </div>
+
+          {# Модалка пароля #}
+          <div class="modal fade" id="pwModal{{ u.id }}" tabindex="-1">
+            <div class="modal-dialog modal-sm"><div class="modal-content">
+              <form method="post" action="{{ url_for('admin.manage_users') }}">
+                <input type="hidden" name="action" value="change_password">
+                <input type="hidden" name="user_id" value="{{ u.id }}">
+                <div class="modal-header">
+                  <h6 class="modal-title">
+                    <i class="bi bi-key me-1"></i>{{ u.full_name }}
+                  </h6>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                  <div class="input-group input-group-sm mb-2">
+                    <input type="text" name="new_password" id="pwField{{ u.id }}"
+                           class="form-control" placeholder="Новый пароль" required>
+                    <button type="button" class="btn btn-outline-secondary"
+                            onclick="genPasswordFor('pwField{{ u.id }}')">
+                      <i class="bi bi-shuffle"></i>
+                    </button>
+                  </div>
+                  <div class="form-check">
+                    <input class="form-check-input" type="checkbox"
+                           name="must_change_password" value="1"
+                           id="mustChange{{ u.id }}" checked>
+                    <label class="form-check-label" for="mustChange{{ u.id }}"
+                           style="font-size:11px">Потребовать смену при входе</label>
+                  </div>
+                </div>
+                <div class="modal-footer">
+                  <button type="submit" class="btn btn-primary btn-sm">Сохранить</button>
+                </div>
+              </form>
+            </div></div>
+          </div>
+
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    {# ══ ЖУРНАЛЫ — вкладки ══ #}
+    <div class="card">
+      <div class="card-header p-0" style="background:#1B5E7B">
+        {# journal-tabs — кастомный класс для override Bootstrap nav-link стилей #}
+        <ul class="nav nav-tabs journal-tabs" style="border:none">
+          <li class="nav-item">
+            <button class="nav-link" id="tab-login"
+                    data-bs-toggle="tab" data-bs-target="#pane-login">
+              <i class="bi bi-door-open me-1"></i>Журнал входов
+              <span class="badge bg-secondary ms-1" id="badge-login"
+                    style="font-size:10px"></span>
+            </button>
+          </li>
+          <li class="nav-item">
+            <button class="nav-link" id="tab-activity"
+                    data-bs-toggle="tab" data-bs-target="#pane-activity">
+              <i class="bi bi-activity me-1"></i>Действия пользователей
+              <span class="badge ms-1" id="badge-activity"
+                    style="background:#ffc107;color:#000;font-size:10px"></span>
+            </button>
+          </li>
+        </ul>
+      </div>
+
+      <div class="tab-content">
+
+        {# ─── Журнал входов ─── #}
+        <div class="tab-pane fade" id="pane-login">
+          <div class="table-responsive">
+            <table class="table table-sm mb-0" style="font-size:12px">
+              <thead class="table-light">
+                <tr><th>Время</th><th>Пользователь</th><th>Событие</th><th>IP</th></tr>
+              </thead>
+              <tbody>
+              {% for log in login_log %}
+              <tr>
+                <td class="text-muted">{{ log.created_at }}</td>
+                <td>{{ log.username }}</td>
+                <td>
+                  {% if log.event == 'login' %}
+                    <span class="badge bg-success">Вход</span>
+                  {% elif log.event == 'logout' %}
+                    <span class="badge bg-secondary">Выход</span>
+                  {% elif log.event == 'failed' %}
+                    <span class="badge bg-danger">Ошибка входа</span>
+                  {% else %}
+                    <span class="badge bg-info">{{ log.event }}</span>
+                  {% endif %}
+                </td>
+                <td class="text-muted">{{ log.ip }}</td>
+              </tr>
+              {% else %}
+              <tr>
+                <td colspan="4" class="text-center text-muted py-3">Событий нет</td>
+              </tr>
+              {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {# ─── Действия пользователей ─── #}
+        <div class="tab-pane fade" id="pane-activity">
+
+          {# Панель фильтров (v2.0.1) #}
+          <form method="get" action="{{ url_for('admin.manage_users') }}"
+                class="p-2 border-bottom d-flex flex-wrap gap-2 align-items-end"
+                style="background:#f8f9fa">
+            <div>
+              <label class="form-label mb-0" style="font-size:11px">Пользователь</label>
+              <select name="af_user" class="form-select form-select-sm" style="min-width:150px">
+                <option value="">Все</option>
+                {% for u in users %}
+                <option value="{{ u.id }}"
+                        {{ 'selected' if af_user|string == u.id|string }}>
+                  {{ u.full_name }}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div>
+              <label class="form-label mb-0" style="font-size:11px">Действие</label>
+              <select name="af_action" class="form-select form-select-sm" style="min-width:150px">
+                <option value="">Все</option>
+                {% for key, label in action_labels.items() %}
+                <option value="{{ key }}" {{ 'selected' if af_action == key }}>
+                  {{ label }}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div>
+              <label class="form-label mb-0" style="font-size:11px">С даты</label>
+              <input type="date" name="af_date" class="form-control form-control-sm"
+                     value="{{ af_date }}" style="min-width:130px">
+            </div>
+            <button type="submit" class="btn btn-sm btn-primary">
+              <i class="bi bi-funnel me-1"></i>Применить
+            </button>
+            {% if af_user or af_action or af_date %}
+            <a href="{{ url_for('admin.manage_users') }}"
+               class="btn btn-sm btn-outline-secondary">
+              <i class="bi bi-x-circle me-1"></i>Сбросить
+            </a>
+            {% endif %}
+          </form>
+
+          {# Таблица действий #}
+          <div class="table-responsive">
+            <table class="table table-sm mb-0" style="font-size:12px">
+              <thead class="table-light">
+                <tr>
+                  <th>Время</th><th>Пользователь</th><th>Действие</th>
+                  <th>Обращение</th><th>Детали</th>
+                </tr>
+              </thead>
+              <tbody>
+              {% for a in activity %}
+              <tr>
+                <td class="text-muted">{{ a.created_at }}</td>
+                <td>{{ a.full_name or a.username or '—' }}</td>
+                <td>
+                  {% if a.action == 'create' %}
+                    <span class="badge bg-success">Создание</span>
+                  {% elif a.action == 'edit' %}
+                    <span class="badge bg-primary">Редактирование</span>
+                  {% elif a.action == 'delete' %}
+                    <span class="badge bg-danger">Удаление</span>
+                  {% elif a.action == 'accept' %}
+                    <span class="badge bg-success">Принятие</span>
+                  {% elif a.action == 'reject' %}
+                    <span class="badge bg-warning text-dark">Возврат</span>
+                  {% elif a.action == 'answer' %}
+                    <span class="badge bg-info">Ответ</span>
+                  {% elif a.action == 'rollback' %}
+                    <span class="badge bg-dark">Откат</span>
+                  {% elif a.action == 'status' %}
+                    <span class="badge bg-secondary">Статус</span>
+                  {% elif a.action == 'favorite' %}
+                    <span class="badge" style="background:#f0ad4e">Избранное</span>
+                  {% else %}
+                    <span class="badge bg-light text-dark">{{ a.action }}</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if a.request_id %}
+                  <a href="{{ url_for('requests.view_request', rid=a.request_id) }}"
+                     style="font-size:12px">#{{ a.request_id }}</a>
+                  {% else %}—{% endif %}
+                </td>
+                <td class="text-muted"
+                    style="max-width:250px;overflow:hidden;
+                           text-overflow:ellipsis;white-space:nowrap"
+                    title="{{ a.detail or '' }}">
+                  {{ a.detail or '—' }}
+                </td>
+              </tr>
+              {% else %}
+              <tr>
+                <td colspan="5" class="text-center text-muted py-3">
+                  {% if af_user or af_action or af_date %}
+                    По фильтру ничего не найдено
+                  {% else %}
+                    Действий нет
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+function genPw() {
+  var chars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789!@#$';
+  var pw = '';
+  for (var i = 0; i < 10; i++)
+    pw += chars[Math.floor(Math.random() * chars.length)];
+  return pw;
+}
+function genPassword()       { document.getElementById('newPwField').value = genPw(); }
+function genPasswordFor(fid) { document.getElementById(fid).value = genPw(); }
+
+var PRESETS = {
+  employee: { can_create:1, can_edit_others:0, can_confirm:0, can_delete:0,
+              can_rollback:0, can_export:1, can_classifiers:0, can_users:0, can_view_all:1 },
+  manager:  { can_create:1, can_edit_others:1, can_confirm:1, can_delete:0,
+              can_rollback:0, can_export:1, can_classifiers:0, can_users:0, can_view_all:1 },
+  admin:    { can_create:1, can_edit_others:1, can_confirm:1, can_delete:1,
+              can_rollback:1, can_export:1, can_classifiers:1, can_users:1, can_view_all:1 }
+};
+function applyRolePreset(role) {
+  var p = PRESETS[role]; if (!p) return;
+  for (var k in p) {
+    var cb = document.getElementById('new_' + k);
+    if (cb) cb.checked = p[k] === 1;
+  }
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+
+  /* ── Бейджи счётчиков ── */
+  var loginRows    = document.querySelectorAll('#pane-login tbody tr').length;
+  var activityRows = document.querySelectorAll('#pane-activity tbody tr').length;
+  var bl = document.getElementById('badge-login');
+  var ba = document.getElementById('badge-activity');
+  if (bl && loginRows > 0)    bl.textContent = loginRows;
+  if (ba && activityRows > 0) ba.textContent = activityRows;
+
+  /* ── Подсветка: вешаем/снимаем класс tab-active ── */
+  function setActive(btn) {
+    document.querySelectorAll('.journal-tabs .nav-link').forEach(function (b) {
+      b.classList.remove('tab-active');
+    });
+    btn.classList.add('tab-active');
+  }
+
+  /* Открываем нужную вкладку при загрузке */
+  var hasFilter = {{ 'true' if (af_user or af_action or af_date) else 'false' }};
+  var firstTab  = hasFilter
+    ? document.getElementById('tab-activity')
+    : document.getElementById('tab-login');
+
+  if (firstTab) {
+    new bootstrap.Tab(firstTab).show();
+    setActive(firstTab);
+  }
+
+  /* При переключении обновляем класс */
+  document.querySelectorAll('.journal-tabs .nav-link').forEach(function (btn) {
+    btn.addEventListener('shown.bs.tab', function () { setActive(btn); });
+  });
+
+});
+</script>
+
+{% endblock %}

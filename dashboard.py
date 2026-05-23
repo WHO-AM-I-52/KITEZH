@@ -1,0 +1,218 @@
+# ╔══════════════════════════════════════════════════════════════╗
+# ║                       dashboard.py                           ║
+# ║  Построение дашборда: KPI, графики, агрегаты по обращениям   ║
+# ╚══════════════════════════════════════════════════════════════╝
+
+from datetime import date, timedelta
+
+
+def build_dash(conn, period):
+    today = date.today()
+
+    # ─── ФИЛЬТР ПО ПЕРИОДУ ───────────────────────────────────────────────────
+    def pw():
+        if   period == 'today':
+            pf = today.isoformat()
+        elif period == 'week':
+            pf = (today - timedelta(days=7)).isoformat()
+        elif period == 'month':
+            pf = (today - timedelta(days=30)).isoformat()
+        elif period == 'quarter':
+            pf = (today - timedelta(days=90)).isoformat()
+        elif period == 'year':
+            pf = (today - timedelta(days=365)).isoformat()
+        else:
+            pf = None
+        return (" AND r.request_date>=?", [pf]) if pf else ("", [])
+
+    pw_sql, pw_params = pw()
+
+    # ─── ОБЩЕЕ КОЛИЧЕСТВО ПО СТАТУСАМ ────────────────────────────────────────
+    # ВАЖНО: total и статусы считаются БЕЗ фильтра периода,
+    # чтобы счётчики на главной всегда показывали все обращения.
+    def cnt_all(status=None):
+        if status:
+            return conn.execute(
+                "SELECT COUNT(*) FROM requests r WHERE r.status=?",
+                [status]
+            ).fetchone()[0]
+        return conn.execute(
+            "SELECT COUNT(*) FROM requests r"
+        ).fetchone()[0]
+
+    # Для графиков и аналитики — с фильтром периода
+    def cnt(status=None):
+        if status:
+            return conn.execute(
+                f"SELECT COUNT(*) FROM requests r WHERE r.status=?{pw_sql}",
+                [status] + pw_params
+            ).fetchone()[0]
+        return conn.execute(
+            f"SELECT COUNT(*) FROM requests r WHERE 1=1{pw_sql}",
+            pw_params
+        ).fetchone()[0]
+
+    # ─── ПРОСРОЧЕННЫЕ (всегда без фильтра периода) ───────────────────────────
+    overdue_active_all = conn.execute(
+        "SELECT COUNT(*) FROM requests r "
+        "WHERE r.status IN ('draft','review','accepted') "
+        "AND julianday('now')-julianday(r.request_date)>7"
+    ).fetchone()[0]
+
+    # ─── СУММАРНЫЕ ПОКАЗАТЕЛИ ────────────────────────────────────────────────
+    sums = conn.execute(
+        f"SELECT COALESCE(SUM(investment_total),0), COALESCE(SUM(jobs_total),0) "
+        f"FROM requests r WHERE 1=1{pw_sql}", pw_params
+    ).fetchone()
+
+    avg_row = conn.execute(
+        f"SELECT AVG(julianday(answer_date)-julianday(request_date)) "
+        f"FROM requests r WHERE status='answered' AND answer_date IS NOT NULL{pw_sql}",
+        pw_params
+    ).fetchone()
+
+    # ─── KPI ПО СРОКАМ ───────────────────────────────────────────────────────
+    norm_total = 7
+    kpi = conn.execute(f"""
+        SELECT COUNT(*),
+        SUM(CASE WHEN julianday(answer_date)-julianday(request_date)<={norm_total} THEN 1 ELSE 0 END),
+        SUM(CASE WHEN julianday(answer_date)-julianday(request_date)>{norm_total}  THEN 1 ELSE 0 END),
+        SUM(CASE WHEN status IN ('draft','review','accepted')
+            AND julianday('now')-julianday(request_date)>{norm_total} THEN 1 ELSE 0 END)
+        FROM requests r WHERE 1=1{pw_sql}""", pw_params).fetchone()
+
+    kpi_data = {
+        'norm_days':      norm_total,
+        'total_answered': kpi[0] or 0,
+        'in_time':        kpi[1] or 0,
+        'overdue':        kpi[2] or 0,
+        'overdue_active': kpi[3] or 0,
+        'pct':            round(kpi[1] / kpi[0] * 100) if kpi[0] else 0,
+    }
+
+    # ─── ТРЕНД ПО ВРЕМЕНИ ────────────────────────────────────────────────────
+    if period == 'today':
+        tr = conn.execute(
+            "SELECT strftime('%H:00',request_date),COUNT(*) "
+            "FROM requests r WHERE 1=1" + pw_sql +
+            " GROUP BY 1 ORDER BY 1", pw_params
+        ).fetchall()
+    elif period in ('week', 'month'):
+        tr = conn.execute(
+            "SELECT request_date,COUNT(*) "
+            "FROM requests r WHERE 1=1" + pw_sql +
+            " GROUP BY 1 ORDER BY 1", pw_params
+        ).fetchall()
+    elif period == 'quarter':
+        tr = conn.execute(
+            "SELECT strftime('%Y-W%W',request_date),COUNT(*) "
+            "FROM requests r WHERE 1=1" + pw_sql +
+            " GROUP BY 1 ORDER BY 1", pw_params
+        ).fetchall()
+    else:
+        tr = conn.execute(
+            "SELECT strftime('%Y-%m',request_date),COUNT(*) "
+            "FROM requests r WHERE 1=1" + pw_sql +
+            " GROUP BY 1 ORDER BY 1", pw_params
+        ).fetchall()
+
+    # ─── ТОП СОТРУДНИКОВ И РАЙОНЫ ────────────────────────────────────────────
+    emp_rows = conn.execute(
+        f"SELECT COALESCE(u.full_name,'Не назначен'),COUNT(*) FROM requests r "
+        f"LEFT JOIN users u ON r.assigned_to=u.id WHERE 1=1{pw_sql} "
+        f"GROUP BY r.assigned_to ORDER BY 2 DESC LIMIT 10", pw_params
+    ).fetchall()
+
+    dist_rows = conn.execute(
+        f"SELECT preferred_districts,COUNT(*) FROM requests r "
+        f"WHERE preferred_districts IS NOT NULL AND preferred_districts!=''{pw_sql} "
+        f"GROUP BY 1 ORDER BY 2 DESC LIMIT 12", pw_params
+    ).fetchall()
+
+    # ─── ТИП ПЛОЩАДКИ ────────────────────────────────────────────────────────
+    st_free = conn.execute(
+        f"SELECT COUNT(*) FROM requests r WHERE site_type_free=1{pw_sql}",
+        pw_params
+    ).fetchone()[0]
+    st_ex = conn.execute(
+        f"SELECT COUNT(*) FROM requests r WHERE site_type_existing=1{pw_sql}",
+        pw_params
+    ).fetchone()[0]
+    st_both = conn.execute(
+        f"SELECT COUNT(*) FROM requests r "
+        f"WHERE site_type_free=1 AND site_type_existing=1{pw_sql}",
+        pw_params
+    ).fetchone()[0]
+
+    # ─── РАСПРЕДЕЛЕНИЕ ПО ПЛОЩАДИ (v1.9.1: используем _min поля) ────────────
+    area_buckets = [
+        ('<0.1 га', 0, .1), ('0.1–0.5', .1, .5), ('0.5–1', .5, 1),
+        ('1–2', 1, 2), ('2–5', 2, 5), ('5–10', 5, 10), ('>10', 10, 999999)
+    ]
+    build_buckets = [
+        ('<100 м²', 0, 100), ('100–300', 100, 300), ('300–500', 300, 500),
+        ('500–1000', 500, 1000), ('1000–3000', 1000, 3000),
+        ('3000–5000', 3000, 5000), ('>5000', 5000, 999999)
+    ]
+
+    area_data = [{
+        'label': l,
+        'count': conn.execute(
+            f"SELECT COUNT(*) FROM requests r "
+            f"WHERE site_area_ha_min>=? AND site_area_ha_min<?{pw_sql}",
+            [lo, hi] + pw_params
+        ).fetchone()[0]
+    } for l, lo, hi in area_buckets]
+
+    build_data = [{
+        'label': l,
+        'count': conn.execute(
+            f"SELECT COUNT(*) FROM requests r "
+            f"WHERE site_build_area_m2_min>=? AND site_build_area_m2_min<?{pw_sql}",
+            [lo, hi] + pw_params
+        ).fetchone()[0]
+    } for l, lo, hi in build_buckets]
+
+    # ─── ИСТОЧНИКИ ОБРАЩЕНИЙ ─────────────────────────────────────────────────
+    src_rows = conn.execute(
+        f"SELECT source_type,COUNT(*) FROM requests r "
+        f"WHERE source_type IS NOT NULL AND source_type!=''{pw_sql} "
+        f"GROUP BY source_type ORDER BY 2 DESC", pw_params
+    ).fetchall()
+
+    src_counts = {}
+    for row in src_rows:
+        for s in (row[0] or '').split(','):
+            s = s.strip()
+            if s:
+                src_counts[s] = src_counts.get(s, 0) + row[1]
+
+    # ─── ФИНАЛЬНЫЙ НАБОР ДАННЫХ ───────────────────────────────────────────────
+    return {
+        'period':         period,
+        # Счётчики — всегда все записи без фильтра периода
+        'total':          cnt_all(),
+        'draft':          cnt_all('draft'),
+        'review':         cnt_all('review'),
+        'accepted':       cnt_all('accepted'),
+        'answered':       cnt_all('answered'),
+        'overdue_active': overdue_active_all,
+        # Аналитика — за выбранный период
+        'investment_sum': float(sums[0]) if sums else 0,
+        'jobs_sum':       int(sums[1]) if sums else 0,
+        'avg_days':       round(avg_row[0]) if avg_row and avg_row[0] else None,
+        'kpi':            kpi_data,
+        'trend_chart':    {'labels': [r[0] for r in tr],        'values': [r[1] for r in tr]},
+        'emp_chart':      {'labels': [r[0] for r in emp_rows],  'values': [r[1] for r in emp_rows]},
+        'dist_chart':     {'labels': [r[0] for r in dist_rows], 'values': [r[1] for r in dist_rows]},
+        'site_type': {
+            'free':          st_free,
+            'existing':      st_ex,
+            'both':          st_both,
+            'only_free':     st_free - st_both,
+            'only_existing': st_ex - st_both,
+        },
+        'area_data':      area_data,
+        'build_data':     build_data,
+        'source_chart':   {'labels': list(src_counts.keys()), 'values': list(src_counts.values())},
+    }

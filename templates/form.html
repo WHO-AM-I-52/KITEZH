@@ -1,0 +1,1260 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="mb-0" style="color:#1B5E7B">
+    <i class="bi bi-file-earmark-plus me-1"></i>
+    {{ 'Редактировать обращение' if req else 'Новое обращение' }}
+  </h5>
+  <a href="{{ url_for('requests.index') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left"></i> Назад
+  </a>
+</div>
+
+<form method="post" enctype="multipart/form-data" id="mainForm" novalidate>
+
+{# ===== РАЗДЕЛ 0: СЛУЖЕБНАЯ ИНФОРМАЦИЯ ===== #}
+<div class="card mb-3">
+  <div class="card-header py-2" style="background:#1B5E7B;color:#fff;font-size:13px;font-weight:600">
+    <i class="bi bi-info-circle me-1"></i>1. Служебная информация
+  </div>
+  <div class="card-body row g-3">
+
+    <div class="col-md-3">
+      <label class="form-label fw-bold" style="font-size:12px">
+        Дата обращения <span class="text-danger">*</span>
+      </label>
+      <input type="date" name="request_date" class="form-control form-control-sm"
+             value="{{ req.request_date if req else today }}" required>
+    </div>
+
+    <div class="col-md-3">
+      <label class="form-label fw-bold" style="font-size:12px">Статус</label>
+      <select name="status" class="form-select form-select-sm">
+        {% for v,l in [('draft','Черновик'),('review','На проверке'),
+                       ('accepted','В работе'),('answered','Отвечено')] %}
+        <option value="{{ v }}" {{ 'selected' if req and req.status==v else ('selected' if not req and v=='draft' else '') }}>
+          {{ l }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    {% if req %}
+    <div class="col-md-3">
+      <label class="form-label fw-bold" style="font-size:12px">Ответственный</label>
+      <select name="assigned_to" class="form-select form-select-sm">
+        <option value="">— не назначен —</option>
+        {% for e in employees %}
+        <option value="{{ e.id }}" {{ 'selected' if req and req.assigned_to==e.id }}>
+          {{ e.full_name }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
+
+    <div class="col-md-3 d-flex align-items-end">
+      <div class="form-check">
+        <input class="form-check-input" type="checkbox" name="consent_disclosure"
+               value="1" id="chk_consent"
+               {{ 'checked' if req and req.consent_disclosure }}>
+        <label class="form-check-label" for="chk_consent" style="font-size:12px">
+          Согласие на раскрытие информации
+        </label>
+      </div>
+    </div>
+
+    {# ИСТОЧНИК ОБРАЩЕНИЯ #}
+    <div class="col-md-6">
+      <label class="form-label fw-bold" style="font-size:12px">
+        Источник обращения <span class="text-danger">*</span>
+      </label>
+      <div class="border rounded p-2" style="background:#fff;max-height:110px;overflow-y:auto"
+           id="source_type_wrap">
+        {% for src in source_types %}
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox"
+                 name="source_type" value="{{ src }}" id="src_{{ loop.index }}"
+                 onchange="toggleIncomingNumber()"
+                 {% if req and req.source_type and src in req.source_type.split(', ') %}checked{% endif %}>
+          <label class="form-check-label" for="src_{{ loop.index }}" style="font-size:13px">
+            {{ src }}
+          </label>
+        </div>
+        {% endfor %}
+        {% if not source_types %}
+        <span class="text-muted small">Справочник пуст — добавьте значения в разделе Справочники</span>
+        {% endif %}
+      </div>
+      <div class="form-text">Можно выбрать несколько</div>
+
+      {# Поле № входящего — только для Directum / СЭДО #}
+      <div id="incomingNumberBlock" class="mt-2" style="display:none">
+        <label class="form-label fw-bold" style="font-size:12px">№ входящего обращения</label>
+        <input type="text" name="incoming_number" class="form-control form-control-sm"
+               placeholder="Например: ВХ-2026-0042"
+               value="{{ req.incoming_number or '' if req else '' }}">
+      </div>
+    </div>
+
+    {% if req %}
+    <div class="col-md-6">
+      <label class="form-label fw-bold" style="font-size:12px">Служебная информация</label>
+      <div class="border rounded p-2 bg-light" style="font-size:12px">
+        <div><i class="bi bi-person-circle me-1 text-secondary"></i>
+          <strong>Создал:</strong> {{ req.employee_name or '—' }}
+          {% if req.created_at %}<span class="text-muted ms-2">{{ req.created_at }}</span>{% endif %}
+        </div>
+        {% if req.updated_at %}
+        <div class="mt-1"><i class="bi bi-pencil me-1 text-secondary"></i>
+          <strong>Изменено:</strong> <span class="text-muted">{{ req.updated_at }}</span>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+
+{# ===== РАЗДЕЛ: ПРИКРЕПЛЁННЫЕ ФАЙЛЫ ===== #}
+<div class="card mb-3">
+  <div class="card-header py-2" style="background:#1B5E7B;color:#fff;font-size:13px;font-weight:600">
+    <i class="bi bi-paperclip me-1"></i>Прикреплённые файлы
+  </div>
+  <div class="card-body">
+    {% if req and req.request_files %}
+    <div class="mb-2">
+      <strong style="font-size:12px">Уже прикреплены:</strong>
+      <div class="d-flex flex-wrap gap-2 mt-1">
+        {% for f in req.request_files.split(',') if f.strip() %}
+        <a href="{{ url_for('requests.uploaded_file', filename=f.strip()) }}"
+           target="_blank"
+           class="d-flex flex-column align-items-center text-decoration-none
+                  text-dark border rounded p-2"
+           style="width:80px;word-break:break-all;font-size:0.72rem">
+          {% set ext = f.strip().rsplit('.',1)[-1].lower() %}
+          {% if ext == 'pdf' %}
+            <i class="bi bi-file-earmark-pdf text-danger" style="font-size:2rem"></i>
+          {% elif ext in ['doc','docx'] %}
+            <i class="bi bi-file-earmark-word text-primary" style="font-size:2rem"></i>
+          {% elif ext in ['xls','xlsx'] %}
+            <i class="bi bi-file-earmark-excel text-success" style="font-size:2rem"></i>
+          {% elif ext in ['ppt','pptx'] %}
+            <i class="bi bi-file-earmark-slides text-warning" style="font-size:2rem"></i>
+          {% elif ext in ['jpg','jpeg','png'] %}
+            <i class="bi bi-file-earmark-image text-info" style="font-size:2rem"></i>
+          {% elif ext == 'zip' %}
+            <i class="bi bi-file-earmark-zip text-secondary" style="font-size:2rem"></i>
+          {% else %}
+            <i class="bi bi-file-earmark" style="font-size:2rem"></i>
+          {% endif %}
+          <span class="mt-1 text-center">
+            {{ f.strip()[:12] }}{% if f.strip()|length > 12 %}…{% endif %}
+          </span>
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <label class="form-label fw-bold" style="font-size:12px">
+      {{ 'Добавить файлы' if req else 'Прикрепить файлы обращения' }}
+    </label>
+    <input type="file" name="request_files" id="requestFilesInput"
+           class="form-control form-control-sm" multiple
+           accept=".pdf,.doc,.docx,.xlsx,.xls,.ppt,.pptx,.jpg,.jpeg,.png,.zip"
+           onchange="previewFiles(this)">
+    <div class="form-text">
+      Можно выбрать несколько файлов: PDF, DOC, XLSX, PPT, изображения, ZIP
+    </div>
+
+    <div id="filesPreview" class="d-flex flex-wrap gap-2 mt-2"></div>
+
+  </div>
+</div>
+
+{# ─── Анкета для OCR (v2.1.1) ─── #}
+<div class="card mb-3">
+  <div class="card-header py-2" style="background:#1B5E7B;color:#fff;font-size:13px;font-weight:600">
+    <i class="bi bi-file-earmark-text me-1"></i>Анкета для подбора площадки (OCR)
+  </div>
+  <div class="card-body">
+    <div class="mb-2">
+      <label class="form-label fw-bold" style="font-size:12px">
+        Файл анкеты
+      </label>
+      <input type="file" name="ocr_form"
+             class="form-control form-control-sm"
+             accept=".pdf,.doc,.docx,.jpg,.jpeg,.png">
+      <div class="form-text" style="font-size:12px">
+        Загрузите заполненную анкету (PDF, DOCX или скан). Можно попробовать автоматически заполнить поля.
+      </div>
+    </div>
+
+    <div class="form-check">
+      <input class="form-check-input" type="checkbox"
+             name="use_ocr" value="1" id="useOcrChk">
+      <label class="form-check-label" for="useOcrChk" style="font-size:12px">
+        Попробовать распознать анкету и заполнить форму автоматически
+      </label>
+    </div>
+
+    {% if ocr_message %}
+    <div class="form-text mt-1" style="font-size:11px;color:#6c757d">
+      {{ ocr_message }}
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{# ===== РАЗДЕЛ 1: СВЕДЕНИЯ О ЗАЯВИТЕЛЕ ===== #}
+<div class="card mb-3">
+  <div class="card-header py-2" style="background:#1B5E7B;color:#fff;font-size:13px;font-weight:600">
+    <i class="bi bi-person-badge me-1"></i>2. Сведения о заявителе
+  </div>
+  <div class="card-body row g-3">
+
+    <div class="col-md-6">
+      <label class="form-label fw-bold" style="font-size:12px">
+        Полное наименование <span class="text-danger">*</span>
+      </label>
+      <input type="text" name="applicant_full_name" class="form-control form-control-sm"
+             value="{{ req.applicant_full_name if req else '' }}"
+             placeholder="ООО «Название организации»">
+    </div>
+
+    <div class="col-md-3">
+      <label class="form-label fw-bold" style="font-size:12px">Краткое наименование</label>
+      <input type="text" name="applicant_short_name" class="form-control form-control-sm"
+             value="{{ req.applicant_short_name if req else '' }}">
+    </div>
+
+    <div class="col-md-3">
+      <label class="form-label fw-bold" style="font-size:12px">Организационно-правовая форма</label>
+      <select name="applicant_legal_form" class="form-select form-select-sm">
+        <option value="">— выберите —</option>
+        {% for lf in legal_forms %}
+        <option value="{{ lf }}" {{ 'selected' if req and req.applicant_legal_form==lf }}>
+          {{ lf }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+<div class="col-md-4">
+  <label class="form-label fw-bold" style="font-size:12px">ИНН</label>
+  <input type="text" name="applicant_inn" class="form-control form-control-sm"
+         value="{{ req.applicant_inn if req else '' }}"
+         placeholder="10 или 12 цифр">
+  <div id="inn_help" class="form-text" style="font-size:11px; min-height:14px">
+    Необязательно, только цифры
+  </div>
+</div>
+
+    <div class="col-md-4">
+      <label class="form-label fw-bold" style="font-size:12px">Категория МСП</label>
+      <select name="msp_category" class="form-select form-select-sm">
+        <option value="">— не указано —</option>
+        {% for v, l in [('micro','Микро'),('small','Малое'),('medium','Среднее'),('none','Не МСП')] %}
+        <option value="{{ v }}" {{ 'selected' if req and req.msp_category==v }}>
+          {{ l }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+<div class="col-md-4">
+  <label class="form-label fw-bold" style="font-size:12px">Основной ОКВЭД</label>
+
+  <div class="position-relative mb-1">
+    <input type="text" name="applicant_okved_main"
+           class="form-control form-control-sm"
+           value="{{ req.applicant_okved_main if req else '' }}"
+           placeholder="например, 10.11"
+           autocomplete="off"
+           id="okved_main_input">
+    <div id="okved_suggestions"
+         class="list-group position-absolute w-100"
+         style="z-index:1050; max-height:220px; overflow-y:auto; display:none; font-size:12px;">
+      {# сюда JS будет подставлять варианты #}
+    </div>
+  </div>
+
+  <input type="text"
+         class="form-control form-control-sm mb-1"
+         id="okved_main_name"
+         value="{{ req.okved_main_name if req and req.okved_main_name else '' }}"
+         placeholder="Наименование вида деятельности"
+         readonly>
+
+  <div class="form-text" style="font-size:11px">
+    Начните вводить код или часть названия; из списка выберите нужный вариант
+  </div>
+</div>
+
+    <div class="col-md-6">
+      <label class="form-label fw-bold" style="font-size:12px">Почтовый адрес</label>
+      <input type="text" name="postal_address" class="form-control form-control-sm"
+             value="{{ req.postal_address if req else '' }}">
+    </div>
+
+    <div class="col-md-6">
+      <label class="form-label fw-bold" style="font-size:12px">Юридический адрес</label>
+      <input type="text" name="legal_address" class="form-control form-control-sm"
+             value="{{ req.legal_address if req else '' }}">
+    </div>
+
+    <div class="col-md-4">
+      <label class="form-label fw-bold" style="font-size:12px">Контактное лицо</label>
+      <input type="text" name="contact_person" class="form-control form-control-sm"
+             value="{{ req.contact_person if req else '' }}"
+             placeholder="ФИО">
+    </div>
+
+    <div class="col-md-4">
+      <label class="form-label fw-bold" style="font-size:12px">
+        Телефон <span class="text-danger">*</span>
+      </label>
+      <input type="tel" name="contact_phone" class="form-control form-control-sm"
+             value="{{ req.contact_phone if req else '' }}"
+             placeholder="+7 (___) ___-__-__" id="phone_mask">
+    </div>
+
+    <div class="col-md-4">
+      <label class="form-label fw-bold" style="font-size:12px">E-mail</label>
+      <input type="email" name="contact_email" class="form-control form-control-sm"
+             value="{{ req.contact_email if req else '' }}"
+             placeholder="example@mail.ru">
+    </div>
+
+  </div>
+</div>
+
+{# ===== РАЗДЕЛ 2: СВЕДЕНИЯ О ПРОЕКТЕ ===== #}
+<div class="card mb-3">
+  <div class="card-header py-2" style="background:#1B5E7B;color:#fff;font-size:13px;font-weight:600">
+    <i class="bi bi-briefcase me-1"></i>3. Сведения о проекте
+  </div>
+  <div class="card-body row g-3">
+
+    <div class="col-md-8">
+      <label class="form-label fw-bold" style="font-size:12px">
+        Название проекта <span class="text-danger">*</span>
+      </label>
+      <input type="text" name="project_name" class="form-control form-control-sm"
+             value="{{ req.project_name if req else '' }}"
+             placeholder="Краткое название инвестиционного проекта">
+    </div>
+
+    <div class="col-md-4">
+      <label class="form-label fw-bold" style="font-size:12px">Номенклатура продукции</label>
+      <input type="text" name="product_nomenclature" class="form-control form-control-sm"
+             value="{{ req.product_nomenclature if req else '' }}">
+    </div>
+
+    <div class="col-12">
+      <label class="form-label fw-bold" style="font-size:12px">Описание производства</label>
+      <textarea name="production_description" class="form-control form-control-sm" rows="2"
+                placeholder="Краткое описание технологического процесса, вида деятельности">{{ req.production_description if req else '' }}</textarea>
+    </div>
+
+    <div class="col-12">
+      <label class="form-label fw-bold" style="font-size:12px">Состав объектов</label>
+      <textarea name="object_composition" class="form-control form-control-sm" rows="2"
+                placeholder="Перечень зданий, сооружений, объектов инфраструктуры">{{ req.object_composition if req else '' }}</textarea>
+    </div>
+
+  </div>
+</div>
+
+{# ===== РАЗДЕЛ 3: ИНВЕСТИЦИИ И ПЕРСОНАЛ ===== #}
+<div class="card mb-3">
+  <div class="card-header py-2" style="background:#1B5E7B;color:#fff;font-size:13px;font-weight:600">
+    <i class="bi bi-currency-exchange me-1"></i>4. Инвестиции и персонал
+  </div>
+  <div class="card-body row g-3">
+
+    <div class="col-md-3">
+      <label class="form-label fw-bold" style="font-size:12px">
+        Объём инвестиций, млн руб. <span class="text-danger">*</span>
+      </label>
+      <input type="number" step="0.1" name="investment_total" class="form-control form-control-sm"
+             value="{{ req.investment_total if req else '' }}" placeholder="0.0">
+    </div>
+
+    <div class="col-md-3">
+      <label class="form-label fw-bold" style="font-size:12px">В т.ч. заёмные, млн руб.</label>
+      <input type="number" step="0.1" name="investment_borrowed" class="form-control form-control-sm"
+             value="{{ req.investment_borrowed if req else '' }}" placeholder="0.0">
+    </div>
+
+    <div class="col-md-3">
+      <label class="form-label fw-bold" style="font-size:12px">
+        Рабочих мест (всего) <span class="text-danger">*</span>
+      </label>
+      <input type="number" name="jobs_total" class="form-control form-control-sm"
+             value="{{ req.jobs_total if req else '' }}" placeholder="0">
+    </div>
+
+    <div class="col-md-3">
+      <label class="form-label fw-bold" style="font-size:12px">В т.ч. иностранных граждан</label>
+      <input type="number" name="jobs_foreign" class="form-control form-control-sm"
+             value="{{ req.jobs_foreign if req else '' }}" placeholder="0">
+    </div>
+
+    <div class="col-md-3">
+      <label class="form-label fw-bold" style="font-size:12px">Управленческий персонал</label>
+      <input type="number" name="staff_management" class="form-control form-control-sm"
+             value="{{ req.staff_management if req else '' }}" placeholder="0">
+    </div>
+
+    <div class="col-md-3">
+      <label class="form-label fw-bold" style="font-size:12px">Рабочие</label>
+      <input type="number" name="staff_workers" class="form-control form-control-sm"
+             value="{{ req.staff_workers if req else '' }}" placeholder="0">
+    </div>
+
+    <div class="col-md-3">
+      <label class="form-label fw-bold" style="font-size:12px">ИТ-специалисты</label>
+      <input type="number" name="staff_it" class="form-control form-control-sm"
+             value="{{ req.staff_it if req else '' }}" placeholder="0">
+    </div>
+
+    <div class="col-md-3">
+      <label class="form-label fw-bold" style="font-size:12px">Прочий персонал</label>
+      <input type="number" name="staff_other" class="form-control form-control-sm"
+             value="{{ req.staff_other if req else '' }}" placeholder="0">
+    </div>
+
+    <div class="col-md-4">
+      <label class="form-label fw-bold" style="font-size:12px">Этапы строительства</label>
+      <input type="text" name="construction_stages" class="form-control form-control-sm"
+             value="{{ req.construction_stages if req else '' }}"
+             placeholder="Количество этапов">
+    </div>
+
+    <div class="col-md-4">
+      <label class="form-label fw-bold" style="font-size:12px">Начало строительства</label>
+      <input type="date" name="construction_start" class="form-control form-control-sm"
+             value="{{ req.construction_start if req else '' }}">
+    </div>
+
+    <div class="col-md-4">
+      <label class="form-label fw-bold" style="font-size:12px">Начало эксплуатации</label>
+      <input type="date" name="operation_start" class="form-control form-control-sm"
+             value="{{ req.operation_start if req else '' }}">
+    </div>
+
+    <div class="col-12">
+      <label class="form-label fw-bold" style="font-size:12px">Сырьё и материалы</label>
+      <textarea name="raw_materials" class="form-control form-control-sm" rows="2"
+                placeholder="Перечень основного сырья и материалов">{{ req.raw_materials if req else '' }}</textarea>
+    </div>
+
+    <div class="col-12">
+      <label class="form-label fw-bold" style="font-size:12px">Доп. сведения по сырью</label>
+      <textarea name="raw_extra" class="form-control form-control-sm" rows="1">{{ req.raw_extra if req else '' }}</textarea>
+    </div>
+
+  </div>
+</div>
+
+{# ===== РАЗДЕЛ 4: ТРЕБОВАНИЯ К ПЛОЩАДКЕ ===== #}
+<div class="card mb-3">
+  <div class="card-header py-2" style="background:#1B5E7B;color:#fff;font-size:13px;font-weight:600">
+    <i class="bi bi-map me-1"></i>5. Требования к площадке
+  </div>
+  <div class="card-body row g-3">
+
+    <div class="col-md-4">
+      <label class="form-label fw-bold" style="font-size:12px">Тип площадки</label>
+      <div class="d-flex gap-3 mt-1">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="site_type_free"
+                 value="1" id="chk_free"
+                 {{ 'checked' if req and req.site_type_free }}>
+          <label class="form-check-label" for="chk_free" style="font-size:12px">
+            Свободная площадка
+          </label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="site_type_existing"
+                 value="1" id="chk_existing"
+                 {{ 'checked' if req and req.site_type_existing }}>
+          <label class="form-check-label" for="chk_existing" style="font-size:12px">
+            Существующее здание
+          </label>
+        </div>
+      </div>
+    </div>
+
+    {# Площадь участка — min/max #}
+    <div class="col-md-4">
+      <label class="form-label fw-bold" style="font-size:12px">Площадь участка, га</label>
+      <div class="input-group input-group-sm">
+        <span class="input-group-text" style="font-size:11px">мин.</span>
+        <input type="number" step="0.01" name="site_area_ha_min" class="form-control form-control-sm"
+               value="{{ req.site_area_ha_min if req else '' }}" placeholder="0.00">
+        <span class="input-group-text" style="font-size:11px">макс.</span>
+        <input type="number" step="0.01" name="site_area_ha_max" class="form-control form-control-sm"
+               value="{{ req.site_area_ha_max if req else '' }}" placeholder="0.00">
+      </div>
+    </div>
+
+    {# Площадь застройки — min/max #}
+    <div class="col-md-4">
+      <label class="form-label fw-bold" style="font-size:12px">Площадь застройки, м²</label>
+      <div class="input-group input-group-sm">
+        <span class="input-group-text" style="font-size:11px">мин.</span>
+        <input type="number" step="1" name="site_build_area_m2_min" class="form-control form-control-sm"
+               value="{{ req.site_build_area_m2_min if req else '' }}" placeholder="0">
+        <span class="input-group-text" style="font-size:11px">макс.</span>
+        <input type="number" step="1" name="site_build_area_m2_max" class="form-control form-control-sm"
+               value="{{ req.site_build_area_m2_max if req else '' }}" placeholder="0">
+      </div>
+    </div>
+
+    <div class="col-md-2">
+      <label class="form-label fw-bold" style="font-size:12px">Санитарная зона, м</label>
+      <input type="number" step="1" name="sanitary_zone_m" class="form-control form-control-sm"
+             value="{{ req.sanitary_zone_m if req else '' }}" placeholder="0">
+    </div>
+
+    <div class="col-md-2">
+      <label class="form-label fw-bold" style="font-size:12px">Класс опасности</label>
+      <select name="hazard_class" class="form-select form-select-sm">
+        <option value="">— не указан —</option>
+        {% for v in ['I','II','III','IV','V'] %}
+        <option value="{{ v }}" {{ 'selected' if req and req.hazard_class==v }}>{{ v }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="col-md-2">
+      <label class="form-label fw-bold" style="font-size:12px">Право пользования</label>
+      <select name="site_right" class="form-select form-select-sm">
+        <option value="">— не указано —</option>
+        {% for v in ['Собственность','Аренда','Безвозмездное пользование','Иное'] %}
+        <option value="{{ v }}" {{ 'selected' if req and req.site_right==v }}>{{ v }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="col-md-2">
+      <label class="form-label fw-bold" style="font-size:12px">Форма участка</label>
+      <select name="site_shape" class="form-select form-select-sm">
+        <option value="">— любая —</option>
+        {% for v in ['Прямоугольная','Квадратная','Произвольная'] %}
+        <option value="{{ v }}" {{ 'selected' if req and req.site_shape==v }}>{{ v }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="col-md-2">
+      <label class="form-label fw-bold" style="font-size:12px">Мин. длина, м</label>
+      <input type="number" step="1" name="site_length_min" class="form-control form-control-sm"
+             value="{{ req.site_length_min if req else '' }}" placeholder="0">
+    </div>
+
+    <div class="col-md-2">
+      <label class="form-label fw-bold" style="font-size:12px">Мин. ширина, м</label>
+      <input type="number" step="1" name="site_width_min" class="form-control form-control-sm"
+             value="{{ req.site_width_min if req else '' }}" placeholder="0">
+    </div>
+
+    <div class="col-md-4">
+      <label class="form-label fw-bold" style="font-size:12px">
+        <div class="form-check d-inline">
+          <input class="form-check-input" type="checkbox" name="site_area_expansion"
+                 value="1" id="chk_expand"
+                 {{ 'checked' if req and req.site_area_expansion }}>
+          <label class="form-check-label" for="chk_expand">Возможность расширения площади</label>
+        </div>
+      </label>
+    </div>
+
+    <div class="col-12">
+      <label class="form-label fw-bold" style="font-size:12px">Прочие требования к площадке</label>
+      <textarea name="site_other" class="form-control form-control-sm"
+                rows="2">{{ req.site_other if req else '' }}</textarea>
+    </div>
+
+  </div>
+</div>
+
+{# ===== РАЗДЕЛ 5: ИНЖЕНЕРНАЯ ИНФРАСТРУКТУРА ===== #}
+<div class="card mb-3">
+  <div class="card-header py-2" style="background:#1B5E7B;color:#fff;font-size:13px;font-weight:600">
+    <i class="bi bi-lightning-charge me-1"></i>6. Инженерная инфраструктура
+  </div>
+  <div class="card-body">
+
+    <p class="text-muted mb-2" style="font-size:11px">
+      <i class="bi bi-droplet me-1"></i><strong>Водоснабжение и водоотведение</strong>
+    </p>
+    <div class="row g-2 mb-3">
+      <div class="col-md-3">
+        <label class="form-label" style="font-size:12px">Хоз-питьевое водоснабжение, м³/сут</label>
+        <input type="number" step="0.1" name="water_household" class="form-control form-control-sm"
+               value="{{ req.water_household if req else '' }}" placeholder="0">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" style="font-size:12px">Производственное водоснабжение, м³/сут</label>
+        <input type="number" step="0.1" name="water_production" class="form-control form-control-sm"
+               value="{{ req.water_production if req else '' }}" placeholder="0">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" style="font-size:12px">Водоотведение, м³/сут</label>
+        <input type="number" step="0.1" name="sewage" class="form-control form-control-sm"
+               value="{{ req.sewage if req else '' }}" placeholder="0">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" style="font-size:12px">Пожаротушение, м³/сут</label>
+        <input type="number" step="0.1" name="firefighting" class="form-control form-control-sm"
+               value="{{ req.firefighting if req else '' }}" placeholder="0">
+      </div>
+    </div>
+
+    <p class="text-muted mb-2" style="font-size:11px">
+      <i class="bi bi-plug me-1"></i><strong>Электроснабжение</strong>
+    </p>
+    <div class="row g-2 mb-3">
+      <div class="col-md-3">
+        <label class="form-label" style="font-size:12px">Общая мощность, кВт</label>
+        <input type="number" step="0.1" name="electricity_total" class="form-control form-control-sm"
+               value="{{ req.electricity_total if req else '' }}" placeholder="0">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" style="font-size:12px">Категория I, кВт</label>
+        <input type="number" step="0.1" name="electricity_cat1" class="form-control form-control-sm"
+               value="{{ req.electricity_cat1 if req else '' }}" placeholder="0">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" style="font-size:12px">Категория II, кВт</label>
+        <input type="number" step="0.1" name="electricity_cat2" class="form-control form-control-sm"
+               value="{{ req.electricity_cat2 if req else '' }}" placeholder="0">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" style="font-size:12px">Категория III, кВт</label>
+        <input type="number" step="0.1" name="electricity_cat3" class="form-control form-control-sm"
+               value="{{ req.electricity_cat3 if req else '' }}" placeholder="0">
+      </div>
+    </div>
+
+    <p class="text-muted mb-2" style="font-size:11px">
+      <i class="bi bi-fire me-1"></i><strong>Теплоснабжение и газоснабжение</strong>
+    </p>
+    <div class="row g-2 mb-3">
+      <div class="col-md-3">
+        <label class="form-label" style="font-size:12px">Источник тепла</label>
+        <select name="heat_source" class="form-select form-select-sm">
+          <option value="">— не указан —</option>
+          {% for v in ['Центральное теплоснабжение','Собственная котельная','Тепловой насос','Иное'] %}
+          <option value="{{ v }}" {{ 'selected' if req and req.heat_source==v }}>{{ v }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" style="font-size:12px">Теплопотребление, Гкал/ч</label>
+        <input type="number" step="0.01" name="heat_gcal" class="form-control form-control-sm"
+               value="{{ req.heat_gcal if req else '' }}" placeholder="0.00">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" style="font-size:12px">Газ, м³/ч</label>
+        <input type="number" step="0.1" name="gas_m3h" class="form-control form-control-sm"
+               value="{{ req.gas_m3h if req else '' }}" placeholder="0">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" style="font-size:12px">Газ, м³/год</label>
+        <input type="number" step="1" name="gas_m3y" class="form-control form-control-sm"
+               value="{{ req.gas_m3y if req else '' }}" placeholder="0">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" style="font-size:12px">Цель газоснабжения</label>
+        <input type="text" name="gas_purpose" class="form-control form-control-sm"
+               value="{{ req.gas_purpose if req else '' }}"
+               placeholder="Отопление, технология...">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" style="font-size:12px">Отапливаемая площадь, м²</label>
+        <input type="number" step="1" name="heated_area" class="form-control form-control-sm"
+               value="{{ req.heated_area if req else '' }}" placeholder="0">
+      </div>
+    </div>
+
+    <p class="text-muted mb-2" style="font-size:11px">
+      <i class="bi bi-wifi me-1"></i><strong>Связь</strong>
+    </p>
+    <div class="row g-2 mb-3">
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:12px">Интернет</label>
+        <select name="internet" class="form-select form-select-sm">
+          <option value="">— не указано —</option>
+          {% for v in ['Оптоволокно','Ethernet','4G/LTE','5G','Спутниковый','Не требуется'] %}
+          <option value="{{ v }}" {{ 'selected' if req and req.internet==v }}>{{ v }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" style="font-size:12px">Телефонных линий, шт</label>
+        <input type="number" name="phones_qty" class="form-control form-control-sm"
+               value="{{ req.phones_qty if req else '' }}" placeholder="0">
+      </div>
+    </div>
+
+    <div class="row g-2">
+      <div class="col-12">
+        <label class="form-label" style="font-size:12px">Дополнительные требования по инженерии</label>
+        <textarea name="engineering_extra" class="form-control form-control-sm" rows="2">{{ req.engineering_extra if req else '' }}</textarea>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+{# ===== РАЗДЕЛ 6: ТРАНСПОРТНАЯ ДОСТУПНОСТЬ ===== #}
+<div class="card mb-3">
+  <div class="card-header py-2" style="background:#1B5E7B;color:#fff;font-size:13px;font-weight:600">
+    <i class="bi bi-truck me-1"></i>7. Транспортная доступность
+  </div>
+  <div class="card-body row g-3">
+
+    <p class="text-muted mb-0 col-12" style="font-size:11px">
+      <strong>Расстояние до автодороги, км</strong>
+    </p>
+    <div class="col-md-3">
+      <label class="form-label" style="font-size:12px">Федеральная</label>
+      <input type="number" step="0.1" name="road_federal_dist" class="form-control form-control-sm"
+             value="{{ req.road_federal_dist if req else '' }}" placeholder="км">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label" style="font-size:12px">Региональная</label>
+      <input type="number" step="0.1" name="road_regional_dist" class="form-control form-control-sm"
+             value="{{ req.road_regional_dist if req else '' }}" placeholder="км">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label" style="font-size:12px">Местная</label>
+      <input type="number" step="0.1" name="road_local_dist" class="form-control form-control-sm"
+             value="{{ req.road_local_dist if req else '' }}" placeholder="км">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label" style="font-size:12px">Частная</label>
+      <input type="number" step="0.1" name="road_private_dist" class="form-control form-control-sm"
+             value="{{ req.road_private_dist if req else '' }}" placeholder="км">
+    </div>
+
+    <div class="col-12">
+      <label class="form-label" style="font-size:12px">Доп. требования по автодороге</label>
+      <textarea name="road_extra" class="form-control form-control-sm" rows="1">{{ req.road_extra if req else '' }}</textarea>
+    </div>
+
+    <div class="col-md-3">
+      <label class="form-label" style="font-size:12px">Железная дорога необходима</label>
+      <div class="form-check mt-1">
+        <input class="form-check-input" type="checkbox" name="railway_needed"
+               value="1" id="chk_railway"
+               {{ 'checked' if req and req.railway_needed }}>
+        <label class="form-check-label" for="chk_railway" style="font-size:12px">Да</label>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label" style="font-size:12px">Расстояние до ж/д, км</label>
+      <input type="number" step="0.1" name="railway_dist" class="form-control form-control-sm"
+             value="{{ req.railway_dist if req else '' }}" placeholder="км">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label" style="font-size:12px">Грузооборот ж/д, т/год</label>
+      <input type="number" step="1" name="railway_cargo" class="form-control form-control-sm"
+             value="{{ req.railway_cargo if req else '' }}" placeholder="т/год">
+    </div>
+
+    <div class="col-12">
+      <label class="form-label" style="font-size:12px">Доп. требования по ж/д</label>
+      <textarea name="railway_extra" class="form-control form-control-sm" rows="1">{{ req.railway_extra if req else '' }}</textarea>
+    </div>
+
+    <div class="col-12">
+      <label class="form-label" style="font-size:12px">Прочие транспортные требования</label>
+      <textarea name="transport_extra" class="form-control form-control-sm" rows="1">{{ req.transport_extra if req else '' }}</textarea>
+    </div>
+
+  </div>
+</div>
+
+{# ===== РАЗДЕЛ 7: ПРЕДПОЧТИТЕЛЬНОЕ РАСПОЛОЖЕНИЕ ===== #}
+<div class="card mb-3">
+  <div class="card-header py-2" style="background:#1B5E7B;color:#fff;font-size:13px;font-weight:600">
+    <i class="bi bi-geo-alt me-1"></i>8. Предпочтительное расположение
+  </div>
+  <div class="card-body row g-3">
+
+    <div class="col-md-3">
+      <label class="form-label" style="font-size:12px">Важно расстояние до НН</label>
+      <div class="form-check mt-1">
+        <input class="form-check-input" type="checkbox" name="distance_nn_matters"
+               value="1" id="chk_nn"
+               {{ 'checked' if req and req.distance_nn_matters }}>
+        <label class="form-check-label" for="chk_nn" style="font-size:12px">Да</label>
+      </div>
+    </div>
+
+    <div class="col-md-3">
+      <label class="form-label" style="font-size:12px">Макс. расстояние до НН, км</label>
+      <input type="number" step="1" name="distance_nn_max" class="form-control form-control-sm"
+             value="{{ req.distance_nn_max if req else '' }}" placeholder="км">
+    </div>
+
+    <div class="col-12">
+      <label class="form-label fw-bold" style="font-size:12px">Предпочтительные районы</label>
+      <div class="border rounded p-2" style="max-height:160px;overflow-y:auto;background:#fff">
+        <div class="row row-cols-2 row-cols-md-4 g-1">
+          {% for d in districts %}
+          <div class="col">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox"
+                     name="preferred_districts" value="{{ d }}"
+                     id="dist_{{ loop.index }}"
+                     {% if req and req.preferred_districts and d in req.preferred_districts.split(', ') %}checked{% endif %}>
+              <label class="form-check-label" for="dist_{{ loop.index }}"
+                     style="font-size:11px">{{ d }}</label>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="form-text">Можно выбрать несколько районов</div>
+    </div>
+
+    <div class="col-12">
+      <label class="form-label" style="font-size:12px">Дополнительно о расположении</label>
+      <textarea name="location_extra" class="form-control form-control-sm" rows="2">{{ req.location_extra if req else '' }}</textarea>
+    </div>
+
+  </div>
+</div>
+
+{# ===== РАЗДЕЛ 8: ДОПОЛНИТЕЛЬНАЯ ИНФОРМАЦИЯ ===== #}
+<div class="card mb-3">
+  <div class="card-header py-2" style="background:#1B5E7B;color:#fff;font-size:13px;font-weight:600">
+    <i class="bi bi-chat-text me-1"></i>9. Дополнительная информация
+  </div>
+  <div class="card-body row g-3">
+    <div class="col-12">
+      <label class="form-label" style="font-size:12px">Дополнительные сведения</label>
+      <textarea name="additional_info" class="form-control form-control-sm" rows="3"
+                placeholder="Любая дополнительная информация по проекту или требованиям">{{ req.additional_info if req else '' }}</textarea>
+    </div>
+  </div>
+</div>
+
+{# ===== РАЗДЕЛ 9: ОТВЕТ (только при редактировании) ===== #}
+{% if req %}
+<div class="card mb-3">
+  <div class="card-header py-2" style="background:#198754;color:#fff;font-size:13px;font-weight:600">
+    <i class="bi bi-reply me-1"></i>10. Ответ на обращение
+  </div>
+  <div class="card-body row g-3">
+
+    <div class="col-md-3">
+      <label class="form-label" style="font-size:12px">Дата ответа</label>
+      <input type="date" name="answer_date" class="form-control form-control-sm"
+             value="{{ req.answer_date if req else '' }}">
+    </div>
+
+    <div class="col-md-4">
+      <label class="form-label" style="font-size:12px">Способ направления ответа</label>
+      <select name="answer_method" class="form-select form-select-sm" id="answer_method_sel">
+        <option value="">— не указан —</option>
+        {% for v in ['СЭДО','Directum','Электронная почта','Почта России','Лично','Иное'] %}
+        <option value="{{ v }}"
+          {{ 'selected' if req and req.answer_method==v }}>{{ v }}</option>
+        {% endfor %}
+      </select>
+        <div class="col-md-4" id="answerSystemNumBlock" style="display:none">
+          <label class="form-label" style="font-size:12px">№ ответа в системе</label>
+          <input type="text" name="answer_system_number" class="form-control form-control-sm"
+                 placeholder="Например: ИСХ-2026-0099"
+                 value="{{ req.answer_system_number or '' if req else '' }}">
+        </div>
+    </div>
+
+    <div class="col-md-5" id="answer_method_other_wrap"
+         style="{{ '' if req and req.answer_method=='Иное' else 'display:none' }}">
+      <label class="form-label" style="font-size:12px">Уточните способ</label>
+      <input type="text" name="answer_method_other" class="form-control form-control-sm"
+             value="{{ req.answer_method_other if req else '' }}">
+    </div>
+
+    <div class="col-12">
+      <label class="form-label" style="font-size:12px">Примечания к ответу</label>
+      <textarea name="answer_notes" class="form-control form-control-sm" rows="2">{{ req.answer_notes if req else '' }}</textarea>
+    </div>
+
+    <div class="col-md-6">
+      <label class="form-label" style="font-size:12px">
+        Файл ответа
+        {% if req.answer_file %}
+        <a href="{{ url_for('requests.uploaded_file', filename=req.answer_file) }}" target="_blank" class="ms-2 badge bg-success text-decoration-none">
+          <i class="bi bi-paperclip"></i> {{ req.answer_file }}
+        </a>
+        {% endif %}
+      </label>
+      <input type="file" name="answer_file" class="form-control form-control-sm"
+             accept=".pdf,.doc,.docx,.xlsx,.zip">
+    </div>
+
+  </div>
+</div>
+{% endif %}
+
+{# ===== КНОПКИ ===== #}
+<div class="d-flex gap-2 mb-4">
+
+  {# Режим редактирования существующего обращения (есть id) #}
+  {% if req is not none and req.id is defined %}
+    <button type="button" class="btn btn-primary px-4" onclick="showSaveModal()">
+      <i class="bi bi-save me-1"></i>Сохранить изменения
+    </button>
+
+  {# Режим создания нового обращения или OCR-черновик (нет id) #}
+  {% else %}
+    {# Отдельная кнопка: только OCR, без сохранения #}
+    <button type="submit"
+            class="btn btn-outline-secondary px-4"
+            name="action" value="ocr" id="btnOcr">
+      <i class="bi bi-magic me-1"></i>Заполнить из анкеты (OCR)
+    </button>
+
+    {# Обычное создание обращения #}
+    <button type="submit"
+            class="btn btn-primary px-4"
+            name="action" value="save" id="btnSave">
+      <i class="bi bi-save me-1"></i>Создать обращение
+    </button>
+  {% endif %}
+
+  <a href="{{ url_for('requests.index') }}" class="btn btn-outline-secondary">
+    <i class="bi bi-x-lg me-1"></i>Отмена
+  </a>
+
+  {# Ссылка "Просмотр карточки" только когда есть id (существующее обращение) #}
+  {% if req is not none and req.id is defined %}
+    <a href="{{ url_for('requests.view_request', rid=req.id) }}" class="btn btn-outline-primary ms-auto">
+      <i class="bi bi-eye me-1"></i>Просмотр карточки
+    </a>
+  {% endif %}
+</div>
+
+<!-- Модал причины правки (только при редактировании) -->
+{% if req %}
+<div class="modal fade" id="saveModal" tabindex="-1">
+  <div class="modal-dialog modal-sm"><div class="modal-content">
+    <div class="modal-header">
+      <h6 class="modal-title">Причина изменения</h6>
+      <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+    </div>
+    <div class="modal-body">
+      <textarea id="editReasonInput" class="form-control" rows="3"
+                placeholder="Необязательно"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Отмена</button>
+      <button type="button" class="btn btn-primary btn-sm" onclick="doSave()">Сохранить</button>
+    </div>
+  </div></div>
+</div>
+<input type="hidden" name="edit_reason" id="editReasonHidden">
+{% endif %}
+
+</form>
+
+{# ===== МОДАЛЬНОЕ ОКНО ВАЛИДАЦИИ ===== #}
+<div class="modal fade" id="validModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header py-2" style="background:#dc3545">
+        <h6 class="modal-title text-white mb-0">
+          <i class="bi bi-exclamation-triangle-fill me-1"></i>
+          Заполните обязательные поля
+        </h6>
+        <button type="button" class="btn-close btn-close-white"
+                data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body py-3" id="validModalBody"></div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-sm btn-danger"
+                data-bs-dismiss="modal">
+          <i class="bi bi-pencil me-1"></i>Вернуться к заполнению
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ===== ВАЛИДАЦИЯ ОБЯЗАТЕЛЬНЫХ ПОЛЕЙ =====
+(function(){
+  var REQUIRED = {{ required_fields | tojson }};
+
+  document.getElementById('mainForm').addEventListener('submit', function(e){
+    // Определяем, какая кнопка отправила форму
+    var submitter = e.submitter || document.activeElement;
+    var action = (submitter && submitter.name === 'action') ? submitter.value : 'save';
+
+    // Если нажата кнопка OCR — пропускаем проверку обязательных полей
+    if (action === 'ocr') {
+      return;
+    }
+
+    document.querySelectorAll('.field-required-error').forEach(function(el){
+      el.classList.remove('field-required-error');
+    });
+
+    var missing = [];
+
+    for(var field in REQUIRED){
+      if(field === 'source_type'){
+        var checked = document.querySelectorAll('input[name="source_type"]:checked');
+        if(checked.length === 0){
+          missing.push(REQUIRED[field]);
+          var wrap = document.getElementById('source_type_wrap');
+          if(wrap) wrap.style.border = '1.5px solid #dc3545';
+        } else {
+          var wrapOk = document.getElementById('source_type_wrap');
+          if(wrapOk) wrapOk.style.border = '';
+        }
+        continue;
+      }
+
+      if(field === 'preferred_districts') continue;
+
+      var el = document.querySelector('[name="' + field + '"]');
+      if(!el) continue;
+
+      var val = (el.value || '').trim();
+      if(!val){
+        missing.push(REQUIRED[field]);
+        el.classList.add('field-required-error');
+        if(missing.length === 1){
+          el.scrollIntoView({behavior:'smooth', block:'center'});
+        }
+      }
+    }
+
+    if(missing.length > 0){
+      e.preventDefault();
+      document.getElementById('validModalBody').innerHTML =
+        '<p class="text-muted mb-2" style="font-size:13px">Следующие поля обязательны для заполнения:</p>' +
+        '<ul class="mb-0">' +
+        missing.map(function(f){
+          return '<li style="font-size:13px"><i class="bi bi-dot"></i> ' + f + '</li>';
+        }).join('') +
+        '</ul>';
+      new bootstrap.Modal(document.getElementById('validModal')).show();
+    }
+  });
+
+  document.querySelectorAll('input,select,textarea').forEach(function(el){
+    el.addEventListener('input',  function(){ el.classList.remove('field-required-error'); });
+    el.addEventListener('change', function(){ el.classList.remove('field-required-error'); });
+  });
+
+  document.querySelectorAll('input[name="source_type"]').forEach(function(cb){
+    cb.addEventListener('change', function(){
+      var wrap = document.getElementById('source_type_wrap');
+      if(wrap) wrap.style.border = '';
+    });
+  });
+})();
+
+// ===== ВАЛИДАЦИЯ ИНН (на лету) =====
+(function(){
+  var innInput = document.querySelector('input[name="applicant_inn"]');
+  var help     = document.getElementById('inn_help');
+
+  if(!innInput || !help) return;
+
+  function resetClasses() {
+    help.classList.remove('text-danger', 'text-warning', 'text-muted');
+  }
+
+  innInput.addEventListener('input', function(){
+    var raw = innInput.value;
+    var v   = (raw || '').trim();
+
+    if(!v){
+      resetClasses();
+      help.textContent = 'Необязательно, только цифры';
+      help.classList.add('text-muted');
+      return;
+    }
+
+    if(!/^\d+$/.test(v)){
+      resetClasses();
+      help.textContent = 'ИНН должен содержать только цифры';
+      help.classList.add('text-danger');
+      return;
+    }
+
+    if(v.length !== 10 && v.length !== 12){
+      resetClasses();
+      help.textContent = 'Длина ИНН должна быть 10 цифр (юрлица) или 12 цифр (ИП)';
+      help.classList.add('text-warning');
+      return;
+    }
+
+    resetClasses();
+    help.textContent = 'Формат ИНН выглядит корректно, окончательная проверка при сохранении';
+    help.classList.add('text-muted');
+  });
+})();
+
+// ===== МАСКА ТЕЛЕФОНА =====
+(function(){
+  var ph = document.getElementById('phone_mask');
+  if(!ph) return;
+  ph.addEventListener('input', function(){
+    var v = ph.value.replace(/\D/g,'');
+    if(v.startsWith('7') || v.startsWith('8')) v = v.slice(1);
+    var r = '';
+    if(v.length > 0) r = '+7 ('+v.slice(0,3);
+    if(v.length >= 4) r += ') '+v.slice(3,6);
+    if(v.length >= 7) r += '-'+v.slice(6,8);
+    if(v.length >= 9) r += '-'+v.slice(8,10);
+    ph.value = r;
+  });
+})();
+
+// ===== СПОСОБ ОТВЕТА =====
+(function(){
+  var sel  = document.getElementById('answer_method_sel');
+  var wrap = document.getElementById('answer_method_other_wrap');
+  if(!sel || !wrap) return;
+  sel.addEventListener('change', function(){
+    wrap.style.display = sel.value === 'Иное' ? '' : 'none';
+  });
+})();
+
+// ===== ПРИЧИНА ПРАВКИ =====
+function showSaveModal() {
+  new bootstrap.Modal(document.getElementById('saveModal')).show();
+}
+function doSave() {
+  document.getElementById('editReasonHidden').value =
+    document.getElementById('editReasonInput').value;
+  bootstrap.Modal.getInstance(document.getElementById('saveModal')).hide();
+  document.querySelector('form').submit();
+}
+
+// ===== АВТОДОПОЛНЕНИЕ ОКВЭД =====
+(function(){
+  var input     = document.getElementById('okved_main_input');
+  var box       = document.getElementById('okved_suggestions');
+  var nameField = document.getElementById('okved_main_name');
+  if (!input || !box) return;
+
+  var timer = null;
+
+  function hideBox() {
+    box.style.display = 'none';
+    box.innerHTML = '';
+  }
+
+  function fetchOkved(q) {
+    if (!q || q.length < 2) { hideBox(); return; }
+    fetch('/api/okved/search?q=' + encodeURIComponent(q) + '&limit=10', {
+      headers: {'X-Requested-With': 'XMLHttpRequest'}
+    })
+      .then(function(r){ return r.json(); })
+      .then(function(data){
+        if (!Array.isArray(data) || data.length === 0) { hideBox(); return; }
+        box.innerHTML = '';
+        data.forEach(function(item){
+          var el = document.createElement('button');
+          el.type = 'button';
+          el.className = 'list-group-item list-group-item-action py-1 px-2';
+          el.textContent = item.code + ' — ' + item.name;
+          el.dataset.code = item.code;
+          el.dataset.name = item.name;
+          el.addEventListener('click', function(){
+            input.value = this.dataset.code;
+            if (nameField) nameField.value = this.dataset.name;
+            hideBox();
+          });
+          box.appendChild(el);
+        });
+        box.style.display = 'block';
+      })
+      .catch(function(){ hideBox(); });
+  }
+
+  input.addEventListener('input', function(){
+    var q = input.value.trim();
+    if (nameField && q.length < 2) nameField.value = '';
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(function(){ fetchOkved(q); }, 250);
+  });
+
+  document.addEventListener('click', function(e){
+    if (!box.contains(e.target) && e.target !== input) hideBox();
+  });
+
+  input.addEventListener('keydown', function(e){
+    if (e.key === 'Escape') hideBox();
+  });
+})();
+
+// ===== № ВХОДЯЩЕГО — показывать только для Directum / СЭДО =====
+function toggleIncomingNumber() {
+  var checkboxes = document.querySelectorAll('input[name="source_type"]:checked');
+  var block = document.getElementById('incomingNumberBlock');
+  if (!block) return;
+  var show = false;
+  checkboxes.forEach(function(cb){
+    if (cb.value === 'Directum' || cb.value === 'СЭДО') show = true;
+  });
+  block.style.display = show ? '' : 'none';
+}
+
+// ===== ПРЕВЬЮ НОВЫХ ФАЙЛОВ =====
+function previewFiles(input) {
+  var preview = document.getElementById('filesPreview');
+  if (!preview) return;
+  preview.innerHTML = '';
+  var icons = {
+    pdf:  '<i class="bi bi-file-earmark-pdf text-danger" style="font-size:2rem"></i>',
+    doc:  '<i class="bi bi-file-earmark-word text-primary" style="font-size:2rem"></i>',
+    docx: '<i class="bi bi-file-earmark-word text-primary" style="font-size:2rem"></i>',
+    xls:  '<i class="bi bi-file-earmark-excel text-success" style="font-size:2rem"></i>',
+    xlsx: '<i class="bi bi-file-earmark-excel text-success" style="font-size:2rem"></i>',
+    ppt:  '<i class="bi bi-file-earmark-slides text-warning" style="font-size:2rem"></i>',
+    pptx: '<i class="bi bi-file-earmark-slides text-warning" style="font-size:2rem"></i>',
+    jpg:  '<i class="bi bi-file-earmark-image text-info" style="font-size:2rem"></i>',
+    jpeg: '<i class="bi bi-file-earmark-image text-info" style="font-size:2rem"></i>',
+    png:  '<i class="bi bi-file-earmark-image text-info" style="font-size:2rem"></i>',
+    zip:  '<i class="bi bi-file-earmark-zip text-secondary" style="font-size:2rem"></i>',
+  };
+  Array.from(input.files).forEach(function(f){
+    var ext  = f.name.split('.').pop().toLowerCase();
+    var icon = icons[ext] || '<i class="bi bi-file-earmark" style="font-size:2rem"></i>';
+    var name = f.name.length > 14 ? f.name.substring(0, 14) + '…' : f.name;
+    var div  = document.createElement('div');
+    div.className = 'd-flex flex-column align-items-center border rounded p-2';
+    div.style.cssText = 'width:80px;font-size:0.72rem;word-break:break-all';
+    div.innerHTML = icon + '<span class="mt-1 text-center">' + name + '</span>';
+    preview.appendChild(div);
+  });
+}
+
+// ===== ИНИЦИАЛИЗАЦИЯ ПРИ ЗАГРУЗКЕ =====
+document.addEventListener('DOMContentLoaded', function(){
+  toggleIncomingNumber();
+});
+</script>
+{% endblock %}

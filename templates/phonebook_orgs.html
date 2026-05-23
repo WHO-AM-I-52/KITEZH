@@ -1,0 +1,134 @@
+{% extends 'base.html' %}
+{% block content %}
+
+{# ╔══════════════════════════════════════════════════════════════╗ #}
+{# ║  phonebook_orgs.html — Справочник организаций (v2.1.0)      ║ #}
+{# ╚══════════════════════════════════════════════════════════════╝ #}
+
+<div class="d-flex align-items-center mb-4 gap-2">
+  <a href="{{ url_for('phonebook.phonebook') }}"
+     class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left"></i>
+  </a>
+  <h5 class="mb-0" style="color:#1B5E7B">
+    <i class="bi bi-building me-1"></i>Справочник организаций
+  </h5>
+</div>
+
+<div class="row g-4" style="max-width:900px">
+
+  {# ─── Форма добавления ─── #}
+  <div class="col-md-4">
+    <div class="card">
+      <div class="card-header fw-bold" style="background:#1B5E7B;color:#fff">
+        <i class="bi bi-plus-circle me-1"></i>Добавить организацию
+      </div>
+      <div class="card-body">
+        <form method="post" action="{{ url_for('phonebook.phonebook_orgs_add') }}">
+          <div class="mb-2">
+            <label class="form-label">Название <span class="text-danger">*</span></label>
+            <input type="text" name="name" class="form-control form-control-sm"
+                   required placeholder="КРНО">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Адрес</label>
+            <input type="text" name="address" class="form-control form-control-sm"
+                   placeholder="г. Нижний Новгород, ул. Примерная, д. 1">
+          </div>
+          <button class="btn btn-sm w-100" style="background:#1B5E7B;color:#fff">
+            <i class="bi bi-plus-circle me-1"></i>Добавить
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  {# ─── Список организаций ─── #}
+  <div class="col-md-8">
+    <div class="card">
+      <div class="card-header fw-bold" style="background:#1B5E7B;color:#fff">
+        <i class="bi bi-list-ul me-1"></i>Организации
+        <span class="badge bg-secondary ms-1">{{ orgs|length }}</span>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-hover mb-0" style="font-size:13px">
+          <thead class="table-light">
+            <tr>
+              <th>Название</th>
+              <th>Адрес</th>
+              <th class="text-end">Действия</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for o in orgs %}
+          <tr>
+            <td class="fw-bold">{{ o.name }}</td>
+            <td class="text-muted">{{ o.address or '—' }}</td>
+            <td class="text-end">
+              <button class="btn btn-sm btn-outline-primary py-0 px-1 me-1"
+                      data-bs-toggle="modal"
+                      data-bs-target="#editOrgModal{{ o.id }}"
+                      title="Редактировать">
+                <i class="bi bi-pencil"></i>
+              </button>
+              <form method="post" class="d-inline"
+                    action="{{ url_for('phonebook.phonebook_orgs_delete') }}"
+                    onsubmit="return confirm('Удалить организацию «{{ o.name }}»?')">
+                <input type="hidden" name="org_id" value="{{ o.id }}">
+                <button class="btn btn-sm btn-outline-danger py-0 px-1" title="Удалить">
+                  <i class="bi bi-trash"></i>
+                </button>
+              </form>
+            </td>
+          </tr>
+
+          {# Модалка редактирования #}
+          <div class="modal fade" id="editOrgModal{{ o.id }}" tabindex="-1">
+            <div class="modal-dialog"><div class="modal-content">
+              <form method="post" action="{{ url_for('phonebook.phonebook_orgs_edit') }}">
+                <input type="hidden" name="org_id" value="{{ o.id }}">
+                <div class="modal-header" style="background:#1B5E7B;color:#fff">
+                  <h6 class="modal-title">
+                    <i class="bi bi-pencil me-1"></i>{{ o.name }}
+                  </h6>
+                  <button type="button" class="btn-close btn-close-white"
+                          data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                  <div class="mb-3">
+                    <label class="form-label fw-bold">Название</label>
+                    <input type="text" name="name" class="form-control form-control-sm"
+                           value="{{ o.name }}" required>
+                  </div>
+                  <div class="mb-2">
+                    <label class="form-label fw-bold">Адрес</label>
+                    <input type="text" name="address" class="form-control form-control-sm"
+                           value="{{ o.address or '' }}">
+                  </div>
+                </div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-secondary btn-sm"
+                          data-bs-dismiss="modal">Отмена</button>
+                  <button type="submit" class="btn btn-primary btn-sm">
+                    <i class="bi bi-check-circle me-1"></i>Сохранить
+                  </button>
+                </div>
+              </form>
+            </div></div>
+          </div>
+
+          {% else %}
+          <tr>
+            <td colspan="3" class="text-center text-muted py-3">
+              Организаций нет — добавьте первую
+            </td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

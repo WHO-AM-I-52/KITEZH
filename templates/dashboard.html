@@ -1,0 +1,261 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="mb-0" style="color:#1B5E7B">
+    <i class="bi bi-bar-chart-line me-1"></i>Дашборд
+  </h5>
+  <div class="d-flex align-items-center gap-2 flex-wrap">
+    <span class="text-muted small fw-bold">Период:</span>
+    {% for pk,pl in [('today','Сегодня'),('week','Неделя'),('month','Месяц'),
+                 ('quarter','Квартал'),('year','Год'),('all','Всё время')] %}
+	<a href="{{ url_for('requests.dashboard', period=pk) }}"
+		class="btn btn-sm {{ 'btn-primary' if dash.period==pk else 'btn-outline-secondary' }}">
+	   {{ pl }}
+</a>
+{% endfor %}
+  </div>
+</div>
+
+{# ===== ROW 1: КАРТОЧКИ СТАТУСОВ ===== #}
+<div class="row g-2 mb-3">
+  {% for label,val,color,icon in [
+    ('Всего',dash.total,'#1B5E7B','bi-inbox'),
+    ('Черновик',dash.draft,'#6c757d','bi-pencil-square'),
+    ('На проверке',dash.review,'#fd7e14','bi-hourglass-split'),
+    ('В работе',dash.accepted,'#0d6efd','bi-briefcase'),
+    ('Отвечено',dash.answered,'#198754','bi-check2-circle')] %}
+  <div class="col-6 col-sm-4 col-md">
+    <div class="card py-2 px-3" style="border-left:4px solid {{color}}">
+      <div class="d-flex align-items-center gap-2">
+        <i class="bi {{icon}}" style="font-size:1.3rem;color:{{color}}"></i>
+        <div>
+          <div class="fw-bold fs-4" style="color:{{color}};line-height:1">{{val}}</div>
+          <div class="text-muted" style="font-size:11px">{{label}}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{# ===== ROW 2: KPI ===== #}
+{% set kpi = dash.kpi %}
+<div class="row g-2 mb-3">
+  <div class="col-md-3">
+    <div class="card p-2 text-center h-100" style="border-left:4px solid #198754">
+      <div class="text-muted" style="font-size:11px">В срок (≤{{kpi.norm_days}}д)</div>
+      <div class="fw-bold fs-4 text-success">{{ kpi.in_time }}</div>
+      {% if kpi.total_answered > 0 %}
+      <div class="progress mt-1" style="height:6px">
+        <div class="progress-bar bg-success" style="width:{{kpi.pct}}%"></div>
+      </div>
+      <div style="font-size:11px" class="text-muted">{{kpi.pct}}% из {{kpi.total_answered}}</div>
+      {% endif %}
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card p-2 text-center h-100" style="border-left:4px solid #dc3545">
+      <div class="text-muted" style="font-size:11px">Отвечено с просрочкой</div>
+      <div class="fw-bold fs-4 text-danger">{{ kpi.overdue }}</div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card p-2 text-center h-100" style="border-left:4px solid #fd7e14">
+      <div class="text-muted" style="font-size:11px">Активных с просрочкой</div>
+      <div class="fw-bold fs-4" style="color:#fd7e14">{{ kpi.overdue_active }}</div>
+      <div style="font-size:11px" class="text-muted">ещё не отвечено</div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card p-2 text-center h-100" style="border-left:4px solid #1B5E7B">
+      <div class="text-muted" style="font-size:11px">Среднее время ответа</div>
+      <div class="fw-bold fs-4" style="color:#1B5E7B">
+        {% if dash.avg_days %}{{dash.avg_days}} дн.{% else %}н/д{% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ===== ROW 3: ТРЕНД + ТИПЫ ПЛОЩАДОК ===== #}
+<div class="row g-3 mb-3">
+  <div class="col-md-7">
+    <div class="card p-3 h-100">
+      <p class="mb-1 fw-bold" style="font-size:12px;color:#1B5E7B">
+        <i class="bi bi-graph-up me-1"></i>Динамика поступления обращений
+      </p>
+      <canvas id="chartTrend" height="120"></canvas>
+    </div>
+  </div>
+  <div class="col-md-5">
+    <div class="card p-3 h-100">
+      <p class="mb-1 fw-bold" style="font-size:12px;color:#1B5E7B">
+        <i class="bi bi-pie-chart me-1"></i>Типы запрашиваемых площадок
+      </p>
+      <canvas id="chartSiteType" height="120"></canvas>
+    </div>
+  </div>
+</div>
+
+{# ===== ROW 4: ИСТОЧНИКИ ОБРАЩЕНИЙ ===== #}
+<div class="row g-3 mb-3">
+  <div class="col-md-5">
+    <div class="card p-3 h-100">
+      <p class="mb-1 fw-bold" style="font-size:12px;color:#1B5E7B">
+        <i class="bi bi-funnel me-1"></i>Источники обращений
+      </p>
+      {% if dash.source_chart.labels %}
+      <canvas id="chartSource" height="140"></canvas>
+      {% else %}
+      <p class="text-muted text-center small mt-3">Нет данных — заполните поле «Источник» в обращениях</p>
+      {% endif %}
+    </div>
+  </div>
+  <div class="col-md-7">
+    <div class="card p-3 h-100">
+      <p class="mb-1 fw-bold" style="font-size:12px;color:#1B5E7B">
+        <i class="bi bi-people me-1"></i>По ответственным сотрудникам
+      </p>
+      {% if dash.emp_chart.labels %}
+      <canvas id="chartEmp" height="140"></canvas>
+      {% else %}
+      <p class="text-muted text-center small mt-3">Нет данных</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{# ===== ROW 5: ПО РАЙОНАМ ===== #}
+<div class="row g-3 mb-3">
+  <div class="col-12">
+    <div class="card p-3">
+      <p class="mb-1 fw-bold" style="font-size:12px;color:#1B5E7B">
+        <i class="bi bi-geo-alt me-1"></i>По районам (топ-12)
+      </p>
+      {% if dash.dist_chart.labels %}
+      <canvas id="chartDist" height="80"></canvas>
+      {% else %}
+      <p class="text-muted text-center small mt-3">Нет данных — заполните поле «Районы» в обращениях</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{# ===== ROW 6: ПЛОЩАДИ ===== #}
+<div class="row g-3 mb-3">
+  <div class="col-md-6">
+    <div class="card p-3 h-100">
+      <p class="mb-1 fw-bold" style="font-size:12px;color:#1B5E7B">
+        <i class="bi bi-arrows-angle-expand me-1"></i>Площадь участка (га)
+      </p>
+      <canvas id="chartArea" height="120"></canvas>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card p-3 h-100">
+      <p class="mb-1 fw-bold" style="font-size:12px;color:#1B5E7B">
+        <i class="bi bi-building me-1"></i>Площадь застройки (м²)
+      </p>
+      <canvas id="chartBuild" height="120"></canvas>
+    </div>
+  </div>
+</div>
+
+{# ===== АГРЕГАТЫ ===== #}
+<div class="row g-2 mb-2">
+  <div class="col-md-4">
+    <div class="card p-2 text-center">
+      <div class="text-muted" style="font-size:11px">Суммарные инвестиции</div>
+      <div class="fw-bold fs-5" style="color:#1B5E7B">
+        {{ "%.1f"|format(dash.investment_sum) }} млн руб.
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card p-2 text-center">
+      <div class="text-muted" style="font-size:11px">Рабочих мест (план)</div>
+      <div class="fw-bold fs-5 text-success">{{ dash.jobs_sum }}</div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card p-2 text-center">
+      <div class="text-muted" style="font-size:11px">Норматив ответа</div>
+      <div class="fw-bold fs-5 text-primary">{{kpi.norm_days}} дней</div>
+      <div style="font-size:10px" class="text-muted">1д+1д+5д по этапам</div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+var COLORS=['#1B5E7B','#fd7e14','#198754','#0d6efd','#6c757d','#dc3545','#6f42c1','#20c997','#ffc107','#0dcaf0','#d63384','#adb5bd'];
+var trendData   = {{ dash.trend_chart   | tojson }};
+var empData     = {{ dash.emp_chart     | tojson }};
+var distData    = {{ dash.dist_chart    | tojson }};
+var areaData    = {{ dash.area_data     | tojson }};
+var buildData   = {{ dash.build_data    | tojson }};
+var siteType    = {{ dash.site_type     | tojson }};
+var sourceData  = {{ dash.source_chart  | tojson }};
+
+// Тренд
+new Chart(document.getElementById('chartTrend'),{
+  type:'line',
+  data:{labels:trendData.labels,datasets:[{label:'Обращений',data:trendData.values,
+    borderColor:'#1B5E7B',backgroundColor:'rgba(27,94,123,0.1)',
+    tension:0.3,fill:true,pointRadius:4,pointBackgroundColor:'#1B5E7B'}]},
+  options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{stepSize:1}}},responsive:true,maintainAspectRatio:true}
+});
+
+// Типы площадок — пончик
+new Chart(document.getElementById('chartSiteType'),{
+  type:'doughnut',
+  data:{labels:['Только свободная','Только существующее','Оба варианта'],
+    datasets:[{data:[siteType.only_free,siteType.only_existing,siteType.both],
+      backgroundColor:['#1B5E7B','#fd7e14','#198754'],borderWidth:2}]},
+  options:{plugins:{legend:{position:'bottom',labels:{font:{size:11}}}},responsive:true,maintainAspectRatio:true,cutout:'55%'}
+});
+
+// Источники — пончик
+if(document.getElementById('chartSource') && sourceData.labels.length){
+  new Chart(document.getElementById('chartSource'),{
+    type:'doughnut',
+    data:{labels:sourceData.labels,
+      datasets:[{data:sourceData.values,
+        backgroundColor:COLORS.slice(0,sourceData.labels.length),borderWidth:2}]},
+    options:{plugins:{legend:{position:'bottom',labels:{font:{size:11}}}},responsive:true,maintainAspectRatio:true,cutout:'50%'}
+  });
+}
+
+// По сотрудникам
+if(document.getElementById('chartEmp') && empData.labels.length){
+  new Chart(document.getElementById('chartEmp'),{
+    type:'bar',
+    data:{labels:empData.labels,datasets:[{data:empData.values,
+      backgroundColor:empData.labels.map((_,i)=>COLORS[i%COLORS.length]),borderRadius:4}]},
+    options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{beginAtZero:true,ticks:{stepSize:1}}},responsive:true,maintainAspectRatio:true}
+  });
+}
+
+// По районам
+if(document.getElementById('chartDist') && distData.labels.length){
+  new Chart(document.getElementById('chartDist'),{
+    type:'bar',
+    data:{labels:distData.labels,datasets:[{data:distData.values,backgroundColor:'#1B5E7B',borderRadius:4}]},
+    options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{beginAtZero:true,ticks:{stepSize:1}}},responsive:true,maintainAspectRatio:true}
+  });
+}
+
+// Площадь участка
+new Chart(document.getElementById('chartArea'),{
+  type:'bar',
+  data:{labels:areaData.map(d=>d.label),datasets:[{data:areaData.map(d=>d.count),backgroundColor:'#1B5E7B',borderRadius:4}]},
+  options:{plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.raw+' запр.'}}},scales:{y:{beginAtZero:true,ticks:{stepSize:1}}},responsive:true,maintainAspectRatio:true}
+});
+
+// Площадь застройки
+new Chart(document.getElementById('chartBuild'),{
+  type:'bar',
+  data:{labels:buildData.map(d=>d.label),datasets:[{data:buildData.map(d=>d.count),backgroundColor:'#0d6efd',borderRadius:4}]},
+  options:{plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.raw+' запр.'}}},scales:{y:{beginAtZero:true,ticks:{stepSize:1}}},responsive:true,maintainAspectRatio:true}
+});
+</script>
+{% endblock %}

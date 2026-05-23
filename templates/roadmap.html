@@ -1,0 +1,196 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<style>
+  .roadmap-page {
+    max-width: 760px;
+    margin: 40px auto;
+    padding: 0 20px 60px;
+  }
+
+  .roadmap-header {
+    margin-bottom: 40px;
+  }
+
+  .roadmap-header h1 {
+    font-size: 26px;
+    font-weight: 700;
+    color: #1a2a3a;
+    margin-bottom: 6px;
+  }
+
+  .roadmap-header p {
+    color: #6c757d;
+    font-size: 14px;
+  }
+
+  .roadmap-item {
+    display: flex;
+    gap: 24px;
+    margin-bottom: 32px;
+    position: relative;
+  }
+
+  .roadmap-item:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    left: 19px;
+    top: 44px;
+    bottom: -32px;
+    width: 2px;
+    background: linear-gradient(to bottom, #dee2e6, transparent);
+  }
+
+  .roadmap-icon {
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    background: #f0f4f8;
+    border: 2px solid #dee2e6;
+    color: #6c757d;
+    position: relative;
+    z-index: 1;
+  }
+
+  .roadmap-icon.status-planned {
+    background: #fff8e1;
+    border-color: #e6c87e;
+    color: #b39346;
+  }
+
+  .roadmap-icon.status-inprogress {
+    background: #e8f4fd;
+    border-color: #1b7ec2;
+    color: #1b7ec2;
+  }
+
+  .roadmap-icon.status-done {
+    background: #e8f5e9;
+    border-color: #43a047;
+    color: #43a047;
+  }
+
+  .roadmap-body {
+    flex: 1;
+    background: #fff;
+    border: 1px solid #e9ecef;
+    border-radius: 14px;
+    padding: 20px 24px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  }
+
+  .roadmap-meta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+  }
+
+  .roadmap-version {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: #1b5e7b;
+    background: #e8f4fd;
+    padding: 2px 10px;
+    border-radius: 20px;
+  }
+
+  .roadmap-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #1a2a3a;
+  }
+
+  .roadmap-badge {
+    margin-left: auto;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 20px;
+    letter-spacing: 0.5px;
+  }
+
+  .badge-planned  { background: #fff3cd; color: #856404; }
+  .badge-inprogress { background: #cce5ff; color: #004085; }
+  .badge-done     { background: #d4edda; color: #155724; }
+
+  .roadmap-items {
+    list-style: none;
+    margin: 12px 0 0;
+    padding: 0;
+  }
+
+  .roadmap-items li {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 14px;
+    color: #495057;
+    padding: 5px 0;
+    border-top: 1px solid #f0f2f4;
+  }
+
+  .roadmap-items li:first-child { border-top: none; }
+
+  .roadmap-items li::before {
+    content: '→';
+    color: #adb5bd;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: #1b5e7b;
+    font-size: 14px;
+    text-decoration: none;
+    margin-bottom: 28px;
+    font-weight: 500;
+    transition: color 0.2s;
+  }
+  .back-link:hover { color: #0d3f57; }
+</style>
+
+<div class="roadmap-page">
+  <a href="{{ url_for('index') }}" class="back-link">← На главную</a>
+
+  <div class="roadmap-header">
+    <h1>🗺️ Дорожная карта InvestLand</h1>
+    <p>Инвестиционный земельный модуль Нижегородской области &nbsp;&mdash;&nbsp; план развития</p>
+  </div>
+
+  {% for item in roadmap %}
+  {% set icon_map = {'planned': '🔜', 'inprogress': '⚙️', 'done': '✅'} %}
+  {% set badge_map = {'planned': 'Запланировано', 'inprogress': 'В работе', 'done': 'Готово'} %}
+
+  <div class="roadmap-item">
+    <div class="roadmap-icon status-{{ item.status }}">
+      {{ icon_map.get(item.status, '🔜') }}
+    </div>
+    <div class="roadmap-body">
+      <div class="roadmap-meta">
+        <span class="roadmap-version">{{ item.version }}</span>
+        <span class="roadmap-title">{{ item.title }}</span>
+        <span class="roadmap-badge badge-{{ item.status }}">
+          {{ badge_map.get(item.status, item.status) }}
+        </span>
+      </div>
+      <ul class="roadmap-items">
+        {% for point in item.points %}
+        <li>{{ point }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

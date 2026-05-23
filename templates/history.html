@@ -1,0 +1,110 @@
+{% extends 'base.html' %}
+{% block content %}
+
+{# ── ШАПКА ───────────────────────────────────────────────────────── #}
+<div class="d-flex align-items-center mb-4 gap-2">
+  <a href="{{ url_for('requests.view_request', rid=rid) }}"
+     class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left"></i>
+  </a>
+  <h5 class="mb-0" style="color:#1B5E7B">
+    <i class="bi bi-clock-history me-1"></i>
+    История изменений —
+    {% if req.request_number %}
+      <span class="badge bg-primary">{{ req.request_number }}</span>
+    {% else %}
+      обращение #{{ rid }}
+    {% endif %}
+    <small class="text-muted ms-2" style="font-size:0.85rem">
+      {{ req.project_name or req.applicant_short_name or '' }}
+    </small>
+  </h5>
+</div>
+
+{# ── ПУСТО ───────────────────────────────────────────────────────── #}
+{% if not history %}
+<div class="alert alert-info">
+  <i class="bi bi-info-circle me-1"></i>
+  История изменений отсутствует — обращение ещё не редактировалось.
+</div>
+
+{# ── СПИСОК ЗАПИСЕЙ ──────────────────────────────────────────────── #}
+{% else %}
+{% for entry in history %}
+<div class="card mb-3 border-start border-4
+  {% if entry.action == 'rollback' %}border-danger
+  {% else %}border-warning{% endif %}"
+  style="box-shadow:0 1px 4px rgba(0,0,0,.07)">
+
+  <div class="card-body py-2 px-3">
+
+    {# Заголовок записи #}
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+      <div>
+        <strong>{{ entry.user }}</strong>
+        <span class="text-muted ms-2" style="font-size:.82rem">
+          <i class="bi bi-calendar3 me-1"></i>{{ entry.changed_at }}
+        </span>
+        {% if entry.action == 'rollback' %}
+          <span class="badge bg-danger ms-2">Откат</span>
+        {% else %}
+          <span class="badge bg-warning text-dark ms-2">Правка</span>
+        {% endif %}
+      </div>
+
+      {# Кнопка отката — только если есть изменения #}
+      {% if session.role == 'admin' and entry.changes %}
+      <form method="post"
+            action="{{ url_for('requests.rollback_request', rid=rid, hid=entry.id) }}"
+            onsubmit="return confirm('Откатить обращение к состоянию ДО этой правки?')">
+        <button type="submit" class="btn btn-sm btn-outline-danger">
+          <i class="bi bi-arrow-counterclockwise"></i> Откатить
+        </button>
+      </form>
+      {% endif %}
+    </div>
+
+    {# Таблица изменённых полей #}
+    {% if entry.changes %}
+    <div class="mt-2">
+      <table class="table table-sm table-bordered mb-0"
+             style="font-size:.83rem">
+        <thead class="table-light">
+          <tr>
+            <th style="width:28%">Поле</th>
+            <th style="width:36%">
+              <i class="bi bi-x-circle text-danger me-1"></i>Было
+            </th>
+            <th>
+              <i class="bi bi-check-circle text-success me-1"></i>Стало
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for label, vals in entry.changes.items() %}
+        <tr>
+          <td class="text-muted">{{ label }}</td>
+          <td class="text-danger" style="word-break:break-all">
+            {{ vals[0] if vals[0] else '—' }}
+          </td>
+          <td class="text-success" style="word-break:break-all">
+            {{ vals[1] if vals[1] else '—' }}
+          </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="text-muted mt-1" style="font-size:.83rem">
+      <i class="bi bi-dash-circle me-1"></i>
+      Изменённые поля не зафиксированы.
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+{% endfor %}
+{% endif %}
+
+{% endblock %}

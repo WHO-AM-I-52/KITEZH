@@ -1,0 +1,340 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="d-flex align-items-center mb-3">
+  <a href="{{ url_for('requests.index') }}" class="btn btn-sm btn-outline-secondary me-2">
+    <i class="bi bi-arrow-left"></i>
+  </a>
+  <h5 class="mb-0" style="color:#1B5E7B">
+    <i class="bi bi-bookmark-star me-1"></i>Сохранённые фильтры
+  </h5>
+</div>
+
+<div class="row g-4">
+<div class="col-md-5">
+  <div class="card">
+    <div class="card-header fw-bold" style="background:#1B5E7B;color:#fff">
+      <i class="bi bi-plus-circle me-1"></i>Новый фильтр
+    </div>
+    <div class="card-body">
+      <form method="post" id="addForm" action="{{ url_for('admin.saved_filters') }}">
+        <input type="hidden" name="action" value="add">
+        <div class="mb-2">
+          <label class="form-label fw-bold">Название <span style="color:red">*</span></label>
+          <input type="text" name="name" class="form-control" required placeholder="Например: Склады 500–1000 м²">
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Описание</label>
+          <input type="text" name="description" class="form-control" placeholder="Короткий комментарий">
+        </div>
+        <hr class="my-2">
+        <p class="text-muted small mb-2">Условия фильтра:</p>
+
+        <div class="row g-2">
+          <div class="col-6">
+            <label class="form-label mb-0" style="font-size:12px">Статус</label>
+            <select name="f_status" class="form-select form-select-sm">
+              <option value="">Любой</option>
+              <option value="draft">Черновик</option>
+              <option value="review">На проверке</option>
+              <option value="accepted">В работе</option>
+              <option value="answered">Отвечено</option>
+            </select>
+          </div>
+          <div class="col-6">
+            <label class="form-label mb-0" style="font-size:12px">Период (дашборд)</label>
+            <select name="f_period" class="form-select form-select-sm">
+              <option value="all">Всё время</option>
+              <option value="today">Сегодня</option>
+              <option value="week">Неделя</option>
+              <option value="month">Месяц</option>
+              <option value="quarter">Квартал</option>
+              <option value="year">Год</option>
+            </select>
+          </div>
+          <div class="col-6">
+            <label class="form-label mb-0" style="font-size:12px">Дата с</label>
+            <input type="date" name="f_date_from" class="form-control form-control-sm">
+          </div>
+          <div class="col-6">
+            <label class="form-label mb-0" style="font-size:12px">Дата по</label>
+            <input type="date" name="f_date_to" class="form-control form-control-sm">
+          </div>
+          <div class="col-12">
+            <label class="form-label mb-0" style="font-size:12px">Заявитель (часть названия)</label>
+            <input type="text" name="f_applicant" class="form-control form-control-sm">
+          </div>
+          <div class="col-12">
+            <label class="form-label mb-0" style="font-size:12px">Ответственный</label>
+            <select name="f_employee" class="form-select form-select-sm">
+              <option value="">Любой</option>
+              {% for e in employees %}
+              <option value="{{ e.id }}">{{ e.full_name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12">
+            <label class="form-label mb-0" style="font-size:12px">Район / нас. пункт</label>
+            <select name="f_district" class="form-select form-select-sm">
+              <option value="">Любой</option>
+              {% for d in districts %}
+              <option value="{{ d }}">{{ d }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12 mt-1">
+            <label class="form-label mb-1" style="font-size:12px">Тип площадки</label>
+            <div class="d-flex gap-3">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="f_site_type_free" value="1" id="af_stf">
+                <label class="form-check-label" style="font-size:12px" for="af_stf">Свободная территория</label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="f_site_type_existing" value="1" id="af_ste">
+                <label class="form-check-label" style="font-size:12px" for="af_ste">Существующее здание</label>
+              </div>
+            </div>
+          </div>
+          <div class="col-6">
+            <label class="form-label mb-0" style="font-size:12px">Площадь участка га от</label>
+            <input type="number" step="0.01" name="f_area_min" class="form-control form-control-sm" placeholder="0">
+          </div>
+          <div class="col-6">
+            <label class="form-label mb-0" style="font-size:12px">до</label>
+            <input type="number" step="0.01" name="f_area_max" class="form-control form-control-sm" placeholder="∞">
+          </div>
+          <div class="col-6">
+            <label class="form-label mb-0" style="font-size:12px">Площадь застройки м² от</label>
+            <input type="number" step="1" name="f_build_min" class="form-control form-control-sm" placeholder="0">
+          </div>
+          <div class="col-6">
+            <label class="form-label mb-0" style="font-size:12px">до</label>
+            <input type="number" step="1" name="f_build_max" class="form-control form-control-sm" placeholder="∞">
+          </div>
+          <div class="col-6">
+            <label class="form-label mb-0" style="font-size:12px">Инвестиции млн руб. от</label>
+            <input type="number" step="0.1" name="f_inv_min" class="form-control form-control-sm" placeholder="0">
+          </div>
+          <div class="col-6">
+            <label class="form-label mb-0" style="font-size:12px">до</label>
+            <input type="number" step="0.1" name="f_inv_max" class="form-control form-control-sm" placeholder="∞">
+          </div>
+        </div>
+
+        <button type="submit" class="btn w-100 mt-3" style="background:#1B5E7B;color:#fff">
+          <i class="bi bi-bookmark-plus"></i> Сохранить фильтр
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="col-md-7">
+  <div class="card">
+    <div class="card-header fw-bold" style="background:#1B5E7B;color:#fff">
+      <i class="bi bi-list-stars me-1"></i>Сохранённые фильтры ({{ items|length }})
+    </div>
+    <div class="card-body p-0">
+      {% if not items %}
+      <div class="text-center text-muted py-5">
+        <i class="bi bi-bookmark-x" style="font-size:2.5rem"></i>
+        <p class="mt-2">Нет сохранённых фильтров.<br>Создайте первый фильтр слева.</p>
+      </div>
+      {% endif %}
+      {% for item in items %}
+      {% set row = item.row %}
+      {% set p = item.params %}
+      <div class="border-bottom p-3">
+        <div class="d-flex justify-content_between align-items-start">
+          <div>
+            <div class="fw-bold" style="color:#1B5E7B">
+              <i class="bi bi-bookmark-fill me-1"></i>{{ row.name }}
+              <span class="badge bg-primary ms-1">{{ item.count }} обращ.</span>
+            </div>
+            {% if row.description %}
+            <div class="text-muted small">{{ row.description }}</div>
+            {% endif %}
+            <div class="mt-1 d-flex flex-wrap gap-1" style="font-size:11px">
+              {% if p.get('status') %}
+                {% set sl = {'draft':'Черновик','review':'На проверке','accepted':'В работе','answered':'Отвечено'} %}
+                <span class="badge bg-secondary">{{ sl.get(p.status, p.status) }}</span>
+              {% endif %}
+              {% if p.get('date_from') or p.get('date_to') %}
+                <span class="badge bg-light text-dark border">
+                  {{ p.get('date_from','...') }} — {{ p.get('date_to','...') }}
+                </span>
+              {% endif %}
+              {% if p.get('site_type_free')=='1' %}<span class="badge bg-light text-dark border">Своб. территория</span>{% endif %}
+              {% if p.get('site_type_existing')=='1' %}<span class="badge bg-light text-dark border">Сущ. здание</span>{% endif %}
+              {% if p.get('area_min') or p.get('area_max') %}
+                <span class="badge bg-light text-dark border">га: {{ p.get('area_min','0') }}–{{ p.get('area_max','∞') }}</span>
+              {% endif %}
+              {% if p.get('build_min') or p.get('build_max') %}
+                <span class="badge bg-light text-dark border">м²: {{ p.get('build_min','0') }}–{{ p.get('build_max','∞') }}</span>
+              {% endif %}
+              {% if p.get('inv_min') or p.get('inv_max') %}
+                <span class="badge bg-light text-dark border">инв.: {{ p.get('inv_min','0') }}–{{ p.get('inv_max','∞') }} млн</span>
+              {% endif %}
+              {% if p.get('district') %}<span class="badge bg-light text-dark border">{{ p.district }}</span>{% endif %}
+              {% if p.get('applicant') %}<span class="badge bg-light text-dark border">{{ p.applicant }}</span>{% endif %}
+            </div>
+          </div>
+          <div class="d-flex flex-column gap-1 ms-2">
+            <a href="{{ url_for('admin.apply_saved_filter', fid=row.id) }}"
+               class="btn btn-sm btn-primary py-0 px-2" title="Применить фильтр">
+              <i class="bi bi-funnel-fill"></i> Применить
+            </a>
+            <a href="{{ url_for('report.report') }}?{{ item.qs if item.qs else '' }}&sf_id={{ row.id }}"
+               class="btn btn-sm btn-success py-0 px-2" title="Выгрузить Excel">
+              <i class="bi bi-file-earmark-excel"></i> Excel
+            </a>
+            <button class="btn btn-sm btn-outline-secondary py-0 px-2"
+                    onclick="openEdit({{ row.id }}, {{ p | tojson }})"
+                    title="Редактировать">
+              <i class="bi bi-pencil"></i>
+            </button>
+            <form method="post" class="d-inline"
+                  action="{{ url_for('admin.saved_filters') }}"
+                  onsubmit="return confirm('Удалить фильтр?')">
+              <input type="hidden" name="action" value="delete">
+              <input type="hidden" name="fid" value="{{ row.id }}">
+              <button class="btn btn-sm btn-outline-danger py-0 px-2 w-100" title="Удалить">
+                <i class="bi bi-trash"></i>
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- Модал редактирования -->
+<div class="modal fade" id="editModal" tabindex="-1">
+  <div class="modal-dialog modal-lg"><div class="modal-content">
+    <form method="post" id="editForm" action="{{ url_for('admin.saved_filters') }}">
+      <input type="hidden" name="action" value="edit">
+      <input type="hidden" name="fid" id="edit_fid">
+      <div class="modal-header" style="background:#1B5E7B;color:#fff">
+        <h5 class="modal-title"><i class="bi bi-pencil-square me-1"></i>Редактировать фильтр</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label fw-bold">Название</label>
+            <input type="text" name="name" id="edit_name" class="form-control" required>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Описание</label>
+            <input type="text" name="description" id="edit_desc" class="form-control">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label" style="font-size:12px">Статус</label>
+            <select name="f_status" id="edit_status" class="form-select form-select-sm">
+              <option value="">Любой</option>
+              <option value="draft">Черновик</option>
+              <option value="review">На проверке</option>
+              <option value="accepted">В работе</option>
+              <option value="answered">Отвечено</option>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label" style="font-size:12px">Дата с</label>
+            <input type="date" name="f_date_from" id="edit_date_from" class="form-control form-control-sm">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label" style="font-size:12px">Дата по</label>
+            <input type="date" name="f_date_to" id="edit_date_to" class="form-control form-control-sm">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" style="font-size:12px">Ответственный</label>
+            <select name="f_employee" id="edit_employee" class="form-select form-select-sm">
+              <option value="">Любой</option>
+              {% for e in employees %}
+              <option value="{{ e.id }}">{{ e.full_name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" style="font-size:12px">Район</label>
+            <select name="f_district" id="edit_district" class="form-select form-select-sm">
+              <option value="">Любой</option>
+              {% for d in districts %}
+              <option value="{{ d }}">{{ d }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12">
+            <label class="form-label mb-1" style="font-size:12px">Тип площадки</label>
+            <div class="d-flex gap-3">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="f_site_type_free" value="1" id="edit_stf">
+                <label class="form-check-label" style="font-size:12px" for="edit_stf">Свободная территория</label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="f_site_type_existing" value="1" id="edit_ste">
+                <label class="form-check-label" style="font-size:12px" for="edit_ste">Существующее здание</label>
+              </div>
+            </div>
+          </div>
+          <div class="col-3">
+            <label class="form-label" style="font-size:12px">Площадь га от</label>
+            <input type="number" step="0.01" name="f_area_min" id="edit_area_min" class="form-control form-control-sm">
+          </div>
+          <div class="col-3">
+            <label class="form-label" style="font-size:12px">до</label>
+            <input type="number" step="0.01" name="f_area_max" id="edit_area_max" class="form-control form-control-sm">
+          </div>
+          <div class="col-3">
+            <label class="form-label" style="font-size:12px">Застройка м² от</label>
+            <input type="number" step="1" name="f_build_min" id="edit_build_min" class="form-control form-control-sm">
+          </div>
+          <div class="col-3">
+            <label class="form-label" style="font-size:12px">до</label>
+            <input type="number" step="1" name="f_build_max" id="edit_build_max" class="form-control form-control-sm">
+          </div>
+          <div class="col-3">
+            <label class="form-label" style="font-size:12px">Инвестиции от</label>
+            <input type="number" step="0.1" name="f_inv_min" id="edit_inv_min" class="form-control form-control-sm">
+          </div>
+          <div class="col-3">
+            <label class="form-label" style="font-size:12px">до</label>
+            <input type="number" step="0.1" name="f_inv_max" id="edit_inv_max" class="form-control form-control-sm">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+        <button type="submit" class="btn btn-primary">
+          <i class="bi bi-save"></i> Сохранить изменения
+        </button>
+      </div>
+    </form>
+  </div></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function openEdit(id, p){
+  document.getElementById('edit_fid').value = id;
+  document.getElementById('edit_name').value = p.name || '';
+  document.getElementById('edit_desc').value = p.description || '';
+  document.getElementById('edit_status').value = p.status || '';
+  document.getElementById('edit_date_from').value = p.date_from || '';
+  document.getElementById('edit_date_to').value = p.date_to || '';
+  document.getElementById('edit_employee').value = p.employee || '';
+  document.getElementById('edit_district').value = p.district || '';
+  document.getElementById('edit_stf').checked = p.site_type_free === '1';
+  document.getElementById('edit_ste').checked = p.site_type_existing === '1';
+  document.getElementById('edit_area_min').value = p.area_min || '';
+  document.getElementById('edit_area_max').value = p.area_max || '';
+  document.getElementById('edit_build_min').value = p.build_min || '';
+  document.getElementById('edit_build_max').value = p.build_max || '';
+  document.getElementById('edit_inv_min').value = p.inv_min || '';
+  document.getElementById('edit_inv_max').value = p.inv_max || '';
+  new bootstrap.Modal(document.getElementById('editModal')).show();
+}
+</script>
+{% endblock %}

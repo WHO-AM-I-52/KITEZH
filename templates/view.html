@@ -1,0 +1,442 @@
+{% extends 'base.html' %}
+{% block content %}
+
+{# ======== МАКРОС: скрывает строку если значение пустое/None ======== #}
+{% macro field(label, value, width='45%') %}
+  {% set v = value | string if value is not none else '' %}
+  {% if v and v != 'None' and v.strip() %}
+  <tr>
+    <td class="text-muted" style="width:{{ width }}">{{ label }}</td>
+    <td>{{ v }}</td>
+  </tr>
+  {% endif %}
+{% endmacro %}
+
+{# ── ШАПКА КАРТОЧКИ ─────────────────────────────────────────────── #}
+<div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+  <div class="d-flex align-items-center gap-2">
+    <a href="{{ url_for('requests.index') }}" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-arrow-left"></i>
+    </a>
+    <h5 class="mb-0" style="color:#1B5E7B">
+      {% if req.request_number %}
+        <span class="badge bg-primary me-2" style="font-size:1rem">{{ req.request_number }}</span>
+      {% endif %}
+      {{ req.project_name or req.applicant_short_name or '—' }}
+    </h5>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    {% if session.role == 'admin' %}
+    <a href="{{ url_for('requests.request_history_view', rid=req.id) }}"
+       class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-clock-history"></i> История
+    </a>
+    {% endif %}
+    <a href="{{ url_for('requests.edit_request', rid=req.id) }}"
+       class="btn btn-sm btn-outline-primary">
+      <i class="bi bi-pencil"></i> Редактировать
+    </a>
+    {% if not req.request_number and session.role == 'admin' %}
+    <form method="post"
+          action="{{ url_for('requests.assign_number', rid=req.id) }}"
+          class="d-inline">
+      <button type="submit" class="btn btn-sm btn-outline-success">
+        <i class="bi bi-hash"></i> Присвоить №
+      </button>
+    </form>
+    {% endif %}
+    <form method="post"
+          action="{{ url_for('requests.toggle_favorite', rid=req.id) }}"
+          class="d-inline">
+      <button type="submit" class="btn btn-sm btn-outline-warning" title="Избранное">
+        <i class="bi {{ 'bi-star-fill' if req['favorite_flag'] else 'bi-star' }}"></i>
+      </button>
+    </form>
+  </div>
+</div>
+
+{# ── СТАТУС ──────────────────────────────────────────────────────── #}
+<div class="mb-3 d-flex align-items-center gap-3">
+  {% set sc = {'draft':'secondary','review':'info','accepted':'primary','answered':'success'} %}
+  {% set sl = {'draft':'Черновик','review':'На рассмотрении','accepted':'Принято','answered':'Отвечено'} %}
+  <span class="badge bg-{{ sc.get(req.status,'secondary') }} fs-6">
+    {{ sl.get(req.status, req.status) }}
+  </span>
+  {% if session.role in ('admin','employee') %}
+  <form method="post"
+        action="{{ url_for('requests.change_status', rid=req.id) }}"
+        class="d-flex gap-1">
+    <select name="status" class="form-select form-select-sm" style="width:auto">
+      {% for val,lbl in [('draft','Черновик'),('review','На рассмотрении'),
+                         ('accepted','Принято'),('answered','Отвечено')] %}
+      <option value="{{ val }}" {{ 'selected' if req.status==val else '' }}>{{ lbl }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="btn btn-sm btn-outline-secondary">Изменить</button>
+  </form>
+  {% endif %}
+</div>
+
+{# ── ОБЩИЕ СВЕДЕНИЯ ──────────────────────────────────────────────── #}
+<div class="card mb-3">
+  <div class="card-header fw-bold" style="background:#EEF4F7">
+    <i class="bi bi-info-circle me-1"></i> Общие сведения
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-borderless mb-0">
+      {{ field('Дата обращения', req.request_date) }}
+      {{ field('Источник обращения', req.source_type) }}
+      {% if req.incoming_number and req.source_type in ('Directum','СЭДО') %}
+      {{ field('№ входящего документа', req.incoming_number) }}
+      {% endif %}
+      {{ field('Согласие на раскрытие', 'Да' if req.consent_disclosure else '') }}
+    </table>
+  </div>
+</div>
+
+{# ── СВЕДЕНИЯ О ЗАЯВИТЕЛЕ ────────────────────────────────────────── #}
+<div class="card mb-3">
+  <div class="card-header fw-bold" style="background:#EEF4F7">
+    <i class="bi bi-building me-1"></i> Сведения о заявителе
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-borderless mb-0">
+      {{ field('Полное наименование',   req.applicant_full_name) }}
+      {{ field('Краткое наименование',  req.applicant_short_name) }}
+      {{ field('Правовая форма',         req.applicant_legal_form) }}
+      {{ field('ИНН',                    req.applicant_inn) }}
+      {% set msp_map = {'micro':'Микро','small':'Малое','medium':'Среднее','none':'Не МСП'} %}
+      {{ field('Категория МСП', msp_map.get(req.applicant_msp_category, req.applicant_msp_category)) }}
+      {% if req.applicant_okved_main %}
+      <tr>
+        <td class="text-muted" style="width:45%">Основной ОКВЭД</td>
+        <td>{{ req.applicant_okved_main }}{% if okved_name %} — {{ okved_name }}{% endif %}</td>
+      </tr>
+      {% endif %}
+      {{ field('Почтовый адрес',   req.postal_address) }}
+      {{ field('Юридический адрес', req.legal_address) }}
+      {{ field('Контактное лицо',  req.contact_person) }}
+      {{ field('Телефон',          req.contact_phone) }}
+      {{ field('E-mail',           req.contact_email) }}
+    </table>
+  </div>
+</div>
+
+{# ── ПРОЕКТ И ИНВЕСТИЦИИ ─────────────────────────────────────────── #}
+<div class="card mb-3">
+  <div class="card-header fw-bold" style="background:#EEF4F7">
+    <i class="bi bi-graph-up me-1"></i> Проект и инвестиции
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-borderless mb-0">
+      {{ field('Название проекта',       req.project_name) }}
+      {{ field('Инвестиции всего, млн руб.', req.investment_total) }}
+      {{ field('в т.ч. заёмные',         req.investment_borrowed) }}
+      {{ field('Рабочих мест всего',     req.jobs_total) }}
+      {{ field('в т.ч. иностранных',     req.jobs_foreign) }}
+      {{ field('Начало строительства',   req.construction_start) }}
+      {{ field('Начало эксплуатации',    req.operation_start) }}
+      {{ field('Номенклатура продукции', req.product_nomenclature) }}
+      {{ field('Описание производства',  req.production_description) }}
+      {{ field('Состав объектов',        req.object_composition) }}
+    </table>
+  </div>
+</div>
+
+{# ── ТРЕБОВАНИЯ ПО ПЛОЩАДКЕ ──────────────────────────────────────── #}
+<div class="card mb-3">
+  <div class="card-header fw-bold" style="background:#EEF4F7">
+    <i class="bi bi-geo-alt me-1"></i> Требования по площадке
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-borderless mb-0">
+      {% if req.site_area_ha_min or req.site_area_ha_max %}
+      <tr>
+        <td class="text-muted" style="width:45%">Площадь з/у, га</td>
+        <td>
+          {% if req.site_area_ha_min %}мин. {{ req.site_area_ha_min }}{% endif %}
+          {% if req.site_area_ha_min and req.site_area_ha_max %} / {% endif %}
+          {% if req.site_area_ha_max %}макс. {{ req.site_area_ha_max }}{% endif %}
+        </td>
+      </tr>
+      {% endif %}
+      {% if req.site_build_area_m2_min or req.site_build_area_m2_max %}
+      <tr>
+        <td class="text-muted" style="width:45%">Площадь застройки, м²</td>
+        <td>
+          {% if req.site_build_area_m2_min %}мин. {{ req.site_build_area_m2_min }}{% endif %}
+          {% if req.site_build_area_m2_min and req.site_build_area_m2_max %} / {% endif %}
+          {% if req.site_build_area_m2_max %}макс. {{ req.site_build_area_m2_max }}{% endif %}
+        </td>
+      </tr>
+      {% endif %}
+      {{ field('Право пользования',  req.site_right) }}
+      {{ field('Санитарная зона, м', req.sanitary_zone_m) }}
+      {{ field('Класс опасности',    req.hazard_class) }}
+      {{ field('Форма участка',      req.site_shape) }}
+      {{ field('Мин. длина, м',      req.site_length_min) }}
+      {{ field('Мин. ширина, м',     req.site_width_min) }}
+      {{ field('Прочее',             req.site_other) }}
+      {{ field('Предпочтительные районы', req.preferred_districts) }}
+    </table>
+  </div>
+</div>
+
+{# ── ПРИКРЕПЛЁННЫЕ ФАЙЛЫ ─────────────────────────────────────────── #}
+{% if req.request_files %}
+<div class="card mb-3">
+  <div class="card-header fw-bold" style="background:#EEF4F7">
+    <i class="bi bi-paperclip me-1"></i> Прикреплённые файлы
+  </div>
+  <div class="card-body">
+    <div class="d-flex flex-wrap gap-2">
+      {% for fname in req.request_files.split(',') if fname.strip() %}
+      <a href="{{ url_for('requests.uploaded_file', filename=fname.strip()) }}"
+         target="_blank"
+         class="d-flex flex-column align-items-center text-decoration-none
+                text-dark border rounded p-2"
+         style="width:80px;word-break:break-all;font-size:0.72rem">
+        {% set ext = fname.strip().rsplit('.',1)[-1].lower() %}
+        {% if ext == 'pdf' %}
+          <i class="bi bi-file-earmark-pdf text-danger" style="font-size:2rem"></i>
+        {% elif ext in ['doc','docx'] %}
+          <i class="bi bi-file-earmark-word text-primary" style="font-size:2rem"></i>
+        {% elif ext in ['xls','xlsx'] %}
+          <i class="bi bi-file-earmark-excel text-success" style="font-size:2rem"></i>
+        {% elif ext in ['ppt','pptx'] %}
+          <i class="bi bi-file-earmark-slides text-warning" style="font-size:2rem"></i>
+        {% elif ext == 'zip' %}
+          <i class="bi bi-file-earmark-zip text-secondary" style="font-size:2rem"></i>
+        {% else %}
+          <i class="bi bi-file-earmark" style="font-size:2rem"></i>
+        {% endif %}
+        <span class="mt-1 text-center">
+          {{ fname.strip()[:12] }}{% if fname.strip()|length > 12 %}…{% endif %}
+        </span>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endif %}
+{# ── ОТВЕТ ───────────────────────────────────────────────────────── #}
+{% if req.answer_method or req.answer_date %}
+<div class="card mb-3">
+  <div class="card-header fw-bold" style="background:#EEF4F7">
+    <i class="bi bi-reply me-1"></i> Сведения об ответе
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-borderless mb-0">
+      {{ field('Дата ответа',    req.answer_date) }}
+      {{ field('Способ отправки', req.answer_method) }}
+      {% if req.answer_method == 'Иное' and req.answer_method_other %}
+      {{ field('Уточнение', req.answer_method_other) }}
+      {% endif %}
+      {% if req.answer_system_number and req.answer_method in ('Directum','СЭДО') %}
+      {{ field('№ ответа в системе', req.answer_system_number) }}
+      {% endif %}
+      {{ field('Примечание', req.answer_notes) }}
+      {% if req.answer_file %}
+      <tr>
+        <td class="text-muted" style="width:45%">Документ ответа</td>
+        <td>
+          <a href="{{ url_for('requests.uploaded_file', filename=req.answer_file) }}"
+             target="_blank" class="text-decoration-none">
+            <i class="bi bi-file-earmark-arrow-down me-1"></i>{{ req.answer_file }}
+          </a>
+        </td>
+      </tr>
+      {% endif %}
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{# ── СЛУЖЕБНАЯ ИНФОРМАЦИЯ ────────────────────────────────────────── #}
+<div class="card mb-3">
+  <div class="card-header fw-bold" style="background:#EEF4F7">
+    <i class="bi bi-shield-lock me-1"></i> Служебная информация
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-borderless mb-0">
+      <tr>
+        <td class="text-muted" style="width:45%">Создал</td>
+        <td>{{ req.employee_name or '—' }}{% if req.created_at %} | {{ req.created_at }}{% endif %}</td>
+      </tr>
+      <tr>
+        <td class="text-muted">Последнее изменение</td>
+        <td>
+          {% if session.role == 'admin' and req.updated_by %}
+            <a href="{{ url_for('requests.request_history_view', rid=req.id) }}"
+               class="text-decoration-none"
+               title="Нажмите чтобы просмотреть историю изменений">
+              {{ req.updated_by_name or '—' }}
+            </a>
+          {% else %}
+            {{ req.updated_by_name or '—' }}
+          {% endif %}
+          {% if req.updated_at %} | {{ req.updated_at }}{% endif %}
+        </td>
+      </tr>
+      {% if req.edit_reason %}
+      {{ field('Причина правки', req.edit_reason) }}
+      {% endif %}
+      <tr>
+        <td class="text-muted">Принял в работу</td>
+        <td>{{ req.admin_name or '—' }}{% if req.confirmed_at %} | {{ req.confirmed_at }}{% endif %}</td>
+      </tr>
+      {% if req.admin_comment %}
+      {{ field('Комментарий администратора', req.admin_comment) }}
+      {% endif %}
+      {% if req.assigned_name %}
+      {{ field('Ответственный', req.assigned_name) }}
+      {% endif %}
+    </table>
+  </div>
+</div>
+
+{# ── РЕШЕНИЕ АДМИНИСТРАТОРА ──────────────────────────────────────── #}
+{% if session.role == 'admin' and req.status in ('review','accepted') %}
+<div class="card mb-3">
+  <div class="card-header fw-bold" style="background:#EEF4F7">
+    <i class="bi bi-person-check me-1"></i> Решение администратора
+  </div>
+  <div class="card-body">
+    <form method="post" action="{{ url_for('requests.confirm_request', rid=req.id) }}">
+      <div class="row g-2 mb-2">
+        <div class="col-md-6">
+          <label class="form-label">Ответственный</label>
+          <select name="assigned_to" class="form-select form-select-sm">
+            <option value="">— не назначен —</option>
+            {% for emp in employees %}
+            <option value="{{ emp.id }}"
+              {{ 'selected' if req.assigned_to == emp.id else '' }}>
+              {{ emp.full_name }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Комментарий</label>
+          <input type="text" name="admin_comment" class="form-control form-control-sm"
+                 value="{{ req.admin_comment or '' }}">
+        </div>
+      </div>
+      <div class="d-flex gap-2">
+        <button type="submit" name="action" value="accept" class="btn btn-sm btn-success">
+          <i class="bi bi-check-circle"></i> Принять
+        </button>
+        <button type="submit" name="action" value="reject" class="btn btn-sm btn-danger">
+          <i class="bi bi-x-circle"></i> Вернуть на доработку
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+{# ── КНОПКА «ЗАФИКСИРОВАТЬ ОТВЕТ» ───────────────────────────────── #}
+{% if req.status == 'accepted' %}
+<div class="mb-3">
+  <button class="btn btn-success"
+          data-bs-toggle="modal" data-bs-target="#answerModal">
+    <i class="bi bi-reply-fill me-1"></i> Зафиксировать ответ
+  </button>
+</div>
+
+<div class="modal fade" id="answerModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post"
+            action="{{ url_for('requests.answer_request', rid=req.id) }}"
+            enctype="multipart/form-data">
+        <div class="modal-header">
+          <h5 class="modal-title">
+            <i class="bi bi-reply me-1"></i> Ответ по обращению
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Способ отправки ответа</label>
+            <select name="answer_method" id="answerMethod" class="form-select">
+              <option value="">— выберите —</option>
+              {% for m in ['Почта','Электронная почта','Directum','СЭДО','Лично','Иное'] %}
+              <option value="{{ m }}"
+                {{ 'selected' if req.answer_method == m else '' }}>{{ m }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          {# v1.8.0: № ответа — только для Directum/СЭДО #}
+          <div class="mb-3" id="answerSysNumBlock" style="display:none">
+            <label class="form-label">№ исходящего в системе</label>
+            <input type="text" name="answer_system_number" class="form-control"
+                   placeholder="Например: 98765-ОТВ"
+                   value="{{ req.answer_system_number or '' }}">
+          </div>
+
+          <div class="mb-3" id="answerMethodOtherBlock" style="display:none">
+            <label class="form-label">Уточните способ</label>
+            <input type="text" name="answer_method_other" class="form-control"
+                   value="{{ req.answer_method_other or '' }}">
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Примечание</label>
+            <textarea name="answer_notes" class="form-control"
+                      rows="2">{{ req.answer_notes or '' }}</textarea>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Файл ответа</label>
+            <input type="file" name="answer_file" class="form-control"
+                   accept=".pdf,.doc,.docx,.xlsx,.xls,.ppt,.pptx,.zip">
+            {% if req.answer_file %}
+            <div class="form-text">Уже прикреплён: {{ req.answer_file }}</div>
+            {% endif %}
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary"
+                  data-bs-dismiss="modal">Отмена</button>
+          <button type="submit" class="btn btn-success">
+            <i class="bi bi-check-circle me-1"></i> Сохранить ответ
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var am = document.getElementById('answerMethod');
+  var sn = document.getElementById('answerSysNumBlock');
+  var ot = document.getElementById('answerMethodOtherBlock');
+  if (!am) return;
+  function chk() {
+    var v = am.value;
+    sn.style.display = (v === 'Directum' || v === 'СЭДО') ? '' : 'none';
+    ot.style.display = (v === 'Иное') ? '' : 'none';
+  }
+  am.addEventListener('change', chk);
+  chk();
+})();
+</script>
+{% endif %}
+
+{# ── УДАЛЕНИЕ (АДМИН) ────────────────────────────────────────────── #}
+{% if session.role == 'admin' %}
+<div class="mt-3">
+  <form method="post"
+        action="{{ url_for('requests.delete_request', rid=req.id) }}"
+        onsubmit="return confirm('Удалить обращение безвозвратно?')">
+    <button type="submit" class="btn btn-sm btn-outline-danger">
+      <i class="bi bi-trash me-1"></i> Удалить обращение
+    </button>
+  </form>
+</div>
+{% endif %}
+
+{% endblock %}

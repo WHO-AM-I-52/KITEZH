@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+{# ╔══════════════════════════════════════════════════════════════╗ #}
+{# ║                        base.html                            ║ #}
+{# ║  Базовый шаблон приложения "Подбор ЗУ — НО"                 ║ #}
+{# ║  Содержит:                                                   ║ #}
+{# ║  - Топбар (шапка с логотипом, меню пользователя)            ║ #}
+{# ║  - Сайдбар (боковое меню навигации, сворачиваемое)          ║ #}
+{# ║  - Flash-сообщения (уведомления после действий)             ║ #}
+{# ║  - Тёмный/светлый режим (localStorage)                      ║ #}
+{# ║  - Баннер "Соединение потеряно" (пинг каждые 10 сек)        ║ #}
+{# ║  - Drone Autosave Widget (автосохранение каждые 60 сек)     ║ #}
+{# ║  - Подвал с версией и контактом разработчика                ║ #}
+{# ╚══════════════════════════════════════════════════════════════╝ #}
+<html lang="ru">
+<head>
+  {# ─── МЕТА И ФАВИКОН ────────────────────────────────────────────── #}
+  <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Подбор ЗУ — НО</title>
+
+  {# ─── ВНЕШНИЕ БИБЛИОТЕКИ (Bootstrap 5.3.2, Bootstrap Icons) ─────── #}
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+
+  <style>
+    /* ════════════════════════════════════════════════════════════
+       БАЗОВЫЕ СТИЛИ
+       ════════════════════════════════════════════════════════════ */
+    body { background:#f4f7fa; font-size:14px; }
+    .navbar-brand { font-weight:700; letter-spacing:.5px; }
+    .nav-link { color:rgba(255,255,255,.85) !important; font-size:13px; }
+    .nav-link:hover { color:#fff !important; }
+    .nav-link.active-page {
+      color:#fff !important; font-weight:600;
+      border-bottom:2px solid #fff; padding-bottom:2px;
+    }
+    .main-content { padding:1.25rem 1.5rem; }
+    .card { border:none; box-shadow:0 1px 4px rgba(0,0,0,.08); border-radius:8px; }
+    .table th { font-size:11px; font-weight:600; }
+    .badge { font-size:10px; }
+
+    /* Flash-уведомления — фиксированные, правый верхний угол */
+    .flash-msg {
+      position:fixed; top:64px; right:16px; z-index:9999;
+      min-width:260px; max-width:380px;
+    }
+
+    /* Переопределение цвета кнопок под фирменный цвет */
+    .btn-primary { background:#1B5E7B; border-color:#1B5E7B; }
+    .btn-primary:hover { background:#154d66; border-color:#154d66; }
+
+    .version-badge { font-size:10px; opacity:.7; }
+    .quick-filter-bar .btn { font-size:12px; }
+    .quick-filter-bar .btn.active,
+    .quick-filter-bar .btn-primary { font-weight:600; }
+
+    /* Подсветка обязательных полей при ошибке валидации */
+    .field-required-error {
+      border-color:#dc3545 !important;
+      background:#fff8f8 !important;
+    }
+    .field-required-error:focus {
+      box-shadow:0 0 0 .2rem rgba(220,53,69,.25) !important;
+    }
+
+    /* ════════════════════════════════════════════════════════════
+       SIDEBAR — БОКОВОЕ МЕНЮ
+       CSS-переменные управляют шириной и высотой топбара.
+       body.sb-col  → меню свёрнуто (только иконки)
+       body.sb-open → меню открыто (мобильный оверлей)
+       ════════════════════════════════════════════════════════════ */
+    :root {
+      --sb-width:220px;    /* ширина развёрнутого меню */
+      --sb-col:56px;       /* ширина свёрнутого меню (только иконки) */
+      --topbar-h:48px;     /* высота топбара */
+    }
+    body { overflow-x:hidden; }
+
+    /* Топбар — фиксированная шапка */
+    .topbar {
+      position:fixed; top:0; left:0; right:0; height:var(--topbar-h);
+      background:#1B5E7B; z-index:1050;
+      display:flex; align-items:center;
+      padding:0 14px; gap:10px;
+      box-shadow:0 2px 8px rgba(0,0,0,.15);
+    }
+    .topbar-brand {
+      font-weight:700; font-size:16px; color:#fff;
+      text-decoration:none; display:flex; align-items:center; gap:6px;
+    }
+
+    /* Кнопка сворачивания сайдбара */
+    .sb-toggle {
+      background:none; border:none; color:#fff;
+      font-size:20px; cursor:pointer; padding:4px 6px;
+      border-radius:6px; line-height:1; transition:background .2s;
+    }
+    .sb-toggle:hover { background:rgba(255,255,255,.15); }
+    .topbar-right { margin-left:auto; display:flex; align-items:center; gap:8px; }
+
+    /* Дропдаун пользователя в топбаре */
+    .topbar .dropdown-toggle {
+      background:rgba(255,193,7,.25); border-radius:6px;
+      padding:4px 10px; color:#fff; text-decoration:none;
+      display:flex; align-items:center; gap:6px; font-size:13px;
+    }
+    .topbar .dropdown-toggle:hover { background:rgba(255,193,7,.4); }
+
+    /* Боковое меню */
+    .sidebar {
+      position:fixed; top:var(--topbar-h); left:0; bottom:0;
+      width:var(--sb-width); background:#1B5E7B; z-index:1040;
+      display:flex; flex-direction:column;
+      transition:width .25s ease; overflow:hidden;
+    }
+    body.sb-col .sidebar { width:var(--sb-col); }
+
+    /* Прокручиваемая область меню */
+    .sb-nav {
+      flex:1; overflow-y:auto; overflow-x:hidden; padding:8px 0;
+    }
+
+    /* Ссылка в меню */
+    .sb-link {
+      display:flex; align-items:center; gap:10px;
+      padding:9px 16px; color:rgba(255,255,255,.85);
+      text-decoration:none; font-size:13px; white-space:nowrap;
+      border-left:3px solid transparent; transition:background .15s;
+    }
+    .sb-link:hover { background:rgba(255,255,255,.1); color:#fff; }
+    .sb-link.active {
+      background:rgba(255,255,255,.15); color:#fff;
+      border-left-color:#fff; font-weight:600;
+    }
+    .sb-link i { font-size:16px; flex-shrink:0; width:20px; text-align:center; }
+
+    /* Текстовый лейбл — скрывается при свёрнутом меню */
+    .sb-lbl { transition:opacity .2s; }
+    body.sb-col .sb-lbl { opacity:0; pointer-events:none; }
+
+    /* Разделитель, категория, бейдж счётчика */
+    .sb-sep { height:1px; background:rgba(255,255,255,.1); margin:6px 12px; }
+    .sb-cat {
+      font-size:10px; font-weight:700; letter-spacing:1.5px;
+      text-transform:uppercase; color:rgba(255,255,255,.4);
+      padding:10px 19px 4px; white-space:nowrap;
+    }
+    body.sb-col .sb-cat { opacity:0; }
+    .sb-badge {
+      margin-left:auto; background:#dc3545; color:#fff;
+      font-size:10px; font-weight:700; padding:1px 6px;
+      border-radius:10px; transition:opacity .2s;
+    }
+    body.sb-col .sb-badge { opacity:0; }
+
+    /* Контентная область — отступ под топбар и боковое меню */
+    .page-wrap {
+      margin-top:var(--topbar-h); margin-left:var(--sb-width);
+      transition:margin-left .25s ease;
+    }
+    body.sb-col .page-wrap { margin-left:var(--sb-col); }
+
+    /* Flash-сообщения учитывают высоту топбара */
+    .flash-msg { top:calc(var(--topbar-h) + 12px) !important; }
+
+    /* Полупрозрачный оверлей для мобильного меню */
+    .sb-overlay {
+      display:none; position:fixed; inset:0;
+      background:rgba(0,0,0,.4); z-index:1035;
+    }
+
+    /* МОБИЛЬНЫЙ РЕЖИМ: меню скрыто, появляется по кнопке */
+    @media(max-width:768px){
+      .sidebar {
+        transform:translateX(-100%);
+        width:var(--sb-width) !important;
+        transition:transform .25s;
+      }
+      body.sb-open .sidebar { transform:translateX(0); }
+      body.sb-open .sb-overlay { display:block; }
+      .page-wrap { margin-left:0 !important; }
+    }
+
+    /* ════════════════════════════════════════════════════════════
+       CSS-ПЕРЕМЕННЫЕ ТЁМНОЙ/СВЕТЛОЙ ТЕМЫ
+       data-theme="dark" на body активирует тёмный режим
+       ════════════════════════════════════════════════════════════ */
+    :root {
+      --bg:#f4f7fa;
+      --surface:#fff;
+      --surface2:#f0f4f8;
+      --text:#212529;
+      --text-muted:#6c757d;
+      --border:#dee2e6;
+      --card-shadow:0 1px 4px rgba(0,0,0,.08);
+      --input-bg:#fff;
+      --input-border:#ced4da;
+      --table-stripe:#f8f9fa;
+      --table-hover:#f1f4f7;
+    }
+    body[data-theme="dark"] {
+      --bg:#0f1117;
+      --surface:#1a1d27;
+      --surface2:#22263a;
+      --text:#e2e8f0;
+      --text-muted:#94a3b8;
+      --border:#2d3348;
+      --card-shadow:0 1px 6px rgba(0,0,0,.4);
+      --input-bg:#1e2235;
+      --input-border:#3a4060;
+      --table-stripe:#1e2235;
+      --table-hover:#252a40;
+    }
+
+    /* Применяем переменные к компонентам */
+    body { background:var(--bg) !important; color:var(--text) !important; transition:background .2s,color .2s; }
+    .card { background:var(--surface) !important; box-shadow:var(--card-shadow) !important; color:var(--text) !important; }
+    .modal-content, .dropdown-menu { background:var(--surface) !important; color:var(--text) !important; border-color:var(--border) !important; }
+    .dropdown-item { color:var(--text) !important; }
+    .dropdown-item:hover { background:var(--surface2) !important; }
+    .table { color:var(--text) !important; }
+    .table > :not(caption) > * > * { background-color:transparent; border-color:var(--border) !important; }
+    .table-striped > tbody > tr:nth-of-type(odd) > * { background-color:var(--table-stripe) !important; }
+    .table-hover > tbody > tr:hover > * { background-color:var(--table-hover) !important; }
+    .form-control, .form-select { background:var(--input-bg) !important; color:var(--text) !important; border-color:var(--input-border) !important; }
+    .form-control:focus, .form-select:focus { background:var(--input-bg) !important; color:var(--text) !important; }
+    .input-group-text { background:var(--surface2) !important; color:var(--text) !important; border-color:var(--input-border) !important; }
+    .list-group-item { background:var(--surface) !important; color:var(--text) !important; border-color:var(--border) !important; }
+    .card-header { border-color:var(--border) !important; }
+    .nav-tabs { border-color:var(--border) !important; }
+    .nav-tabs .nav-link { color:var(--text-muted) !important; }
+    .nav-tabs .nav-link.active { background:var(--surface) !important; color:var(--text) !important; border-color:var(--border) var(--border) var(--surface) !important; }
+    footer { background:var(--surface) !important; color:var(--text-muted) !important; border-color:var(--border) !important; }
+    .text-muted { color:var(--text-muted) !important; }
+    hr, .dropdown-divider { border-color:var(--border) !important; }
+    .page-wrap { background:var(--bg); }
+
+    /* Кнопка переключения темы в сайдбаре */
+    .theme-toggle-btn {
+      display:flex; align-items:center; gap:10px; padding:10px 16px;
+      color:rgba(255,255,255,.7); background:none; border:none;
+      width:100%; font-size:13px; cursor:pointer;
+      white-space:nowrap; transition:background .15s;
+    }
+    .theme-toggle-btn:hover { background:rgba(255,255,255,.1); color:#fff; }
+    .theme-toggle-btn i { font-size:16px; width:20px; text-align:center; }
+    body.sb-col .theme-toggle-btn .sb-lbl { opacity:0; pointer-events:none; }
+
+    /* ────── Дополнительные фиксы тёмной темы ────── */
+    body[data-theme="dark"] * { color: inherit; }
+    body[data-theme="dark"] h1, body[data-theme="dark"] h2,
+    body[data-theme="dark"] h3, body[data-theme="dark"] h4,
+    body[data-theme="dark"] h5, body[data-theme="dark"] h6,
+    body[data-theme="dark"] p, body[data-theme="dark"] span:not(.badge),
+    body[data-theme="dark"] label, body[data-theme="dark"] td,
+    body[data-theme="dark"] th, body[data-theme="dark"] li,
+    body[data-theme="dark"] strong, body[data-theme="dark"] small,
+    body[data-theme="dark"] .fw-bold,
+    body[data-theme="dark"] .fw-semibold { color: var(--text) !important; }
+    body[data-theme="dark"] .text-dark,
+    body[data-theme="dark"] .text-black { color: var(--text) !important; }
+    body[data-theme="dark"] ::placeholder { color: var(--text-muted) !important; opacity: 1; }
+    body[data-theme="dark"] ::-webkit-input-placeholder { color: var(--text-muted) !important; }
+    body[data-theme="dark"] .table thead th { background: var(--surface2) !important; color: var(--text) !important; }
+    body[data-theme="dark"] .table td,
+    body[data-theme="dark"] .table th { color: var(--text) !important; }
+    body[data-theme="dark"] .card-header { color: var(--text) !important; }
+    body[data-theme="dark"] .card-header.bg-white,
+    body[data-theme="dark"] .card-header[style*="background:#fff"],
+    body[data-theme="dark"] .card-header[style*="background: #fff"],
+    body[data-theme="dark"] .card-header[style*="background:white"] { background: var(--surface2) !important; }
+    body[data-theme="dark"] .form-label { color: var(--text) !important; }
+    body[data-theme="dark"] .form-check-label { color: var(--text) !important; }
+    body[data-theme="dark"] .form-text { color: var(--text-muted) !important; }
+    body[data-theme="dark"] .btn-outline-secondary { color: var(--text) !important; border-color: var(--border) !important; }
+    body[data-theme="dark"] .btn-outline-secondary:hover { background: var(--surface2) !important; }
+    body[data-theme="dark"] .btn-light { background: var(--surface2) !important; color: var(--text) !important; border-color: var(--border) !important; }
+    body[data-theme="dark"] .alert-dismissible { color: var(--text) !important; }
+    body[data-theme="dark"] .progress { background: var(--surface2) !important; }
+    body[data-theme="dark"] a:not(.btn):not(.sb-link):not(.nav-link):not(.dropdown-item) { color: #60a5fa; }
+    body[data-theme="dark"] a:not(.btn):not(.sb-link):not(.nav-link):not(.dropdown-item):hover { color: #93c5fd; }
+    body[data-theme="dark"] .modal-header { border-color: var(--border) !important; }
+    body[data-theme="dark"] .modal-footer { border-color: var(--border) !important; background: var(--surface) !important; }
+    body[data-theme="dark"] .modal-body { background: var(--surface) !important; }
+    body[data-theme="dark"] select option { background: var(--surface) !important; color: var(--text) !important; }
+
+    /* ════════════════════════════════════════════════════════════
+       БАННЕР "СОЕДИНЕНИЕ ПОТЕРЯНО"
+       Появляется поверх страницы когда /ping не отвечает.
+       Скрывается автоматически при восстановлении соединения.
+       ════════════════════════════════════════════════════════════ */
+    #offlineBanner {
+      display:none;
+      position:fixed; top:0; left:0; right:0; z-index:99999;
+      background:linear-gradient(135deg, #7f1d1d, #991b1b);
+      color:#fff; padding:0;
+      box-shadow:0 4px 24px rgba(0,0,0,.5);
+      animation:offlineFadeIn .4s ease;
+    }
+    @keyframes offlineFadeIn {
+      from { opacity:0; transform:translateY(-20px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+    #offlineBanner .ob-inner {
+      display:flex; align-items:center; justify-content:center;
+      gap:14px; padding:14px 24px; flex-wrap:wrap; text-align:center;
+    }
+    #offlineBanner .ob-icon {
+      font-size:28px; animation:obPulse 1.5s infinite;
+    }
+    @keyframes obPulse {
+      0%,100% { opacity:1; } 50% { opacity:.4; }
+    }
+    #offlineBanner .ob-title {
+      font-size:16px; font-weight:700; letter-spacing:.3px;
+    }
+    #offlineBanner .ob-sub {
+      font-size:12px; opacity:.85; margin-top:2px;
+    }
+    #offlineBanner .ob-badge {
+      background:rgba(255,255,255,.15); border-radius:20px;
+      padding:4px 12px; font-size:11px; font-weight:600;
+      letter-spacing:.5px; animation:obPulse 2s infinite;
+    }
+    /* Страница при потере соединения затемняется */
+    body.offline-mode .page-wrap,
+    body.offline-mode .sidebar { filter:blur(1px) brightness(.7); pointer-events:none; }
+    body.offline-mode .topbar { filter:brightness(.7); pointer-events:none; }
+  </style>
+</head>
+<body>
+
+{# ═══════════════════════════════════════════════════════════════
+   БАННЕР "СОЕДИНЕНИЕ ПОТЕРЯНО"
+   Скрыт по умолчанию. JS ниже управляет видимостью.
+═══════════════════════════════════════════════════════════════ #}
+<div id="offlineBanner">
+  <div class="ob-inner">
+    <div class="ob-icon">⚠️</div>
+    <div>
+      <div class="ob-title">Соединение с сервером потеряно</div>
+      <div class="ob-sub">
+        Возможно, ведутся технические работы.<br>
+        <strong>Рекомендуем немедленно прекратить работу</strong>
+        и сохранить все данные.
+      </div>
+    </div>
+    <div class="ob-badge">⚙️ ТЕХНИЧЕСКИЕ РАБОТЫ</div>
+  </div>
+</div>
+
+{# ═══════════════════════════════════════════════════════════════
+   ТОПБАР — фиксированная верхняя панель
+   Содержит: кнопку-гамбургер, логотип, версию,
+             дропдаун пользователя с импersonation
+═══════════════════════════════════════════════════════════════ #}
+<header class="topbar">
+  {# Кнопка сворачивания/разворачивания сайдбара #}
+  <button class="sb-toggle" id="sbToggle"><i class="bi bi-list"></i></button>
+
+  {# Логотип и версия #}
+  <a href="/" class="topbar-brand">
+    <i class="bi bi-map"></i> Подбор ЗУ
+    <span style="font-size:10px;opacity:.7;font-weight:400" class="ms-1">v{{ app_version }}</span>
+  </a>
+
+  {# Правая часть топбара — меню пользователя #}
+  <div class="topbar-right">
+    {% if 'user_id' in session %}
+    <div class="dropdown">
+      <a href="#" class="dropdown-toggle" data-bs-toggle="dropdown">
+        {# Иконка режима просмотра (импersonation) или обычного пользователя #}
+        {% if session.get('is_impersonating') %}<i class="bi bi-eye-fill text-warning"></i>
+        {% else %}<i class="bi bi-person-circle"></i>{% endif %}
+        {{ session.fullname }}
+        {% if session.get('is_impersonating') %}
+          <span class="badge ms-1" style="background:#ffc107;color:#000;font-size:9px">{{ session.role|upper }}</span>
+        {% elif session.role=='admin' %}
+          <span class="badge bg-warning text-dark ms-1" style="font-size:9px">ADMIN</span>
+        {% endif %}
+      </a>
+      <ul class="dropdown-menu dropdown-menu-end shadow" style="min-width:230px;font-size:13px">
+
+        {# ─── Режим импersonation (просмотр под другим пользователем) ─── #}
+        {% if session.get('is_impersonating') %}
+          <li>
+            <span class="dropdown-item-text" style="font-size:11px;color:#856404">
+              <i class="bi bi-eye-fill me-1"></i><strong>Режим просмотра</strong>
+            </span>
+          </li>
+          <li>
+            <span class="dropdown-item-text text-muted" style="font-size:12px">
+              <strong>{{ session.fullname }}</strong>
+              <span class="badge bg-secondary ms-1">{{ session.role }}</span>
+            </span>
+          </li>
+          <li><hr class="dropdown-divider my-1"></li>
+          <li>
+            <a class="dropdown-item text-success fw-bold" href="/impersonate/stop">
+              <i class="bi bi-arrow-return-left me-2"></i>{{ session.get('original_fullname', 'Назад') }}
+            </a>
+          </li>
+          <li><hr class="dropdown-divider my-1"></li>
+
+        {% else %}
+          {# ─── Обычный режим ─── #}
+          <li>
+            <span class="dropdown-item-text text-muted" style="font-size:11px">
+              <i class="bi bi-person me-1"></i>{{ session.username }}
+            </span>
+          </li>
+          {# Список пользователей для входа под ними (только для admin) #}
+          {% if session.role=='admin' and users_for_impersonate %}
+            <li><hr class="dropdown-divider my-1"></li>
+            <li>
+              <span class="dropdown-item-text text-muted" style="font-size:11px">
+                <i class="bi bi-people me-1"></i>Войти как:
+              </span>
+            </li>
+            {% for u in users_for_impersonate %}
+            <li>
+              <a class="dropdown-item" href="/impersonate/{{ u.id }}">
+                <i class="bi bi-person-fill-gear me-2 text-warning"></i>{{ u.fullname }}
+                <span class="badge bg-secondary ms-1" style="font-size:10px">{{ u.role }}</span>
+              </a>
+            </li>
+            {% endfor %}
+          {% endif %}
+          <li><hr class="dropdown-divider my-1"></li>
+        {% endif %}
+
+        <li>
+          <a class="dropdown-item text-danger" href="/logout">
+            <i class="bi bi-box-arrow-right me-2"></i>Выйти
+          </a>
+        </li>
+      </ul>
+    </div>
+    {% endif %}
+  </div>
+</header>
+
+{# ═══════════════════════════════════════════════════════════════
+   ОВЕРЛЕЙ для мобильного меню (клик = закрыть сайдбар)
+═══════════════════════════════════════════════════════════════ #}
+<div class="sb-overlay" id="sbOverlay"
+     onclick="document.body.classList.remove('sb-open')"></div>
+
+{# ═══════════════════════════════════════════════════════════════
+   САЙДБАР — боковое меню навигации
+   Показывается только авторизованным пользователям.
+   Разделён на секции: Навигация / Администратор / Настройки
+═══════════════════════════════════════════════════════════════ #}
+{% if 'user_id' in session %}
+<aside class="sidebar">
+  <nav class="sb-nav">
+
+    {# ─── Основная навигация ─── #}
+    <div class="sb-cat">Навигация</div>
+
+    <a href="/" class="sb-link {{ 'active' if request.path=='/' }}">
+      <i class="bi bi-list-ul"></i><span class="sb-lbl">Обращения</span>
+    </a>
+    <a href="/dashboard" class="sb-link {{ 'active' if request.path=='/dashboard' }}">
+      <i class="bi bi-bar-chart-line"></i><span class="sb-lbl">Дашборд</span>
+    <a href="/request/new" class="sb-link {{ 'active' if request.path=='/request/new' }}">
+      <i class="bi bi-plus-circle"></i><span class="sb-lbl">Новое обращение</span>
+    </a>
+
+    {# ─── Телефонный справочник (v2.1.0) ─── #}
+    <a href="{{ url_for('phonebook.phonebook') }}"
+       class="sb-link {{ 'active' if request.endpoint and request.endpoint.startswith('phonebook') }}">
+      <i class="bi bi-telephone-fill"></i><span class="sb-lbl">Справочник</span>
+    </a>
+
+    <a href="/saved-filters" class="sb-link {{ 'active' if 'saved-filters' in request.path }}">
+      <i class="bi bi-bookmark-star"></i><span class="sb-lbl">Фильтры</span>
+    </a>
+
+    {# Уведомления — показывает кол-во непрочитанных #}
+    <a href="/notifications" class="sb-link {{ 'active' if request.path=='/notifications' }}">
+      <i class="bi bi-bell"></i><span class="sb-lbl">Уведомления</span>
+      {% if unread_count > 0 %}<span class="sb-badge">{{ unread_count }}</span>{% endif %}
+    </a>
+
+    {# ─── Секция администратора (только role=admin) ─── #}
+    {% if session.role=='admin' %}
+    <div class="sb-sep"></div>
+    <div class="sb-cat">Администратор</div>
+    <a href="/admin/classifiers" class="sb-link {{ 'active' if 'classifiers' in request.path }}">
+      <i class="bi bi-tags"></i><span class="sb-lbl">Справочники</span>
+    </a>
+    <a href="/admin/users" class="sb-link {{ 'active' if 'users' in request.path }}">
+      <i class="bi bi-people"></i><span class="sb-lbl">Пользователи</span>
+    </a>
+    {% endif %}
+
+    {# ─── Прочее ─── #}
+    <div class="sb-sep"></div>
+    <a href="{{ url_for('misc.changelog') }}"
+       class="sb-link {{ 'active' if request.path=='/changelog' }}">
+      <i class="bi bi-journal-text"></i><span class="sb-lbl">Версии</span>
+    </a>
+
+    {# ─── Переключатель тёмной темы ─── #}
+    <div class="sb-sep"></div>
+    <button class="theme-toggle-btn" id="themeToggle" title="Сменить тему">
+      <i class="bi bi-moon-stars-fill" id="themeIcon"></i>
+      <span class="sb-lbl" id="themeLabel">Тёмный режим</span>
+    </button>
+
+  </nav>
+</aside>
+{% endif %}
+
+
+{# ═══════════════════════════════════════════════════════════════
+   FLASH-СООБЩЕНИЯ
+   Выводятся после любого серверного действия (success/error/warning)
+   Автоматически закрываются через Bootstrap
+═══════════════════════════════════════════════════════════════ #}
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% if messages %}
+<div class="flash-msg">
+  {% for cat, msg in messages %}
+  <div class="alert alert-{{ 'success' if cat=='success' else 'danger' if cat=='error' else 'warning' }}
+              alert-dismissible fade show shadow" role="alert">
+    {% if cat=='success' %}<i class="bi bi-check-circle-fill me-1"></i>
+    {% elif cat=='error' %}<i class="bi bi-x-circle-fill me-1"></i>
+    {% else %}<i class="bi bi-exclamation-triangle-fill me-1"></i>{% endif %}
+    {{ msg }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endwith %}
+
+
+{# ═══════════════════════════════════════════════════════════════
+   ОСНОВНОЙ КОНТЕНТ — подставляется из дочерних шаблонов
+═══════════════════════════════════════════════════════════════ #}
+<div class="page-wrap">
+  <main class="main-content">
+    {% block content %}{% endblock %}
+  </main>
+</div>
+
+
+{# ─── Bootstrap JS ─── #}
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+{% block scripts %}{% endblock %}
+
+
+{# ═══════════════════════════════════════════════════════════════
+   ПОДВАЛ
+═══════════════════════════════════════════════════════════════ #}
+<footer class="mt-4 py-3 text-center border-top"
+        style="font-size:11px;color:#aaa;background:#fff">
+  <span>© 2026 Подбор ЗУ — Нижегородская область &nbsp;|&nbsp; v{{ app_version }}</span>
+  &nbsp;&nbsp;
+  <span>Разработано: <strong style="color:#1B5E7B">Солдатов Антон Алексеевич</strong></span>
+  &nbsp;&nbsp;
+  <a href="https://t.me/whoami52" target="_blank" rel="noopener noreferrer"
+     title="Написать разработчику в Telegram"
+     style="color:#229ED9;text-decoration:none;font-weight:600">
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
+         viewBox="0 0 24 24" fill="#229ED9"
+         style="vertical-align:middle;margin-bottom:2px">
+      <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L8.32 13.617l-2.96-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.828.942z"/>
+    </svg>
+    Telegram
+  </a>
+</footer>
+
+
+{# ═══════════════════════════════════════════════════════════════
+   JS: САЙДБАР — запоминает состояние в localStorage
+   sb_col='1' → меню свёрнуто
+   Мобиль: класс sb-open вместо sb-col
+═══════════════════════════════════════════════════════════════ #}
+<script>
+(function(){
+  var b = document.body;
+  if (localStorage.getItem('sb_col')==='1') b.classList.add('sb-col');
+  document.getElementById('sbToggle').addEventListener('click', function(){
+    if (window.innerWidth <= 768) {
+      b.classList.toggle('sb-open');
+    } else {
+      b.classList.toggle('sb-col');
+      localStorage.setItem('sb_col', b.classList.contains('sb-col') ? '1' : '0');
+    }
+  });
+})();
+</script>
+
+
+{# ═══════════════════════════════════════════════════════════════
+   JS: ТЁМНАЯ/СВЕТЛАЯ ТЕМА
+   Применяется до рендера (в head) чтобы не было мигания.
+   Хранится в localStorage['app_theme']
+═══════════════════════════════════════════════════════════════ #}
+<script>
+(function(){
+  var KEY = 'app_theme', DARK = 'dark';
+
+  /* Применяем тему сразу — предотвращает "мигание" при загрузке */
+  if (localStorage.getItem(KEY) === DARK)
+    document.body.setAttribute('data-theme', DARK);
+
+  function syncUI(){
+    var isDark = document.body.getAttribute('data-theme') === DARK;
+    var icon  = document.getElementById('themeIcon');
+    var label = document.getElementById('themeLabel');
+    if (!icon) return;
+    icon.className = isDark ? 'bi bi-sun-fill' : 'bi bi-moon-stars-fill';
+    label.textContent = isDark ? 'Светлый режим' : 'Тёмный режим';
+  }
+
+  document.addEventListener('DOMContentLoaded', function(){
+    syncUI();
+    var btn = document.getElementById('themeToggle');
+    if (btn) btn.addEventListener('click', function(){
+      var isDark = document.body.getAttribute('data-theme') === DARK;
+      if (isDark) {
+        document.body.removeAttribute('data-theme');
+        localStorage.setItem(KEY, 'light');
+      } else {
+        document.body.setAttribute('data-theme', DARK);
+        localStorage.setItem(KEY, DARK);
+      }
+      syncUI();
+    });
+  });
+})();
+</script>
+
+
+{# ═══════════════════════════════════════════════════════════════
+   JS: БАННЕР "СОЕДИНЕНИЕ ПОТЕРЯНО"
+   Каждые 10 секунд делает fetch на /ping.
+   Если сервер не ответил — показывает баннер и затемняет интерфейс.
+   При восстановлении — скрывает баннер автоматически.
+   Маршрут /ping нужно добавить в info_routes.py (см. ниже).
+═══════════════════════════════════════════════════════════════ #}
+<script>
+(function(){
+  var banner   = document.getElementById('offlineBanner');
+  var body     = document.body;
+  var offline  = false;
+  var INTERVAL = 10000; /* пинг каждые 10 секунд */
+
+  function setOffline(state){
+    if (state === offline) return; /* не перерисовываем если статус не изменился */
+    offline = state;
+    if (state){
+      banner.style.display = 'block';
+      body.classList.add('offline-mode');
+    } else {
+      banner.style.display = 'none';
+      body.classList.remove('offline-mode');
+    }
+  }
+
+  function ping(){
+    fetch('/ping', {
+      method: 'GET',
+      cache: 'no-store',
+      credentials: 'same-origin'
+    })
+    .then(function(r){
+      setOffline(!r.ok); /* сервер ответил, но вернул ошибку — тоже offline */
+    })
+    .catch(function(){
+      setOffline(true);  /* сервер не ответил */
+    });
+  }
+
+  /* Первый пинг через 5 сек после загрузки, затем каждые 10 сек */
+  setTimeout(function(){
+    ping();
+    setInterval(ping, INTERVAL);
+  }, 5000);
+})();
+</script>
+
+
+{# ═══════════════════════════════════════════════════════════════
+   DRONE AUTOSAVE WIDGET
+   Анимированный виджет автосохранения.
+   Срабатывает каждые 60 секунд, делает POST /autosave.
+   Показывается только на страницах с формами.
+═══════════════════════════════════════════════════════════════ #}
+<div id="droneWidget" style="
+  position:fixed; right:24px; bottom:24px; z-index:9999;
+  opacity:0; transform:scale(0.8);
+  transition: opacity 0.4s, transform 0.4s;
+  pointer-events:none;">
+  <div class="demo">
+    <div class="demo__drone-cont demo__drone-cont--takeoff">
+      <div class="demo__drone-cont demo__drone-cont--shift-x">
+        <div class="demo__drone-cont demo__drone-cont--landing">
+          <svg viewBox="0 0 136 112" class="demo__drone">
+            <g class="demo__drone-leaving">
+              <path class="demo__drone-arm" d="M52,46 c0,0 -15,5 -15,20 l15,10"/>
+              <path class="demo__drone-arm demo__drone-arm--2" d="M52,46 c0,0 -15,5 -15,20 l15,10"/>
+              <path class="demo__drone-yellow" d="M28,36 l20,0 a20,9 0,0,1 40,0 l20,0 l0,8 l-10,0 c-10,0 -15,0 -23,10 l-14,0 c-10,-10 -15,-10 -23,-10 l-10,0z"/>
+              <path class="demo__drone-green" d="M16,12 a10,10 0,0,1 20,0 l-10,50z"/>
+              <path class="demo__drone-green" d="M100,12 a10,10 0,0,1 20,0 l-10,50z"/>
+              <path class="demo__drone-yellow" d="M9,8 l34,0 a8,8 0,0,1 0,16 l-34,0 a8,8 0,0,1 0,-16z"/>
+              <path class="demo__drone-yellow" d="M93,8 l34,0 a8,8 0,0,1 0,16 l-34,0 a8,8 0,0,1 0,-16z"/>
+            </g>
+            <path class="demo__drone-package demo__drone-green" d="M50,70 l36,0 l-4,45 l-28,0z"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+    <div class="demo__circle">
+      <div class="demo__circle-inner">
+        <svg viewBox="0 0 16 20" class="demo__circle-package">
+          <path d="M0,0 16,0 13,20 3,20z"/>
+        </svg>
+        <div class="demo__circle-grabbers"></div>
+      </div>
+      <svg viewBox="0 0 40 40" class="demo__circle-progress">
+        <path class="demo__circle-progress-line" d="M20,0 a20,20 0 0,1 0,40 a20,20 0 0,1 0,-40"/>
+        <path class="demo__circle-progress-checkmark" d="M14,19 19,24 29,14"/>
+      </svg>
+    </div>
+    <div class="demo__text-fields">
+      <div class="demo__text demo__text--step-0">Сохранить</div>
+      <div class="demo__text demo__text--step-1">Обработка<span class="demo__text-dots"><span>.</span></span></div>
+      <div class="demo__text demo__text--step-2">Сохранение<span class="demo__text-dots"><span>.</span></span></div>
+      <div class="demo__text demo__text--step-3">Готово</div>
+      <div class="demo__text demo__text--step-4">Сохранено ✓</div>
+    </div>
+    <div class="demo__revert-line"></div>
+  </div>
+</div>
+
+<style>
+/* ── Drone Widget Styles (без изменений) ── */
+#droneWidget .demo { position:relative; width:220px; height:52px; padding-left:60px; padding-right:12px; border-radius:10px; background:#61d4f1; transition:background-color 1s; cursor:pointer; box-shadow:0 4px 20px rgba(0,0,0,0.2); }
+#droneWidget .demo:before, #droneWidget .demo:after { content:""; position:absolute; left:5%; bottom:100%; width:14%; height:6px; background:#3dc1da; transform:scaleX(0); transform-origin:0 100%; }
+#droneWidget .demo:after { left:19%; width:66%; }
+#droneWidget .demo.s--processing { background-color:#53e2c2; transition-delay:4.6s; }
+#droneWidget .demo.s--processing:before, #droneWidget .demo.s--processing:after { transform:scaleX(1); background-color:#36d09d; }
+#droneWidget .demo.s--processing:before { transition:transform 0.6s 1.4s, background-color 1s 4.6s; }
+#droneWidget .demo.s--processing:after { transition:transform 2.417s 2.4s, background-color 1s 4.6s; }
+#droneWidget .demo.s--reverting { background-color:#61d4f1; transition:background-color 0.5s 0.96s; }
+#droneWidget .demo.s--reverting:before, #droneWidget .demo.s--reverting:after { opacity:0; }
+#droneWidget .demo svg { overflow:visible; fill:none; stroke-linejoin:round; }
+#droneWidget .demo-transitionend-listener { transition:opacity 6.6s; }
+#droneWidget .demo.s--processing .demo-transitionend-listener { opacity:0; }
+#droneWidget .demo__revert-line { position:absolute; left:5%; bottom:100%; width:80%; height:6px; background:#53e2c2; transform-origin:0 50%; opacity:0; }
+#droneWidget .demo.s--reverting .demo__revert-line { opacity:1; transform:scaleX(0); transition:transform 0.864s; }
+#droneWidget .demo__drone-cont { position:absolute; left:0; top:0; width:100%; height:100%; }
+#droneWidget .demo__drone-cont--takeoff { z-index:-1; opacity:0; }
+#droneWidget .demo.s--processing .demo__drone-cont--takeoff { opacity:1; transform:translateY(-70px); transition:transform 0.8s, opacity 0.2s; transition-delay:1.2s; }
+#droneWidget .demo.s--processing .demo__drone-cont--shift-x { transition:transform 2.6s 2.4s; transform:translateX(160px); }
+#droneWidget .demo.s--processing .demo__drone-cont--landing { transform:translateY(24px); transition:transform 0.3s 5s; }
+#droneWidget .demo__drone { position:absolute; left:12px; top:-12px; width:56px; height:46px; stroke:#000; stroke-width:2px; fill:none; }
+@keyframes droneWidgetTilt { 8%,24%{transform:rotate(0)} 35%,70%{transform:rotate(8deg)} 85%{transform:rotate(-4deg)} 95%,100%{transform:rotate(0)} }
+#droneWidget .demo.s--processing .demo__drone { transform-origin:50% 100%; animation:droneWidgetTilt 3.8s 1.2s; }
+#droneWidget .demo.s--processing .demo__drone-leaving { transform:translate(150px,-150px) rotate(20deg) scale(0.3); opacity:0; transition:transform 1.1s 5.5s, opacity 0.55s 6.05s; }
+#droneWidget .demo__drone-arm { --rotation:0deg; transform-origin:68px 56px; transform:rotate(var(--rotation)); }
+#droneWidget .demo__drone-arm--2 { transform:scaleX(-1) rotate(var(--rotation)); }
+#droneWidget .demo.s--processing .demo__drone-arm { --rotation:25deg; transition:transform 0.3s 5.2s; }
+#droneWidget .demo__drone-green { fill:#61d4f1; }
+#droneWidget .demo.s--processing .demo__drone-green { fill:#53e2c2; transition:fill 1s 4.6s; }
+#droneWidget .demo__drone-yellow { fill:#ecb400; }
+#droneWidget .demo__drone-package { stroke-width:4px; }
+@keyframes droneWidgetRevert { 40%,45%{transform:translate(-320px,0)} 75%{transform:translate(-320px,-100px)} 100%{transform:translate(-320px,100px)} }
+#droneWidget .demo.s--reverting .demo__drone-package { opacity:0; transition:opacity 0s 2s; animation:droneWidgetRevert 2s; }
+#droneWidget .demo__circle { position:absolute; left:24px; top:50%; width:32px; height:32px; margin-top:-16px; border-radius:50%; background:#3dc1da; }
+#droneWidget .demo.s--processing .demo__circle { background-color:#53e2c2; transition:background-color 1s 4.6s; }
+#droneWidget .demo.s--reverting .demo__circle { background-color:#3dc1da; transition:background-color 0.5s 0.96s; }
+#droneWidget .demo__circle-inner { overflow:hidden; position:absolute; left:0; top:0; display:flex; justify-content:center; align-items:center; width:100%; height:100%; border-radius:inherit; }
+#droneWidget .demo__circle-package { width:11px; height:14px; stroke:#fff; stroke-width:3px; stroke-linecap:round; }
+#droneWidget .demo.s--processing .demo__circle-package { transform:translateY(-70px); transition:transform 0.8s 1.2s; }
+#droneWidget .demo.s--reverting .demo__circle-package { transform:translateY(0); transition:transform 0.16s 1.6s; }
+#droneWidget .demo__circle-grabbers { --grabY:0px; --grabRotate:0; position:absolute; left:0; top:0; width:100%; height:100%; }
+#droneWidget .demo__circle-grabbers:before, #droneWidget .demo__circle-grabbers:after { content:""; position:absolute; right:4px; top:-10px; width:11px; height:7px; border:2px solid #000; border-left:none; border-bottom:none; transform:translateY(var(--grabY)) rotate(var(--grabRotate)); transition:transform 0.8s; }
+#droneWidget .demo__circle-grabbers:before { right:auto; left:4px; transform:translateY(var(--grabY)) scaleX(-1) rotate(var(--grabRotate)); }
+@keyframes droneWidgetGrab { 40%,59.999%{--grabY:15px;--grabRotate:55deg} 60%,100%{--grabY:-55px;--grabRotate:55deg} }
+#droneWidget .demo.s--processing .demo__circle-grabbers { animation:droneWidgetGrab 2s forwards; }
+#droneWidget .demo__circle-progress { position:absolute; left:0; top:0; width:100%; height:100%; stroke:#fff; stroke-width:2px; }
+#droneWidget .demo__circle-progress-line { stroke-dasharray:125.68,125.68; stroke-dashoffset:125.68; }
+#droneWidget .demo.s--processing .demo__circle-progress-line { stroke-dashoffset:0; transition:all 0.5s 4.9s; }
+#droneWidget .demo.s--reverting .demo__circle-progress-line { stroke-dashoffset:125.68; transition:all 0.5s 0.96s; }
+#droneWidget .demo__circle-progress-checkmark { stroke-dasharray:21.21,21.21; stroke-dashoffset:21.21; }
+#droneWidget .demo.s--processing .demo__circle-progress-checkmark { stroke-dashoffset:0; transition:all 0.5s 4.9s; }
+#droneWidget .demo.s--reverting .demo__circle-progress-checkmark { stroke-dashoffset:21.21; transition:all 0.5s 0.96s; }
+#droneWidget .demo__text-fields { position:relative; width:100%; height:100%; color:#fff; font-size:15px; letter-spacing:1px; }
+#droneWidget .demo__text { position:absolute; left:0; top:0; display:flex; justify-content:center; align-items:center; width:100%; height:100%; opacity:0; transform:translateY(20px); pointer-events:none; }
+@keyframes droneWidgetText { 20%,80%{opacity:1;transform:translateY(0)} 100%{opacity:0;transform:translateY(-20px)} }
+#droneWidget .demo__text--step-0 { opacity:1; transform:translateY(0); }
+#droneWidget .demo.s--processing .demo__text { transition:all 0.4s; }
+#droneWidget .demo.s--processing .demo__text--step-0 { opacity:0; transform:translateY(-20px); }
+#droneWidget .demo.s--processing .demo__text--step-1 { animation:droneWidgetText 2s 0s; }
+#droneWidget .demo.s--processing .demo__text--step-2 { animation:droneWidgetText 2s 1.6s; }
+#droneWidget .demo.s--processing .demo__text--step-3 { animation:droneWidgetText 2s 3.2s; }
+#droneWidget .demo.s--processing .demo__text--step-4 { transition-delay:4.8s; transform:translateY(0); opacity:1; }
+#droneWidget .demo.s--reverting .demo__text--step-0 { opacity:1; transform:translateY(0); transition:all 0.4s 1s; }
+#droneWidget .demo.s--reverting .demo__text--step-4 { opacity:0; transform:translateY(20px); transition:all 0.4s 0.8s; }
+#droneWidget .demo__text-dots { letter-spacing:-0.5px; font-size:18px; }
+@keyframes droneWidgetDot { 10%,90%{opacity:0} 40%,60%{opacity:1} }
+#droneWidget .demo__text-dots span { opacity:0; animation:droneWidgetDot 1.2s 0.4s infinite; }
+#droneWidget .demo__text-dots:before, #droneWidget .demo__text-dots:after { content:"."; opacity:0; }
+#droneWidget .demo__text-dots:before { animation:droneWidgetDot 1.2s infinite; }
+#droneWidget .demo__text-dots:after { animation:droneWidgetDot 1.2s 0.8s infinite; }
+</style>
+
+<script>
+(function(){
+  const widget = document.getElementById('droneWidget');
+  const $demo  = widget.querySelector('.demo');
+  let processing = false;
+
+  function triggerAnimation() {
+    if (processing) return;
+    processing = true;
+
+    widget.style.opacity      = '1';
+    widget.style.transform    = 'scale(1)';
+    widget.style.pointerEvents= 'auto';
+
+    /* Отправляем пинг автосохранения */
+    fetch('/autosave', { method:'POST', credentials:'same-origin' })
+      .catch(function(e){ console.warn('Autosave error:', e); });
+
+    let reverting = false;
+    const $el = document.createElement('div');
+    $el.classList.add('demo-transitionend-listener');
+    $demo.appendChild($el);
+    $demo.offsetTop;
+    $demo.classList.add('s--processing');
+
+    $el.addEventListener('transitionend', function(){
+      if (reverting) return;
+      reverting = true;
+      $demo.classList.add('s--reverting');
+    });
+
+    setTimeout(function(){
+      $demo.removeChild($el);
+      $demo.classList.remove('s--processing', 's--reverting');
+      processing = false;
+      setTimeout(function(){
+        widget.style.opacity      = '0';
+        widget.style.transform    = 'scale(0.8)';
+        widget.style.pointerEvents= 'none';
+      }, 1000);
+    }, 10000);
+  }
+
+  /* Автосохранение каждые 60 секунд */
+  setInterval(triggerAnimation, 60000);
+})();
+</script>
+{# ═══ END DRONE AUTOSAVE ═══ #}
+
+</body>
+</html>

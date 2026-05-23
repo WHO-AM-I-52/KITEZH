@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="d-flex align-items-center mb-3">
+  <a href="{{ url_for('requests.index') }}" class="btn btn-sm btn-outline-secondary me-2">
+  <i class="bi bi-arrow-left"></i>
+</a>
+  <h5 class="mb-0" style="color:#1B5E7B"><i class="bi bi-bell me-1"></i>Уведомления</h5>
+</div>
+{% if not items %}
+<div class="text-center text-muted py-5">
+  <i class="bi bi-bell-slash" style="font-size:3rem"></i>
+  <p class="mt-2">Нет уведомлений</p>
+</div>
+{% else %}
+<div class="list-group">
+{% for n in items %}
+<a href="{{ n.link or '#' }}" class="list-group-item list-group-item-action {{ '' if n.is_read else 'list-group-item-warning' }}">
+  <div class="d-flex justify-content-between">
+    <span>{% if not n.is_read %}<i class="bi bi-circle-fill text-danger me-1" style="font-size:8px"></i>{% endif %}
+    {{ n.message }}</span>
+    <small class="text-muted ms-3 text-nowrap">{{ n.created_at }}</small>
+  </div>
+</a>
+{% endfor %}
+</div>
+{% endif %}
+{% endblock %}

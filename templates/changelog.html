@@ -1,0 +1,209 @@
+{% extends 'base.html' %}
+
+{% block content %}
+
+<style>
+  .version-current .card-header { background: #1B5E7B !important; color: #fff !important; }
+  .version-next    .card-header { background: #0d6efd !important; color: #fff !important; }
+  .version-done    .card-header { background: #f0f0f0; }
+  .version-planned .card-header { background: #f0f4f8; }
+
+  details > summary {
+    cursor: pointer;
+    user-select: none;
+    padding: 10px 16px;
+    border-radius: 8px;
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    font-weight: 600;
+    color: #495057;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+  details > summary::-webkit-details-marker { display: none; }
+  details > summary::before {
+    content: '▶';
+    font-size: 11px;
+    transition: transform 0.2s;
+    display: inline-block;
+    flex-shrink: 0;
+  }
+  details[open] > summary::before { transform: rotate(90deg); }
+  details > summary:hover { background: #e9ecef; }
+  details .spoiler-content { padding-top: 12px; }
+
+  .timeline-divider {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 20px 0;
+    color: #adb5bd;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  .timeline-divider::before,
+  .timeline-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: #dee2e6;
+  }
+</style>
+
+{# ── Карточка "О программе" ── #}
+<div class="card mb-4 p-3" style="border-left:4px solid #1B5E7B">
+  <div class="d-flex align-items-center gap-3">
+    <div><i class="bi bi-person-circle" style="font-size:2.5rem;color:#1B5E7B"></i></div>
+    <div>
+      <div class="fw-bold" style="color:#1B5E7B;font-size:15px">О программе</div>
+      <div style="font-size:13px">Система подбора земельных участков для инвестиционных проектов<br>Нижегородская область</div>
+      <div class="mt-1" style="font-size:12px;color:#666">
+        <strong>Разработчик: Солдатов Антон Алексеевич</strong>&nbsp;
+        <a href="https://t.me/whoami52" target="_blank" rel="noopener noreferrer"
+           style="color:#229ED9;text-decoration:none;font-weight:600">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+               fill="#229ED9" style="vertical-align:middle;margin-bottom:2px">
+            <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L8.32 13.617l-2.96-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.828.942z"/>
+          </svg> whoami52
+        </a>
+      </div>
+      <div class="mt-1">
+        <span class="badge" style="background:#1B5E7B">v{{ app_version }}</span>
+        <span class="text-muted ms-2" style="font-size:11px">Текущая версия</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── Заголовок ── #}
+<div class="d-flex align-items-center mb-4 gap-3">
+  <a href="{{ url_for('requests.index') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left"></i>
+  </a>
+  <h5 class="mb-0" style="color:#1B5E7B">
+    <i class="bi bi-clock-history me-1"></i> Журнал версий &amp; Дорожная карта
+  </h5>
+</div>
+
+{% set done_items    = roadmap | selectattr('status','eq','done')    | list %}
+{% set planned_items = roadmap | selectattr('status','eq','planned') | list %}
+{% set next_item     = planned_items[0] if planned_items else none %}
+{% set future_items  = planned_items[1:] if planned_items|length > 1 else [] %}
+
+<div style="max-width:760px">
+
+  {# ── 1. Спойлер: история версий (все changelog кроме первого) ── #}
+  {% if changelog|length > 1 %}
+  <details class="mb-3">
+    <summary>
+      <i class="bi bi-archive" style="color:#6c757d"></i>
+      История версий
+      <span class="badge bg-secondary ms-auto" style="font-size:11px">{{ changelog|length - 1 }}</span>
+    </summary>
+    <div class="spoiler-content">
+      {% for v in changelog[1:] %}
+      <div class="card mb-3 version-done">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <strong>Версия {{ v.version }}</strong>
+          <span class="small text-muted">{{ v.date }}</span>
+        </div>
+        <ul class="list-group list-group-flush">
+          {% for c in v.changes %}
+          <li class="list-group-item" style="font-size:14px">
+            <i class="bi bi-check2 text-success me-1"></i> {{ c }}
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endfor %}
+    </div>
+  </details>
+  {% endif %}
+
+  {# ── 2. Текущая версия ── #}
+  {% if changelog %}
+  {% set cur = changelog[0] %}
+  <div class="card mb-3 version-current">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <div class="d-flex align-items-center gap-2">
+        <strong>Версия {{ cur.version }}</strong>
+        <span class="badge bg-warning text-dark" style="font-size:10px">Текущая</span>
+      </div>
+      <span class="small opacity-75">{{ cur.date }}</span>
+    </div>
+    <ul class="list-group list-group-flush">
+      {% for c in cur.changes %}
+      <li class="list-group-item" style="font-size:14px">
+        <i class="bi bi-check2 text-success me-1"></i> {{ c }}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {# ── разделитель ── #}
+  <div class="timeline-divider">в планах</div>
+
+  {# ── 3. Следующая версия ── #}
+  {% if next_item %}
+  <div class="card mb-3 version-next">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <div class="d-flex align-items-center gap-2">
+        <span class="badge bg-warning text-dark" style="font-size:10px">Следующая</span>
+        <span class="badge" style="background:rgba(255,255,255,0.25);font-size:12px">{{ next_item.version }}</span>
+        <strong style="font-size:15px">{{ next_item.title }}</strong>
+      </div>
+      <span class="badge" style="background:#cce5ff;color:#004085;font-size:11px">
+        <i class="bi bi-hourglass-split me-1"></i> В плане
+      </span>
+    </div>
+    <ul class="list-group list-group-flush">
+      {% for point in next_item.points %}
+      <li class="list-group-item" style="font-size:14px;color:#495057">
+        <i class="bi bi-arrow-right me-1" style="color:#adb5bd"></i> {{ point }}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {# ── 4. Спойлер: будущие планы ── #}
+  {% if future_items %}
+  <details class="mb-3">
+    <summary>
+      <i class="bi bi-map" style="color:#1B5E7B"></i>
+      Планы на будущее
+      <span class="badge bg-secondary ms-auto" style="font-size:11px">{{ future_items|length }}</span>
+    </summary>
+    <div class="spoiler-content">
+      {% for item in future_items %}
+      <div class="card mb-3 version-planned">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <div class="d-flex align-items-center gap-2">
+            <span class="badge" style="background:#1B5E7B;font-size:12px">{{ item.version }}</span>
+            <strong style="color:#1a2a3a;font-size:15px">{{ item.title }}</strong>
+          </div>
+          <span class="badge" style="background:#fff3cd;color:#856404;font-size:11px">
+            <i class="bi bi-hourglass-split me-1"></i> Запланировано
+          </span>
+        </div>
+        <ul class="list-group list-group-flush">
+          {% for point in item.points %}
+          <li class="list-group-item" style="font-size:14px;color:#495057">
+            <i class="bi bi-arrow-right me-1" style="color:#adb5bd"></i> {{ point }}
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endfor %}
+    </div>
+  </details>
+  {% endif %}
+
+</div>
+{% endblock %}

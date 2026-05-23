@@ -1,0 +1,367 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+<style>
+  .navbar, footer, .footer, nav { display: none !important; }
+  body {
+    overflow: hidden !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    height: 100vh;
+    font-family: 'Segoe UI', sans-serif;
+  }
+
+  #login-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background:
+      linear-gradient(rgba(0,0,0,0.70), rgba(0,0,0,0.70)),
+      url("{{ url_for('static', filename='bg_korporation.jpg') }}") center/cover no-repeat;
+    background-color: #121417;
+  }
+
+  .lamp-area {
+    position: fixed;
+    top: -30px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    z-index: 10001;
+  }
+
+  .lamp-wire { width: 2px; height: 20px; background: linear-gradient(#777, #555); }
+
+  .lamp-shade {
+    width: 100px; height: 50px;
+    background: linear-gradient(160deg, #c0c0c0 0%, #e5e5e5 50%, #a8a8a8 100%);
+    border-radius: 50% 50% 12px 12px / 30px 30px 12px 12px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+    transition: background 0.5s, box-shadow 0.5s;
+    position: relative;
+  }
+
+  .lamp-shade::before {
+    content: '';
+    position: absolute;
+    top: 8px; left: 18px;
+    width: 30px; height: 12px;
+    background: rgba(255,255,255,0.35);
+    border-radius: 50%;
+    transform: rotate(-20deg);
+  }
+
+  .lamp-bulb {
+    width: 22px; height: 22px;
+    background: #888;
+    border-radius: 50%;
+    margin-top: -3px;
+    transition: background 0.4s, box-shadow 0.4s;
+    transition-delay: 0.1s;
+  }
+
+  .lamp-string {
+    width: 28px; height: 65px;
+    cursor: grab;
+    position: relative;
+    display: flex;
+    justify-content: center;
+    transform-origin: top center;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .lamp-string:active { cursor: grabbing; }
+
+  .lamp-string::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 50%;
+    transform: translateX(-50%);
+    width: 2px; height: 100%;
+    background: linear-gradient(#888, #666);
+  }
+
+  .lamp-string::after {
+    content: '';
+    position: absolute;
+    bottom: -6px; left: 50%;
+    transform: translateX(-50%);
+    width: 12px; height: 12px;
+    background: radial-gradient(circle at 35% 35%, #d4b278, #8a6a30);
+    border-radius: 50%;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+  }
+
+  .lamp-string:hover::before { background: linear-gradient(#aaa, #888); }
+  .lamp-string:hover::after  { background: radial-gradient(circle at 35% 35%, #e8c98a, #a07a3a); }
+
+  .lamp-hint {
+    position: fixed;
+    top: 135px; left: 50%;
+    transform: translateX(-50%);
+    color: rgba(255,255,255,0.45);
+    font-size: 10px; font-weight: 700;
+    letter-spacing: 3px; text-transform: uppercase;
+    white-space: nowrap; pointer-events: none;
+    transition: opacity 0.4s; z-index: 10002;
+  }
+
+  .lamp-light {
+    position: fixed;
+    top: 90px; left: 50%;
+    transform: translateX(-50%);
+    width: 0; height: 0;
+    border-left: 520px solid transparent;
+    border-right: 520px solid transparent;
+    border-bottom: 950px solid rgba(255,215,80,0.10);
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.5s ease;
+    z-index: 10000;
+  }
+
+  .lamp-area[data-on="true"] .lamp-shade {
+    background: linear-gradient(160deg, #fff8e1 0%, #ffffff 50%, #ffe082 100%);
+    box-shadow: 0 0 50px 20px rgba(255,224,102,0.45), 0 6px 20px rgba(0,0,0,0.3);
+  }
+
+  .lamp-area[data-on="true"] .lamp-bulb {
+    background: #ffe066;
+    box-shadow: 0 0 18px 8px rgba(255,224,102,0.75);
+    transition-delay: 0s;
+  }
+
+  .login-card {
+    background: rgba(14, 20, 28, 0.78);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    padding: 40px 36px 32px;
+    border-radius: 24px;
+    border: 1px solid rgba(255,255,255,0.08);
+    width: 320px; color: #fff;
+    opacity: 0; visibility: hidden;
+    transform: translateY(30px) scale(0.96);
+    pointer-events: none;
+    transition: opacity 0.55s cubic-bezier(0.4,0,0.2,1),
+                transform 0.55s cubic-bezier(0.4,0,0.2,1),
+                visibility 0.55s;
+    position: relative; z-index: 10002;
+    margin-top: 30px;
+    box-shadow: 0 30px 70px rgba(0,0,0,0.65), inset 0 1px 0 rgba(255,255,255,0.08);
+  }
+
+  .login-card::before {
+    content: "";
+    position: absolute; top: 0; left: 0; right: 0; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,200,80,0.3), transparent);
+    border-radius: 24px 24px 0 0;
+  }
+
+  .login-card.active { opacity: 1; visibility: visible; transform: translateY(0) scale(1); pointer-events: all; }
+
+  .login-card h2 {
+    text-align: center; margin: 0 0 4px;
+    font-size: 24px; font-weight: 700; letter-spacing: 0.5px;
+  }
+
+  .login-card h2 span { color: #e6c87e; }
+
+  .login-subtitle {
+    text-align: center;
+    color: rgba(255,255,255,0.35);
+    font-size: 11px; letter-spacing: 0.5px; line-height: 1.5;
+    margin-bottom: 28px;
+  }
+
+  .flash-error {
+    background: rgba(220,53,69,0.18);
+    border: 1px solid rgba(220,53,69,0.4);
+    border-radius: 10px; color: #ffb3b3;
+    font-size: 12px; padding: 8px 12px;
+    margin-bottom: 16px; text-align: center;
+  }
+
+  .lf-group { margin-bottom: 18px; }
+
+  .lf-group label {
+    display: block; margin-bottom: 6px;
+    color: rgba(255,255,255,0.45); font-size: 11px;
+    font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  }
+
+  .lf-group input {
+    width: 100%; padding: 11px 14px;
+    border: 1.5px solid rgba(255,255,255,0.1);
+    border-radius: 12px; font-size: 14px;
+    background: rgba(255,255,255,0.05); color: #fff;
+    transition: border-color 250ms, box-shadow 250ms, background 250ms;
+    box-sizing: border-box;
+  }
+
+  .lf-group input::placeholder { color: rgba(255,255,255,0.2); }
+
+  .lf-group input:focus {
+    outline: none;
+    border-color: rgba(230,200,126,0.6);
+    box-shadow: 0 0 12px rgba(230,200,126,0.15);
+    background: rgba(255,255,255,0.08);
+  }
+
+  .lf-btn {
+    width: 100%; padding: 13px; border: none;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #e6c87e 0%, #b39346 100%);
+    color: #2a1a00; font-size: 13px; font-weight: 800;
+    cursor: pointer; letter-spacing: 2px; text-transform: uppercase;
+    transition: all 250ms ease; margin-top: 8px;
+  }
+
+  .lf-btn:hover {
+    background: linear-gradient(135deg, #f0d48a 0%, #c8a84e 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(198,163,70,0.4);
+  }
+
+  .lf-btn:active { transform: translateY(0); }
+
+  .lf-footer {
+    text-align: center; margin-top: 20px;
+    color: rgba(255,255,255,0.18);
+    font-size: 11px; letter-spacing: 0.5px; line-height: 1.6;
+  }
+
+  @keyframes lampSwing {
+    0%   { transform: translateX(-50%) rotate(0deg); }
+    20%  { transform: translateX(-50%) rotate(3deg); }
+    50%  { transform: translateX(-50%) rotate(-2deg); }
+    75%  { transform: translateX(-50%) rotate(1deg); }
+    100% { transform: translateX(-50%) rotate(0deg); }
+  }
+
+  .lamp-area.swing { animation: lampSwing 0.8s ease-out; }
+</style>
+
+<div id="login-overlay">
+  <div class="lamp-area" id="lampGroup">
+    <div class="lamp-wire"></div>
+    <div class="lamp-shade"></div>
+    <div class="lamp-bulb"></div>
+    <div class="lamp-string" id="lampString" title="Потяните за верёвку вниз"></div>
+  </div>
+
+  <div class="lamp-light" id="lampLight"></div>
+  <div class="lamp-hint" id="lampHint">потяните за верёвку</div>
+
+  <div class="login-card" id="loginCard">
+    <h2>Invest<span>Land</span></h2>
+    <p class="login-subtitle">Инвестиционный земельный модуль<br>Нижегородской области</p>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="flash-error">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    <form method="POST" action="{{ url_for('auth.login') }}">
+      <div class="lf-group">
+        <label for="username">Логин</label>
+        <input type="text" id="username" name="username" placeholder="Введите логин" required autofocus>
+      </div>
+      <div class="lf-group">
+        <label for="password">Пароль</label>
+        <input type="password" id="password" name="password" placeholder="Введите пароль" required>
+      </div>
+      <button type="submit" class="lf-btn">Войти</button>
+    </form>
+
+    <div class="lf-footer">
+      InvestLand &nbsp;&mdash;&nbsp; Нижегородская область<br>
+      v{{ app_version }}
+    </div>
+  </div>
+</div>
+
+<script>
+  let isOn = false;
+  const lampGroup  = document.getElementById('lampGroup');
+  const loginCard  = document.getElementById('loginCard');
+  const lampLight  = document.getElementById('lampLight');
+  const lampHint   = document.getElementById('lampHint');
+  const lampString = document.getElementById('lampString');
+
+  const PULL_THRESHOLD = 40;
+  const PULL_MAX       = 70;
+
+  let dragStartY  = null;
+  let isDragging  = false;
+  let currentPull = 0;
+
+  function triggerLamp() {
+    isOn = !isOn;
+    lampGroup.setAttribute('data-on', isOn);
+    lampGroup.classList.remove('swing');
+    void lampGroup.offsetWidth;
+    lampGroup.classList.add('swing');
+
+    gsap.killTweensOf(lampString);
+    gsap.to(lampString, {
+      scaleY: 1.30, duration: 0.13, ease: 'power2.in',
+      yoyo: true, repeat: 1,
+      onComplete: () => gsap.to(lampString, { scaleY: 1, duration: 0.35, ease: 'elastic.out(1.2, 0.4)' })
+    });
+
+    if (isOn) {
+      loginCard.classList.add('active');
+      lampHint.style.opacity = '0';
+      gsap.to(lampLight, { opacity: 1, duration: 0.5, ease: 'power2.out' });
+    } else {
+      loginCard.classList.remove('active');
+      lampHint.style.opacity = '1';
+      gsap.to(lampLight, { opacity: 0, duration: 0.35 });
+    }
+  }
+
+  function onDragStart(e) {
+    isDragging  = true;
+    dragStartY  = e.type === 'touchstart' ? e.touches[0].clientY : e.clientY;
+    currentPull = 0;
+    e.preventDefault();
+  }
+
+  function onDragMove(e) {
+    if (!isDragging) return;
+    const clientY = e.type === 'touchmove' ? e.touches[0].clientY : e.clientY;
+    const delta   = Math.max(0, clientY - dragStartY);
+    currentPull   = delta;
+    const stretch = Math.min(delta, PULL_MAX);
+    gsap.to(lampString, { scaleY: 1 + stretch / 65, duration: 0.05, ease: 'none' });
+    e.preventDefault();
+  }
+
+  function onDragEnd() {
+    if (!isDragging) return;
+    isDragging = false;
+    gsap.to(lampString, { scaleY: 1, duration: 0.45, ease: 'elastic.out(1.3, 0.4)' });
+    if (currentPull >= PULL_THRESHOLD) triggerLamp();
+    currentPull = 0;
+  }
+
+  lampString.addEventListener('mousedown',  onDragStart, { passive: false });
+  document.addEventListener('mousemove',    onDragMove,  { passive: false });
+  document.addEventListener('mouseup',      onDragEnd);
+  lampString.addEventListener('touchstart', onDragStart, { passive: false });
+  document.addEventListener('touchmove',    onDragMove,  { passive: false });
+  document.addEventListener('touchend',     onDragEnd);
+
+  {% if get_flashed_messages() %}
+  window.addEventListener('DOMContentLoaded', triggerLamp);
+  {% endif %}
+</script>
+{% endblock %}

@@ -1,0 +1,203 @@
+{% extends 'base.html' %}
+{% block content %}
+<style>
+  .nav-tabs .nav-link { color: #1B5E7B !important; font-weight: 500; }
+  .nav-tabs .nav-link.active { color: #111 !important; font-weight: 600; background:#fff; }
+</style>
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="mb-0" style="color:#1B5E7B"><i class="bi bi-tags me-1"></i>Справочники</h5>
+</div>
+
+<ul class="nav nav-tabs mb-3" id="classTab">
+  <li class="nav-item">
+    <a class="nav-link active" data-bs-toggle="tab" href="#tab-lf">
+      <i class="bi bi-building me-1"></i>Правовые формы
+      <span class="badge bg-secondary ms-1">{{ legal_forms|length }}</span>
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" data-bs-toggle="tab" href="#tab-di">
+      <i class="bi bi-geo-alt me-1"></i>Районы НО
+      <span class="badge bg-secondary ms-1">{{ districts|length }}</span>
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" data-bs-toggle="tab" href="#tab-src">
+      <i class="bi bi-funnel me-1"></i>Источники обращений
+      <span class="badge bg-secondary ms-1">{{ source_types|length }}</span>
+    </a>
+  </li>
+    <li class="nav-item">
+    <a class="nav-link" data-bs-toggle="tab" href="#tab-okved">
+      <i class="bi bi-list-ul me-1"></i>ОКВЭД
+      <span class="badge bg-secondary ms-1">{{ okved_total }}</span>
+    </a>
+  </li>
+</ul>
+
+<div class="tab-content">
+
+  {# ===== ПРАВОВЫЕ ФОРМЫ / РАЙОНЫ / ИСТОЧНИКИ ===== #}
+  {% for tab_id, tab_label, tab_cat, tab_items in [
+      ('lf','Правовые формы','legal_form', legal_forms),
+      ('di','Районы НО','district', districts),
+      ('src','Источники обращений','source_type', source_types)] %}
+  <div class="tab-pane fade {{ 'show active' if loop.first }}" id="tab-{{ tab_id }}">
+    <div class="row g-3">
+      <div class="col-md-5">
+        <div class="card p-3">
+          <h6 class="mb-3" style="color:#1B5E7B">
+            <i class="bi bi-plus-circle me-1"></i>Добавить значение
+          </h6>
+          <form method="post" action="{{ url_for('admin.classifiers') }}">
+            <input type="hidden" name="action" value="add">
+            <input type="hidden" name="category" value="{{ tab_cat }}">
+            <div class="input-group">
+              <input type="text" name="value" class="form-control form-control-sm"
+                     placeholder="Новое значение..." required>
+              <button class="btn btn-sm btn-primary">
+                <i class="bi bi-plus-lg"></i> Добавить
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+      <div class="col-md-7">
+        <div class="card p-3">
+          <h6 class="mb-2" style="color:#1B5E7B">
+            <i class="bi bi-list-ul me-1"></i>Текущие значения
+          </h6>
+          <div style="max-height:420px;overflow-y:auto">
+            <table class="table table-sm table-hover mb-0" style="font-size:12px">
+              <thead>
+                <tr>
+                  <th style="background:#f8f9fa">#</th>
+                  <th style="background:#f8f9fa">Значение</th>
+                  <th style="background:#f8f9fa" class="text-end">Действия</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for item in tab_items %}
+                <tr>
+                  <td class="text-muted">{{ loop.index }}</td>
+                  <td>
+                    <form method="post" class="d-flex gap-1 align-items-center"
+                          action="{{ url_for('admin.classifiers') }}">
+                      <input type="hidden" name="action" value="rename">
+                      <input type="hidden" name="cid" value="{{ item.id }}">
+                      <input type="text" name="value" class="form-control form-control-sm py-0"
+                             value="{{ item.value }}" style="min-width:0">
+                      <button class="btn btn-sm btn-outline-secondary py-0 px-2"
+                              title="Сохранить">
+                        <i class="bi bi-check-lg"></i>
+                      </button>
+                    </form>
+                  </td>
+                  <td class="text-end">
+                    <form method="post" class="d-inline"
+                          action="{{ url_for('admin.classifiers') }}"
+                          onsubmit="return confirm('Удалить значение?')">
+                      <input type="hidden" name="action" value="delete">
+                      <input type="hidden" name="cid" value="{{ item.id }}">
+                      <button class="btn btn-sm btn-outline-danger py-0 px-2">
+                        <i class="bi bi-trash"></i>
+                      </button>
+                    </form>
+                  </td>
+                </tr>
+                {% else %}
+                <tr>
+                  <td colspan="3" class="text-center text-muted py-3">
+                    Нет значений
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+  
+  <!-- ===== ВКЛАДКА ОКВЭД ===== -->
+  <div class="tab-pane fade" id="tab-okved">
+    <div class="row g-3 mt-2">
+
+      <div class="col-md-5">
+        <div class="card p-3">
+          <h6 class="mb-3" style="color:#1B5E7B">
+            <i class="bi bi-info-circle me-1"></i>Статус классификатора ОКВЭД
+          </h6>
+          <p class="mb-1" style="font-size:13px">
+            Всего записей: <strong>{{ okved_total }}</strong>
+          </p>
+          <p class="mb-2 text-muted" style="font-size:13px">
+            Последнее обновление: <strong>{{ okved_last_sync }}</strong>
+          </p>
+          <p class="mb-0 text-muted" style="font-size:12px">
+            При загрузке нового файла текущий классификатор полностью заменяется.
+          </p>
+
+          {# ── КНОПКА СИНХРОНИЗАЦИИ С ФНС «МОЙ ОКВЭД» ── #}
+          <hr class="my-3">
+          <form action="{{ url_for('okved.okved_sync_my_okved') }}" method="post"
+                onsubmit="return confirm('Обновить справочник ОКВЭД из ФНС? Текущие данные будут перезаписаны.');">
+            <button type="submit" class="btn btn-sm btn-outline-primary">
+              <i class="bi bi-arrow-repeat"></i> Обновить из ФНС «Мой ОКВЭД»
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <div class="col-md-7">
+        <div class="card p-3">
+          <h6 class="mb-3" style="color:#1B5E7B">
+            <i class="bi bi-upload me-1"></i>Загрузка файла ОКВЭД
+          </h6>
+          <form action="{{ url_for('okved.okved_upload') }}" method="post" enctype="multipart/form-data">
+            <div class="mb-2">
+              <label class="form-label fw-bold" style="font-size:12px">
+                CSV-файл с классификатором ОКВЭД
+              </label>
+              <input type="file" name="file" class="form-control form-control-sm" accept=".csv">
+              <div class="form-text" style="font-size:11px">
+                Ожидается CSV в кодировке UTF-8, разделитель «;». Колонки: код; наименование; parent_code (опционально).
+              </div>
+            </div>
+            <button type="submit" class="btn btn-sm btn-primary">
+              <i class="bi bi-upload"></i> Загрузить и заменить классификатор
+            </button>
+          </form>
+        </div>
+      </div>
+
+    </div>
+  </div>
+  
+</div>
+
+<div class="card mt-4 p-3 border-warning">
+  <h6 class="mb-2 text-warning">
+    <i class="bi bi-bell-fill me-1"></i>Уведомления об обязательных полях
+  </h6>
+  <p class="small text-muted mb-2">
+    Если в форме обращения появляется новое обязательное поле — администратор получает
+    уведомления по всем карточкам, где оно не заполнено. Уведомления отображаются
+    в разделе <a href="{{ url_for('misc.notifications') }}">Уведомления</a>.
+  </p>
+  <div class="alert alert-light border small mb-0 p-2">
+    <strong>Текущие обязательные поля:</strong>
+    <ul class="mb-0 mt-1">
+      <li>Дата обращения</li>
+      <li>Источник обращения</li>
+      <li>Полное наименование заявителя</li>
+      <li>Контактный телефон</li>
+      <li>Название проекта</li>
+      <li>Объём инвестиций</li>
+      <li>Количество рабочих мест</li>
+    </ul>
+  </div>
+</div>
+{% endblock %}

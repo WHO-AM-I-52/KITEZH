@@ -1,0 +1,274 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="mb-0" style="color:#1B5E7B"><i class="bi bi-list-ul me-1"></i>Обращения на подбор ЗУ</h5>
+  <a href="{{ url_for('requests.new_request') }}" class="btn btn-sm" style="background:#1B5E7B;color:#fff">
+    <i class="bi bi-plus-lg"></i> Новое обращение
+  </a>
+</div>
+
+{# ===== МИНИ-KPI СТРОКА ===== #}
+<div class="row g-2 mb-3">
+  {% for label,val,color,icon in [
+    ('Всего',dash.total,'#1B5E7B','bi-inbox'),
+    ('Черновик',dash.draft,'#6c757d','bi-pencil-square'),
+    ('На проверке',dash.review,'#fd7e14','bi-hourglass-split'),
+    ('В работе',dash.accepted,'#0d6efd','bi-briefcase'),
+    ('Отвечено',dash.answered,'#198754','bi-check2-circle'),
+    ('Просрочено',dash.kpi.overdue_active,'#dc3545','bi-exclamation-triangle')] %}
+  <div class="col-6 col-sm-4 col-md-2">
+    <div class="card py-2 px-3" style="border-left:4px solid {{color}}">
+      <div class="d-flex align-items-center gap-2">
+        <i class="bi {{icon}}" style="font-size:1.2rem;color:{{color}}"></i>
+        <div>
+          <div class="fw-bold fs-5" style="color:{{color}};line-height:1">{{val}}</div>
+          <div class="text-muted" style="font-size:10px">{{label}}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{# ===== БЫСТРЫЕ ФИЛЬТРЫ ===== #}
+{% if saved_filter_list %}
+<div class="mb-3 quick-filter-bar">
+  <div class="d-flex align-items-center gap-2 flex-wrap">
+    <span class="text-muted small fw-bold text-nowrap">
+      <i class="bi bi-bookmark-star me-1"></i>Быстрые фильтры:
+    </span>
+    <a href="{{ url_for('requests.index') }}"
+       class="btn btn-sm {{ 'btn-secondary' if not active_filter_id else 'btn-outline-secondary' }}">
+      <i class="bi bi-x-circle"></i> Сбросить
+    </a>
+    {% for sf in saved_filter_list %}
+    <a href="{{ url_for('admin.apply_saved_filter', fid=sf.id) }}"
+       class="btn btn-sm {{ 'btn-primary' if active_filter_id==sf.id|string else 'btn-outline-primary' }}"
+       title="{{ sf.description or sf.name }}">
+      <i class="bi bi-bookmark-fill me-1"></i>{{ sf.name }}
+    </a>
+    {% endfor %}
+    <a href="{{ url_for('admin.saved_filters') }}" class="btn btn-sm btn-outline-secondary ms-1" title="Управление фильтрами">
+      <i class="bi bi-gear"></i>
+    </a>
+  </div>
+</div>
+{% endif %}
+
+{# ===== ФИЛЬТРЫ ===== #}
+<form class="row g-2 mb-2 align-items-end" method="get">
+  {% if active_filter_id %}
+  <input type="hidden" name="active_filter" value="{{ active_filter_id }}">
+  {% endif %}
+  <div class="col-md-2">
+    <label class="form-label mb-1" style="font-size:12px">Дата с</label>
+    <input type="date" name="date_from" class="form-control form-control-sm"
+           value="{{ filters.get('date_from','') }}">
+  </div>
+  <div class="col-md-2">
+    <label class="form-label mb-1" style="font-size:12px">Дата по</label>
+    <input type="date" name="date_to" class="form-control form-control-sm"
+           value="{{ filters.get('date_to','') }}">
+  </div>
+  <div class="col-md-2">
+    <label class="form-label mb-1" style="font-size:12px">Статус</label>
+    <select name="status" class="form-select form-select-sm">
+      <option value="">Все</option>
+      {% for v,l in [('draft','Черновик'),('review','На проверке'),
+                     ('accepted','В работе'),('answered','Отвечено')] %}
+      <option value="{{ v }}" {{ 'selected' if filters.get('status')==v }}>{{ l }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-2">
+    <label class="form-label mb-1" style="font-size:12px">Заявитель</label>
+    <input type="text" name="applicant" class="form-control form-control-sm"
+           value="{{ filters.get('applicant','') }}">
+  </div>
+  <div class="col-md-3">
+    <label class="form-label mb-1" style="font-size:12px">Поиск по тексту</label>
+    <input type="text" name="search" class="form-control form-control-sm"
+           placeholder="Проект, контакты, район, примечания..."
+           value="{{ filters.get('search','') }}">
+  </div>
+  <div class="col-md-2">
+    <label class="form-label mb-1" style="font-size:12px">Ответственный</label>
+    <select name="employee" class="form-select form-select-sm">
+      <option value="">Все</option>
+      {% for e in employees %}
+      <option value="{{ e.id }}"
+        {{ 'selected' if filters.get('employee')==e.id|string }}>{{ e.full_name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-2 d-flex gap-1">
+    <button class="btn btn-sm btn-primary w-100">
+      <i class="bi bi-search"></i> Найти
+    </button>
+    <a href="{{ url_for('requests.index') }}" class="btn btn-sm btn-outline-secondary">✕</a>
+  </div>
+</form>
+
+{# ===== БЫСТРЫЕ РЕЖИМЫ ===== #}
+<div class="mb-2 d-flex flex-wrap gap-2 align-items-center">
+  <span class="text-muted small">
+    <i class="bi bi-lightning-charge me-1"></i>Быстрый режим:
+  </span>
+  <a href="{{ url_for('requests.index') }}"
+     class="btn btn-sm {{ 'btn-secondary' if not active_quick else 'btn-outline-secondary' }}">
+    <i class="bi bi-x-circle"></i> Все
+  </a>
+  <a href="{{ url_for('requests.index', quick='mine') }}"
+     class="btn btn-sm {{ 'btn-primary' if active_quick=='mine' else 'btn-outline-primary' }}">
+    <i class="bi bi-person-badge"></i> Мои
+  </a>
+  <a href="{{ url_for('requests.index', quick='overdue') }}"
+     class="btn btn_sm {{ 'btn-danger' if active_quick=='overdue' else 'btn-outline-danger' }}">
+    <i class="bi bi-exclamation-triangle"></i> Просроченные
+  </a>
+  <a href="{{ url_for('requests.index', quick='unassigned') }}"
+     class="btn btn-sm {{ 'btn-warning' if active_quick=='unassigned' else 'btn-outline-warning' }}">
+    <i class="bi bi-question-circle"></i> Без ответственного
+  </a>
+  <a href="{{ url_for('requests.index', quick='favorites') }}"
+     class="btn btn-sm {{ 'btn-warning' if active_quick=='favorites' else 'btn-outline-warning' }}">
+    <i class="bi bi-star"></i> Избранные
+  </a>
+</div>
+
+<div class="mb-2 d-flex gap-2 align-items-center">
+  <a href="{{ url_for('report.report',
+                      date_from=filters.get('date_from',''),
+                      date_to=filters.get('date_to',''),
+                      status=filters.get('status','')) }}"
+     class="btn btn-sm btn-success">
+    <i class="bi bi-file-earmark-excel"></i> Выгрузить Excel
+  </a>
+  <a href="{{ url_for('requests.dashboard') }}" class="btn btn-sm btn-outline-primary">
+    <i class="bi bi-bar-chart-line"></i> Открыть дашборд
+  </a>
+  {% if active_filter_id %}
+  <span class="badge bg-primary">
+    <i class="bi bi-funnel-fill me-1"></i>Активный фильтр
+    <a href="{{ url_for('requests.index') }}" class="text-white ms-1">✕</a>
+  </span>
+  {% endif %}
+</div>
+
+{# ===== ТАБЛИЦА ===== #}
+<div class="table-responsive">
+  <table class="table table-hover table-bordered align-middle mb-0" style="font-size:12px">
+    <thead>
+      <tr>
+        <th style="background:#1B5E7B;color:#fff;width:32px"></th>  {# колонка под звезду #}
+        <th style="background:#1B5E7B;color:#fff">№</th>
+        <th style="background:#1B5E7B;color:#fff">Дата</th>
+        <th style="background:#1B5E7B;color:#fff">Статус</th>
+        <th style="background:#1B5E7B;color:#fff">Источник</th>
+        <th style="background:#1B5E7B;color:#fff">Заявитель</th>
+        <th style="background:#1B5E7B;color:#fff">Проект</th>
+        <th style="background:#1B5E7B;color:#fff">Инв.(млн)</th>
+        <th style="background:#1B5E7B;color:#fff">Га</th>
+        <th style="background:#1B5E7B;color:#fff">М²</th>
+        <th style="background:#1B5E7B;color:#fff">Раб.мест</th>
+        <th style="background:#1B5E7B;color:#fff">Ответственный</th>
+        <th style="background:#1B5E7B;color:#fff">Действия</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% if not requests %}
+      <tr>
+        <td colspan="12" class="text-center text-muted py-5">
+          <i class="bi bi-inbox" style="font-size:2rem;display:block;margin-bottom:8px"></i>
+          Обращений не найдено
+        </td>
+      </tr>
+      {% endif %}
+      {% for r in requests %}
+      {% if r.request_date %}
+        {% set rd = r.request_date[:10] %}
+        {% set overdue = r.status in ('draft','review','accepted') and (today_str | string) > rd and ((today_str[:4]|int - rd[:4]|int)*365 + (today_str[5:7]|int - rd[5:7]|int)*30 + (today_str[8:10]|int - rd[8:10]|int)) > 7 %}
+      {% else %}
+        {% set overdue = false %}
+      {% endif %}
+      <tr class="{{ 'table-danger' if overdue else '' }}">
+        <td class="text-center">
+          <form method="post" action="{{ url_for('requests.toggle_favorite', rid=r.id) }}">
+            <button type="submit" class="btn btn-link p-0 border-0"
+                    title="{{ 'Убрать из избранного' if r.favorite_flag else 'В избранное' }}">
+              {% if r.favorite_flag %}
+                <i class="bi bi-star-fill text-warning"></i>
+              {% else %}
+                <i class="bi bi-star text-muted"></i>
+              {% endif %}
+            </button>
+          </form>
+        </td>
+        <td>
+          <a href="{{ url_for('requests.view_request', rid=r.id) }}" class="fw-bold text-decoration-none">
+            {{ r.request_number or ('ЗУ-черн.' if r.status=='draft' else '—') }}
+          </a>
+        </td>
+        <td class="text-nowrap">{{ r.request_date or '—' }}</td>
+        <td>
+          {% if r.status=='draft' %}
+            <span class="badge bg-secondary">Черновик</span>
+          {% elif r.status=='review' %}
+            <span class="badge" style="background:#fd7e14">На проверке</span>
+          {% elif r.status=='accepted' %}
+            <span class="badge bg-primary">В работе</span>
+          {% elif r.status=='answered' %}
+            <span class="badge bg-success">Отвечено</span>
+          {% endif %}
+          {% if overdue %}
+          <i class="bi bi-exclamation-circle text-danger ms-1" title="Просрочено"></i>
+          {% endif %}
+        </td>
+        <td>
+          {% if r.source_type %}
+            {% for s in r.source_type.split(',') %}
+            <span class="badge bg-light text-dark border" style="font-size:10px">{{ s.strip() }}</span>
+            {% endfor %}
+          {% else %}—{% endif %}
+        </td>
+        <td>{{ r.applicant_short_name or r.applicant_full_name or '—' }}</td>
+        <td>{{ r.project_name or '—' }}</td>
+        <td class="text-end text-nowrap">{{ r.investment_total or '—' }}</td>
+        <td class="text-center text-nowrap">{{ r.site_area_ha or '—' }}</td>
+        <td class="text-center text-nowrap">{{ r.site_build_area_m2 or '—' }}</td>
+        <td class="text-center">{{ r.jobs_total or '—' }}</td>
+        <td>{{ r.assigned_name or r.employee_name or '—' }}</td>
+        <td class="text-nowrap">
+          <a href="{{ url_for('requests.view_request', rid=r.id) }}"
+             class="btn btn-sm btn-outline-primary py-0 px-1" title="Просмотр">
+            <i class="bi bi-eye"></i>
+          </a>
+          <a href="{{ url_for('requests.edit_request', rid=r.id) }}"
+             class="btn btn-sm btn-outline-secondary py-0 px-1" title="Редактировать">
+            <i class="bi bi-pencil"></i>
+          </a>
+          {% if session.role=='admin' %}
+          <form method="post" action="{{ url_for('requests.delete_request', rid=r.id) }}"
+                class="d-inline" onsubmit="return confirm('Удалить обращение?')">
+            <button class="btn btn-sm btn-outline-danger py-0 px-1" title="Удалить">
+              <i class="bi bi-trash"></i>
+            </button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="mt-1 d-flex align-items-center gap-3">
+  <div class="small text-muted">
+    <span class="badge bg-danger me-1"> </span>
+    Красные строки — активные обращения старше {{dash.kpi.norm_days}} дней без ответа
+  </div>
+  <div class="small text-muted ms-auto">
+    Всего записей: <strong>{{ requests|length }}</strong>
+  </div>
+</div>
+{% endblock %}
