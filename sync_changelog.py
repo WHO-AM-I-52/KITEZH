@@ -10,7 +10,6 @@ BRANCH = "main"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CHANGELOG_PATH = os.path.join(BASE_DIR, "changelog.py")
 
-# ── Токен из .env (если есть) ──────────────────────────────────────
 def load_token():
     env_path = os.path.join(BASE_DIR, ".env")
     if os.path.exists(env_path):
@@ -39,17 +38,21 @@ def get_text(url):
     with urllib.request.urlopen(req, timeout=15) as r:
         return r.read().decode("utf-8")
 
-# ── CHANGELOG из GitHub Releases ─────────────────────────────────
 def fetch_releases():
     data = get_json(
         f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/releases?per_page=100"
     )
     changelog = []
     for r in data:
+        # Пропускаем draft-релизы и релизы без даты публикации
+        published_at = r.get("published_at")
+        if not published_at:
+            continue
         version = r["tag_name"].lstrip("v")
-        date = datetime.strptime(
-            r["published_at"], "%Y-%m-%dT%H:%M:%SZ"
-        ).strftime("%d.%m.%Y")
+        try:
+            date = datetime.strptime(published_at, "%Y-%m-%dT%H:%M:%SZ").strftime("%d.%m.%Y")
+        except Exception:
+            date = ""
         body = r.get("body", "") or ""
         changes = []
         for line in body.splitlines():
@@ -61,7 +64,6 @@ def fetch_releases():
         changelog.append({"version": version, "date": date, "changes": changes})
     return changelog
 
-# ── ROADMAP из ROADMAP.md ──────────────────────────────────────
 def fetch_roadmap():
     url = (f"https://raw.githubusercontent.com/"
            f"{REPO_OWNER}/{REPO_NAME}/{BRANCH}/ROADMAP.md")
@@ -112,7 +114,6 @@ def fetch_roadmap():
     roadmap = [r for r in roadmap if r["status"] != "done"]
     return roadmap
 
-# ── Запись в changelog.py ─────────────────────────────────────────
 def write_changelog(changelog, roadmap):
     lines = ["CHANGELOG = [\n"]
     for entry in changelog:

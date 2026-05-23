@@ -18,7 +18,6 @@ PROTECTED = {"db", "uploads", "reports", "WPy", "Bacup",
              "_updater.py", "update.bat", ".env",
              "database.db", "database.db-shm", "database.db-wal"}
 
-# ── Токен из .env ─────────────────────────────────────────────
 def load_token():
     env_path = os.path.join(BASE_DIR, ".env")
     if os.path.exists(env_path):
@@ -37,7 +36,6 @@ def _headers():
         h["Authorization"] = f"Bearer {TOKEN}"
     return h
 
-# ── HTTP запросы ────────────────────────────────────────────
 def get_json(url):
     req = urllib.request.Request(url, headers=_headers())
     with urllib.request.urlopen(req, timeout=15) as r:
@@ -46,7 +44,6 @@ def get_json(url):
         return data
 
 def post_json(url, payload):
-    """POST-запрос с JSON-телом, возвращает (status_code, response_dict)."""
     body = json.dumps(payload).encode("utf-8")
     req  = urllib.request.Request(
         url, data=body, headers={**_headers(), "Content-Type": "application/json"},
@@ -78,7 +75,6 @@ def get_tree():
     data = get_json(f"{API_BASE}/git/trees/{BRANCH}?recursive=1")
     return data.get("tree", [])
 
-# ── Отображение лимита ─────────────────────────────────────────
 def show_rate_limit(headers):
     remaining = headers.get("X-RateLimit-Remaining")
     limit     = headers.get("X-RateLimit-Limit")
@@ -94,12 +90,7 @@ def show_rate_limit(headers):
     print(f"  Лимит API: {remaining}/{limit} осталось" +
           (f" (сброс в {reset_str})" if reset_str else ""))
 
-# ── Чтение changelog.py ────────────────────────────────────
 def load_changelog():
-    """
-    Импортирует CHANGELOG из локального changelog.py после обновления.
-    Возвращает (version, body) или (None, None) если не удалось.
-    """
     changelog_path = os.path.join(BASE_DIR, "changelog.py")
     if not os.path.exists(changelog_path):
         return None, None
@@ -119,13 +110,7 @@ def load_changelog():
         print(f"  [Внимание] Не удалось прочитать changelog.py: {e}")
         return None, None
 
-# ── Автосоздание GitHub Release ────────────────────────────
 def ensure_github_release():
-    """
-    Читает версию из локального changelog.py.
-    Если релиз с таким тегом ещё не существует — создаёт его.
-    Требует GITHUB_TOKEN в .env (push-права).
-    """
     if not TOKEN:
         print("  [Релиз] Токен не найден — автосоздание релиза пропущено.")
         return
@@ -137,7 +122,6 @@ def ensure_github_release():
 
     tag = f"v{version}"
 
-    # Проверяем, существует ли уже такой релиз
     try:
         req = urllib.request.Request(
             f"{API_BASE}/releases/tags/{tag}",
@@ -150,7 +134,6 @@ def ensure_github_release():
         if e.code != 404:
             print(f"  [Релиз] Ошибка проверки: {e.code}")
             return
-        # 404 — релиза нет, создаём
 
     print(f"  [Релиз] Создаю {tag} на GitHub...")
     status, resp = post_json(
@@ -165,12 +148,11 @@ def ensure_github_release():
         }
     )
     if status == 201:
-        print(f"  [Релиз] ✅ {tag} успешно создан: {resp.get('html_url', '')}")
+        print(f"  [Релиз] v{tag} успешно создан: {resp.get('html_url', '')}")
     else:
         msg = resp.get("message", "неизвестная ошибка")
-        print(f"  [Релиз] ⚠️ Не удалось создать {tag}: {msg}")
+        print(f"  [Релиз] Не удалось создать {tag}: {msg}")
 
-# ── Главная логика ────────────────────────────────────────────
 def main():
     print("  Подключаемся к GitHub...")
     if TOKEN:
@@ -195,7 +177,7 @@ def main():
             print(f"  [ОШИБКА] {e}")
         sys.exit(1)
     except Exception as e:
-        print(f"  [ОШИБКа] Не удалось получить данные с GitHub: {e}")
+        print(f"  [ОШИБКА] Не удалось получить данные с GitHub: {e}")
         sys.exit(1)
 
     print("  Распаковываем...")
@@ -244,14 +226,18 @@ def main():
     print(f"  Пропущено (защищённые): {skipped}")
     print()
 
-    # ── Автосоздание GitHub Release ─────────────────────────
     ensure_github_release()
 
     print()
     print("  Обновление завершено. База данных и файлы пользователей не тронуты.")
 
     if bat_updated:
-        sys.exit(2)
+        print()
+        print("  [!] start SONAR.bat был обновлён.")
+        print("  [!] Закрой это окно и запусти start SONAR.bat заново вручную.")
+        print()
+        # Возвращаем 0 — НЕ запускаем второе окно
+        sys.exit(0)
 
 if __name__ == "__main__":
     main()
