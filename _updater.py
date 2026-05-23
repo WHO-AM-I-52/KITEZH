@@ -1,4 +1,5 @@
 import urllib.request
+import urllib.parse
 import json
 import os
 import sys
@@ -26,9 +27,15 @@ def fetch_raw(url):
     with urllib.request.urlopen(req, timeout=15) as r:
         return r.read()
 
-def download_file(download_url, dest_path):
+def make_raw_url(path):
+    """URL с кодированием пробелов и спецсимволов в имени файла"""
+    encoded = urllib.parse.quote(path, safe="/")
+    return (f"https://raw.githubusercontent.com/"
+            f"{REPO_OWNER}/{REPO_NAME}/{BRANCH}/{encoded}")
+
+def download_file(path, dest_path):
     os.makedirs(os.path.dirname(dest_path), exist_ok=True)
-    data = fetch_raw(download_url)
+    data = fetch_raw(make_raw_url(path))
     with open(dest_path, "wb") as f:
         f.write(data)
 
@@ -46,8 +53,8 @@ def main():
 
     print("  Распаковываем...")
 
-    updated  = 0
-    skipped  = 0
+    updated     = 0
+    skipped     = 0
     bat_updated = False
 
     for item in tree:
@@ -64,14 +71,9 @@ def main():
 
         if item_type == "blob":
             dest = os.path.join(BASE_DIR, path.replace("/", os.sep))
-            download_url = (
-                f"https://raw.githubusercontent.com/"
-                f"{REPO_OWNER}/{REPO_NAME}/{BRANCH}/{path}"
-            )
             try:
-                # Для bat-файла — сравниваем до записи
                 if path == BAT_NAME:
-                    new_content = fetch_raw(download_url)
+                    new_content = fetch_raw(make_raw_url(path))
                     old_content = b""
                     if os.path.exists(dest):
                         with open(dest, "rb") as f:
@@ -84,7 +86,7 @@ def main():
                     else:
                         print(f"  [--] {path} (без изменений)")
                 else:
-                    download_file(download_url, dest)
+                    download_file(path, dest)
                     print(f"  [OK] {path}")
                 updated += 1
             except Exception as e:
@@ -96,7 +98,6 @@ def main():
     print()
     print("  Обновление завершено. База данных и файлы пользователей не тронуты.")
 
-    # Сигнал для update.bat — если bat обновился — выходим с кодом 2
     if bat_updated:
         sys.exit(2)
 
