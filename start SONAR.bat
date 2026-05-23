@@ -10,13 +10,25 @@ echo.
 
 reg add "HKCU\Software\Microsoft\Command Processor" /v DisableUNCCheck /t REG_DWORD /d 1 /f >nul 2>&1
 
-set "PYTHON=%~dp0WPy64-31100\WPy64-31241\python-3.12.4.amd64\python.exe"
-set "SITEPKG=%~dp0WPy64-31100\WPy64-31241\python-3.12.4.amd64\Lib\site-packages"
 set "APP_DIR=%~dp0"
+set "PYTHON="
+set "SITEPKG="
 
-if not exist "%PYTHON%" (
+:: ── Автопоиск python.exe в WPy*\ ─────────────────────────────
+for /d %%A in ("%APP_DIR%WPy*") do (
+  for /d %%B in ("%%A\WPy*") do (
+    for /d %%C in ("%%B\python-*.amd64") do (
+      if exist "%%C\python.exe" (
+        set "PYTHON=%%C\python.exe"
+        set "SITEPKG=%%C\Lib\site-packages"
+      )
+    )
+  )
+)
+
+if not defined PYTHON (
   echo.
-  echo [ERROR] Python not found: %PYTHON%
+  echo [ERROR] Python not found. Put WinPython in WPy\ folder next to this bat.
   echo.
   pause
   exit /b 1
@@ -25,7 +37,7 @@ if not exist "%PYTHON%" (
 echo OK: %PYTHON%
 echo.
 
-:: ── Очистка старых .pth пакетов ───────────────────────────────
+:: ── Очистка старых .pth пакетов ──────────────────────────
 echo Cleaning old .pth packages...
 for %%v in (3.5 3.6 3.7 3.8 3.9) do (
   for %%f in ("%SITEPKG%\*-py%%v-nspkg.pth") do (
@@ -36,7 +48,7 @@ del /f /q "%SITEPKG%\distutils-precedence.pth" 2>nul
 echo Done.
 echo.
 
-:: ── Бэкап базы данных ─────────────────────────────────────────
+:: ── Бэкап базы данных ──────────────────────────────────────
 if not exist db\backups mkdir db\backups
 echo Creating database backup...
 xcopy /Y /I db\database.db "db\backups\database_%date:~6,4%%date:~3,2%%date:~0,2%.db*" >nul
@@ -46,7 +58,7 @@ echo.
 "%PYTHON%" -c "import os,glob;files=sorted(glob.glob('db/backups/database_*.db'));[os.remove(f) for f in files[:-5]];print('Backups kept: '+str(min(len(files),5)))"
 echo.
 
-:: ── Health check ──────────────────────────────────────────────
+:: ── Health check ─────────────────────────────────────────────
 echo Running health check...
 "%PYTHON%" -m py_compile app.py
 if errorlevel 1 (
@@ -59,7 +71,7 @@ if errorlevel 1 (
 echo Health check OK.
 echo.
 
-:: ── Обновление кода из GitHub ─────────────────────────────────
+:: ── Обновление кода из GitHub ──────────────────────────────
 if exist "%APP_DIR%update.bat" (
   set /p UPD=Obnovit kod iz GitHub? [Enter = da / 0 = net]: 
   if not "%UPD%"=="0" (
@@ -69,7 +81,7 @@ if exist "%APP_DIR%update.bat" (
   )
 )
 
-:: ── Sync changelog + roadmap ──────────────────────────────────
+:: ── Sync changelog + roadmap ─────────────────────────────────
 set /p SYNC=Sync changelog s GitHub? [Enter = da / 0 = net]: 
 if not "%SYNC%"=="0" (
   echo.
@@ -77,7 +89,7 @@ if not "%SYNC%"=="0" (
   echo.
 )
 
-:: ── Выбор режима ──────────────────────────────────────────────
+:: ── Выбор режима ──────────────────────────────────────────
 :ask_mode
 echo Select mode:
 echo   [1] Production  (normal work)
@@ -99,7 +111,7 @@ if "%MODE_CHOICE%"=="1" (
 )
 echo.
 
-:: ── Открыть браузер ───────────────────────────────────────────
+:: ── Открыть браузер ───────────────────────────────────────
 :ask_open
 set "OPEN_CHOICE="
 set /p OPEN_CHOICE=Otkryt brauser? [1 = da / 0 = net]: 
@@ -113,7 +125,7 @@ if "%OPEN_CHOICE%"=="1" (
   goto ask_open
 )
 
-:: ── Определяем IP ────────────────────────────────────────────
+:: ── Определяем IP ────────────────────────────────────────
 for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /i "IPv4"') do (
   set ip=%%a
   goto :found
@@ -128,7 +140,7 @@ echo  Network: http://%ip%:5000
 echo ============================================
 echo.
 
-:: ── Запуск сервера ───────────────────────────────────────────
+:: ── Запуск сервера ────────────────────────────────────────
 :start_server
 echo Server is running... Close window to stop.
 echo.
