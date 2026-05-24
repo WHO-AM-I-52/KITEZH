@@ -47,47 +47,15 @@ if "%DL_CHOICE%"=="2" goto :manual_path
 goto :quit
 
 :: ============================================================
-:: AVTOSKACHIVANIYE WPy
+:: AVTOSKACHIVANIYE WPy cherez PS1
 :: ============================================================
 :download_wpy
 echo.
 echo  [2/6] Skachivanie posledney versii WPy...
-echo  Poluchayu ssylku s GitHub API...
-echo.
 
-if not exist "%APP_DIR%WPy" mkdir "%APP_DIR%WPy"
+if not exist "%WPY_DIR%" mkdir "%WPY_DIR%"
 
-:: Skachivanie cherez PowerShell - poluchaem posledniy reliz i skachivam
-powershell -NoProfile -ExecutionPolicy Bypass -Command "
-  try {
-    $releases = Invoke-RestMethod 'https://api.github.com/repos/winpython/winpython/releases' -UseBasicParsing;
-    $asset = $null;
-    foreach ($rel in $releases) {
-      foreach ($a in $rel.assets) {
-        if ($a.name -match 'Winpython64.*dot\.exe$') {
-          $asset = $a; break
-        }
-      }
-      if ($asset) { break }
-    };
-    if ($asset) {
-      Write-Host ('  Nayden: ' + $asset.name);
-      Write-Host ('  Razmer: ' + [math]::Round($asset.size/1MB,1) + ' MB');
-      Write-Host '  Skachivanie...';
-      $out = '%APP_DIR%WPy\wpy_setup.exe';
-      $wc = New-Object System.Net.WebClient;
-      $wc.DownloadFile($asset.browser_download_url, $out);
-      Write-Host '  OK: skachano!';
-      Write-Host $asset.name | Out-File '%APP_DIR%WPy\.wpy_name.txt' -Encoding utf8
-    } else {
-      Write-Host '  [OSHIBKA] Ne udalos nayti WPy v relizakh GitHub.';
-      exit 1
-    }
-  } catch {
-    Write-Host ('  [OSHIBKA] ' + $_.Exception.Message);
-    exit 1
-  }
-"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%APP_DIR%download_wpy.ps1" -TargetDir "%WPY_DIR%"
 
 if errorlevel 1 (
   echo.
@@ -98,24 +66,22 @@ if errorlevel 1 (
 )
 
 echo.
-echo  Raspakuyu WPy (mozhet zanyat 2-5 minut)...
+echo  Raspakuyu WPy (2-5 minut)...
 
-:: Zapuskaem installer v tikhom rezhime v papku WPy
-"%APP_DIR%WPy\wpy_setup.exe" -o"%APP_DIR%WPy" -y
+"%WPY_DIR%\wpy_setup.exe" -o"%WPY_DIR%" -y
 
-:: Udalyaem installer
-del /f /q "%APP_DIR%WPy\wpy_setup.exe" 2>nul
+del /f /q "%WPY_DIR%\wpy_setup.exe" 2>nul
 
-:: Ishchem raspakovanniy python
-for /d %%A in ("%APP_DIR%WPy\WPy64*\python-*.amd64") do (
-  if exist "%%A\python.exe" (
-    set "PYTHON=%%A\python.exe"
-    set "SITEPKG=%%A\Lib\site-packages"
+:: Ishchem python posle raspakrovki
+for /d %%B in ("%WPY_DIR%\WPy64*") do (
+  for /d %%A in ("%%B\python-*.amd64") do (
+    if exist "%%A\python.exe" (
+      set "PYTHON=%%A\python.exe"
+      set "SITEPKG=%%A\Lib\site-packages"
+    )
   )
 )
-
-:: Takzhe proverkaem naploskim razlozheniem
-for /d %%A in ("%APP_DIR%WPy\python-*.amd64") do (
+for /d %%A in ("%WPY_DIR%\python-*.amd64") do (
   if exist "%%A\python.exe" (
     set "PYTHON=%%A\python.exe"
     set "SITEPKG=%%A\Lib\site-packages"
@@ -123,13 +89,14 @@ for /d %%A in ("%APP_DIR%WPy\python-*.amd64") do (
 )
 
 if defined PYTHON (
-  echo  OK: WPy ustanovlen: %PYTHON%
+  echo  OK: WPy ustanovlen!
+  echo  Python: %PYTHON%
   goto :install_deps
 )
 
 echo.
 echo  [OSHIBKA] WPy skachan, no python.exe ne nayden.
-echo  Prover papku: %APP_DIR%WPy\
+echo  Prover papku: %WPY_DIR%
 goto :manual_path
 
 :: ============================================================
@@ -141,7 +108,7 @@ echo  Ukazhi polnyy put k python.exe:
 echo  Primer: C:\WPy64-31131\python-3.11.3.amd64\python.exe
 echo.
 set "MANUAL_PY="
-set /p MANUAL_PY=  Put k python.exe (ili Enter chtoby propustit): 
+set /p MANUAL_PY=  Put k python.exe (ili Enter chtoby vyyti): 
 
 if "%MANUAL_PY%"=="" goto :no_python
 if exist "%MANUAL_PY%" (
@@ -157,13 +124,12 @@ if exist "%MANUAL_PY%" (
 :no_python
 echo.
 echo  [OSHIBKA] Python ne nayden. Ustanovka nevozmozhna.
-echo  Skopiruyte WPy\ v papku ryadom s install.bat i povtorite.
 echo.
 pause
 exit /b 1
 
 :: ============================================================
-:: SHAG 3: Ustanovka zavisimostey
+:: SHAG 3: Zavisimosti
 :: ============================================================
 :install_deps
 echo.
@@ -177,14 +143,13 @@ if not exist "%APP_DIR%requirements.txt" (
 "%PYTHON%" -m pip install --quiet -r "%APP_DIR%requirements.txt"
 if errorlevel 1 (
   echo  [OSHIBKA] Ne udalos ustanovit zavisimosti.
-  echo  Proverte podklyucheniye k Internetu.
   pause
   exit /b 1
 )
 echo  OK: zavisimosti ustanovleny.
 
 :: ============================================================
-:: SHAG 4: Sozdaniye papok
+:: SHAG 4: Papki
 :: ============================================================
 :create_dirs
 echo.
@@ -200,13 +165,13 @@ for %%D in (db uploads reports db\backups) do (
 )
 
 :: ============================================================
-:: SHAG 5: Sozdaniye BD
+:: SHAG 5: Baza dannykh
 :: ============================================================
 echo.
 echo [5/6] Podgotovka bazy dannykh...
 
 if exist "%APP_DIR%db\database.db" (
-  echo  Baza dannykh uzhe sushchestvuyet - ne trogaem.
+  echo  Baza uzhe sushchestvuyet - ne trogaem.
   goto :create_env
 )
 
@@ -219,12 +184,12 @@ if exist "%APP_DIR%db\db_template.db" (
 if exist "%APP_DIR%db.py" (
   "%PYTHON%" "%APP_DIR%db.py"
   if errorlevel 1 (
-    echo  [PREDUPREZHDENIE] db.py vernul oshibku - BD budet sozdana pri pervom zapuske.
+    echo  [PREDUPREZHDENIE] db.py vernul oshibku.
   ) else (
-    echo  OK: Baza initializirovana cherez db.py
+    echo  OK: Baza initializirovana.
   )
 ) else (
-  echo  [PREDUPREZHDENIE] db.py ne nayden. BD budet sozdana pri pervom zapuske SONAR.
+  echo  [PREDUPREZHDENIE] db.py ne nayden. BD budet sozdana pri zapuske.
 )
 
 :: ============================================================
@@ -237,22 +202,16 @@ echo [6/6] Proverka .env...
 if exist "%APP_DIR%.env" (
   echo  .env uzhe est - ne trogaem.
 ) else (
-  echo  Sozdayu .env s unikalnym SECRET_KEY...
+  echo  Sozdayu .env...
   "%PYTHON%" -c "import secrets; open('.env','w').write('SECRET_KEY=' + secrets.token_hex(32) + '\n')"
   echo  OK: .env sozdan.
-  echo.
-  echo  [VAZHNO] Dlya avtobnovleniya dobavte v .env:
-  echo  GITHUB_TOKEN=vash_token
 )
 
-:: ============================================================
-:: ITOG
-:: ============================================================
 echo.
 echo ============================================================
 echo   Ustanovka zavershena!
 echo.
-echo   Teper zapusti start SONAR.bat
+echo   Teper zapusti: start SONAR.bat
 echo ============================================================
 echo.
 pause
