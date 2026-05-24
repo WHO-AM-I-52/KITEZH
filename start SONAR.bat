@@ -84,6 +84,7 @@ del /f /q "%SITEPKG%\distutils-precedence.pth" 2>nul
 :skip_pth
 
 :: Bekap BD
+cd /d "%APP_DIR%"
 if not exist "%APP_DIR%\db\backups" mkdir "%APP_DIR%\db\backups"
 if exist "%APP_DIR%\db\database.db" (
   set "BKDATE=%date:~6,4%%date:~3,2%%date:~0,2%"
@@ -92,11 +93,10 @@ if exist "%APP_DIR%\db\database.db" (
 ) else (
   echo  [WARN] db\database.db ne nayden
 )
-"%PYTHON%" -c "import os,glob;files=sorted(glob.glob(r'%APP_DIR%\db\backups\database_*.db'));[os.remove(f) for f in files[:-5]]"
+"%PYTHON%" -c "import os,glob;files=sorted(glob.glob('db/backups/database_*.db'));[os.remove(f) for f in files[:-5]]"
 echo.
 
 :: Health check
-cd /d "%APP_DIR%"
 "%PYTHON%" -m py_compile app.py
 if errorlevel 1 (
   echo.
@@ -113,6 +113,7 @@ if exist "%APP_DIR%\update.bat" (
   if not "%UPD%"=="0" (
     echo.
     call "%APP_DIR%\update.bat"
+    cd /d "%APP_DIR%"
     echo.
   )
 )
@@ -121,7 +122,7 @@ if exist "%APP_DIR%\update.bat" (
 set /p SYNC=  Sync changelog? [Enter=da / 0=net]: 
 if not "%SYNC%"=="0" (
   echo.
-  "%PYTHON%" "%APP_DIR%\sync_changelog.py"
+  "%PYTHON%" sync_changelog.py
   echo.
 )
 
@@ -180,7 +181,7 @@ echo.
 set FLASK_ENV=%FLASK_ENV%
 set APP_DEBUG=%APP_DEBUG%
 cd /d "%APP_DIR%"
-"%PYTHON%" "%APP_DIR%\app.py"
+"%PYTHON%" app.py
 
 echo.
 echo ============================================
