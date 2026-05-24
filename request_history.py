@@ -1,8 +1,7 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║ request_history.py                                           ║
 # ║ История изменений обращений + откат                          ║
-# ║ v2.4: исправлен rollback (убран обратный маппинг),    ║
-# ║      action хранится в БД и читается правильно             ║
+# ║ v2.5: миграция action через db.py (_migrate)             ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 import json
@@ -106,8 +105,6 @@ def get_history(request_id: int) -> list:
             raw = {}
 
         labeled = {FIELD_LABELS.get(k, k): v for k, v in raw.items()}
-
-        # action берём из БД; для старых записей (NULL) — fallback 'edit'
         action = row['action'] if row['action'] else 'edit'
 
         result.append({
@@ -122,8 +119,7 @@ def get_history(request_id: int) -> list:
 
 def rollback_history(history_id: int, request_id: int) -> bool:
     """
-    Откатывает обращение к состоянию ДО выбранной правки:
-    берёт поле [0] (старое значение) из каждого изменения.
+    Откатывает обращение к состоянию ДО выбранной правки.
     Ключи в changes — всегда технические (snake_case), маппинг не нужен.
     """
     conn = get_db()
@@ -147,7 +143,6 @@ def rollback_history(history_id: int, request_id: int) -> bool:
     for field, value in changes.items():
         if field in SKIP_FIELDS:
             continue
-        # Ключ в БД всегда технический — обратный маппинг не нужен
         old_val = value[0] if isinstance(value, list) and len(value) >= 1 else value
         set_parts.append(f"{field}=?")
         vals.append(old_val if old_val != '' else None)
