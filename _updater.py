@@ -14,11 +14,12 @@ import shutil
 import tempfile
 from datetime import datetime
 
-REPO_OWNER = "WHO-AM-I-52"
-REPO_NAME  = "SONAR"
-BRANCH     = "main"
-BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
-API_BASE   = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}"
+REPO_OWNER    = "WHO-AM-I-52"
+REPO_NAME     = "SONAR"
+BRANCH        = "main"
+BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
+API_BASE      = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}"
+FALLBACK_KB   = 12000  # примерный размер архива если API не вернул размер
 
 BAT_NAME = "start SONAR.bat"
 
@@ -97,26 +98,26 @@ def show_rate_limit(headers):
 
 
 def get_repo_size_kb() -> int:
-    """Возвращает примерный размер репозитория в КБ через API."""
+    """Возвращает примерный размер zip-архива в КБ. При ошибке — FALLBACK_KB."""
     try:
         req = urllib.request.Request(API_BASE, headers=_headers())
         with urllib.request.urlopen(req, timeout=15) as r:
             data = json.loads(r.read().decode())
-            return data.get("size", 0)  # GitHub отдаёт размер в КБ
+            size = data.get("size", 0)  # размер репо в КБ (исходники)
+            # zip ~= size/2 из-за сжатия
+            return (size // 2) if size > 0 else FALLBACK_KB
     except Exception:
-        return 0
+        return FALLBACK_KB
 
 
-def _print_progress(downloaded: int, total_kb: int, spinner_idx: int):
-    """Прогресс-бар если знаем размер, иначе спиннер."""
+def _print_progress(downloaded: int, estimated_kb: int, spinner_idx: int):
+    """Прогресс-бар с примерным размером."""
     size_kb = downloaded // 1024
-    # Архив ~в  2 раза меньше чем размер репо в КБ (сжатие zip)
-    estimated = total_kb // 2 if total_kb > 0 else 0
-    if estimated > 0:
-        pct    = min(downloaded / (estimated * 1024) * 100, 99.0)
+    if estimated_kb > 0:
+        pct    = min(downloaded / (estimated_kb * 1024) * 100, 99.0)
         filled = int(pct / 5)
         bar    = "█" * filled + "░" * (20 - filled)
-        print(f"  [{bar}] {pct:4.0f}%  {size_kb} / ~{estimated} КБ", end="\r", flush=True)
+        print(f"  [{bar}] {pct:4.0f}%  {size_kb} / ~{estimated_kb} КБ", end="\r", flush=True)
     else:
         spin = SPINNER[spinner_idx % len(SPINNER)]
         print(f"  [{spin}] Скачано: {size_kb} КБ...", end="\r", flush=True)
@@ -125,7 +126,7 @@ def _print_progress(downloaded: int, total_kb: int, spinner_idx: int):
 def download_zip(zip_path: str):
     """Скачивает весь репозиторий одним архивом с прогресс-баром."""
     print("  Определяем размер репозитория...")
-    total_kb = get_repo_size_kb()
+    estimated_kb = get_repo_size_kb()
 
     url = f"{API_BASE}/zipball/{BRANCH}"
     req = urllib.request.Request(url, headers=_headers())
@@ -143,7 +144,7 @@ def download_zip(zip_path: str):
                 f.write(chunk)
                 downloaded  += len(chunk)
                 spinner_idx += 1
-                _print_progress(downloaded, total_kb, spinner_idx)
+                _print_progress(downloaded, estimated_kb, spinner_idx)
     print()  # перевод строки после прогресс-бара
     size_kb = os.path.getsize(zip_path) // 1024
     print(f"  Архив скачан: {size_kb} КБ")
