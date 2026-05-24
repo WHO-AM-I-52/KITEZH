@@ -1,5 +1,5 @@
-# download_wpy.ps1 — skachivает poslednuyu portativnuyu versiyu WPy
-# Parametr: papka kuda raspakovat'
+# download_wpy.ps1 - skachivanie posledney portativnoy versii WPy
+# Ne ispolzuet GitHub API (izbezhit 403)
 param([string]$TargetDir)
 
 if (-not $TargetDir) {
@@ -8,31 +8,42 @@ if (-not $TargetDir) {
 }
 
 try {
-    Write-Host "  Zapros GitHub API..."
-    $releases = Invoke-RestMethod 'https://api.github.com/repos/winpython/winpython/releases' -UseBasicParsing
-    $asset = $null
-    foreach ($rel in $releases) {
-        foreach ($a in $rel.assets) {
-            if ($a.name -match 'Winpython64.*dot\.exe$') {
-                $asset = $a
-                break
-            }
-        }
-        if ($asset) { break }
+    Write-Host "  Ishchu poslednyuyu versiyu na winpython.github.io..."
+
+    $wc = New-Object System.Net.WebClient
+    $wc.Headers.Add('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)')
+
+    $html = $wc.DownloadString('https://winpython.github.io/')
+
+    # Ishchem ssylku vida: .../releases/download/.../Winpython64-X.X.X.X.dot.exe
+    $pattern = 'https://github\.com/winpython/winpython/releases/download/[^"''\s]+Winpython64[^"''\s]+dot[^"''\s]+\.exe'
+    $match = [regex]::Match($html, $pattern)
+
+    if (-not $match.Success) {
+        # Fallback - probuy releases/latest redirect
+        Write-Host "  Probuy releases/latest..."
+        $html2 = $wc.DownloadString('https://github.com/winpython/winpython/releases/latest')
+        $match = [regex]::Match($html2, $pattern)
     }
-    if (-not $asset) {
-        Write-Host "[OSHIBKA] Reliz WPy ne nayden na GitHub."
+
+    if (-not $match.Success) {
+        Write-Host "[OSHIBKA] Ne udalos nayti ssylku na WPy."
+        Write-Host "Skachain vruchnuyu s: https://winpython.github.io/"
         exit 1
     }
-    Write-Host ("  Nayden: " + $asset.name)
-    Write-Host ("  Razmer: " + [math]::Round($asset.size/1MB,1) + " MB")
+
+    $url = $match.Value
+    $fileName = Split-Path $url -Leaf
+    Write-Host ("  Nayden: " + $fileName)
+
     $outFile = Join-Path $TargetDir "wpy_setup.exe"
-    Write-Host "  Skachivanie..."
-    $wc = New-Object System.Net.WebClient
-    $wc.DownloadFile($asset.browser_download_url, $outFile)
-    Write-Host "  OK: skachano -> $outFile"
-    $asset.name | Out-File (Join-Path $TargetDir ".wpy_name.txt") -Encoding utf8
+    Write-Host "  Skachivanie (3-7 minut)..."
+    $wc.DownloadFile($url, $outFile)
+    Write-Host "  OK: skachano!"
+
+    $fileName | Out-File (Join-Path $TargetDir ".wpy_name.txt") -Encoding utf8
     exit 0
+
 } catch {
     Write-Host ("[OSHIBKA] " + $_.Exception.Message)
     exit 1
