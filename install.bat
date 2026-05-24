@@ -4,9 +4,6 @@ chcp 65001 >nul
 cd /d "%~dp0"
 title SONAR - Ustanovka
 
-:: Autofix LF->CRLF (bez perezapuska)
-powershell -Command "$f='%~f0'; $c=[System.IO.File]::ReadAllText($f); if($c -notmatch '\r\n'){$c=$c -replace '(?<!\r)\n','\r\n'; [System.IO.File]::WriteAllText($f,$c)}"
-
 echo.
 echo ============================================================
 echo   SONAR - Ustanovka / pervonachalnaya nastroyka
@@ -54,7 +51,7 @@ if exist "%APP_DIR%tools\python313\get-pip.py" (
 echo  OK: Python 3.13 ustanovlen.
 
 :: ============================================================
-:: SHAG 1.5: Raspakovat vnutrenniy python313.zip (standartnaya biblioteka)
+:: SHAG 1.5: Raspakovat vnutrenniy python313.zip
 :: ============================================================
 :check_lib
 if exist "%PYDIR%\Lib\os.py" (
@@ -120,7 +117,6 @@ if not exist "%APP_DIR%requirements.txt" (
 "%PYTHON%" -m pip install -r "%APP_DIR%requirements.txt" --target "%SITEPKG%" --quiet
 if errorlevel 1 (
   echo  [OSHIBKA] Ne udalos ustanovit zavisimosti.
-  echo  Proverte podklyucheniye k Internetu.
   pause
   exit /b 1
 )
