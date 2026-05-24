@@ -11,86 +11,80 @@ echo ============================================================
 echo.
 
 set "APP_DIR=%~dp0"
-set "PYTHON="
-set "SITEPKG="
+set "PYTHON=%APP_DIR%WPy\python313\python.exe"
+set "SITEPKG=%APP_DIR%WPy\python313\Lib\site-packages"
+set "PYDIR=%APP_DIR%WPy\python313"
 
 :: ============================================================
-:: SHAG 1: Ishchem Python
+:: SHAG 1: Ishchem / ustanavlivaem Python
 :: ============================================================
 echo [1/5] Poisk Python...
 
-if exist "%APP_DIR%WPy\python313\python.exe" (
-  set "PYTHON=%APP_DIR%WPy\python313\python.exe"
-  set "SITEPKG=%APP_DIR%WPy\python313\Lib\site-packages"
+if exist "%PYTHON%" (
   echo  OK: WPy\python313 uzhe est.
-  goto :fix_pth
+  goto :check_lib
 )
 
-if exist "%APP_DIR%tools\python313\python.exe" (
-  echo  Nayden: tools\python313
-  echo  Kopiruyu v WPy\python313...
-  if not exist "%APP_DIR%WPy" mkdir "%APP_DIR%WPy"
-  xcopy /E /I /Y /Q "%APP_DIR%tools\python313" "%APP_DIR%WPy\python313"
-  if errorlevel 1 (
-    echo  [OSHIBKA] xcopy ne udalos.
-    pause
-    exit /b 1
-  )
-  set "PYTHON=%APP_DIR%WPy\python313\python.exe"
-  set "SITEPKG=%APP_DIR%WPy\python313\Lib\site-packages"
-  echo  OK: Python skopirovan.
-  goto :fix_pth
+:: Skachivayem embeddable Python 3.13
+echo  Python ne nayden. Skachivayem Python 3.13 embeddable...
+if not exist "%APP_DIR%WPy" mkdir "%APP_DIR%WPy"
+
+curl -L --progress-bar -o "%APP_DIR%WPy\python313.zip" "https://www.python.org/ftp/python/3.13.3/python-3.13.3-embed-amd64.zip"
+if errorlevel 1 (
+  echo  [OSHIBKA] Ne udalos skachat Python.
+  pause
+  exit /b 1
 )
 
-echo.
-echo  [VNIMANIE] Python ne nayden avtomaticheski.
-echo.
-echo    [1] Ukazat put k python.exe vruchnuyu
-echo    [0] Vyyti
-echo.
-set "CHOICE="
-set /p CHOICE=  Vybor (1/0): 
-if "!CHOICE!"=="1" goto :manual_path
-goto :quit
-
-:manual_path
-echo.
-set "MANUAL_PY="
-set /p MANUAL_PY=  Put k python.exe: 
-if "!MANUAL_PY!"=="" goto :no_python
-if exist "!MANUAL_PY!" (
-  set "PYTHON=!MANUAL_PY!"
-  set "SITEPKG="
-  echo  OK: !PYTHON!
-  goto :install_deps
+echo  Raspakovka...
+powershell -Command "Expand-Archive -Path '%APP_DIR%WPy\python313.zip' -DestinationPath '%APP_DIR%WPy\python313' -Force"
+if errorlevel 1 (
+  echo  [OSHIBKA] Ne udalos raspakovat Python.
+  pause
+  exit /b 1
 )
-echo  [OSHIBKA] Fayl ne nayden.
+del "%APP_DIR%WPy\python313.zip" >nul 2>&1
 
-:no_python
-echo.
-echo  [OSHIBKA] Python ne nayden. Ustanovka nevozmozhna.
-echo.
-pause
-exit /b 1
+:: Kopiruem get-pip.py esli est v tools
+if exist "%APP_DIR%tools\python313\get-pip.py" (
+  copy /Y "%APP_DIR%tools\python313\get-pip.py" "%PYDIR%\get-pip.py" >nul
+)
+
+echo  OK: Python 3.13 ustanovlen.
 
 :: ============================================================
-:: SHAG 1.5: Sozdaem pravilnyy _pth
+:: SHAG 1.5: Raspakovat vnutrenniy python313.zip (standartaya biblioteka)
+:: ============================================================
+:check_lib
+if exist "%PYDIR%\Lib\os.py" (
+  echo  OK: Lib uzhe est.
+  goto :fix_pth
+)
+
+if exist "%PYDIR%\python313.zip" (
+  echo  Raspakovka standartnoy biblioteki...
+  powershell -Command "Expand-Archive -Path '%PYDIR%\python313.zip' -DestinationPath '%PYDIR%\Lib' -Force"
+  echo  OK: Lib raspakована.
+) else (
+  echo  [WARN] python313.zip ne nayden - Lib mozhet byt nedostupna.
+)
+
+:: ============================================================
+:: SHAG 1.6: Sozdaem pravilnyy _pth
 :: ============================================================
 :fix_pth
 echo  Nastroyka python313._pth...
-set "PTH_FILE=%APP_DIR%WPy\python313\python313._pth"
 (
-  echo %APP_DIR%WPy\python313\Lib
-  echo %APP_DIR%WPy\python313\Lib\site-packages
+  echo %PYDIR%\Lib
+  echo %PYDIR%\Lib\site-packages
   echo %APP_DIR%
   echo .
-) > "%PTH_FILE%"
+) > "%PYDIR%\python313._pth"
 echo  OK: _pth nastroyen.
 
 :: ============================================================
 :: SHAG 2: Proverka pip
 :: ============================================================
-:install_deps
 echo.
 echo [2/5] Proverka pip...
 
@@ -98,13 +92,15 @@ set PYTHONUTF8=1
 "%PYTHON%" -m pip --version >nul 2>&1
 if errorlevel 1 (
   echo  pip ne nayden, ustanovka...
-  if exist "%APP_DIR%tools\python313\get-pip.py" (
+  if exist "%PYDIR%\get-pip.py" (
+    "%PYTHON%" "%PYDIR%\get-pip.py" --quiet
+  ) else if exist "%APP_DIR%tools\python313\get-pip.py" (
     "%PYTHON%" "%APP_DIR%tools\python313\get-pip.py" --quiet
-    echo  OK: pip ustanovlen.
   ) else (
-    "%PYTHON%" -m ensurepip --upgrade >nul 2>&1
-    echo  OK: pip cherez ensurepip.
+    curl -L -o "%PYDIR%\get-pip.py" "https://bootstrap.pypa.io/get-pip.py"
+    "%PYTHON%" "%PYDIR%\get-pip.py" --quiet
   )
+  echo  OK: pip ustanovlen.
 ) else (
   echo  OK: pip est.
 )
@@ -120,11 +116,7 @@ if not exist "%APP_DIR%requirements.txt" (
   goto :create_dirs
 )
 
-if defined SITEPKG (
-  "%PYTHON%" -m pip install -r "%APP_DIR%requirements.txt" --target "%SITEPKG%" --quiet
-) else (
-  "%PYTHON%" -m pip install -r "%APP_DIR%requirements.txt" --quiet
-)
+"%PYTHON%" -m pip install -r "%APP_DIR%requirements.txt" --target "%SITEPKG%" --quiet
 if errorlevel 1 (
   echo  [OSHIBKA] Ne udalos ustanovit zavisimosti.
   echo  Proverte podklyucheniye k Internetu.
@@ -191,7 +183,4 @@ echo   Teper zapusti: start SONAR.bat
 echo ============================================================
 echo.
 pause
-exit /b 0
-
-:quit
 exit /b 0
