@@ -181,6 +181,7 @@ echo.
 set FLASK_ENV=%FLASK_ENV%
 set APP_DEBUG=%APP_DEBUG%
 cd /d "%APP_DIR%"
+set PYTHONPATH=%APP_DIR%
 "%PYTHON%" app.py
 
 echo.
