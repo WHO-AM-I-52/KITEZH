@@ -14,22 +14,20 @@ set "APP_DIR=%~dp0"
 set "PYTHON="
 set "SITEPKG="
 
-:: [1] Ishchem WPy ryadom
-for /d %%A in ("%APP_DIR%WPy\python-*.amd64") do (
-  if exist "%%A\python.exe" (
-    set "PYTHON=%%A\python.exe"
-    set "SITEPKG=%%A\Lib\site-packages"
-  )
+:: [1] Ishchem Python - pryamye proverki bez for/d
+if exist "%APP_DIR%WPy\python313\python.exe" (
+  set "PYTHON=%APP_DIR%WPy\python313\python.exe"
+  set "SITEPKG=%APP_DIR%WPy\python313\Lib\site-packages"
 )
 
 if defined PYTHON goto :python_found
 
-:: [2] Python ne nayden - predlagaem vybor
+:: [2] Python ne nayden
 echo.
 echo  [VNIMANIE] Python / WPy ne nayden v papke SONAR!
 echo.
 echo  Vyberi variant:
-echo    [1] Zapustit install.bat - avtoystanovka WPy
+echo    [1] Zapustit install.bat - avtoystanovka
 echo    [2] Ukazat put k python.exe vruchnuyu
 echo    [0] Vyyti
 echo.
@@ -44,35 +42,33 @@ goto :quit
 if exist "%APP_DIR%install.bat" (
   echo.
   call "%APP_DIR%install.bat"
-  for /d %%A in ("%APP_DIR%WPy\python-*.amd64") do (
-    if exist "%%A\python.exe" (
-      set "PYTHON=%%A\python.exe"
-      set "SITEPKG=%%A\Lib\site-packages"
-    )
+  if exist "%APP_DIR%WPy\python313\python.exe" (
+    set "PYTHON=%APP_DIR%WPy\python313\python.exe"
+    set "SITEPKG=%APP_DIR%WPy\python313\Lib\site-packages"
+    goto :python_found
   )
-  if defined PYTHON goto :python_found
 ) else (
-  echo.
   echo  [OSHIBKA] install.bat ne nayden.
 )
 goto :no_python
 
 :manual_path
 echo.
-echo  Ukazhite polnyy put k python.exe
-echo  Primer: C:\WPy64-31131\python-3.11.3.amd64\python.exe
+echo  Ukazhi polnyy put k python.exe
+echo  Primer: C:\Python313\python.exe
 echo.
 set "MANUAL_PY="
 set /p MANUAL_PY=  Put: 
 if exist "%MANUAL_PY%" (
   set "PYTHON=%MANUAL_PY%"
+  set "SITEPKG="
   goto :python_found
 )
 echo  [OSHIBKA] Fayl ne nayden: %MANUAL_PY%
 
 :no_python
 echo.
-echo  [OSHIBKA] Python ne nayden. Obratites k administratoru.
+echo  [OSHIBKA] Python ne nayden. Zapusti install.bat i povtori.
 echo.
 pause
 exit /b 1
@@ -81,23 +77,21 @@ exit /b 1
 echo  OK: %PYTHON%
 echo.
 
-:: Ochistka starykh .pth
-for %%v in (3.5 3.6 3.7 3.8 3.9) do (
-  for %%f in ("%SITEPKG%\*-py%%v-nspkg.pth") do (
-    if exist "%%f" del /f /q "%%f"
-  )
-)
+:: Ochistka starykh .pth (tol'ko esli SITEPKG zadano)
+if not defined SITEPKG goto :skip_pth
 del /f /q "%SITEPKG%\distutils-precedence.pth" 2>nul
+:skip_pth
 
 :: Bekap BD
 if not exist "%APP_DIR%db\backups" mkdir "%APP_DIR%db\backups"
 if exist "%APP_DIR%db\database.db" (
-    xcopy /Y /I "%APP_DIR%db\database.db" "%APP_DIR%db\backups\database_%date:~6,4%%date:~3,2%%date:~0,2%.db*" >nul
-    echo  Bekap: db\backups\database_%date:~6,4%%date:~3,2%%date:~0,2%.db
+  set "BKDATE=%date:~6,4%%date:~3,2%%date:~0,2%"
+  xcopy /Y /I "%APP_DIR%db\database.db" "%APP_DIR%db\backups\database_%BKDATE%.db*" >nul
+  echo  Bekap: db\backups\database_%BKDATE%.db
 ) else (
-    echo  [WARN] db\database.db ne nayden
+  echo  [WARN] db\database.db ne nayden
 )
-"%PYTHON%" -c "import os,glob;files=sorted(glob.glob('db/backups/database_*.db'));[os.remove(f) for f in files[:-5]];print('  Hranyatsya rezervnye kopii: '+str(min(len(files),5)))"
+"%PYTHON%" -c "import os,glob;files=sorted(glob.glob('db/backups/database_*.db'));[os.remove(f) for f in files[:-5]]"
 echo.
 
 :: Health check
@@ -145,7 +139,7 @@ if "%MODE_CHOICE%"=="1" (
   set "APP_DEBUG=1"
 ) else (
   echo  Neverniy vybor.
-  goto ask_mode
+  goto :ask_mode
 )
 echo.
 
@@ -159,16 +153,17 @@ if "%OPEN_CHOICE%"=="1" (
   rem skip
 ) else (
   echo  Vvedi 1 ili 0.
-  goto ask_open
+  goto :ask_open
 )
 
 :: IP
+set "ip=127.0.0.1"
 for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /i "IPv4"') do (
-  set ip=%%a
-  goto :found
+  set "ip=%%a"
+  goto :found_ip
 )
-:found
-set ip=%ip: =%
+:found_ip
+set "ip=%ip: =%"
 
 echo.
 echo ============================================
@@ -189,12 +184,12 @@ echo ============================================
 echo   Server ostanovlen.
 echo ============================================
 echo.
-echo   [1] Porvtorniy zapusk
+echo   [1] Povtornyy zapusk
 echo   [2] Vyyti
 echo.
 set "CHOICE="
 set /p CHOICE=  Vybor (1/2): 
-if "%CHOICE%"=="1" goto start_server
+if "%CHOICE%"=="1" goto :start_server
 
 :quit
 exit /b 0
