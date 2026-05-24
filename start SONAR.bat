@@ -11,13 +11,14 @@ echo.
 reg add "HKCU\Software\Microsoft\Command Processor" /v DisableUNCCheck /t REG_DWORD /d 1 /f >nul 2>&1
 
 set "APP_DIR=%~dp0"
+if "%APP_DIR:~-1%"=="\" set "APP_DIR=%APP_DIR:~0,-1%"
 set "PYTHON="
 set "SITEPKG="
 
-:: [1] Ishchem Python - pryamye proverki bez for/d
-if exist "%APP_DIR%WPy\python313\python.exe" (
-  set "PYTHON=%APP_DIR%WPy\python313\python.exe"
-  set "SITEPKG=%APP_DIR%WPy\python313\Lib\site-packages"
+:: [1] Ishchem Python
+if exist "%APP_DIR%\WPy\python313\python.exe" (
+  set "PYTHON=%APP_DIR%\WPy\python313\python.exe"
+  set "SITEPKG=%APP_DIR%\WPy\python313\Lib\site-packages"
 )
 
 if defined PYTHON goto :python_found
@@ -39,12 +40,12 @@ if "%PY_CHOICE%"=="2" goto :manual_path
 goto :quit
 
 :run_install
-if exist "%APP_DIR%install.bat" (
+if exist "%APP_DIR%\install.bat" (
   echo.
-  call "%APP_DIR%install.bat"
-  if exist "%APP_DIR%WPy\python313\python.exe" (
-    set "PYTHON=%APP_DIR%WPy\python313\python.exe"
-    set "SITEPKG=%APP_DIR%WPy\python313\Lib\site-packages"
+  call "%APP_DIR%\install.bat"
+  if exist "%APP_DIR%\WPy\python313\python.exe" (
+    set "PYTHON=%APP_DIR%\WPy\python313\python.exe"
+    set "SITEPKG=%APP_DIR%\WPy\python313\Lib\site-packages"
     goto :python_found
   )
 ) else (
@@ -77,24 +78,25 @@ exit /b 1
 echo  OK: %PYTHON%
 echo.
 
-:: Ochistka starykh .pth (tol'ko esli SITEPKG zadano)
+:: Ochistka starykh .pth
 if not defined SITEPKG goto :skip_pth
 del /f /q "%SITEPKG%\distutils-precedence.pth" 2>nul
 :skip_pth
 
 :: Bekap BD
-if not exist "%APP_DIR%db\backups" mkdir "%APP_DIR%db\backups"
-if exist "%APP_DIR%db\database.db" (
+if not exist "%APP_DIR%\db\backups" mkdir "%APP_DIR%\db\backups"
+if exist "%APP_DIR%\db\database.db" (
   set "BKDATE=%date:~6,4%%date:~3,2%%date:~0,2%"
-  xcopy /Y /I "%APP_DIR%db\database.db" "%APP_DIR%db\backups\database_%BKDATE%.db*" >nul
+  xcopy /Y /I "%APP_DIR%\db\database.db" "%APP_DIR%\db\backups\database_%BKDATE%.db*" >nul
   echo  Bekap: db\backups\database_%BKDATE%.db
 ) else (
   echo  [WARN] db\database.db ne nayden
 )
-"%PYTHON%" -c "import os,glob;files=sorted(glob.glob('db/backups/database_*.db'));[os.remove(f) for f in files[:-5]]"
+"%PYTHON%" -c "import os,glob;files=sorted(glob.glob(r'%APP_DIR%\db\backups\database_*.db'));[os.remove(f) for f in files[:-5]]"
 echo.
 
 :: Health check
+cd /d "%APP_DIR%"
 "%PYTHON%" -m py_compile app.py
 if errorlevel 1 (
   echo.
@@ -106,11 +108,11 @@ echo  Health check OK.
 echo.
 
 :: Obnovlenie koda
-if exist "%APP_DIR%update.bat" (
+if exist "%APP_DIR%\update.bat" (
   set /p UPD=  Obnovit kod iz GitHub? [Enter=da / 0=net]: 
   if not "%UPD%"=="0" (
     echo.
-    call "%APP_DIR%update.bat"
+    call "%APP_DIR%\update.bat"
     echo.
   )
 )
@@ -119,7 +121,7 @@ if exist "%APP_DIR%update.bat" (
 set /p SYNC=  Sync changelog? [Enter=da / 0=net]: 
 if not "%SYNC%"=="0" (
   echo.
-  "%PYTHON%" "%APP_DIR%sync_changelog.py"
+  "%PYTHON%" "%APP_DIR%\sync_changelog.py"
   echo.
 )
 
@@ -177,7 +179,8 @@ echo  Server zapushen... Dlya ostanovki nazhmi Ctrl+C
 echo.
 set FLASK_ENV=%FLASK_ENV%
 set APP_DEBUG=%APP_DEBUG%
-"%PYTHON%" "%APP_DIR%app.py"
+cd /d "%APP_DIR%"
+"%PYTHON%" "%APP_DIR%\app.py"
 
 echo.
 echo ============================================
