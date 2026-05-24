@@ -26,6 +26,8 @@ BAT_NAME = "start SONAR.bat"
 PROTECTED_DIRS  = {"uploads", "reports", "WPy", "Bacup", "db"}
 PROTECTED_FILES = {"_updater.py", "update.bat", ".env"}
 
+SPINNER = ["||", "|/", "--", "\\/"]
+
 
 def should_skip(rel_path: str) -> bool:
     p    = rel_path.replace("\\", "/").strip("/")
@@ -94,38 +96,54 @@ def show_rate_limit(headers):
           (f" (сброс в {reset_str})" if reset_str else ""))
 
 
-def _print_progress(downloaded: int, total: int):
-    """Выводит прогресс-бар в одну строку."""
-    if total > 0:
-        pct   = downloaded / total * 100
-        filled = int(pct / 5)  # 20 блоков = 100%
-        bar   = "█" * filled + "░" * (20 - filled)
-        size_kb = downloaded // 1024
-        total_kb = total // 1024
-        print(f"  [{bar}] {pct:5.1f}%  {size_kb} / {total_kb} КБ", end="\r", flush=True)
+def get_repo_size_kb() -> int:
+    """Возвращает примерный размер репозитория в КБ через API."""
+    try:
+        req = urllib.request.Request(API_BASE, headers=_headers())
+        with urllib.request.urlopen(req, timeout=15) as r:
+            data = json.loads(r.read().decode())
+            return data.get("size", 0)  # GitHub отдаёт размер в КБ
+    except Exception:
+        return 0
+
+
+def _print_progress(downloaded: int, total_kb: int, spinner_idx: int):
+    """Прогресс-бар если знаем размер, иначе спиннер."""
+    size_kb = downloaded // 1024
+    # Архив ~в  2 раза меньше чем размер репо в КБ (сжатие zip)
+    estimated = total_kb // 2 if total_kb > 0 else 0
+    if estimated > 0:
+        pct    = min(downloaded / (estimated * 1024) * 100, 99.0)
+        filled = int(pct / 5)
+        bar    = "█" * filled + "░" * (20 - filled)
+        print(f"  [{bar}] {pct:4.0f}%  {size_kb} / ~{estimated} КБ", end="\r", flush=True)
     else:
-        size_kb = downloaded // 1024
-        print(f"  Скачано: {size_kb} КБ...", end="\r", flush=True)
+        spin = SPINNER[spinner_idx % len(SPINNER)]
+        print(f"  [{spin}] Скачано: {size_kb} КБ...", end="\r", flush=True)
 
 
 def download_zip(zip_path: str):
     """Скачивает весь репозиторий одним архивом с прогресс-баром."""
+    print("  Определяем размер репозитория...")
+    total_kb = get_repo_size_kb()
+
     url = f"{API_BASE}/zipball/{BRANCH}"
     req = urllib.request.Request(url, headers=_headers())
     print(f"  Скачиваем архив репозитория...")
     with urllib.request.urlopen(req, timeout=60) as r:
         show_rate_limit(r.headers)
-        total = int(r.headers.get("Content-Length", 0))
-        downloaded = 0
-        chunk_size = 8192
+        downloaded  = 0
+        spinner_idx = 0
+        chunk_size  = 8192
         with open(zip_path, "wb") as f:
             while True:
                 chunk = r.read(chunk_size)
                 if not chunk:
                     break
                 f.write(chunk)
-                downloaded += len(chunk)
-                _print_progress(downloaded, total)
+                downloaded  += len(chunk)
+                spinner_idx += 1
+                _print_progress(downloaded, total_kb, spinner_idx)
     print()  # перевод строки после прогресс-бара
     size_kb = os.path.getsize(zip_path) // 1024
     print(f"  Архив скачан: {size_kb} КБ")
@@ -142,7 +160,6 @@ def extract_and_apply(zip_path: str):
         with zipfile.ZipFile(zip_path, "r") as zf:
             zf.extractall(tmp_dir)
 
-        # GitHub кладёт файлы в подпапку вида "WHO-AM-I-52-SONAR-<sha>/"
         entries = os.listdir(tmp_dir)
         if not entries:
             print("  [ОШИБКА] Архив пустой.")
@@ -208,6 +225,7 @@ def load_changelog():
     except Exception as e:
         print(f"  [Внимание] Не удалось прочитать changelog.py: {e}")
         return None, None
+
 
 def ensure_github_release():
     if not TOKEN:
