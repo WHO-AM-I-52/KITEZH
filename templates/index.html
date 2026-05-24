@@ -179,7 +179,7 @@
 
     <div class="vr d-none d-md-block"></div>
 
-    {# --- Группа: Избранные (перенесено из Быстрого режима) --- #}
+    {# --- Избранные --- #}
     <div class="d-flex align-items-center gap-1">
       <button class="btn btn-sm btn-outline-warning"
               data-chip-group="favorite" data-chip-value="1" data-chip-base="warning">
@@ -253,7 +253,9 @@
       {% else %}
         {% set overdue = false %}
       {% endif %}
+      {# data-preview-id — для hover-popover (фича #6) #}
       <tr class="{{ 'table-danger' if overdue else '' }}"
+          data-preview-id="{{ r.id }}"
           data-status="{{ r.status }}"
           data-employee="{{ r.assigned_name or r.employee_name or '' }}"
           data-date="{{ r.request_date[:10] if r.request_date else '' }}"
@@ -338,6 +340,95 @@
   </div>
 </div>
 
-{# ===== Подключение JS chip-фильтров ===== #}
+{# chip-фильтры JS #}
 <script src="{{ url_for('static', filename='js/filter_chips.js') }}"></script>
+{% endblock %}
+
+{# ===== HOVER-POPOVER (фича #6) — выполняется ПОСЛЕ bootstrap.bundle.min.js ===== #}
+{% block scripts %}
+<script>
+(function () {
+  'use strict';
+
+  const STATUS_COLOR = {
+    draft:    '#6c757d',
+    review:   '#fd7e14',
+    accepted: '#0d6efd',
+    answered: '#198754',
+  };
+
+  const cache = {};
+  let activePopover = null;
+  let activeRow     = null;
+  let hoverTimer    = null;
+
+  function buildContent(d) {
+    const color = STATUS_COLOR[d.status] || '#333';
+    return [
+      `<table class="table table-sm mb-0" style="font-size:12px;min-width:220px">`,
+      `<tr><th class="text-muted fw-normal pe-2" style="white-space:nowrap">№</th>`,
+      `<td class="fw-bold">${d.number}</td></tr>`,
+      `<tr><th class="text-muted fw-normal">Заявитель</th><td>${d.applicant}</td></tr>`,
+      `<tr><th class="text-muted fw-normal">Статус</th>`,
+      `<td><span class="badge" style="background:${color}">${d.status_label}</span></td></tr>`,
+      `<tr><th class="text-muted fw-normal">Контакт</th><td>${d.contact}</td></tr>`,
+      `<tr><th class="text-muted fw-normal">Тел.</th><td>${d.phone}</td></tr>`,
+      `<tr><th class="text-muted fw-normal">Изменено</th><td class="text-nowrap">${d.updated_at}</td></tr>`,
+      `</table>`,
+    ].join('');
+  }
+
+  function hidePopover() {
+    if (activePopover) { activePopover.hide(); activePopover.dispose(); activePopover = null; }
+    activeRow = null;
+  }
+
+  function showPopover(tr, data) {
+    if (activeRow === tr) return;
+    hidePopover();
+    activeRow = tr;
+    activePopover = new bootstrap.Popover(tr, {
+      trigger:   'manual',
+      html:      true,
+      placement: 'auto',
+      title:     '<i class="bi bi-file-text me-1"></i>Превью обращения',
+      content:   buildContent(data),
+      sanitize:  false,
+    });
+    activePopover.show();
+  }
+
+  async function loadAndShow(tr, rid) {
+    if (cache[rid]) { showPopover(tr, cache[rid]); return; }
+    try {
+      const resp = await fetch(`/api/request/${rid}/preview`);
+      if (!resp.ok) return;
+      const data = await resp.json();
+      cache[rid] = data;
+      if (activeRow === tr) showPopover(tr, data);
+    } catch (e) {}
+  }
+
+  document.querySelectorAll('tr[data-preview-id]').forEach(function (tr) {
+    const rid = tr.dataset.previewId;
+
+    tr.addEventListener('mouseenter', function () {
+      activeRow = tr;
+      hoverTimer = setTimeout(function () { loadAndShow(tr, rid); }, 250);
+    });
+
+    tr.addEventListener('mouseleave', function () {
+      clearTimeout(hoverTimer);
+      setTimeout(function () {
+        const pop = document.querySelector('.popover:hover');
+        if (!pop) hidePopover();
+      }, 80);
+    });
+  });
+
+  document.addEventListener('click', function (e) {
+    if (!e.target.closest('.popover') && !e.target.closest('tr[data-preview-id]')) hidePopover();
+  });
+})();
+</script>
 {% endblock %}
