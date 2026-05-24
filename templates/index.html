@@ -277,7 +277,8 @@
 
   function destroyPop() {
     if (currentPop) {
-      try { currentPop.hide();    } catch(e){}
+      // Только dispose() — hide() вызывает анимацию и обращается к
+      // уже-обнулённым внутренним структурам Bootstrap (TypeError в tooltip.js)
       try { currentPop.dispose(); } catch(e){}
       currentPop = null;
     }
