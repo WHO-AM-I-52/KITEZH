@@ -1,6 +1,8 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║ request_history.py                                           ║
 # ║ История изменений обращений + откат                          ║
+# ║ v2.4: исправлен rollback (убран обратный маппинг),    ║
+# ║      action хранится в БД и читается правильно             ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 import json
@@ -52,10 +54,12 @@ SKIP_FIELDS = {
 }
 
 
-def save_history(conn, request_id: int, changed_by: int, old_row, new_row) -> None:
+def save_history(conn, request_id: int, changed_by: int, old_row, new_row,
+                 action: str = 'edit') -> None:
     """
     Сравнивает старое и новое состояние обращения,
     сохраняет только изменённые поля в таблицу request_history.
+    action: 'edit' | 'rollback'
     """
     changes = {}
 
@@ -72,22 +76,21 @@ def save_history(conn, request_id: int, changed_by: int, old_row, new_row) -> No
             changes[key] = [old_v, new_v]
 
     if not changes:
-        return  # ничего не изменилось — не пишем запись
+        return
 
     conn.execute(
-        "INSERT INTO request_history (request_id, changed_by, changes) VALUES (?,?,?)",
-        (request_id, changed_by, json.dumps(changes, ensure_ascii=False))
+        "INSERT INTO request_history (request_id, changed_by, action, changes) VALUES (?,?,?,?)",
+        (request_id, changed_by, action, json.dumps(changes, ensure_ascii=False))
     )
 
 
 def get_history(request_id: int) -> list:
     """
-    Возвращает список записей истории для обращения,
-    с человекочитаемыми названиями полей.
+    Возвращает список записей истории для обращения.
     """
     conn = get_db()
     rows = conn.execute(
-        "SELECT h.id, h.changed_at, u.full_name, h.changes "
+        "SELECT h.id, h.changed_at, h.action, u.full_name, h.changes "
         "FROM request_history h "
         "LEFT JOIN users u ON h.changed_by = u.id "
         "WHERE h.request_id=? ORDER BY h.changed_at DESC",
@@ -102,14 +105,16 @@ def get_history(request_id: int) -> list:
         except Exception:
             raw = {}
 
-        # Подменяем технические ключи на читаемые метки
         labeled = {FIELD_LABELS.get(k, k): v for k, v in raw.items()}
+
+        # action берём из БД; для старых записей (NULL) — fallback 'edit'
+        action = row['action'] if row['action'] else 'edit'
 
         result.append({
             'id':         row['id'],
             'changed_at': row['changed_at'],
             'user':       row['full_name'] or '—',
-            'action':     'edit',
+            'action':     action,
             'changes':    labeled,
         })
     return result
@@ -118,9 +123,8 @@ def get_history(request_id: int) -> list:
 def rollback_history(history_id: int, request_id: int) -> bool:
     """
     Откатывает обращение к состоянию ДО выбранной правки:
-    берёт поле [0] (старое значение) из каждого изменения
-    и применяет UPDATE к таблице requests.
-    Возвращает True если откат выполнен, False если запись не найдена.
+    берёт поле [0] (старое значение) из каждого изменения.
+    Ключи в changes — всегда технические (snake_case), маппинг не нужен.
     """
     conn = get_db()
     row = conn.execute(
@@ -140,17 +144,12 @@ def rollback_history(history_id: int, request_id: int) -> bool:
 
     set_parts = []
     vals = []
-    for field, (old_val, _) in changes.items():
-        # Пропускаем служебные поля — их не откатываем
+    for field, value in changes.items():
         if field in SKIP_FIELDS:
             continue
-        # Ищем оригинальный технический ключ (обратный маппинг из FIELD_LABELS)
-        tech_key = field
-        for k, v in FIELD_LABELS.items():
-            if v == field:
-                tech_key = k
-                break
-        set_parts.append(f"{tech_key}=?")
+        # Ключ в БД всегда технический — обратный маппинг не нужен
+        old_val = value[0] if isinstance(value, list) and len(value) >= 1 else value
+        set_parts.append(f"{field}=?")
         vals.append(old_val if old_val != '' else None)
 
     if not set_parts:
