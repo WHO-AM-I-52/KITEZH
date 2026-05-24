@@ -62,33 +62,29 @@
   {% endif %}
   <div class="col-md-2">
     <label class="form-label mb-1" style="font-size:12px">Дата с</label>
-    <input type="date" name="date_from" class="form-control form-control-sm"
-           value="{{ filters.get('date_from','') }}">
+    <input type="date" name="date_from" class="form-control form-control-sm" value="{{ filters.get('date_from','') }}">
   </div>
   <div class="col-md-2">
     <label class="form-label mb-1" style="font-size:12px">Дата по</label>
-    <input type="date" name="date_to" class="form-control form-control-sm"
-           value="{{ filters.get('date_to','') }}">
+    <input type="date" name="date_to" class="form-control form-control-sm" value="{{ filters.get('date_to','') }}">
   </div>
   <div class="col-md-2">
     <label class="form-label mb-1" style="font-size:12px">Статус</label>
     <select name="status" class="form-select form-select-sm">
       <option value="">Все</option>
-      {% for v,l in [('draft','Черновик'),('review','На проверке'),
-                     ('accepted','В работе'),('answered','Отвечено')] %}
+      {% for v,l in [('draft','Черновик'),('review','На проверке'),('accepted','В работе'),('answered','Отвечено')] %}
       <option value="{{ v }}" {{ 'selected' if filters.get('status')==v }}>{{ l }}</option>
       {% endfor %}
     </select>
   </div>
   <div class="col-md-2">
     <label class="form-label mb-1" style="font-size:12px">Заявитель</label>
-    <input type="text" name="applicant" class="form-control form-control-sm"
-           value="{{ filters.get('applicant','') }}">
+    <input type="text" name="applicant" class="form-control form-control-sm" value="{{ filters.get('applicant','') }}">
   </div>
   <div class="col-md-3">
     <label class="form-label mb-1" style="font-size:12px">Поиск по тексту</label>
     <input type="text" name="search" class="form-control form-control-sm"
-           placeholder="Проект, контакты, район, примечания..."
+           placeholder="Проект, контакты, район..."
            value="{{ filters.get('search','') }}">
   </div>
   <div class="col-md-2">
@@ -96,99 +92,62 @@
     <select name="employee" class="form-select form-select-sm">
       <option value="">Все</option>
       {% for e in employees %}
-      <option value="{{ e.id }}"
-        {{ 'selected' if filters.get('employee')==e.id|string }}>{{ e.full_name }}</option>
+      <option value="{{ e.id }}" {{ 'selected' if filters.get('employee')==e.id|string }}>{{ e.full_name }}</option>
       {% endfor %}
     </select>
   </div>
   <div class="col-md-2 d-flex gap-1">
-    <button class="btn btn-sm btn-primary w-100">
-      <i class="bi bi-search"></i> Найти
-    </button>
+    <button class="btn btn-sm btn-primary w-100"><i class="bi bi-search"></i> Найти</button>
     <a href="{{ url_for('requests.index') }}" class="btn btn-sm btn-outline-secondary">✕</a>
   </div>
 </form>
 
-{# ===== CHIP-ФИЛЬТРЫ (Feature #5 FilterBar) ===== #}
+{# ===== CHIP-ФИЛЬТРЫ ===== #}
 <div class="chip-filterbar card mb-3 p-2" style="background:#f8f9fa;border:1px solid #dee2e6">
   <div class="d-flex flex-wrap gap-3 align-items-center">
     <div class="d-flex align-items-center gap-1 flex-wrap">
-      <span class="text-muted" style="font-size:11px;white-space:nowrap">
-        <i class="bi bi-circle-half me-1"></i>Статус:
-      </span>
-      <button class="btn btn-sm btn-outline-secondary" data-chip-group="status" data-chip-value="draft" data-chip-base="secondary">
-        <i class="bi bi-pencil-square me-1"></i>Черновик
-      </button>
-      <button class="btn btn-sm btn-outline-warning" data-chip-group="status" data-chip-value="review" data-chip-base="warning">
-        <i class="bi bi-hourglass-split me-1"></i>На проверке
-      </button>
-      <button class="btn btn-sm btn-outline-primary" data-chip-group="status" data-chip-value="accepted" data-chip-base="primary">
-        <i class="bi bi-briefcase me-1"></i>В работе
-      </button>
-      <button class="btn btn-sm btn-outline-success" data-chip-group="status" data-chip-value="answered" data-chip-base="success">
-        <i class="bi bi-check2-circle me-1"></i>Отвечено
-      </button>
+      <span class="text-muted" style="font-size:11px;white-space:nowrap"><i class="bi bi-circle-half me-1"></i>Статус:</span>
+      <button class="btn btn-sm btn-outline-secondary" data-chip-group="status" data-chip-value="draft" data-chip-base="secondary"><i class="bi bi-pencil-square me-1"></i>Черновик</button>
+      <button class="btn btn-sm btn-outline-warning" data-chip-group="status" data-chip-value="review" data-chip-base="warning"><i class="bi bi-hourglass-split me-1"></i>На проверке</button>
+      <button class="btn btn-sm btn-outline-primary" data-chip-group="status" data-chip-value="accepted" data-chip-base="primary"><i class="bi bi-briefcase me-1"></i>В работе</button>
+      <button class="btn btn-sm btn-outline-success" data-chip-group="status" data-chip-value="answered" data-chip-base="success"><i class="bi bi-check2-circle me-1"></i>Отвечено</button>
     </div>
     <div class="vr d-none d-md-block"></div>
     <div class="d-flex align-items-center gap-1 flex-wrap">
-      <span class="text-muted" style="font-size:11px;white-space:nowrap">
-        <i class="bi bi-calendar3 me-1"></i>Дата:
-      </span>
-      <button class="btn btn-sm btn-outline-info" data-chip-group="date" data-chip-value="today" data-chip-base="info">
-        <i class="bi bi-calendar-day me-1"></i>Сегодня
-      </button>
-      <button class="btn btn-sm btn-outline-info" data-chip-group="date" data-chip-value="week" data-chip-base="info">
-        <i class="bi bi-calendar-week me-1"></i>Неделя
-      </button>
-      <button class="btn btn-sm btn-outline-info" data-chip-group="date" data-chip-value="month" data-chip-base="info">
-        <i class="bi bi-calendar-month me-1"></i>Месяц
-      </button>
+      <span class="text-muted" style="font-size:11px;white-space:nowrap"><i class="bi bi-calendar3 me-1"></i>Дата:</span>
+      <button class="btn btn-sm btn-outline-info" data-chip-group="date" data-chip-value="today" data-chip-base="info"><i class="bi bi-calendar-day me-1"></i>Сегодня</button>
+      <button class="btn btn-sm btn-outline-info" data-chip-group="date" data-chip-value="week" data-chip-base="info"><i class="bi bi-calendar-week me-1"></i>Неделя</button>
+      <button class="btn btn-sm btn-outline-info" data-chip-group="date" data-chip-value="month" data-chip-base="info"><i class="bi bi-calendar-month me-1"></i>Месяц</button>
     </div>
     <div class="vr d-none d-md-block"></div>
     {% if employees %}
     <div class="d-flex align-items-center gap-1 flex-wrap">
-      <span class="text-muted" style="font-size:11px;white-space:nowrap">
-        <i class="bi bi-person me-1"></i>Ответственный:
-      </span>
+      <span class="text-muted" style="font-size:11px;white-space:nowrap"><i class="bi bi-person me-1"></i>Ответственный:</span>
       {% for e in employees %}
-      <button class="btn btn-sm btn-outline-dark" data-chip-group="employee"
-              data-chip-value="{{ e.full_name }}" data-chip-base="dark" title="{{ e.full_name }}">
-        {{ e.full_name.split()[0] if e.full_name else '?' }}
-      </button>
+      <button class="btn btn-sm btn-outline-dark" data-chip-group="employee" data-chip-value="{{ e.full_name }}" data-chip-base="dark" title="{{ e.full_name }}">{{ e.full_name.split()[0] if e.full_name else '?' }}</button>
       {% endfor %}
     </div>
     {% endif %}
     <div class="vr d-none d-md-block"></div>
     <div class="d-flex align-items-center gap-1">
-      <button class="btn btn-sm btn-outline-warning" data-chip-group="favorite" data-chip-value="1" data-chip-base="warning">
-        <i class="bi bi-star-fill me-1"></i>Избранные
-      </button>
+      <button class="btn btn-sm btn-outline-warning" data-chip-group="favorite" data-chip-value="1" data-chip-base="warning"><i class="bi bi-star-fill me-1"></i>Избранные</button>
     </div>
     <div class="ms-auto d-flex align-items-center gap-2">
       <span class="text-muted small" id="chip-visible-count"></span>
-      <button id="chip-reset-all" class="btn btn-sm btn-outline-danger" title="Сбросить chip-фильтры">
-        <i class="bi bi-x-circle"></i> Сброс
-      </button>
+      <button id="chip-reset-all" class="btn btn-sm btn-outline-danger"><i class="bi bi-x-circle"></i> Сброс</button>
     </div>
   </div>
 </div>
 
 <div class="mb-2 d-flex gap-2 align-items-center">
-  <a href="{{ url_for('report.report',
-                      date_from=filters.get('date_from',''),
-                      date_to=filters.get('date_to',''),
-                      status=filters.get('status','')) }}"
-     class="btn btn-sm btn-success">
+  <a href="{{ url_for('report.report', date_from=filters.get('date_from',''), date_to=filters.get('date_to',''), status=filters.get('status','')) }}" class="btn btn-sm btn-success">
     <i class="bi bi-file-earmark-excel"></i> Выгрузить Excel
   </a>
   <a href="{{ url_for('requests.dashboard') }}" class="btn btn-sm btn-outline-primary">
     <i class="bi bi-bar-chart-line"></i> Открыть дашборд
   </a>
   {% if active_filter_id %}
-  <span class="badge bg-primary">
-    <i class="bi bi-funnel-fill me-1"></i>Активный фильтр
-    <a href="{{ url_for('requests.index') }}" class="text-white ms-1">✕</a>
-  </span>
+  <span class="badge bg-primary"><i class="bi bi-funnel-fill me-1"></i>Активный фильтр <a href="{{ url_for('requests.index') }}" class="text-white ms-1">✕</a></span>
   {% endif %}
 </div>
 
@@ -214,12 +173,9 @@
     </thead>
     <tbody id="requests-tbody">
       {% if not requests %}
-      <tr>
-        <td colspan="13" class="text-center text-muted py-5">
-          <i class="bi bi-inbox" style="font-size:2rem;display:block;margin-bottom:8px"></i>
-          Обращений не найдено
-        </td>
-      </tr>
+      <tr><td colspan="13" class="text-center text-muted py-5">
+        <i class="bi bi-inbox" style="font-size:2rem;display:block;margin-bottom:8px"></i>Обращений не найдено
+      </td></tr>
       {% endif %}
       {% for r in requests %}
       {% if r.request_date %}
@@ -236,41 +192,25 @@
           data-favorite="{{ '1' if r.favorite_flag else '0' }}">
         <td class="text-center">
           <form method="post" action="{{ url_for('requests.toggle_favorite', rid=r.id) }}">
-            <button type="submit" class="btn btn-link p-0 border-0"
-                    title="{{ 'Убрать из избранного' if r.favorite_flag else 'В избранное' }}">
-              {% if r.favorite_flag %}
-                <i class="bi bi-star-fill text-warning"></i>
-              {% else %}
-                <i class="bi bi-star text-muted"></i>
-              {% endif %}
+            <button type="submit" class="btn btn-link p-0 border-0" title="{{ 'Убрать из избранного' if r.favorite_flag else 'В избранное' }}">
+              {% if r.favorite_flag %}<i class="bi bi-star-fill text-warning"></i>
+              {% else %}<i class="bi bi-star text-muted"></i>{% endif %}
             </button>
           </form>
         </td>
-        <td>
-          <a href="{{ url_for('requests.view_request', rid=r.id) }}" class="fw-bold text-decoration-none">
-            {{ r.request_number or ('ЗУ-черн.' if r.status=='draft' else '—') }}
-          </a>
-        </td>
+        <td><a href="{{ url_for('requests.view_request', rid=r.id) }}" class="fw-bold text-decoration-none">
+          {{ r.request_number or ('ЗУ-черн.' if r.status=='draft' else '—') }}
+        </a></td>
         <td class="text-nowrap">{{ r.request_date or '—' }}</td>
         <td>
-          {% if r.status=='draft' %}
-            <span class="badge bg-secondary">Черновик</span>
-          {% elif r.status=='review' %}
-            <span class="badge" style="background:#fd7e14">На проверке</span>
-          {% elif r.status=='accepted' %}
-            <span class="badge bg-primary">В работе</span>
-          {% elif r.status=='answered' %}
-            <span class="badge bg-success">Отвечено</span>
-          {% endif %}
-          {% if overdue %}
-          <i class="bi bi-exclamation-circle text-danger ms-1" title="Просрочено"></i>
-          {% endif %}
+          {% if r.status=='draft' %}<span class="badge bg-secondary">Черновик</span>
+          {% elif r.status=='review' %}<span class="badge" style="background:#fd7e14">На проверке</span>
+          {% elif r.status=='accepted' %}<span class="badge bg-primary">В работе</span>
+          {% elif r.status=='answered' %}<span class="badge bg-success">Отвечено</span>{% endif %}
+          {% if overdue %}<i class="bi bi-exclamation-circle text-danger ms-1" title="Просрочено"></i>{% endif %}
         </td>
         <td>
-          {% if r.source_type %}
-            {% for s in r.source_type.split(',') %}
-            <span class="badge bg-light text-dark border" style="font-size:10px">{{ s.strip() }}</span>
-            {% endfor %}
+          {% if r.source_type %}{% for s in r.source_type.split(',') %}<span class="badge bg-light text-dark border" style="font-size:10px">{{ s.strip() }}</span>{% endfor %}
           {% else %}—{% endif %}
         </td>
         <td>{{ r.applicant_short_name or r.applicant_full_name or '—' }}</td>
@@ -281,20 +221,11 @@
         <td class="text-center">{{ r.jobs_total or '—' }}</td>
         <td>{{ r.assigned_name or r.employee_name or '—' }}</td>
         <td class="text-nowrap">
-          <a href="{{ url_for('requests.view_request', rid=r.id) }}"
-             class="btn btn-sm btn-outline-primary py-0 px-1" title="Просмотр">
-            <i class="bi bi-eye"></i>
-          </a>
-          <a href="{{ url_for('requests.edit_request', rid=r.id) }}"
-             class="btn btn-sm btn-outline-secondary py-0 px-1" title="Редактировать">
-            <i class="bi bi-pencil"></i>
-          </a>
+          <a href="{{ url_for('requests.view_request', rid=r.id) }}" class="btn btn-sm btn-outline-primary py-0 px-1" title="Просмотр"><i class="bi bi-eye"></i></a>
+          <a href="{{ url_for('requests.edit_request', rid=r.id) }}" class="btn btn-sm btn-outline-secondary py-0 px-1" title="Редактировать"><i class="bi bi-pencil"></i></a>
           {% if session.role=='admin' %}
-          <form method="post" action="{{ url_for('requests.delete_request', rid=r.id) }}"
-                class="d-inline" onsubmit="return confirm('Удалить обращение?')">
-            <button class="btn btn-sm btn-outline-danger py-0 px-1" title="Удалить">
-              <i class="bi bi-trash"></i>
-            </button>
+          <form method="post" action="{{ url_for('requests.delete_request', rid=r.id) }}" class="d-inline" onsubmit="return confirm('Удалить обращение?')">
+            <button class="btn btn-sm btn-outline-danger py-0 px-1" title="Удалить"><i class="bi bi-trash"></i></button>
           </form>
           {% endif %}
         </td>
@@ -309,9 +240,7 @@
     <span class="badge bg-danger me-1"> </span>
     Красные строки — активные обращения старше {{dash.kpi.norm_days}} дней без ответа
   </div>
-  <div class="small text-muted ms-auto">
-    Всего записей: <strong>{{ requests|length }}</strong>
-  </div>
+  <div class="small text-muted ms-auto">Всего записей: <strong>{{ requests|length }}</strong></div>
 </div>
 
 <script src="{{ url_for('static', filename='js/filter_chips.js') }}"></script>
@@ -322,104 +251,99 @@
 (function () {
   'use strict';
 
-  const STATUS_COLOR = {
+  var STATUS_COLOR = {
     draft:    '#6c757d',
     review:   '#fd7e14',
     accepted: '#0d6efd',
-    answered: '#198754',
+    answered: '#198754'
   };
 
-  const cache = {};
-  let activePopover = null;
-  let activeRow     = null;
-  let hoverTimer    = null;
+  var cache      = {};
+  var currentPop = null;   // текущий открытый Popover-объект
+  var currentTr  = null;   // строка, для которой открыт popover
+  var timer      = null;
 
-  function buildContent(d) {
-    const color = STATUS_COLOR[d.status] || '#333';
-    return [
-      '<table class="table table-sm mb-0" style="font-size:12px;min-width:220px">',
-      '<tr><th class="text-muted fw-normal pe-2" style="white-space:nowrap">№</th>',
-      '<td class="fw-bold">' + d.number + '</td></tr>',
-      '<tr><th class="text-muted fw-normal">Заявитель</th><td>' + d.applicant + '</td></tr>',
-      '<tr><th class="text-muted fw-normal">Статус</th>',
-      '<td><span class="badge" style="background:' + color + '">' + d.status_label + '</span></td></tr>',
-      '<tr><th class="text-muted fw-normal">Контакт</th><td>' + d.contact + '</td></tr>',
-      '<tr><th class="text-muted fw-normal">Тел.</th><td>' + d.phone + '</td></tr>',
-      '<tr><th class="text-muted fw-normal">Изменено</th><td class="text-nowrap">' + d.updated_at + '</td></tr>',
-      '</table>',
-    ].join('');
+  function buildHtml(d) {
+    var c = STATUS_COLOR[d.status] || '#333';
+    return '<table class="table table-sm mb-0" style="font-size:12px;min-width:220px">'
+      + '<tr><th class="text-muted fw-normal pe-2">№</th><td class="fw-bold">' + (d.number||'—') + '</td></tr>'
+      + '<tr><th class="text-muted fw-normal">Заявитель</th><td>' + (d.applicant||'—') + '</td></tr>'
+      + '<tr><th class="text-muted fw-normal">Статус</th><td><span class="badge" style="background:' + c + '">' + (d.status_label||'—') + '</span></td></tr>'
+      + '<tr><th class="text-muted fw-normal">Контакт</th><td>' + (d.contact||'—') + '</td></tr>'
+      + '<tr><th class="text-muted fw-normal">Тел.</th><td>' + (d.phone||'—') + '</td></tr>'
+      + '<tr><th class="text-muted fw-normal">Изменено</th><td>' + (d.updated_at||'—') + '</td></tr>'
+      + '</table>';
   }
 
-  // Обнуляем СНАЧАЛА, затем hide/dispose — не наоборот
-  function hidePopover() {
-    var pop = activePopover;
-    activePopover = null;
-    activeRow = null;
-    if (pop) {
-      try { pop.hide(); } catch (e) {}
-      try { pop.dispose(); } catch (e) {}
+  function destroyPop() {
+    if (currentPop) {
+      try { currentPop.hide();    } catch(e){}
+      try { currentPop.dispose(); } catch(e){}
+      currentPop = null;
     }
+    currentTr = null;
   }
 
-  function showPopover(tr, data) {
-    if (activeRow === tr) return;
-    hidePopover();
-    activeRow = tr;
-    try {
-      activePopover = new bootstrap.Popover(tr, {
-        trigger:   'manual',
-        html:      true,
-        placement: 'auto',
-        title:     '<i class="bi bi-file-text me-1"></i>Превью обращения',
-        content:   buildContent(data),
-        sanitize:  false,
-      });
-      activePopover.show();
-    } catch (e) {
-      activePopover = null;
+  function openPop(tr, data) {
+    // если уже открыт для этой же строки — ничего не делаем
+    if (currentTr === tr && currentPop) return;
+    destroyPop();
+    currentTr  = tr;
+    currentPop = new bootstrap.Popover(tr, {
+      trigger:   'manual',
+      html:      true,
+      placement: 'auto',
+      title:     '<i class="bi bi-file-text me-1"></i>Превью обращения',
+      content:   buildHtml(data),
+      sanitize:  false
+    });
+    currentPop.show();
+  }
+
+  function fetchAndOpen(tr, rid) {
+    if (cache[rid]) {
+      openPop(tr, cache[rid]);
+      return;
     }
-  }
-
-  function loadAndShow(tr, rid) {
-    if (cache[rid]) { showPopover(tr, cache[rid]); return; }
     fetch('/api/request/' + rid + '/preview')
-      .then(function (resp) { return resp.ok ? resp.json() : null; })
-      .then(function (data) {
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(data) {
         if (!data) return;
         cache[rid] = data;
-        if (activeRow === tr) showPopover(tr, data);
+        // показываем только если пользователь всё ещё стоит на этой строке
+        if (currentTr === tr) openPop(tr, data);
       })
-      .catch(function () {});
+      .catch(function(){});
   }
 
-  document.querySelectorAll('tr[data-preview-id]').forEach(function (tr) {
+  document.querySelectorAll('tr[data-preview-id]').forEach(function(tr) {
     var rid = tr.dataset.previewId;
 
-    tr.addEventListener('mouseenter', function () {
-      clearTimeout(hoverTimer);
-      activeRow = tr;
-      hoverTimer = setTimeout(function () {
-        if (activeRow === tr) loadAndShow(tr, rid);
-      }, 250);
+    tr.addEventListener('mouseenter', function() {
+      clearTimeout(timer);
+      currentTr = tr;  // запоминаем строку сразу
+      timer = setTimeout(function() {
+        fetchAndOpen(tr, rid);
+      }, 300);
     });
 
-    tr.addEventListener('mouseleave', function () {
-      clearTimeout(hoverTimer);
-      var leftRow = tr;
-      setTimeout(function () {
-        // скрываем только если мышь не над popover и не на другой строке
-        if (activeRow !== leftRow) return;
-        var pop = document.querySelector('.popover:hover');
-        if (!pop) hidePopover();
-      }, 120);
+    tr.addEventListener('mouseleave', function() {
+      clearTimeout(timer);
+      // небольшая задержка чтобы можно было завести мышь на поповер
+      setTimeout(function() {
+        if (document.querySelector('.popover:hover')) return;
+        destroyPop();
+      }, 150);
     });
   });
 
-  document.addEventListener('click', function (e) {
+  // клик вне — закрываем
+  document.addEventListener('click', function(e) {
     if (!e.target.closest('.popover') && !e.target.closest('tr[data-preview-id]')) {
-      hidePopover();
+      destroyPop();
     }
   });
+
 })();
 </script>
 {% endblock %}
