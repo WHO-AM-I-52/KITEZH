@@ -1,5 +1,5 @@
-# download_wpy.ps1 - skachivanie posledney portativnoy versii WPy
-# Ne ispolzuet GitHub API (izbezhit 403)
+# download_wpy.ps1 - skachivanie WPy (portativnaya .dot versiya)
+# Ispolzuet pryamuyu ssylku, bez GitHub API
 param([string]$TargetDir)
 
 if (-not $TargetDir) {
@@ -7,44 +7,50 @@ if (-not $TargetDir) {
     exit 1
 }
 
-try {
-    Write-Host "  Ishchu poslednyuyu versiyu na winpython.github.io..."
+# Versiya WPy - obnovlyay pri vyhode novoy
+$WPY_VER  = "3.13.13.0"
+$PY_VER   = "3.13.13"
+$FNAME    = "Winpython64-$WPY_VER.dot.exe"
 
-    $wc = New-Object System.Net.WebClient
-    $wc.Headers.Add('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)')
+# Varianty URL (Github -> SourceForge kak fallback)
+$URLS = @(
+    "https://github.com/winpython/winpython/releases/download/$WPY_VER/$FNAME",
+    "https://sourceforge.net/projects/winpython/files/WinPython_3.13/$WPY_VER/$FNAME/download"
+)
 
-    $html = $wc.DownloadString('https://winpython.github.io/')
+$outFile = Join-Path $TargetDir $FNAME
 
-    # Ishchem ssylku vida: .../releases/download/.../Winpython64-X.X.X.X.dot.exe
-    $pattern = 'https://github\.com/winpython/winpython/releases/download/[^"''\s]+Winpython64[^"''\s]+dot[^"''\s]+\.exe'
-    $match = [regex]::Match($html, $pattern)
+Write-Host "  Fayl: $FNAME"
+Write-Host "  Razmer: ~30 MB"
 
-    if (-not $match.Success) {
-        # Fallback - probuy releases/latest redirect
-        Write-Host "  Probuy releases/latest..."
-        $html2 = $wc.DownloadString('https://github.com/winpython/winpython/releases/latest')
-        $match = [regex]::Match($html2, $pattern)
+$wc = New-Object System.Net.WebClient
+$wc.Headers.Add('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)')
+
+$ok = $false
+foreach ($url in $URLS) {
+    try {
+        Write-Host "  Skachivanie s: $url"
+        Write-Host "  (mozhet zanyat 2-5 minut...)"
+        $wc.DownloadFile($url, $outFile)
+        if ((Get-Item $outFile).Length -gt 1MB) {
+            Write-Host "  OK: skachano -> $outFile"
+            $ok = $true
+            break
+        } else {
+            Write-Host "  [WARN] Fayl slishkom malen, probuy sleduushiy URL..."
+            Remove-Item $outFile -Force -ErrorAction SilentlyContinue
+        }
+    } catch {
+        Write-Host ("  [WARN] Oshibka: " + $_.Exception.Message + " -> probuy sleduushiy URL...")
+        Remove-Item $outFile -Force -ErrorAction SilentlyContinue
     }
+}
 
-    if (-not $match.Success) {
-        Write-Host "[OSHIBKA] Ne udalos nayti ssylku na WPy."
-        Write-Host "Skachain vruchnuyu s: https://winpython.github.io/"
-        exit 1
-    }
-
-    $url = $match.Value
-    $fileName = Split-Path $url -Leaf
-    Write-Host ("  Nayden: " + $fileName)
-
-    $outFile = Join-Path $TargetDir "wpy_setup.exe"
-    Write-Host "  Skachivanie (3-7 minut)..."
-    $wc.DownloadFile($url, $outFile)
-    Write-Host "  OK: skachano!"
-
-    $fileName | Out-File (Join-Path $TargetDir ".wpy_name.txt") -Encoding utf8
-    exit 0
-
-} catch {
-    Write-Host ("[OSHIBKA] " + $_.Exception.Message)
+if (-not $ok) {
+    Write-Host "[OSHIBKA] Ne udalos skachat WPy ni s odnogo istochnika."
+    Write-Host "Skachain vruchnuyu: https://github.com/winpython/winpython/releases"
     exit 1
 }
+
+$FNAME | Out-File (Join-Path $TargetDir ".wpy_name.txt") -Encoding utf8
+exit 0
