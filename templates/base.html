@@ -2,7 +2,7 @@
 {# ╔══════════════════════════════════════════════════════════════╗ #}
 {# ║                        base.html                            ║ #}
 {# ║  Базовый шаблон приложения "Подбор ЗУ — НО"                 ║ #}
-{# ║  v2.7: Unseen changelog badge (#8)                      ║ #}
+{# ║  v2.8: Тема «Зона» (#9)                                 ║ #}
 {# ╚══════════════════════════════════════════════════════════════╝ #}
 <html lang="ru">
 <head>
@@ -72,6 +72,14 @@
     body[data-theme="dark"] .gs-footer { background:#22263a; color:#60a5fa; }
     body[data-theme="dark"] .gs-footer:hover { background:#2d3348; }
     body[data-theme="dark"] .gs-empty, body[data-theme="dark"] .gs-loading { color:#94a3b8; }
+    /* zone */
+    body[data-theme="zone"] .gs-dropdown { background:#1e2018; box-shadow:0 8px 32px rgba(0,0,0,.6); }
+    body[data-theme="zone"] .gs-item { color:#c8c4a0; border-bottom-color:#3a3a28; }
+    body[data-theme="zone"] .gs-item:hover, body[data-theme="zone"] .gs-item.gs-active { background:#2a2a1e; }
+    body[data-theme="zone"] .gs-item-num { color:#c8a84b; }
+    body[data-theme="zone"] .gs-footer { background:#252519; color:#a8c060; }
+    body[data-theme="zone"] .gs-footer:hover { background:#2e2e20; }
+    body[data-theme="zone"] .gs-empty, body[data-theme="zone"] .gs-loading { color:#8a876a; }
 
     .sidebar { position:fixed; top:var(--topbar-h); left:0; bottom:0; width:var(--sb-width); background:#1B5E7B; z-index:1040; display:flex; flex-direction:column; transition:width .25s ease; overflow:hidden; }
     body.sb-col .sidebar { width:var(--sb-col); }
@@ -108,8 +116,41 @@
     .sb-online-num { font-weight:700; color:#4ade80; transition:transform .3s, color .3s; }
     .sb-online-num.bump { transform:scale(1.4); color:#86efac; }
 
-    :root { --bg:#f4f7fa; --surface:#fff; --surface2:#f0f4f8; --text:#212529; --text-muted:#6c757d; --border:#dee2e6; --card-shadow:0 1px 4px rgba(0,0,0,.08); --input-bg:#fff; --input-border:#ced4da; --table-stripe:#f8f9fa; --table-hover:#f1f4f7; }
-    body[data-theme="dark"] { --bg:#0f1117; --surface:#1a1d27; --surface2:#22263a; --text:#e2e8f0; --text-muted:#94a3b8; --border:#2d3348; --card-shadow:0 1px 6px rgba(0,0,0,.4); --input-bg:#1e2235; --input-border:#3a4060; --table-stripe:#1e2235; --table-hover:#252a40; }
+    /* ─── CSS-переменные тем ────────────────────────────────────── */
+    :root {
+      --bg:#f4f7fa; --surface:#fff; --surface2:#f0f4f8;
+      --text:#212529; --text-muted:#6c757d; --border:#dee2e6;
+      --card-shadow:0 1px 4px rgba(0,0,0,.08);
+      --input-bg:#fff; --input-border:#ced4da;
+      --table-stripe:#f8f9fa; --table-hover:#f1f4f7;
+    }
+    body[data-theme="dark"] {
+      --bg:#0f1117; --surface:#1a1d27; --surface2:#22263a;
+      --text:#e2e8f0; --text-muted:#94a3b8; --border:#2d3348;
+      --card-shadow:0 1px 6px rgba(0,0,0,.4);
+      --input-bg:#1e2235; --input-border:#3a4060;
+      --table-stripe:#1e2235; --table-hover:#252a40;
+    }
+    /* ─── Тема «Зона» ───────────────────────────────────────────── */
+    body[data-theme="zone"] {
+      --bg:#1a1a14; --surface:#222218; --surface2:#2a2a1e;
+      --text:#c8c4a0; --text-muted:#8a876a; --border:#3a3a28;
+      --card-shadow:0 1px 8px rgba(0,0,0,.5);
+      --input-bg:#1e1e16; --input-border:#4a4a32;
+      --table-stripe:#1e1e16; --table-hover:#252519;
+    }
+    body[data-theme="zone"] .topbar { background:#1e2d1a; box-shadow:0 2px 12px rgba(0,0,0,.5); }
+    body[data-theme="zone"] .sidebar { background:#1a2618; }
+    body[data-theme="zone"] .sb-link { color:rgba(200,196,160,.8); }
+    body[data-theme="zone"] .sb-link:hover { background:rgba(168,192,96,.1); color:#c8c4a0; }
+    body[data-theme="zone"] .sb-link.active { background:rgba(200,168,75,.12); color:#c8a84b; border-left-color:#c8a84b; }
+    body[data-theme="zone"] .sb-sep { background:rgba(200,168,75,.15); }
+    body[data-theme="zone"] .sb-cat { color:rgba(200,168,75,.45); }
+    body[data-theme="zone"] .sb-badge { background:#8b1a1a; }
+    body[data-theme="zone"] .sb-online-dot { background:#a8c060; box-shadow:0 0 0 0 rgba(168,192,96,.6); }
+    body[data-theme="zone"] .topbar-brand { color:#c8a84b; }
+    body[data-theme="zone"] .sb-toggle { color:#c8c4a0; }
+    body[data-theme="zone"] footer { background:var(--surface) !important; border-color:var(--border) !important; }
 
     body { background:var(--bg) !important; color:var(--text) !important; transition:background .2s,color .2s; }
     .card { background:var(--surface) !important; box-shadow:var(--card-shadow) !important; color:var(--text) !important; }
@@ -137,6 +178,8 @@
     .theme-toggle-btn:hover { background:rgba(255,255,255,.1); color:#fff; }
     .theme-toggle-btn i { font-size:16px; width:20px; text-align:center; }
     body.sb-col .theme-toggle-btn .sb-lbl { opacity:0; pointer-events:none; }
+    body[data-theme="zone"] .theme-toggle-btn { color:rgba(200,196,160,.75); }
+    body[data-theme="zone"] .theme-toggle-btn:hover { background:rgba(200,168,75,.1); color:#c8a84b; }
 
     body[data-theme="dark"] h1, body[data-theme="dark"] h2, body[data-theme="dark"] h3, body[data-theme="dark"] h4, body[data-theme="dark"] h5, body[data-theme="dark"] h6, body[data-theme="dark"] p, body[data-theme="dark"] span:not(.badge), body[data-theme="dark"] label, body[data-theme="dark"] td, body[data-theme="dark"] th, body[data-theme="dark"] li, body[data-theme="dark"] strong, body[data-theme="dark"] small, body[data-theme="dark"] .fw-bold, body[data-theme="dark"] .fw-semibold { color: var(--text) !important; }
     body[data-theme="dark"] .text-dark, body[data-theme="dark"] .text-black { color: var(--text) !important; }
@@ -158,6 +201,35 @@
     body[data-theme="dark"] .modal-footer { border-color: var(--border) !important; background: var(--surface) !important; }
     body[data-theme="dark"] .modal-body { background: var(--surface) !important; }
     body[data-theme="dark"] select option { background: var(--surface) !important; color: var(--text) !important; }
+
+    /* zone — типографика */
+    body[data-theme="zone"] h1, body[data-theme="zone"] h2, body[data-theme="zone"] h3,
+    body[data-theme="zone"] h4, body[data-theme="zone"] h5, body[data-theme="zone"] h6,
+    body[data-theme="zone"] p, body[data-theme="zone"] span:not(.badge),
+    body[data-theme="zone"] label, body[data-theme="zone"] td, body[data-theme="zone"] th,
+    body[data-theme="zone"] li, body[data-theme="zone"] strong, body[data-theme="zone"] small,
+    body[data-theme="zone"] .fw-bold, body[data-theme="zone"] .fw-semibold { color: var(--text) !important; }
+    body[data-theme="zone"] .text-dark, body[data-theme="zone"] .text-black { color: var(--text) !important; }
+    body[data-theme="zone"] ::placeholder { color: var(--text-muted) !important; opacity: 1; }
+    body[data-theme="zone"] .table thead th { background: var(--surface2) !important; color: var(--text) !important; }
+    body[data-theme="zone"] .table td, body[data-theme="zone"] .table th { color: var(--text) !important; }
+    body[data-theme="zone"] .card-header { color: var(--text) !important; }
+    body[data-theme="zone"] .card-header.bg-white { background: var(--surface2) !important; }
+    body[data-theme="zone"] .form-label { color: var(--text) !important; }
+    body[data-theme="zone"] .form-check-label { color: var(--text) !important; }
+    body[data-theme="zone"] .form-text { color: var(--text-muted) !important; }
+    body[data-theme="zone"] .btn-outline-secondary { color: var(--text) !important; border-color: var(--border) !important; }
+    body[data-theme="zone"] .btn-outline-secondary:hover { background: var(--surface2) !important; }
+    body[data-theme="zone"] .btn-light { background: var(--surface2) !important; color: var(--text) !important; border-color: var(--border) !important; }
+    body[data-theme="zone"] .progress { background: var(--surface2) !important; }
+    body[data-theme="zone"] a:not(.btn):not(.sb-link):not(.nav-link):not(.dropdown-item) { color: #a8c060; }
+    body[data-theme="zone"] a:not(.btn):not(.sb-link):not(.nav-link):not(.dropdown-item):hover { color: #c8e080; }
+    body[data-theme="zone"] .modal-header { border-color: var(--border) !important; }
+    body[data-theme="zone"] .modal-footer { border-color: var(--border) !important; background: var(--surface) !important; }
+    body[data-theme="zone"] .modal-body { background: var(--surface) !important; }
+    body[data-theme="zone"] select option { background: var(--surface) !important; color: var(--text) !important; }
+    body[data-theme="zone"] .btn-primary { background:#5a6e2a; border-color:#5a6e2a; }
+    body[data-theme="zone"] .btn-primary:hover { background:#4a5c22; border-color:#4a5c22; }
 
     #offlineBanner { display:none; position:fixed; top:0; left:0; right:0; z-index:99999; background:linear-gradient(135deg, #7f1d1d, #991b1b); color:#fff; padding:0; box-shadow:0 4px 24px rgba(0,0,0,.5); animation:offlineFadeIn .4s ease; }
     @keyframes offlineFadeIn { from{opacity:0;transform:translateY(-20px);} to{opacity:1;transform:translateY(0);} }
@@ -342,25 +414,39 @@
 })();
 </script>
 
+{# ─── Тема: трёхпозиционный переключатель light → dark → zone ── #}
 <script>
 (function(){
-  var KEY = 'app_theme', DARK = 'dark';
-  if (localStorage.getItem(KEY) === DARK) document.body.setAttribute('data-theme', DARK);
+  var KEY = 'app_theme';
+  var THEMES = ['light', 'dark', 'zone'];
+
+  var saved = localStorage.getItem(KEY) || 'light';
+  if (saved === 'dark') document.body.setAttribute('data-theme', 'dark');
+  else if (saved === 'zone') document.body.setAttribute('data-theme', 'zone');
+
+  var ICONS  = { light: 'bi bi-moon-stars-fill', dark: 'bi bi-sun-fill',   zone: 'bi bi-radioactive' };
+  var LABELS = { light: 'Тёмный режим',          dark: 'Тема «Зона»',      zone: 'Светлый режим' };
+
   function syncUI(){
-    var isDark = document.body.getAttribute('data-theme') === DARK;
-    var icon = document.getElementById('themeIcon');
+    var cur = document.body.getAttribute('data-theme') || 'light';
+    var icon  = document.getElementById('themeIcon');
     var label = document.getElementById('themeLabel');
     if (!icon) return;
-    icon.className = isDark ? 'bi bi-sun-fill' : 'bi bi-moon-stars-fill';
-    label.textContent = isDark ? 'Светлый режим' : 'Тёмный режим';
+    icon.className = ICONS[cur]  || ICONS.light;
+    label.textContent = LABELS[cur] || LABELS.light;
   }
+
   document.addEventListener('DOMContentLoaded', function(){
     syncUI();
     var btn = document.getElementById('themeToggle');
-    if (btn) btn.addEventListener('click', function(){
-      var isDark = document.body.getAttribute('data-theme') === DARK;
-      if (isDark) { document.body.removeAttribute('data-theme'); localStorage.setItem(KEY, 'light'); }
-      else { document.body.setAttribute('data-theme', DARK); localStorage.setItem(KEY, DARK); }
+    if (!btn) return;
+    btn.addEventListener('click', function(){
+      var cur = document.body.getAttribute('data-theme') || 'light';
+      var idx = THEMES.indexOf(cur);
+      var next = THEMES[(idx + 1) % THEMES.length];
+      if (next === 'light') document.body.removeAttribute('data-theme');
+      else document.body.setAttribute('data-theme', next);
+      localStorage.setItem(KEY, next);
       syncUI();
     });
   });
@@ -381,18 +467,15 @@
   var LS_KEY  = 'changelog_seen_version';
   var seen    = localStorage.getItem(LS_KEY);
 
-  // Показываем badge если текущая версия ещё не просмотрена
   if (seen !== current) {
     badge.style.display = '';
   }
 
-  // При клике на пункт «Версии» — помечаем версию как просмотренную
   link.addEventListener('click', function(){
     localStorage.setItem(LS_KEY, current);
     badge.style.display = 'none';
   });
 
-  // Если пользователь уже находится на странице changelog — сразу помечаем
   if (window.location.pathname === '/changelog') {
     localStorage.setItem(LS_KEY, current);
     badge.style.display = 'none';
@@ -547,12 +630,10 @@
     }
   });
 
-  // Закрыть при клике вне
   document.addEventListener('click', function(e){
     if (!document.getElementById('gsWrap').contains(e.target)) hideDropdown();
   });
 
-  // Фокус по Ctrl+Shift+F
   document.addEventListener('keydown', function(e){
     if (e.ctrlKey && e.shiftKey && e.key === 'F') {
       e.preventDefault();
