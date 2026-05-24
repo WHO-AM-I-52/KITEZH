@@ -2,7 +2,7 @@
 {# ╔══════════════════════════════════════════════════════════════╗ #}
 {# ║ settings.html                                               ║ #}
 {# ║ feat #10: Страница настроек пользователя                   ║ #}
-{# ║ feat #9:  Тема «Зона» добавлена в выбор оформления         ║ #}
+{# ║ feat #9:  Тема «Тёмная V2» в выборе оформления             ║ #}
 {# ╚══════════════════════════════════════════════════════════════╝ #}
 
 {% block content %}
@@ -75,7 +75,7 @@
               <input type="radio" class="btn-check" name="theme" id="theme_zone"
                      value="zone" {% if cur_theme == 'zone' %}checked{% endif %}>
               <label class="btn btn-outline-secondary" for="theme_zone">
-                <i class="bi bi-radioactive me-1" style="color:#c8a84b"></i> Зона
+                <i class="bi bi-moon-stars-fill me-1" style="color:#c8a84b"></i> Тёмная V2
               </label>
 
               <input type="radio" class="btn-check" name="theme" id="theme_system"
@@ -158,7 +158,6 @@
 {% block scripts %}
 <script>
 (function(){
-  // Живая проверка совпадения паролей
   var np = document.getElementById('new_password');
   var cp = document.getElementById('confirm_password');
   var hint = document.getElementById('pwMatchHint');
@@ -174,7 +173,6 @@
   }
   if (np && cp) { np.addEventListener('input', check); cp.addEventListener('input', check); }
 
-  // Тема: применяем сразу при переключении radio
   document.querySelectorAll('input[name="theme"]').forEach(function(radio){
     radio.addEventListener('change', function(){
       var val = this.value;

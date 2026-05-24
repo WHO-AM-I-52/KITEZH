@@ -2,17 +2,15 @@
 {# ╔══════════════════════════════════════════════════════════════╗ #}
 {# ║                        base.html                            ║ #}
 {# ║  Базовый шаблон приложения "Подбор ЗУ — НО"                 ║ #}
-{# ║  v2.9: Единая кнопка тем в сайдбаре (#9)                   ║ #}
+{# ║  v2.10: Тема «Зона» переименована в «Тёмная V2» (#9)        ║ #}
 {# ╚══════════════════════════════════════════════════════════════╝ #}
 <html lang="ru">
 <head>
-  {# ─── МЕТА И ФАВИКОН ────────────────────────────────────────── #}
   <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Подбор ЗУ — НО</title>
 
-  {# ─── ВНЕШНИЕ БИБЛИОТЕКИ (Bootstrap 5.3.2, Bootstrap Icons) ───── #}
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 
@@ -46,7 +44,7 @@
     .topbar .dropdown-toggle { background:rgba(255,193,7,.25); border-radius:6px; padding:4px 10px; color:#fff; text-decoration:none; display:flex; align-items:center; gap:6px; font-size:13px; }
     .topbar .dropdown-toggle:hover { background:rgba(255,193,7,.4); }
 
-    /* ─── GlobalSearch ─────────────────────────────────────────── */
+    /* ─── GlobalSearch ─────────────────────────────────────────────── */
     .gs-wrap { position:relative; flex:1; max-width:380px; margin:0 8px; }
     .gs-input { width:100%; background:rgba(255,255,255,.15); border:1px solid rgba(255,255,255,.25); border-radius:8px; padding:5px 36px 5px 12px; color:#fff; font-size:13px; outline:none; transition:background .2s,border .2s; }
     .gs-input::placeholder { color:rgba(255,255,255,.55); }
@@ -115,7 +113,7 @@
     .sb-online-num { font-weight:700; color:#4ade80; transition:transform .3s, color .3s; }
     .sb-online-num.bump { transform:scale(1.4); color:#86efac; }
 
-    /* ─── CSS-переменные тем ──────────────────────────────────── */
+    /* ─── CSS-переменные тем ─────────────────────────────────────────── */
     :root {
       --bg:#f4f7fa; --surface:#fff; --surface2:#f0f4f8;
       --text:#212529; --text-muted:#6c757d; --border:#dee2e6;
@@ -132,7 +130,7 @@
       --table-stripe:#1e2235; --table-hover:#252a40;
       --accent:#60a5fa; --accent2:#3b82f6;
     }
-    /* ─── Тема «Зона» (STALKER/GAMMA) ────────────────────────── */
+    /* ─── Тёмная V2 (STALKER/GAMMA) ───────────────────────────────────── */
     body[data-theme="zone"] {
       --bg:#111210; --surface:#181916; --surface2:#1e201c;
       --text:#c8c4a8; --text-muted:#7a7a60; --border:#2e2e20;
@@ -164,121 +162,96 @@
     hr, .dropdown-divider { border-color:var(--border) !important; }
     .page-wrap { background:var(--bg); }
 
-    /* ─── Тёмная тема — дополнительные overrides ──────────────── */
-    body[data-theme="dark"] h1, body[data-theme="dark"] h2, body[data-theme="dark"] h3, body[data-theme="dark"] h4, body[data-theme="dark"] h5, body[data-theme="dark"] h6, body[data-theme="dark"] p, body[data-theme="dark"] span:not(.badge), body[data-theme="dark"] label, body[data-theme="dark"] td, body[data-theme="dark"] th, body[data-theme="dark"] li, body[data-theme="dark"] strong, body[data-theme="dark"] small, body[data-theme="dark"] .fw-bold, body[data-theme="dark"] .fw-semibold { color: var(--text) !important; }
-    body[data-theme="dark"] .text-dark, body[data-theme="dark"] .text-black { color: var(--text) !important; }
-    body[data-theme="dark"] ::placeholder { color: var(--text-muted) !important; opacity: 1; }
-    body[data-theme="dark"] .table thead th { background: var(--surface2) !important; color: var(--text) !important; }
-    body[data-theme="dark"] .table td, body[data-theme="dark"] .table th { color: var(--text) !important; }
-    body[data-theme="dark"] .card-header { color: var(--text) !important; }
-    body[data-theme="dark"] .card-header.bg-white { background: var(--surface2) !important; }
-    body[data-theme="dark"] .form-label { color: var(--text) !important; }
-    body[data-theme="dark"] .form-check-label { color: var(--text) !important; }
-    body[data-theme="dark"] .form-text { color: var(--text-muted) !important; }
-    body[data-theme="dark"] .btn-outline-secondary { color: var(--text) !important; border-color: var(--border) !important; }
-    body[data-theme="dark"] .btn-outline-secondary:hover { background: var(--surface2) !important; }
-    body[data-theme="dark"] .btn-light { background: var(--surface2) !important; color: var(--text) !important; border-color: var(--border) !important; }
-    body[data-theme="dark"] .progress { background: var(--surface2) !important; }
-    body[data-theme="dark"] a:not(.btn):not(.sb-link):not(.nav-link):not(.dropdown-item) { color: #60a5fa; }
-    body[data-theme="dark"] a:not(.btn):not(.sb-link):not(.nav-link):not(.dropdown-item):hover { color: #93c5fd; }
-    body[data-theme="dark"] .modal-header { border-color: var(--border) !important; }
-    body[data-theme="dark"] .modal-footer { border-color: var(--border) !important; background: var(--surface) !important; }
-    body[data-theme="dark"] .modal-body { background: var(--surface) !important; }
-    body[data-theme="dark"] select option { background: var(--surface) !important; color: var(--text) !important; }
+    /* ─── Тёмная тема — overrides ───────────────────────────────────── */
+    body[data-theme="dark"] h1,body[data-theme="dark"] h2,body[data-theme="dark"] h3,body[data-theme="dark"] h4,body[data-theme="dark"] h5,body[data-theme="dark"] h6,body[data-theme="dark"] p,body[data-theme="dark"] span:not(.badge),body[data-theme="dark"] label,body[data-theme="dark"] td,body[data-theme="dark"] th,body[data-theme="dark"] li,body[data-theme="dark"] strong,body[data-theme="dark"] small,body[data-theme="dark"] .fw-bold,body[data-theme="dark"] .fw-semibold{color:var(--text)!important}
+    body[data-theme="dark"] .text-dark,body[data-theme="dark"] .text-black{color:var(--text)!important}
+    body[data-theme="dark"] ::placeholder{color:var(--text-muted)!important;opacity:1}
+    body[data-theme="dark"] .table thead th{background:var(--surface2)!important;color:var(--text)!important}
+    body[data-theme="dark"] .table td,body[data-theme="dark"] .table th{color:var(--text)!important}
+    body[data-theme="dark"] .card-header{color:var(--text)!important}
+    body[data-theme="dark"] .card-header.bg-white{background:var(--surface2)!important}
+    body[data-theme="dark"] .form-label{color:var(--text)!important}
+    body[data-theme="dark"] .form-check-label{color:var(--text)!important}
+    body[data-theme="dark"] .form-text{color:var(--text-muted)!important}
+    body[data-theme="dark"] .btn-outline-secondary{color:var(--text)!important;border-color:var(--border)!important}
+    body[data-theme="dark"] .btn-outline-secondary:hover{background:var(--surface2)!important}
+    body[data-theme="dark"] .btn-light{background:var(--surface2)!important;color:var(--text)!important;border-color:var(--border)!important}
+    body[data-theme="dark"] .progress{background:var(--surface2)!important}
+    body[data-theme="dark"] a:not(.btn):not(.sb-link):not(.nav-link):not(.dropdown-item){color:#60a5fa}
+    body[data-theme="dark"] a:not(.btn):not(.sb-link):not(.nav-link):not(.dropdown-item):hover{color:#93c5fd}
+    body[data-theme="dark"] .modal-header{border-color:var(--border)!important}
+    body[data-theme="dark"] .modal-footer{border-color:var(--border)!important;background:var(--surface)!important}
+    body[data-theme="dark"] .modal-body{background:var(--surface)!important}
+    body[data-theme="dark"] select option{background:var(--surface)!important;color:var(--text)!important}
 
-    /* ─── Тема «Зона» — дополнительные overrides ─────────────── */
-    body[data-theme="zone"] h1, body[data-theme="zone"] h2, body[data-theme="zone"] h3, body[data-theme="zone"] h4, body[data-theme="zone"] h5, body[data-theme="zone"] h6, body[data-theme="zone"] p, body[data-theme="zone"] span:not(.badge), body[data-theme="zone"] label, body[data-theme="zone"] td, body[data-theme="zone"] th, body[data-theme="zone"] li, body[data-theme="zone"] strong, body[data-theme="zone"] small, body[data-theme="zone"] .fw-bold, body[data-theme="zone"] .fw-semibold { color: var(--text) !important; }
-    body[data-theme="zone"] .text-dark, body[data-theme="zone"] .text-black { color: var(--text) !important; }
-    body[data-theme="zone"] ::placeholder { color: var(--text-muted) !important; opacity: 1; }
-    body[data-theme="zone"] .table thead th { background: var(--surface2) !important; color: var(--text) !important; }
-    body[data-theme="zone"] .table td, body[data-theme="zone"] .table th { color: var(--text) !important; }
-    body[data-theme="zone"] .card-header { color: var(--text) !important; }
-    body[data-theme="zone"] .card-header.bg-white { background: var(--surface2) !important; }
-    body[data-theme="zone"] .form-label { color: var(--text) !important; }
-    body[data-theme="zone"] .form-check-label { color: var(--text) !important; }
-    body[data-theme="zone"] .form-text { color: var(--text-muted) !important; }
-    body[data-theme="zone"] .btn-outline-secondary { color: var(--text) !important; border-color: var(--border) !important; }
-    body[data-theme="zone"] .btn-outline-secondary:hover { background: var(--surface2) !important; }
-    body[data-theme="zone"] .btn-light { background: var(--surface2) !important; color: var(--text) !important; border-color: var(--border) !important; }
-    body[data-theme="zone"] .btn-primary { background: var(--accent2) !important; border-color: var(--accent2) !important; }
-    body[data-theme="zone"] .btn-primary:hover { background: #6e1414 !important; border-color: #6e1414 !important; }
-    body[data-theme="zone"] .progress { background: var(--surface2) !important; }
-    body[data-theme="zone"] a:not(.btn):not(.sb-link):not(.nav-link):not(.dropdown-item) { color: #c8a84b; }
-    body[data-theme="zone"] a:not(.btn):not(.sb-link):not(.nav-link):not(.dropdown-item):hover { color: #e0c070; }
-    body[data-theme="zone"] .modal-header { border-color: var(--border) !important; }
-    body[data-theme="zone"] .modal-footer { border-color: var(--border) !important; background: var(--surface) !important; }
-    body[data-theme="zone"] .modal-body { background: var(--surface) !important; }
-    body[data-theme="zone"] select option { background: var(--surface) !important; color: var(--text) !important; }
-    /* Зернистая текстура */
-    body[data-theme="zone"]::before {
-      content:''; position:fixed; inset:0; z-index:0; pointer-events:none;
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
-      opacity:.55;
-    }
-    /* Сайдбар в теме «Зона» */
-    body[data-theme="zone"] .sidebar { background:#151612; border-right:1px solid #2e2e1a; }
-    body[data-theme="zone"] .sb-link { color:rgba(200,196,168,.75); }
-    body[data-theme="zone"] .sb-link:hover { background:rgba(200,168,75,.08); color:#c8a84b; }
-    body[data-theme="zone"] .sb-link.active { background:rgba(200,168,75,.12); color:#c8a84b; border-left-color:#c8a84b; }
-    body[data-theme="zone"] .sb-cat { color:rgba(200,168,75,.35); }
-    body[data-theme="zone"] .sb-sep { background:rgba(200,168,75,.1); }
-    body[data-theme="zone"] .sb-online { border-top-color:rgba(200,168,75,.1); }
-    body[data-theme="zone"] .sb-online-dot { background:#c8a84b; }
-    @keyframes zonePulse { 0%{box-shadow:0 0 0 0 rgba(200,168,75,.6);} 70%{box-shadow:0 0 0 6px rgba(200,168,75,0);} 100%{box-shadow:0 0 0 0 rgba(200,168,75,0);} }
-    body[data-theme="zone"] .sb-online-dot { animation:zonePulse 2.5s infinite; }
-    body[data-theme="zone"] .sb-online-num { color:#c8a84b; }
-    body[data-theme="zone"] .topbar { background:#151612; border-bottom:1px solid #2e2e1a; box-shadow:0 2px 12px rgba(0,0,0,.6); }
+    /* ─── Тёмная V2 — overrides ─────────────────────────────────────── */
+    body[data-theme="zone"] h1,body[data-theme="zone"] h2,body[data-theme="zone"] h3,body[data-theme="zone"] h4,body[data-theme="zone"] h5,body[data-theme="zone"] h6,body[data-theme="zone"] p,body[data-theme="zone"] span:not(.badge),body[data-theme="zone"] label,body[data-theme="zone"] td,body[data-theme="zone"] th,body[data-theme="zone"] li,body[data-theme="zone"] strong,body[data-theme="zone"] small,body[data-theme="zone"] .fw-bold,body[data-theme="zone"] .fw-semibold{color:var(--text)!important}
+    body[data-theme="zone"] .text-dark,body[data-theme="zone"] .text-black{color:var(--text)!important}
+    body[data-theme="zone"] ::placeholder{color:var(--text-muted)!important;opacity:1}
+    body[data-theme="zone"] .table thead th{background:var(--surface2)!important;color:var(--text)!important}
+    body[data-theme="zone"] .table td,body[data-theme="zone"] .table th{color:var(--text)!important}
+    body[data-theme="zone"] .card-header{color:var(--text)!important}
+    body[data-theme="zone"] .card-header.bg-white{background:var(--surface2)!important}
+    body[data-theme="zone"] .form-label{color:var(--text)!important}
+    body[data-theme="zone"] .form-check-label{color:var(--text)!important}
+    body[data-theme="zone"] .form-text{color:var(--text-muted)!important}
+    body[data-theme="zone"] .btn-outline-secondary{color:var(--text)!important;border-color:var(--border)!important}
+    body[data-theme="zone"] .btn-outline-secondary:hover{background:var(--surface2)!important}
+    body[data-theme="zone"] .btn-light{background:var(--surface2)!important;color:var(--text)!important;border-color:var(--border)!important}
+    body[data-theme="zone"] .btn-primary{background:var(--accent2)!important;border-color:var(--accent2)!important}
+    body[data-theme="zone"] .btn-primary:hover{background:#6e1414!important;border-color:#6e1414!important}
+    body[data-theme="zone"] .progress{background:var(--surface2)!important}
+    body[data-theme="zone"] a:not(.btn):not(.sb-link):not(.nav-link):not(.dropdown-item){color:#c8a84b}
+    body[data-theme="zone"] a:not(.btn):not(.sb-link):not(.nav-link):not(.dropdown-item):hover{color:#e0c070}
+    body[data-theme="zone"] .modal-header{border-color:var(--border)!important}
+    body[data-theme="zone"] .modal-footer{border-color:var(--border)!important;background:var(--surface)!important}
+    body[data-theme="zone"] .modal-body{background:var(--surface)!important}
+    body[data-theme="zone"] select option{background:var(--surface)!important;color:var(--text)!important}
+    body[data-theme="zone"]::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");opacity:.55}
+    body[data-theme="zone"] .sidebar{background:#151612;border-right:1px solid #2e2e1a}
+    body[data-theme="zone"] .sb-link{color:rgba(200,196,168,.75)}
+    body[data-theme="zone"] .sb-link:hover{background:rgba(200,168,75,.08);color:#c8a84b}
+    body[data-theme="zone"] .sb-link.active{background:rgba(200,168,75,.12);color:#c8a84b;border-left-color:#c8a84b}
+    body[data-theme="zone"] .sb-cat{color:rgba(200,168,75,.35)}
+    body[data-theme="zone"] .sb-sep{background:rgba(200,168,75,.1)}
+    body[data-theme="zone"] .sb-online{border-top-color:rgba(200,168,75,.1)}
+    body[data-theme="zone"] .sb-online-dot{background:#c8a84b}
+    @keyframes zonePulse{0%{box-shadow:0 0 0 0 rgba(200,168,75,.6);}70%{box-shadow:0 0 0 6px rgba(200,168,75,0);}100%{box-shadow:0 0 0 0 rgba(200,168,75,0);}}
+    body[data-theme="zone"] .sb-online-dot{animation:zonePulse 2.5s infinite}
+    body[data-theme="zone"] .sb-online-num{color:#c8a84b}
+    body[data-theme="zone"] .topbar{background:#151612;border-bottom:1px solid #2e2e1a;box-shadow:0 2px 12px rgba(0,0,0,.6)}
 
-    /* ─── Dropdown-меню тем в сайдбаре ───────────────────────── */
-    .theme-toggle-btn {
-      display:flex; align-items:center; gap:10px; padding:10px 16px;
-      color:rgba(255,255,255,.7); background:none; border:none;
-      width:100%; font-size:13px; cursor:pointer; white-space:nowrap;
-      transition:background .15s; position:relative;
-    }
-    .theme-toggle-btn:hover { background:rgba(255,255,255,.1); color:#fff; }
-    .theme-toggle-btn i.theme-main-icon { font-size:16px; width:20px; text-align:center; flex-shrink:0; }
-    .theme-toggle-btn .theme-caret { margin-left:auto; font-size:11px; transition:transform .2s; flex-shrink:0; }
-    .theme-toggle-btn.open .theme-caret { transform:rotate(180deg); }
-    body.sb-col .theme-toggle-btn .sb-lbl { opacity:0; pointer-events:none; }
-    body.sb-col .theme-toggle-btn .theme-caret { opacity:0; }
+    /* ─── Dropdown-меню тем в сайдбаре ─────────────────────────────── */
+    .theme-toggle-btn{display:flex;align-items:center;gap:10px;padding:10px 16px;color:rgba(255,255,255,.7);background:none;border:none;width:100%;font-size:13px;cursor:pointer;white-space:nowrap;transition:background .15s;position:relative}
+    .theme-toggle-btn:hover{background:rgba(255,255,255,.1);color:#fff}
+    .theme-toggle-btn i.theme-main-icon{font-size:16px;width:20px;text-align:center;flex-shrink:0}
+    .theme-toggle-btn .theme-caret{margin-left:auto;font-size:11px;transition:transform .2s;flex-shrink:0}
+    .theme-toggle-btn.open .theme-caret{transform:rotate(180deg)}
+    body.sb-col .theme-toggle-btn .sb-lbl{opacity:0;pointer-events:none}
+    body.sb-col .theme-toggle-btn .theme-caret{opacity:0}
+    .theme-submenu{overflow:hidden;max-height:0;transition:max-height .25s ease;background:rgba(0,0,0,.15)}
+    .theme-submenu.open{max-height:160px}
+    body.sb-col .theme-submenu{display:none}
+    .theme-submenu-item{display:flex;align-items:center;gap:10px;padding:8px 16px 8px 46px;color:rgba(255,255,255,.7);cursor:pointer;font-size:13px;white-space:nowrap;border:none;background:none;width:100%;transition:background .15s;border-left:3px solid transparent}
+    .theme-submenu-item:hover{background:rgba(255,255,255,.08);color:#fff}
+    .theme-submenu-item.active-theme{color:#fff;border-left-color:#fff;background:rgba(255,255,255,.1);font-weight:600}
+    .theme-submenu-item i{font-size:14px;width:16px;text-align:center}
+    body[data-theme="dark"] .theme-toggle-btn{color:rgba(255,255,255,.85)}
+    body[data-theme="zone"] .theme-toggle-btn{color:#c8a84b}
+    body[data-theme="zone"] .theme-toggle-btn:hover{background:rgba(200,168,75,.1)}
+    body[data-theme="zone"] .theme-submenu{background:rgba(0,0,0,.25)}
+    body[data-theme="zone"] .theme-submenu-item.active-theme{color:#c8a84b;border-left-color:#c8a84b;background:rgba(200,168,75,.1)}
 
-    /* Подменю тем */
-    .theme-submenu {
-      overflow:hidden; max-height:0; transition:max-height .25s ease;
-      background:rgba(0,0,0,.15);
-    }
-    .theme-submenu.open { max-height:160px; }
-    body.sb-col .theme-submenu { display:none; }
-    .theme-submenu-item {
-      display:flex; align-items:center; gap:10px;
-      padding:8px 16px 8px 46px;
-      color:rgba(255,255,255,.7); cursor:pointer;
-      font-size:13px; white-space:nowrap; border:none;
-      background:none; width:100%; transition:background .15s;
-      border-left:3px solid transparent;
-    }
-    .theme-submenu-item:hover { background:rgba(255,255,255,.08); color:#fff; }
-    .theme-submenu-item.active-theme { color:#fff; border-left-color:#fff; background:rgba(255,255,255,.1); font-weight:600; }
-    .theme-submenu-item i { font-size:14px; width:16px; text-align:center; }
-
-    /* Активные состояния кнопки-переключателя по теме */
-    body[data-theme="dark"] .theme-toggle-btn { color:rgba(255,255,255,.85); }
-    body[data-theme="zone"] .theme-toggle-btn { color:#c8a84b; }
-    body[data-theme="zone"] .theme-toggle-btn:hover { background:rgba(200,168,75,.1); }
-    body[data-theme="zone"] .theme-submenu { background:rgba(0,0,0,.25); }
-    body[data-theme="zone"] .theme-submenu-item.active-theme { color:#c8a84b; border-left-color:#c8a84b; background:rgba(200,168,75,.1); }
-
-    #offlineBanner { display:none; position:fixed; top:0; left:0; right:0; z-index:99999; background:linear-gradient(135deg, #7f1d1d, #991b1b); color:#fff; padding:0; box-shadow:0 4px 24px rgba(0,0,0,.5); animation:offlineFadeIn .4s ease; }
-    @keyframes offlineFadeIn { from{opacity:0;transform:translateY(-20px);} to{opacity:1;transform:translateY(0);} }
-    #offlineBanner .ob-inner { display:flex; align-items:center; justify-content:center; gap:14px; padding:14px 24px; flex-wrap:wrap; text-align:center; }
-    #offlineBanner .ob-icon { font-size:28px; animation:obPulse 1.5s infinite; }
-    @keyframes obPulse { 0%,100%{opacity:1;} 50%{opacity:.4;} }
-    #offlineBanner .ob-title { font-size:16px; font-weight:700; letter-spacing:.3px; }
-    #offlineBanner .ob-sub { font-size:12px; opacity:.85; margin-top:2px; }
-    #offlineBanner .ob-badge { background:rgba(255,255,255,.15); border-radius:20px; padding:4px 12px; font-size:11px; font-weight:600; letter-spacing:.5px; animation:obPulse 2s infinite; }
-    body.offline-mode .page-wrap, body.offline-mode .sidebar { filter:blur(1px) brightness(.7); pointer-events:none; }
-    body.offline-mode .topbar { filter:brightness(.7); pointer-events:none; }
+    #offlineBanner{display:none;position:fixed;top:0;left:0;right:0;z-index:99999;background:linear-gradient(135deg,#7f1d1d,#991b1b);color:#fff;padding:0;box-shadow:0 4px 24px rgba(0,0,0,.5);animation:offlineFadeIn .4s ease}
+    @keyframes offlineFadeIn{from{opacity:0;transform:translateY(-20px);}to{opacity:1;transform:translateY(0);}}
+    #offlineBanner .ob-inner{display:flex;align-items:center;justify-content:center;gap:14px;padding:14px 24px;flex-wrap:wrap;text-align:center}
+    #offlineBanner .ob-icon{font-size:28px;animation:obPulse 1.5s infinite}
+    @keyframes obPulse{0%,100%{opacity:1;}50%{opacity:.4;}}
+    #offlineBanner .ob-title{font-size:16px;font-weight:700;letter-spacing:.3px}
+    #offlineBanner .ob-sub{font-size:12px;opacity:.85;margin-top:2px}
+    #offlineBanner .ob-badge{background:rgba(255,255,255,.15);border-radius:20px;padding:4px 12px;font-size:11px;font-weight:600;letter-spacing:.5px;animation:obPulse 2s infinite}
+    body.offline-mode .page-wrap,body.offline-mode .sidebar{filter:blur(1px) brightness(.7);pointer-events:none}
+    body.offline-mode .topbar{filter:brightness(.7);pointer-events:none}
   </style>
 </head>
 <body>
@@ -302,7 +275,6 @@
   </a>
 
   {% if 'user_id' in session %}
-  {# ─── GlobalSearch ─────────────────────────────────────────── #}
   <div class="gs-wrap" id="gsWrap">
     <input type="text" class="gs-input" id="gsInput"
            placeholder="Поиск… (Ctrl+Shift+F)"
@@ -387,21 +359,21 @@
     <a href="https://github.com/WHO-AM-I-52/SONAR" target="_blank" rel="noopener noreferrer" class="sb-link"><i class="bi bi-github"></i><span class="sb-lbl">GitHub</span></a>
     <div class="sb-sep"></div>
 
-    {# ─── Единая кнопка тем ─────────────────────────────────── #}
+    {# ─── Единая кнопка тем ──────────────────────────────────────────── #}
     <button class="theme-toggle-btn" id="themeToggle" title="Тема оформления">
       <i class="bi bi-circle-half theme-main-icon" id="themeIcon"></i>
       <span class="sb-lbl" id="themeLabel">Тема</span>
       <i class="bi bi-chevron-down theme-caret" id="themeCaret"></i>
     </button>
     <div class="theme-submenu" id="themeSubmenu">
-      <button class="theme-submenu-item" id="themeLight" data-theme-val="light">
+      <button class="theme-submenu-item" data-theme-val="light">
         <i class="bi bi-sun-fill" style="color:#f59e0b"></i> Светлая
       </button>
-      <button class="theme-submenu-item" id="themeDark" data-theme-val="dark">
+      <button class="theme-submenu-item" data-theme-val="dark">
         <i class="bi bi-moon-stars-fill" style="color:#818cf8"></i> Тёмная
       </button>
-      <button class="theme-submenu-item" id="themeZone" data-theme-val="zone">
-        <i class="bi bi-radioactive" style="color:#c8a84b"></i> Зона
+      <button class="theme-submenu-item" data-theme-val="zone">
+        <i class="bi bi-moon-stars-fill" style="color:#c8a84b"></i> Тёмная V2
       </button>
     </div>
 
@@ -469,20 +441,19 @@
 (function(){
   var KEY = 'app_theme';
   var THEMES = {
-    light: { icon:'bi bi-sun-fill',    label:'Светлая',  color:'#f59e0b' },
-    dark:  { icon:'bi bi-moon-stars-fill', label:'Тёмная', color:'#818cf8' },
-    zone:  { icon:'bi bi-radioactive', label:'Зона',     color:'#c8a84b' }
+    light: { icon:'bi bi-sun-fill',        label:'Светлая',   color:'#f59e0b' },
+    dark:  { icon:'bi bi-moon-stars-fill', label:'Тёмная',    color:'#818cf8' },
+    zone:  { icon:'bi bi-moon-stars-fill', label:'Тёмная V2', color:'#c8a84b' }
   };
 
-  // Восстановить тему при загрузке
   var saved = localStorage.getItem(KEY) || 'light';
-  if (saved === 'dark') document.body.setAttribute('data-theme', 'dark');
-  else if (saved === 'zone') document.body.setAttribute('data-theme', 'zone');
+  if (saved === 'dark') document.body.setAttribute('data-theme','dark');
+  else if (saved === 'zone') document.body.setAttribute('data-theme','zone');
   else document.body.removeAttribute('data-theme');
 
   function applyTheme(val) {
-    if (val === 'dark') document.body.setAttribute('data-theme', 'dark');
-    else if (val === 'zone') document.body.setAttribute('data-theme', 'zone');
+    if (val === 'dark') document.body.setAttribute('data-theme','dark');
+    else if (val === 'zone') document.body.setAttribute('data-theme','zone');
     else document.body.removeAttribute('data-theme');
     localStorage.setItem(KEY, val);
     syncUI();
@@ -497,7 +468,6 @@
     icon.className = t.icon + ' theme-main-icon';
     icon.style.color = t.color;
     label.textContent = t.label;
-    // Обновить активный пункт подменю
     document.querySelectorAll('.theme-submenu-item').forEach(function(btn){
       btn.classList.toggle('active-theme', btn.getAttribute('data-theme-val') === cur);
     });
@@ -505,10 +475,8 @@
 
   document.addEventListener('DOMContentLoaded', function(){
     syncUI();
-
-    // Открыть/закрыть подменю
     var toggleBtn = document.getElementById('themeToggle');
-    var submenu = document.getElementById('themeSubmenu');
+    var submenu   = document.getElementById('themeSubmenu');
     if (toggleBtn && submenu) {
       toggleBtn.addEventListener('click', function(e){
         e.stopPropagation();
@@ -517,19 +485,14 @@
         toggleBtn.classList.toggle('open', !isOpen);
       });
     }
-
-    // Клик по пункту подменю
     document.querySelectorAll('.theme-submenu-item').forEach(function(btn){
       btn.addEventListener('click', function(e){
         e.stopPropagation();
         applyTheme(this.getAttribute('data-theme-val'));
-        // Закрыть подменю
         submenu.classList.remove('open');
         toggleBtn.classList.remove('open');
       });
     });
-
-    // Клик вне сайдбара — закрыть подменю
     document.addEventListener('click', function(){
       if (submenu) { submenu.classList.remove('open'); toggleBtn.classList.remove('open'); }
     });
@@ -580,7 +543,6 @@
 })();
 </script>
 
-{# ─── GlobalSearch JS ───────────────────────────────────────── #}
 {% if 'user_id' in session %}
 <script>
 (function(){
@@ -600,101 +562,42 @@
     'answered': {text:'Отвечено',    cls:'bg-success'},
   };
 
-  function showDropdown(html){
-    dropdown.innerHTML = html;
-    dropdown.classList.add('show');
-    activeIdx = -1;
-    currentItems = dropdown.querySelectorAll('.gs-item[data-url]');
-  }
-
-  function hideDropdown(){
-    dropdown.classList.remove('show');
-    dropdown.innerHTML = '';
-    activeIdx = -1;
-  }
-
-  function goToSearch(q){
-    window.location.href = '/search?q=' + encodeURIComponent(q);
-  }
+  function showDropdown(html){ dropdown.innerHTML=html; dropdown.classList.add('show'); activeIdx=-1; currentItems=dropdown.querySelectorAll('.gs-item[data-url]'); }
+  function hideDropdown(){ dropdown.classList.remove('show'); dropdown.innerHTML=''; activeIdx=-1; }
+  function goToSearch(q){ window.location.href='/search?q='+encodeURIComponent(q); }
 
   function renderResults(data){
-    if (!data.results.length){
-      showDropdown('<div class="gs-empty"><i class="bi bi-search me-1"></i>Ничего не найдено</div>');
-      return;
-    }
-    var html = '';
+    if (!data.results.length){ showDropdown('<div class="gs-empty"><i class="bi bi-search me-1"></i>Ничего не найдено</div>'); return; }
+    var html='';
     data.results.forEach(function(r){
-      var s = STATUS_MAP[r.status] || {text: r.status, cls:'bg-light text-dark'};
-      var meta = [];
-      if (r.inn)     meta.push('ИНН ' + r.inn);
-      if (r.project) meta.push(r.project);
-      if (r.match_label) meta.push('<span style="color:#1B5E7B">по: ' + r.match_label + '</span>');
-      html += '<a class="gs-item" href="' + r.url + '" data-url="' + r.url + '">' +
-        '<div class="gs-item-left">' +
-          '<div class="gs-item-num">' + r.number + '</div>' +
-          '<div class="gs-item-name">' + r.name + '</div>' +
-          (meta.length ? '<div class="gs-item-meta">' + meta.join(' · ') + '</div>' : '') +
-        '</div>' +
-        '<span class="badge ' + s.cls + ' gs-item-badge">' + s.text + '</span>' +
-      '</a>';
+      var s=STATUS_MAP[r.status]||{text:r.status,cls:'bg-light text-dark'};
+      var meta=[];
+      if(r.inn) meta.push('ИНН '+r.inn);
+      if(r.project) meta.push(r.project);
+      if(r.match_label) meta.push('<span style="color:#1B5E7B">по: '+r.match_label+'</span>');
+      html+='<a class="gs-item" href="'+r.url+'" data-url="'+r.url+'"><div class="gs-item-left"><div class="gs-item-num">'+r.number+'</div><div class="gs-item-name">'+r.name+'</div>'+(meta.length?'<div class="gs-item-meta">'+meta.join(' · ')+'</div>':'')+'</div><span class="badge '+s.cls+' gs-item-badge">'+s.text+'</span></a>';
     });
-    html += '<div class="gs-footer" id="gsFooter">Показать все результаты</div>';
+    html+='<div class="gs-footer" id="gsFooter">Показать все результаты</div>';
     showDropdown(html);
-    document.getElementById('gsFooter').addEventListener('click', function(){
-      goToSearch(lastQ);
-    });
+    document.getElementById('gsFooter').addEventListener('click',function(){ goToSearch(lastQ); });
   }
 
   function doSearch(q){
-    lastQ = q;
+    lastQ=q;
     showDropdown('<div class="gs-loading"><i class="bi bi-hourglass-split me-1"></i>Поиск…</div>');
-    fetch('/api/search?q=' + encodeURIComponent(q), {credentials:'same-origin'})
-      .then(function(r){ return r.json(); })
-      .then(renderResults)
-      .catch(function(){ hideDropdown(); });
+    fetch('/api/search?q='+encodeURIComponent(q),{credentials:'same-origin'}).then(function(r){return r.json();}).then(renderResults).catch(function(){hideDropdown();});
   }
 
-  input.addEventListener('input', function(){
-    var q = input.value.trim();
-    clearTimeout(timer);
-    if (q.length < 2){ hideDropdown(); return; }
-    timer = setTimeout(function(){ doSearch(q); }, 280);
+  input.addEventListener('input',function(){ var q=input.value.trim(); clearTimeout(timer); if(q.length<2){hideDropdown();return;} timer=setTimeout(function(){doSearch(q);},280); });
+  input.addEventListener('keydown',function(e){
+    var items=currentItems;
+    if(e.key==='ArrowDown'){e.preventDefault();activeIdx=Math.min(activeIdx+1,items.length-1);items.forEach(function(el,i){el.classList.toggle('gs-active',i===activeIdx);});}
+    else if(e.key==='ArrowUp'){e.preventDefault();activeIdx=Math.max(activeIdx-1,0);items.forEach(function(el,i){el.classList.toggle('gs-active',i===activeIdx);});}
+    else if(e.key==='Enter'){e.preventDefault();if(activeIdx>=0&&items[activeIdx]){window.location.href=items[activeIdx].getAttribute('data-url');}else if(input.value.trim().length>=2){goToSearch(input.value.trim());}}
+    else if(e.key==='Escape'){hideDropdown();input.blur();}
   });
-
-  input.addEventListener('keydown', function(e){
-    var items = currentItems;
-    if (e.key === 'ArrowDown'){
-      e.preventDefault();
-      activeIdx = Math.min(activeIdx + 1, items.length - 1);
-      items.forEach(function(el, i){ el.classList.toggle('gs-active', i === activeIdx); });
-    } else if (e.key === 'ArrowUp'){
-      e.preventDefault();
-      activeIdx = Math.max(activeIdx - 1, 0);
-      items.forEach(function(el, i){ el.classList.toggle('gs-active', i === activeIdx); });
-    } else if (e.key === 'Enter'){
-      e.preventDefault();
-      if (activeIdx >= 0 && items[activeIdx]){
-        window.location.href = items[activeIdx].getAttribute('data-url');
-      } else if (input.value.trim().length >= 2){
-        goToSearch(input.value.trim());
-      }
-    } else if (e.key === 'Escape'){
-      hideDropdown();
-      input.blur();
-    }
-  });
-
-  document.addEventListener('click', function(e){
-    if (!document.getElementById('gsWrap').contains(e.target)) hideDropdown();
-  });
-
-  document.addEventListener('keydown', function(e){
-    if (e.ctrlKey && e.shiftKey && e.key === 'F') {
-      e.preventDefault();
-      input.focus();
-      input.select();
-    }
-  });
+  document.addEventListener('click',function(e){if(!document.getElementById('gsWrap').contains(e.target))hideDropdown();});
+  document.addEventListener('keydown',function(e){if(e.ctrlKey&&e.shiftKey&&e.key==='F'){e.preventDefault();input.focus();input.select();}});
 })();
 </script>
 {% endif %}
