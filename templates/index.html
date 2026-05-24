@@ -109,33 +109,6 @@
   </div>
 </form>
 
-{# ===== БЫСТРЫЕ РЕЖИМЫ ===== #}
-<div class="mb-2 d-flex flex-wrap gap-2 align-items-center">
-  <span class="text-muted small">
-    <i class="bi bi-lightning-charge me-1"></i>Быстрый режим:
-  </span>
-  <a href="{{ url_for('requests.index') }}"
-     class="btn btn-sm {{ 'btn-secondary' if not active_quick else 'btn-outline-secondary' }}">
-    <i class="bi bi-x-circle"></i> Все
-  </a>
-  <a href="{{ url_for('requests.index', quick='mine') }}"
-     class="btn btn-sm {{ 'btn-primary' if active_quick=='mine' else 'btn-outline-primary' }}">
-    <i class="bi bi-person-badge"></i> Мои
-  </a>
-  <a href="{{ url_for('requests.index', quick='overdue') }}"
-     class="btn btn_sm {{ 'btn-danger' if active_quick=='overdue' else 'btn-outline-danger' }}">
-    <i class="bi bi-exclamation-triangle"></i> Просроченные
-  </a>
-  <a href="{{ url_for('requests.index', quick='unassigned') }}"
-     class="btn btn-sm {{ 'btn-warning' if active_quick=='unassigned' else 'btn-outline-warning' }}">
-    <i class="bi bi-question-circle"></i> Без ответственного
-  </a>
-  <a href="{{ url_for('requests.index', quick='favorites') }}"
-     class="btn btn-sm {{ 'btn-warning' if active_quick=='favorites' else 'btn-outline-warning' }}">
-    <i class="bi bi-star"></i> Избранные
-  </a>
-</div>
-
 {# ===== CHIP-ФИЛЬТРЫ (Feature #5 FilterBar) ===== #}
 <div class="chip-filterbar card mb-3 p-2" style="background:#f8f9fa;border:1px solid #dee2e6">
   <div class="d-flex flex-wrap gap-3 align-items-center">
@@ -203,6 +176,16 @@
       {% endfor %}
     </div>
     {% endif %}
+
+    <div class="vr d-none d-md-block"></div>
+
+    {# --- Группа: Избранные (перенесено из Быстрого режима) --- #}
+    <div class="d-flex align-items-center gap-1">
+      <button class="btn btn-sm btn-outline-warning"
+              data-chip-group="favorite" data-chip-value="1" data-chip-base="warning">
+        <i class="bi bi-star-fill me-1"></i>Избранные
+      </button>
+    </div>
 
     <div class="ms-auto d-flex align-items-center gap-2">
       <span class="text-muted small" id="chip-visible-count"></span>
@@ -273,7 +256,8 @@
       <tr class="{{ 'table-danger' if overdue else '' }}"
           data-status="{{ r.status }}"
           data-employee="{{ r.assigned_name or r.employee_name or '' }}"
-          data-date="{{ r.request_date[:10] if r.request_date else '' }}">
+          data-date="{{ r.request_date[:10] if r.request_date else '' }}"
+          data-favorite="{{ '1' if r.favorite_flag else '0' }}">
         <td class="text-center">
           <form method="post" action="{{ url_for('requests.toggle_favorite', rid=r.id) }}">
             <button type="submit" class="btn btn-link p-0 border-0"
