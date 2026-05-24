@@ -11,7 +11,6 @@ echo ============================================================
 echo.
 
 set "APP_DIR=%~dp0"
-
 set "PYTHON="
 set "SITEPKG="
 
@@ -23,7 +22,7 @@ echo [1/5] Poisk Python...
 if exist "%APP_DIR%WPy\python313\python.exe" (
   set "PYTHON=%APP_DIR%WPy\python313\python.exe"
   set "SITEPKG=%APP_DIR%WPy\python313\Lib\site-packages"
-  echo  OK WPy\python313 (uzhe est)
+  echo  OK: WPy\python313 uzhe est.
   goto :fix_pth
 )
 
@@ -79,8 +78,13 @@ exit /b 1
 :: ============================================================
 :fix_pth
 echo  Nastroyka python313._pth...
-powershell -Command "$lines = @('%APP_DIR%WPy\python313\Lib','%APP_DIR%WPy\python313\Lib\site-packages','%APP_DIR%','.'); Set-Content '%APP_DIR%WPy\python313\python313._pth' $lines"
-echo .>> "%APP_DIR%WPy\python313\python313._pth"
+set "PTH_FILE=%APP_DIR%WPy\python313\python313._pth"
+(
+  echo %APP_DIR%WPy\python313\Lib
+  echo %APP_DIR%WPy\python313\Lib\site-packages
+  echo %APP_DIR%
+  echo .
+) > "%PTH_FILE%"
 echo  OK: _pth nastroyen.
 
 :: ============================================================
