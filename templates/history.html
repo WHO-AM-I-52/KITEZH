@@ -1,7 +1,47 @@
 {% extends 'base.html' %}
 {% block content %}
 
-{# ── ШАПКА ───────────────────────────────────────────────────────── #}
+{# ═══════════════════════════════════════════════════════════════ #}
+{#   history.html — История изменений обращения                          #}
+{#   v2.2: inline word-diff, без кнопки "Откатить", collapsible                   #}
+{# ═══════════════════════════════════════════════════════════════ #}
+
+<style>
+/* ─── Inline diff ─────────────────────────────────────────────────── */
+.diff-cell { font-size:.82rem; word-break:break-word; line-height:1.6; }
+.diff-del {
+  background:#ffeef0; color:#b91c1c;
+  text-decoration:line-through;
+  border-radius:3px; padding:0 2px;
+}
+.diff-ins {
+  background:#e6ffed; color:#15803d;
+  border-radius:3px; padding:0 2px;
+}
+.diff-eq { color:inherit; }
+
+/* ─── Collapsible ────────────────────────────────────────────────── */
+.hist-header {
+  cursor:pointer; user-select:none;
+  transition:background .15s;
+  border-radius:6px 6px 0 0;
+}
+.hist-header:hover { background:rgba(0,0,0,.03); }
+.hist-chevron {
+  transition:transform .2s;
+  font-size:12px;
+  color:#6c757d;
+}
+.hist-header.collapsed .hist-chevron { transform:rotate(-90deg); }
+
+/* ─── Таблица ───────────────────────────────────────────────────── */
+.hist-table td { vertical-align:top; padding:.35rem .5rem !important; }
+.hist-table .field-col { width:28%; color:#6c757d; font-size:.8rem; }
+.hist-table .was-col  { width:36%; }
+.hist-table .now-col  { width:36%; }
+</style>
+
+{# ── ШАПКА ───────────────────────────────────────────────────────────── #}
 <div class="d-flex align-items-center mb-4 gap-2">
   <a href="{{ url_for('requests.view_request', rid=rid) }}"
      class="btn btn-sm btn-outline-secondary">
@@ -21,25 +61,27 @@
   </h5>
 </div>
 
-{# ── ПУСТО ───────────────────────────────────────────────────────── #}
+{# ── ПУСТО ────────────────────────────────────────────────────────────── #}
 {% if not history %}
 <div class="alert alert-info">
   <i class="bi bi-info-circle me-1"></i>
   История изменений отсутствует — обращение ещё не редактировалось.
 </div>
 
-{# ── СПИСОК ЗАПИСЕЙ ──────────────────────────────────────────────── #}
+{# ── СПИСОК ЗАПИСЕЙ ─────────────────────────────────────────────── #}
 {% else %}
 {% for entry in history %}
+
+{% set card_id = 'hist-' ~ loop.index %}
 <div class="card mb-3 border-start border-4
-  {% if entry.action == 'rollback' %}border-danger
-  {% else %}border-warning{% endif %}"
+  {% if entry.action == 'rollback' %}border-danger{% else %}border-warning{% endif %}"
   style="box-shadow:0 1px 4px rgba(0,0,0,.07)">
 
-  <div class="card-body py-2 px-3">
-
-    {# Заголовок записи #}
-    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+  {# ── ЗАГОЛОВОК — кликабельный ────────────────────────── #}
+  <div class="card-body py-2 px-3 hist-header {% if not loop.first %}collapsed{% endif %}"
+       data-target="{{ card_id }}"
+       onclick="histToggle(this)">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
       <div>
         <strong>{{ entry.user }}</strong>
         <span class="text-muted ms-2" style="font-size:.82rem">
@@ -50,32 +92,30 @@
         {% else %}
           <span class="badge bg-warning text-dark ms-2">Правка</span>
         {% endif %}
+        {% if entry.changes %}
+          <span class="badge bg-secondary ms-1" style="font-size:.7rem">
+            {{ entry.changes|length }}
+            {{ entry.changes|length | pluralize('поле', 'поля', 'полей') }}
+          </span>
+        {% endif %}
       </div>
-
-      {# Кнопка отката — только если есть изменения #}
-      {% if session.role == 'admin' and entry.changes %}
-      <form method="post"
-            action="{{ url_for('requests.rollback_request', rid=rid, hid=entry.id) }}"
-            onsubmit="return confirm('Откатить обращение к состоянию ДО этой правки?')">
-        <button type="submit" class="btn btn-sm btn-outline-danger">
-          <i class="bi bi-arrow-counterclockwise"></i> Откатить
-        </button>
-      </form>
-      {% endif %}
+      <i class="bi bi-chevron-down hist-chevron"></i>
     </div>
+  </div>
 
-    {# Таблица изменённых полей #}
+  {# ── ТЕЛО — сворачиваемое ───────────────────────────────── #}
+  <div id="{{ card_id }}"
+       style="{% if not loop.first %}display:none{% endif %}">
     {% if entry.changes %}
-    <div class="mt-2">
-      <table class="table table-sm table-bordered mb-0"
-             style="font-size:.83rem">
+    <div class="px-3 pb-3 pt-1">
+      <table class="table table-sm table-bordered mb-0 hist-table">
         <thead class="table-light">
           <tr>
-            <th style="width:28%">Поле</th>
-            <th style="width:36%">
+            <th class="field-col">Поле</th>
+            <th class="was-col">
               <i class="bi bi-x-circle text-danger me-1"></i>Было
             </th>
-            <th>
+            <th class="now-col">
               <i class="bi bi-check-circle text-success me-1"></i>Стало
             </th>
           </tr>
@@ -83,28 +123,124 @@
         <tbody>
         {% for label, vals in entry.changes.items() %}
         <tr>
-          <td class="text-muted">{{ label }}</td>
-          <td class="text-danger" style="word-break:break-all">
-            {{ vals[0] if vals[0] else '—' }}
-          </td>
-          <td class="text-success" style="word-break:break-all">
-            {{ vals[1] if vals[1] else '—' }}
-          </td>
+          <td class="field-col">{{ label }}</td>
+          <td class="diff-cell was-col" data-was="{{ vals[0] or '' }}" data-now="{{ vals[1] or '' }}"></td>
+          <td class="diff-cell now-col" data-role="now"></td>
         </tr>
         {% endfor %}
         </tbody>
       </table>
     </div>
     {% else %}
-    <div class="text-muted mt-1" style="font-size:.83rem">
-      <i class="bi bi-dash-circle me-1"></i>
-      Изменённые поля не зафиксированы.
+    <div class="px-3 pb-3 pt-1 text-muted" style="font-size:.83rem">
+      <i class="bi bi-dash-circle me-1"></i>Изменённые поля не зафиксированы.
     </div>
     {% endif %}
-
   </div>
+
 </div>
 {% endfor %}
 {% endif %}
 
+{% endblock %}
+
+{% block scripts %}
+<script>
+/* ──────────────────────────────────────────────────────────────
+   COLLAPSIBLE
+────────────────────────────────────────────────────────────── */
+function histToggle(header) {
+  var id   = header.getAttribute('data-target');
+  var body = document.getElementById(id);
+  if (!body) return;
+  var hidden = body.style.display === 'none';
+  body.style.display = hidden ? '' : 'none';
+  header.classList.toggle('collapsed', !hidden);
+}
+
+/* ──────────────────────────────────────────────────────────────
+   WORD-DIFF ENGINE
+   Делит строки на токены, применяет LCS для пословного diff.
+────────────────────────────────────────────────────────────── */
+function tokenize(str) {
+  /* Разбиваем по пробелам, но сохраняем разделители */
+  return str.split(/(\s+)/);
+}
+
+function lcs(a, b) {
+  var m = a.length, n = b.length;
+  var dp = [];
+  for (var i = 0; i <= m; i++) { dp[i] = new Array(n + 1).fill(0); }
+  for (var i = 1; i <= m; i++)
+    for (var j = 1; j <= n; j++)
+      dp[i][j] = a[i-1] === b[j-1] ? dp[i-1][j-1] + 1
+                                     : Math.max(dp[i-1][j], dp[i][j-1]);
+  /* backtrack */
+  var ops = [], i = m, j = n;
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && a[i-1] === b[j-1]) {
+      ops.unshift({type:'eq', val:a[i-1]}); i--; j--;
+    } else if (j > 0 && (i === 0 || dp[i][j-1] >= dp[i-1][j])) {
+      ops.unshift({type:'ins', val:b[j-1]}); j--;
+    } else {
+      ops.unshift({type:'del', val:a[i-1]}); i--;
+    }
+  }
+  return ops;
+}
+
+function esc(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function renderDiff(wasStr, nowStr) {
+  var wasTokens = tokenize(wasStr);
+  var nowTokens = tokenize(nowStr);
+  var ops = lcs(wasTokens, nowTokens);
+
+  var wasHtml = '', nowHtml = '';
+  ops.forEach(function(op) {
+    if (op.type === 'eq') {
+      wasHtml += '<span class="diff-eq">' + esc(op.val) + '</span>';
+      nowHtml += '<span class="diff-eq">' + esc(op.val) + '</span>';
+    } else if (op.type === 'del') {
+      wasHtml += '<span class="diff-del">' + esc(op.val) + '</span>';
+    } else {
+      nowHtml += '<span class="diff-ins">' + esc(op.val) + '</span>';
+    }
+  });
+  return { was: wasHtml, now: nowHtml };
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Проходим по всем строкам таблицы, заполняем diff
+────────────────────────────────────────────────────────────── */
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('tr').forEach(function(row) {
+    var wasCell = row.querySelector('.was-col.diff-cell');
+    var nowCell = row.querySelector('.now-col.diff-cell');
+    if (!wasCell || !nowCell) return;
+
+    var wasStr = wasCell.getAttribute('data-was') || '';
+    var nowStr = wasCell.getAttribute('data-now') || '';
+
+    if (!wasStr && !nowStr) {
+      wasCell.textContent = '—';
+      nowCell.textContent = '—';
+      return;
+    }
+
+    /* Если значения одинаковы — просто показываем без выделения */
+    if (wasStr === nowStr) {
+      wasCell.textContent = wasStr || '—';
+      nowCell.textContent = nowStr || '—';
+      return;
+    }
+
+    var result = renderDiff(wasStr, nowStr);
+    wasCell.innerHTML = result.was || '<span class="text-muted">—</span>';
+    nowCell.innerHTML = result.now || '<span class="text-muted">—</span>';
+  });
+});
+</script>
 {% endblock %}
