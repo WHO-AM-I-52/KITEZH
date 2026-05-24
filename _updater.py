@@ -94,15 +94,39 @@ def show_rate_limit(headers):
           (f" (сброс в {reset_str})" if reset_str else ""))
 
 
+def _print_progress(downloaded: int, total: int):
+    """Выводит прогресс-бар в одну строку."""
+    if total > 0:
+        pct   = downloaded / total * 100
+        filled = int(pct / 5)  # 20 блоков = 100%
+        bar   = "█" * filled + "░" * (20 - filled)
+        size_kb = downloaded // 1024
+        total_kb = total // 1024
+        print(f"  [{bar}] {pct:5.1f}%  {size_kb} / {total_kb} КБ", end="\r", flush=True)
+    else:
+        size_kb = downloaded // 1024
+        print(f"  Скачано: {size_kb} КБ...", end="\r", flush=True)
+
+
 def download_zip(zip_path: str):
-    """Скачивает весь репозиторий одним архивом — 1 API-запрос."""
+    """Скачивает весь репозиторий одним архивом с прогресс-баром."""
     url = f"{API_BASE}/zipball/{BRANCH}"
     req = urllib.request.Request(url, headers=_headers())
     print(f"  Скачиваем архив репозитория...")
     with urllib.request.urlopen(req, timeout=60) as r:
         show_rate_limit(r.headers)
+        total = int(r.headers.get("Content-Length", 0))
+        downloaded = 0
+        chunk_size = 8192
         with open(zip_path, "wb") as f:
-            shutil.copyfileobj(r, f)
+            while True:
+                chunk = r.read(chunk_size)
+                if not chunk:
+                    break
+                f.write(chunk)
+                downloaded += len(chunk)
+                _print_progress(downloaded, total)
+    print()  # перевод строки после прогресс-бара
     size_kb = os.path.getsize(zip_path) // 1024
     print(f"  Архив скачан: {size_kb} КБ")
 
@@ -127,7 +151,6 @@ def extract_and_apply(zip_path: str):
 
         print("  Применяем обновления...")
         for dirpath, dirnames, filenames in os.walk(repo_root):
-            # Вычисляем относительный путь от корня репо
             rel_dir = os.path.relpath(dirpath, repo_root)
 
             for fname in filenames:
@@ -146,7 +169,6 @@ def extract_and_apply(zip_path: str):
                 dest = os.path.join(BASE_DIR, rel_path)
                 os.makedirs(os.path.dirname(dest), exist_ok=True)
 
-                # Проверяем изменился ли bat-файл
                 if rel_path_fwd == BAT_NAME:
                     new_content = open(src, "rb").read()
                     old_content = b""
@@ -261,7 +283,6 @@ def main():
     try:
         updated, skipped, bat_updated = extract_and_apply(zip_path)
     finally:
-        # Архив удаляем в любом случае
         if os.path.exists(zip_path):
             os.remove(zip_path)
             print("  Архив удалён.")
