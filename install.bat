@@ -10,6 +10,8 @@ echo ============================================================
 echo.
 
 set "APP_DIR=%~dp0"
+if "%APP_DIR:~-1%"=="\" set "APP_DIR=%APP_DIR:~0,-1%"
+
 set "PYTHON="
 set "SITEPKG="
 
@@ -18,32 +20,29 @@ set "SITEPKG="
 :: ============================================================
 echo [1/5] Poisk Python...
 
-:: Variant 1: uzhe byl skopirovan ranee v WPy\python313
-if exist "%APP_DIR%WPy\python313\python.exe" (
-  set "PYTHON=%APP_DIR%WPy\python313\python.exe"
-  set "SITEPKG=%APP_DIR%WPy\python313\Lib\site-packages"
-  echo  OK (WPy\python313): %PYTHON%
+if exist "%APP_DIR%\WPy\python313\python.exe" (
+  set "PYTHON=%APP_DIR%\WPy\python313\python.exe"
+  set "SITEPKG=%APP_DIR%\WPy\python313\Lib\site-packages"
+  echo  OK WPy\python313
   goto :install_deps
 )
 
-:: Variant 2: portativny Python v tools\python313
-if exist "%APP_DIR%tools\python313\python.exe" (
-  echo  Nayden: tools\python313\python.exe
+if exist "%APP_DIR%\tools\python313\python.exe" (
+  echo  Nayden: tools\python313
   echo  Kopiruyu v WPy\python313...
-  if not exist "%APP_DIR%WPy" mkdir "%APP_DIR%WPy"
-  xcopy /E /I /Y /Q "%APP_DIR%tools\python313" "%APP_DIR%WPy\python313"
+  if not exist "%APP_DIR%\WPy" mkdir "%APP_DIR%\WPy"
+  xcopy /E /I /Y /Q "%APP_DIR%\tools\python313" "%APP_DIR%\WPy\python313"
   if errorlevel 1 (
     echo  [OSHIBKA] xcopy ne udalos.
     pause
     exit /b 1
   )
-  set "PYTHON=%APP_DIR%WPy\python313\python.exe"
-  set "SITEPKG=%APP_DIR%WPy\python313\Lib\site-packages"
-  echo  OK: %PYTHON%
+  set "PYTHON=%APP_DIR%\WPy\python313\python.exe"
+  set "SITEPKG=%APP_DIR%\WPy\python313\Lib\site-packages"
+  echo  OK: Python skopirovan.
   goto :install_deps
 )
 
-:: Variant 3: vvod vruchnuyu
 echo.
 echo  [VNIMANIE] Python ne nayden avtomaticheski.
 echo.
@@ -66,7 +65,7 @@ if exist "%MANUAL_PY%" (
   echo  OK: %PYTHON%
   goto :install_deps
 )
-echo  [OSHIBKA] Fayl ne nayden: %MANUAL_PY%
+echo  [OSHIBKA] Fayl ne nayden.
 
 :no_python
 echo.
@@ -84,9 +83,9 @@ echo [2/5] Proverka pip...
 
 "%PYTHON%" -m pip --version >nul 2>&1
 if errorlevel 1 (
-  echo  pip ne nayden, ustanovka cherez get-pip.py...
-  if exist "%APP_DIR%tools\python313\get-pip.py" (
-    "%PYTHON%" "%APP_DIR%tools\python313\get-pip.py" --quiet
+  echo  pip ne nayden, ustanovka...
+  if exist "%APP_DIR%\tools\python313\get-pip.py" (
+    "%PYTHON%" "%APP_DIR%\tools\python313\get-pip.py" --quiet
     echo  OK: pip ustanovlen.
   ) else (
     "%PYTHON%" -m ensurepip --upgrade >nul 2>&1
@@ -102,12 +101,12 @@ if errorlevel 1 (
 echo.
 echo [3/5] Ustanovka zavisimostey iz requirements.txt...
 
-if not exist "%APP_DIR%requirements.txt" (
+if not exist "%APP_DIR%\requirements.txt" (
   echo  [WARN] requirements.txt ne nayden - propusk.
   goto :create_dirs
 )
 
-"%PYTHON%" -m pip install --quiet -r "%APP_DIR%requirements.txt"
+"%PYTHON%" -m pip install --quiet -r "%APP_DIR%\requirements.txt"
 if errorlevel 1 (
   echo  [OSHIBKA] Ne udalos ustanovit zavisimosti.
   echo  Proverte podklyucheniye k Internetu.
@@ -123,26 +122,26 @@ echo  OK: zavisimosti ustanovleny.
 echo.
 echo [4/5] Sozdaniye papok...
 
-if not exist "%APP_DIR%db" mkdir "%APP_DIR%db"
-if not exist "%APP_DIR%uploads" mkdir "%APP_DIR%uploads"
-if not exist "%APP_DIR%reports" mkdir "%APP_DIR%reports"
-if not exist "%APP_DIR%db\backups" mkdir "%APP_DIR%db\backups"
+if not exist "%APP_DIR%\db" mkdir "%APP_DIR%\db"
+if not exist "%APP_DIR%\uploads" mkdir "%APP_DIR%\uploads"
+if not exist "%APP_DIR%\reports" mkdir "%APP_DIR%\reports"
+if not exist "%APP_DIR%\db\backups" mkdir "%APP_DIR%\db\backups"
 echo  OK: papki sozdany.
 
 echo.
 echo  Podgotovka bazy dannykh...
 
-if exist "%APP_DIR%db\database.db" (
+if exist "%APP_DIR%\db\database.db" (
   echo  BD uzhe est - ne trogaem.
   goto :create_env
 )
-if exist "%APP_DIR%db\db_template.db" (
-  copy /Y "%APP_DIR%db\db_template.db" "%APP_DIR%db\database.db" >nul
+if exist "%APP_DIR%\db\db_template.db" (
+  copy /Y "%APP_DIR%\db\db_template.db" "%APP_DIR%\db\database.db" >nul
   echo  OK: BD sozdana iz shablona.
   goto :create_env
 )
-if exist "%APP_DIR%db.py" (
-  "%PYTHON%" "%APP_DIR%db.py"
+if exist "%APP_DIR%\db.py" (
+  "%PYTHON%" "%APP_DIR%\db.py"
   if errorlevel 1 (
     echo  [WARN] db.py vernul oshibku.
   ) else (
@@ -159,7 +158,7 @@ if exist "%APP_DIR%db.py" (
 echo.
 echo [5/5] Proverka .env...
 
-if exist "%APP_DIR%.env" (
+if exist "%APP_DIR%\.env" (
   echo  .env uzhe est - ne trogaem.
 ) else (
   "%PYTHON%" -c "import secrets; open('.env','w').write('SECRET_KEY=' + secrets.token_hex(32) + '\n')"
