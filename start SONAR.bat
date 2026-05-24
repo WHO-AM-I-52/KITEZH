@@ -1,6 +1,5 @@
 @echo off
 chcp 65001 >nul
-setlocal enabledelayedexpansion
 cd /d "%~dp0"
 title SONAR
 
@@ -15,9 +14,7 @@ set "APP_DIR=%~dp0"
 set "PYTHON="
 set "SITEPKG="
 
-:: ============================================================
-:: [1] Ищем WPy рядом с этим файлом
-:: ============================================================
+:: [1] Ishchem WPy ryadom
 for /d %%A in ("%APP_DIR%WPy\python-*.amd64") do (
   if exist "%%A\python.exe" (
     set "PYTHON=%%A\python.exe"
@@ -25,75 +22,66 @@ for /d %%A in ("%APP_DIR%WPy\python-*.amd64") do (
   )
 )
 
-:: ============================================================
-:: [2] Если WPy не найден — предлагаем выбор
-:: ============================================================
-if not defined PYTHON (
-  echo.
-  echo  [ВНИМАНИЕ] Python / WPy не найден в папке SONAR!
-  echo.
-  echo  Выбери вариант:
-  echo    [1] Запустить install.bat — автоустановка WPy
-  echo    [2] Указать путь к python.exe вручную
-  echo    [0] Выйти
-  echo.
-  set "PY_CHOICE="
-  set /p PY_CHOICE=  Выбор (1/2/0): 
+if defined PYTHON goto :python_found
 
-  if "!PY_CHOICE!"=="1" (
-    if exist "%APP_DIR%install.bat" (
-      echo.
-      call "%APP_DIR%install.bat"
-      :: После установки перезапускаем поиск Python
-      for /d %%A in ("%APP_DIR%WPy\python-*.amd64") do (
-        if exist "%%A\python.exe" (
-          set "PYTHON=%%A\python.exe"
-          set "SITEPKG=%%A\Lib\site-packages"
-        )
-      )
-    ) else (
-      echo.
-      echo  [ОШИБКА] install.bat не найден в папке SONAR.
-      echo  Положите install.bat рядом и повторите запуск.
-    )
-  ) else if "!PY_CHOICE!"=="2" (
-    echo.
-    echo  Укажите полный путь к python.exe
-    echo  Пример: C:\WPy64-31131\python-3.11.3.amd64\python.exe
-    echo.
-    set "MANUAL_PY="
-    set /p MANUAL_PY=  Путь: 
-    if exist "!MANUAL_PY!" (
-      set "PYTHON=!MANUAL_PY!"
-      :: Определяем SITEPKG автоматически
-      for %%X in ("!MANUAL_PY!") do set "SITEPKG=%%~dpXLib\site-packages"
-      echo  OK: Python найден по указанному пути.
-    ) else (
-      echo  [ОШИБКА] Файл не найден: !MANUAL_PY!
-    )
-  ) else (
-    echo  Выход...
-    pause
-    exit /b 0
-  )
-)
-
-:: Финальная проверка
-if not defined PYTHON (
-  echo.
-  echo  [ОШИБКА] Python всё ещё не найден. Обратитесь к администратору.
-  echo.
-  pause
-  exit /b 1
-)
-
+:: [2] Python ne nayden - predlagaem vybor
 echo.
+echo  [VNIMANIE] Python / WPy ne nayden v papke SONAR!
+echo.
+echo  Vyberi variant:
+echo    [1] Zapustit install.bat - avtoystanovka WPy
+echo    [2] Ukazat put k python.exe vruchnuyu
+echo    [0] Vyyti
+echo.
+set "PY_CHOICE="
+set /p PY_CHOICE=  Vybor (1/2/0): 
+
+if "%PY_CHOICE%"=="1" goto :run_install
+if "%PY_CHOICE%"=="2" goto :manual_path
+goto :quit
+
+:run_install
+if exist "%APP_DIR%install.bat" (
+  echo.
+  call "%APP_DIR%install.bat"
+  for /d %%A in ("%APP_DIR%WPy\python-*.amd64") do (
+    if exist "%%A\python.exe" (
+      set "PYTHON=%%A\python.exe"
+      set "SITEPKG=%%A\Lib\site-packages"
+    )
+  )
+  if defined PYTHON goto :python_found
+) else (
+  echo.
+  echo  [OSHIBKA] install.bat ne nayden.
+)
+goto :no_python
+
+:manual_path
+echo.
+echo  Ukazhite polnyy put k python.exe
+echo  Primer: C:\WPy64-31131\python-3.11.3.amd64\python.exe
+echo.
+set "MANUAL_PY="
+set /p MANUAL_PY=  Put: 
+if exist "%MANUAL_PY%" (
+  set "PYTHON=%MANUAL_PY%"
+  goto :python_found
+)
+echo  [OSHIBKA] Fayl ne nayden: %MANUAL_PY%
+
+:no_python
+echo.
+echo  [OSHIBKA] Python ne nayden. Obratites k administratoru.
+echo.
+pause
+exit /b 1
+
+:python_found
 echo  OK: %PYTHON%
 echo.
 
-:: ============================================================
-:: Очистка устаревших .pth
-:: ============================================================
+:: Ochistka starykh .pth
 for %%v in (3.5 3.6 3.7 3.8 3.9) do (
   for %%f in ("%SITEPKG%\*-py%%v-nspkg.pth") do (
     if exist "%%f" del /f /q "%%f"
@@ -101,37 +89,31 @@ for %%v in (3.5 3.6 3.7 3.8 3.9) do (
 )
 del /f /q "%SITEPKG%\distutils-precedence.pth" 2>nul
 
-:: ============================================================
-:: Бекап БД
-:: ============================================================
+:: Bekap BD
 if not exist "%APP_DIR%db\backups" mkdir "%APP_DIR%db\backups"
 if exist "%APP_DIR%db\database.db" (
     xcopy /Y /I "%APP_DIR%db\database.db" "%APP_DIR%db\backups\database_%date:~6,4%%date:~3,2%%date:~0,2%.db*" >nul
-    echo  Бекап: db\backups\database_%date:~6,4%%date:~3,2%%date:~0,2%.db
+    echo  Bekap: db\backups\database_%date:~6,4%%date:~3,2%%date:~0,2%.db
 ) else (
-    echo  [ПРЕДУПРЕЖДЕНИЕ] db\database.db не найден
+    echo  [WARN] db\database.db ne nayden
 )
-"%PYTHON%" -c "import os,glob;files=sorted(glob.glob('db/backups/database_*.db'));[os.remove(f) for f in files[:-5]];print('  Хранится резервных копий: '+str(min(len(files),5)))"
+"%PYTHON%" -c "import os,glob;files=sorted(glob.glob('db/backups/database_*.db'));[os.remove(f) for f in files[:-5]];print('  Hranyatsya rezervnye kopii: '+str(min(len(files),5)))"
 echo.
 
-:: ============================================================
 :: Health check
-:: ============================================================
 "%PYTHON%" -m py_compile app.py
 if errorlevel 1 (
   echo.
-  echo  [ОШИБКА] Синтаксическая ошибка в app.py!
+  echo  [OSHIBKA] Sintaksicheskaya oshibka v app.py!
   pause
   exit /b 1
 )
 echo  Health check OK.
 echo.
 
-:: ============================================================
-:: Обновление кода из GitHub
-:: ============================================================
+:: Obnovlenie koda
 if exist "%APP_DIR%update.bat" (
-  set /p UPD=  Обновить код из GitHub? [Enter = да / 0 = нет]: 
+  set /p UPD=  Obnovit kod iz GitHub? [Enter=da / 0=net]: 
   if not "%UPD%"=="0" (
     echo.
     call "%APP_DIR%update.bat"
@@ -139,27 +121,22 @@ if exist "%APP_DIR%update.bat" (
   )
 )
 
-:: ============================================================
 :: Sync changelog
-:: ============================================================
-set /p SYNC=  Sync changelog с GitHub? [Enter = да / 0 = нет]: 
+set /p SYNC=  Sync changelog? [Enter=da / 0=net]: 
 if not "%SYNC%"=="0" (
   echo.
   "%PYTHON%" "%APP_DIR%sync_changelog.py"
   echo.
 )
 
-:: ============================================================
-:: Выбор режима
-:: ============================================================
+:: Rezhim
 :ask_mode
-echo  Выбери режим:
-echo    [1] Production  (нормальная работа)
-echo    [2] Debug       (подробные ошибки, авто-релоад)
+echo  Vyberi rezhim:
+echo    [1] Production
+echo    [2] Debug
 echo.
 set "MODE_CHOICE="
-set /p MODE_CHOICE=  Режим (1/2): 
-
+set /p MODE_CHOICE=  Rezhim (1/2): 
 if "%MODE_CHOICE%"=="1" (
   set "FLASK_ENV=production"
   set "APP_DEBUG=0"
@@ -167,23 +144,21 @@ if "%MODE_CHOICE%"=="1" (
   set "FLASK_ENV=development"
   set "APP_DEBUG=1"
 ) else (
-  echo  Неверный выбор.
+  echo  Neverniy vybor.
   goto ask_mode
 )
 echo.
 
-:: ============================================================
-:: Открыть браузер
-:: ============================================================
+:: Brauzer
 :ask_open
 set "OPEN_CHOICE="
-set /p OPEN_CHOICE=  Открыть браузер? [1 = да / 0 = нет]: 
+set /p OPEN_CHOICE=  Otkryt brauzer? [1=da / 0=net]: 
 if "%OPEN_CHOICE%"=="1" (
   start "" http://127.0.0.1:5000
 ) else if "%OPEN_CHOICE%"=="0" (
   rem skip
 ) else (
-  echo  Введи 1 или 0.
+  echo  Vvedi 1 ili 0.
   goto ask_open
 )
 
@@ -202,27 +177,23 @@ echo  Network: http://%ip%:5000
 echo ============================================
 echo.
 
-:: ============================================================
-:: Запуск сервера
-:: ============================================================
 :start_server
-echo  Сервер запущен... Для остановки нажмите Ctrl+C
+echo  Server zapushen... Dlya ostanovki nazhmi Ctrl+C
 echo.
-
 set FLASK_ENV=%FLASK_ENV%
 set APP_DEBUG=%APP_DEBUG%
 "%PYTHON%" "%APP_DIR%app.py"
 
 echo.
 echo ============================================
-echo   Сервер остановлен.
+echo   Server ostanovlen.
 echo ============================================
 echo.
-echo   [1] Перезапустить
-echo   [2] Выйти
+echo   [1] Porvtorniy zapusk
+echo   [2] Vyyti
 echo.
 set "CHOICE="
-set /p CHOICE=  Выбор (1/2): 
+set /p CHOICE=  Vybor (1/2): 
 if "%CHOICE%"=="1" goto start_server
 
 :quit
