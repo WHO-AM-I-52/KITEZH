@@ -180,8 +180,9 @@ echo  Server zapushen... Dlya ostanovki nazhmi Ctrl+C
 echo.
 set FLASK_ENV=%FLASK_ENV%
 set APP_DEBUG=%APP_DEBUG%
-cd /d "%APP_DIR%"
+set PYTHONUTF8=1
 set PYTHONPATH=%APP_DIR%
+cd /d "%APP_DIR%"
 "%PYTHON%" app.py
 
 echo.
