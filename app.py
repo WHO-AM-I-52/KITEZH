@@ -1,6 +1,6 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║ app.py                                                       ║
-# ║ v2.2: settings_bp зарегистрирован (#10 SettingsMenu)        ║
+# ║ v2.3: pb_import_bp зарегистрирован (импорт справочника)     ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 import os
@@ -305,6 +305,13 @@ CREATE INDEX IF NOT EXISTS idx_pb_org  ON phonebook(org_id);
 CREATE INDEX IF NOT EXISTS idx_pb_name ON phonebook(full_name);
 """)
 
+    # ── phonebook source_type (v2.3) ─────────────────────────────
+    pb_cols = [r[1] for r in conn.execute("PRAGMA table_info(phonebook)").fetchall()]
+    if 'source_type' not in pb_cols:
+        conn.execute(
+            "ALTER TABLE phonebook ADD COLUMN source_type TEXT DEFAULT 'general'"
+        )
+
     conn.commit()
     conn.close()
 
@@ -382,15 +389,16 @@ def inject_globals():
     )
 
 
-from login_routes    import auth_bp
-from request_routes  import requests_bp
-from admin_routes    import admin_bp
-from export_routes   import report_bp
-from info_routes     import misc_bp
-from okved_admin     import okved_bp
-from okved_api       import okved_api_bp
-from settings_routes import settings_bp   # feat #10
-from preview_routes  import preview_bp    # feat #6 hover-popover
+from login_routes      import auth_bp
+from request_routes    import requests_bp
+from admin_routes      import admin_bp
+from export_routes     import report_bp
+from info_routes       import misc_bp
+from okved_admin       import okved_bp
+from okved_api         import okved_api_bp
+from settings_routes   import settings_bp    # feat #10
+from preview_routes    import preview_bp     # feat #6 hover-popover
+from phonebook_import  import pb_import_bp   # feat: импорт справочника
 
 app.register_blueprint(okved_bp)
 app.register_blueprint(okved_api_bp)
@@ -399,8 +407,9 @@ app.register_blueprint(requests_bp)
 app.register_blueprint(admin_bp)
 app.register_blueprint(report_bp)
 app.register_blueprint(misc_bp)
-app.register_blueprint(settings_bp)   # feat #10
-app.register_blueprint(preview_bp)    # feat #6 hover-popover
+app.register_blueprint(settings_bp)    # feat #10
+app.register_blueprint(preview_bp)     # feat #6 hover-popover
+app.register_blueprint(pb_import_bp)   # feat: импорт справочника
 
 if __name__ == '__main__':
     init_db()
