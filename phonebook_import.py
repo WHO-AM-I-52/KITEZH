@@ -33,7 +33,6 @@ pb_import_bp = Blueprint('pb_import', __name__)
 
 # ─── Константы ───────────────────────────────────────────────────────────────
 
-# Заголовки колонок шаблона (порядок важен — используется при парсинге)
 TEMPLATE_HEADERS = [
     'Организация',
     'ФИО',
@@ -46,7 +45,6 @@ TEMPLATE_HEADERS = [
     'Примечания',
 ]
 
-# Папка для временных файлов импорта
 IMPORT_TEMP_DIR = os.path.join(UPLOADS_DIR, 'import_temp')
 os.makedirs(IMPORT_TEMP_DIR, exist_ok=True)
 
@@ -54,7 +52,6 @@ os.makedirs(IMPORT_TEMP_DIR, exist_ok=True)
 # ─── Вспомогательные функции ─────────────────────────────────────────────────
 
 def _get_all_orgs():
-    """Возвращает dict {name_lower: id} всех организаций."""
     conn = get_db()
     rows = conn.execute("SELECT id, name FROM phonebook_orgs ORDER BY name").fetchall()
     conn.close()
@@ -62,12 +59,6 @@ def _get_all_orgs():
 
 
 def _parse_xlsx(filepath):
-    """
-    Разбирает загруженный Excel-файл.
-    Возвращает (rows, errors):
-      rows   — список dict с данными контактов
-      errors — список строк с описанием ошибок
-    """
     try:
         wb = openpyxl.load_workbook(filepath, data_only=True)
     except Exception as e:
@@ -77,7 +68,6 @@ def _parse_xlsx(filepath):
     errors = []
     rows = []
 
-    # Ищем строку-заголовок (первая строка где первая ячейка == 'Организация')
     header_row_idx = None
     for i, row in enumerate(ws.iter_rows(values_only=True), 1):
         if row and str(row[0]).strip() == 'Организация':
@@ -87,7 +77,6 @@ def _parse_xlsx(filepath):
     if header_row_idx is None:
         return [], ['Не найдена строка заголовков. Убедитесь что используете шаблон SONAR.']
 
-    # Проверяем соответствие заголовков
     header_cells = list(ws.iter_rows(
         min_row=header_row_idx, max_row=header_row_idx, values_only=True
     ))[0]
@@ -99,13 +88,11 @@ def _parse_xlsx(filepath):
         )
         return [], errors
 
-    # Читаем данные
     for row_idx in range(header_row_idx + 1, ws.max_row + 1):
         cells = list(ws.iter_rows(
             min_row=row_idx, max_row=row_idx, values_only=True
         ))[0]
 
-        # Пропускаем пустые строки
         if not any(cells[:len(TEMPLATE_HEADERS)]):
             continue
 
@@ -130,7 +117,6 @@ def _parse_xlsx(filepath):
 
 
 def _save_import_session(data: dict) -> str:
-    """Сохраняет данные импорта во временный JSON-файл, возвращает токен."""
     token = uuid.uuid4().hex
     path = os.path.join(IMPORT_TEMP_DIR, f'import_{token}.json')
     with open(path, 'w', encoding='utf-8') as f:
@@ -139,7 +125,6 @@ def _save_import_session(data: dict) -> str:
 
 
 def _load_import_session(token: str):
-    """Загружает данные импорта по токену. Возвращает dict или None."""
     if not token:
         return None
     path = os.path.join(IMPORT_TEMP_DIR, f'import_{token}.json')
@@ -150,7 +135,6 @@ def _load_import_session(token: str):
 
 
 def _delete_import_session(token: str):
-    """Удаляет временный файл импорта."""
     path = os.path.join(IMPORT_TEMP_DIR, f'import_{token}.json')
     if os.path.exists(path):
         os.remove(path)
@@ -162,15 +146,13 @@ def _delete_import_session(token: str):
 @login_required
 @admin_required
 def import_template():
-    """Генерирует и отдаёт шаблон Excel для заполнения."""
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = 'Справочник'
 
-    # Стили
     hfill = PatternFill('solid', fgColor='1B5E7B')
     hfont = Font(bold=True, color='FFFFFF', size=10)
-    efill = PatternFill('solid', fgColor='FFF9C4')  # жёлтый — строка примера
+    efill = PatternFill('solid', fgColor='FFF9C4')
     br = Border(
         left=Side(style='thin', color='CCCCCC'),
         right=Side(style='thin', color='CCCCCC'),
@@ -178,7 +160,6 @@ def import_template():
         bottom=Side(style='thin', color='CCCCCC'),
     )
 
-    # Заголовок файла
     ws.merge_cells(f'A1:{get_column_letter(len(TEMPLATE_HEADERS))}1')
     ws['A1'].value = 'Шаблон импорта телефонного справочника SONAR'
     ws['A1'].font = Font(bold=True, size=12, color='1B5E7B')
@@ -194,7 +175,6 @@ def import_template():
     ws['A2'].font = Font(italic=True, size=9, color='888888')
     ws['A2'].alignment = Alignment(horizontal='center')
 
-    # Заголовки колонок (строка 3)
     col_widths = [30, 28, 24, 10, 16, 8, 16, 24, 30]
     for ci, (h, w) in enumerate(zip(TEMPLATE_HEADERS, col_widths), 1):
         c = ws.cell(row=3, column=ci, value=h)
@@ -205,7 +185,6 @@ def import_template():
         ws.column_dimensions[get_column_letter(ci)].width = w
     ws.row_dimensions[3].height = 20
 
-    # Пример строки (строка 4)
     example = [
         'Министерство инвестиций НО',
         'Иванов Иван Иванович',
@@ -245,13 +224,11 @@ def import_template():
 @login_required
 @admin_required
 def import_upload():
-    """Принимает xlsx, парсит, определяет неизвестные организации."""
     f = request.files.get('import_file')
     if not f or not f.filename.endswith('.xlsx'):
         flash('Загрузите файл в формате .xlsx', 'error')
         return redirect(url_for('phonebook.phonebook'))
 
-    # Сохраняем временно
     tmp_name = f'upload_{uuid.uuid4().hex}.xlsx'
     tmp_path = os.path.join(IMPORT_TEMP_DIR, tmp_name)
     f.save(tmp_path)
@@ -268,14 +245,12 @@ def import_upload():
         flash('Файл не содержит данных для импорта', 'error')
         return redirect(url_for('phonebook.phonebook'))
 
-    # Определяем неизвестные организации
-    known_orgs = _get_all_orgs()  # {name_lower: id}
+    known_orgs = _get_all_orgs()
     unknown_orgs = sorted(set(
         r['org_name'] for r in rows
         if r['org_name'] and r['org_name'].strip().lower() not in known_orgs
     ))
 
-    # Сохраняем в сессию
     token = _save_import_session({
         'rows': rows,
         'parse_errors': errors,
@@ -295,7 +270,6 @@ def import_upload():
 @login_required
 @admin_required
 def import_resolve():
-    """Страница выбора: создать новую орг. или привязать к существующей."""
     token = session.get('import_token')
     data = _load_import_session(token)
     if not data:
@@ -303,9 +277,7 @@ def import_resolve():
         return redirect(url_for('phonebook.phonebook'))
 
     conn = get_db()
-    all_orgs = conn.execute(
-        'SELECT id, name FROM phonebook_orgs ORDER BY name'
-    ).fetchall()
+    all_orgs = conn.execute('SELECT id, name FROM phonebook_orgs ORDER BY name').fetchall()
     conn.close()
 
     return render_template(
@@ -321,19 +293,13 @@ def import_resolve():
 @login_required
 @admin_required
 def import_resolve_post():
-    """
-    Принимает маппинг организаций:
-      - org_action_<slug>  = 'create' | 'map'
-      - org_map_<slug>     = id существующей организации (если 'map')
-      - org_new_name_<slug> = название новой орг. (если 'create', по умолчанию = оригинал)
-    """
     token = session.get('import_token')
     data = _load_import_session(token)
     if not data:
         flash('Сессия импорта устарела. Загрузите файл заново.', 'error')
         return redirect(url_for('phonebook.phonebook'))
 
-    mapping = {}  # {original_name: {'action': 'create'|'map', 'map_id': int|None, 'new_name': str}}
+    mapping = {}
     for org_name in data['unknown_orgs']:
         slug = _org_slug(org_name)
         action = request.form.get(f'org_action_{slug}', 'create')
@@ -356,7 +322,6 @@ def import_resolve_post():
 @login_required
 @admin_required
 def import_confirm_get():
-    """Показывает итоговый предпросмотр перед записью в БД."""
     token = session.get('import_token')
     data = _load_import_session(token)
     if not data:
@@ -370,7 +335,8 @@ def import_confirm_get():
         rows_count=len(data['rows']),
         parse_errors=data.get('parse_errors', []),
         preview_mode=True,
-        rows_preview=data['rows'][:10],  # показываем первые 10 строк
+        rows_preview=data['rows'][:10],
+        update_duplicates=False,  # чекбокс всегда невыбран по умолчанию
     )
 
 
@@ -378,7 +344,6 @@ def import_confirm_get():
 @login_required
 @admin_required
 def import_confirm_post():
-    """Финальная запись данных в БД."""
     token = session.get('import_token')
     data = _load_import_session(token)
     if not data:
@@ -388,16 +353,19 @@ def import_confirm_post():
     rows = data['rows']
     org_mapping = data.get('org_mapping', {})
 
+    # ✔️ Главное исправление: читаем из POST шага 3 (чекбокс на странице предпросмотра)
+    update_duplicates = request.form.get('update_duplicates') == '1'
+
     conn = get_db()
     known_orgs = {r['name'].strip().lower(): r['id']
                   for r in conn.execute('SELECT id, name FROM phonebook_orgs').fetchall()}
 
     created = 0
+    updated = 0
     skipped = 0
     orgs_created = 0
 
     try:
-        # 1. Создаём новые организации из маппинга
         for orig_name, info in org_mapping.items():
             if info['action'] == 'create':
                 new_name = info['new_name']
@@ -409,27 +377,42 @@ def import_confirm_post():
                     known_orgs[key] = cur.lastrowid
                     orgs_created += 1
             elif info['action'] == 'map' and info['map_id']:
-                # Привязываем оригинальное имя к существующей org
                 known_orgs[orig_name.strip().lower()] = info['map_id']
 
-        # 2. Вставляем контакты
         for r in rows:
             org_name = r['org_name'].strip()
             org_key = org_name.lower()
 
-            # Если орг. есть в маппинге и там 'map' — используем map_id
             if org_name in org_mapping and org_mapping[org_name]['action'] == 'map':
                 org_id = org_mapping[org_name]['map_id']
             else:
                 org_id = known_orgs.get(org_key)
 
-            # Проверка дубликатов по ФИО + org_id
-            exists = conn.execute(
+            existing = conn.execute(
                 'SELECT id FROM phonebook WHERE full_name=? AND org_id IS ?',
                 (r['full_name'], org_id)
             ).fetchone()
-            if exists:
-                skipped += 1
+
+            if existing:
+                if update_duplicates:
+                    conn.execute("""
+                        UPDATE phonebook SET
+                            position      = ?,
+                            room          = ?,
+                            phone_work    = ?,
+                            phone_ext     = ?,
+                            phone_personal= ?,
+                            email         = ?,
+                            notes         = ?
+                        WHERE id = ?
+                    """, (
+                        r['position'], r['room'], r['phone_work'],
+                        r['phone_ext'], r['phone_personal'],
+                        r['email'], r['notes'], existing['id'],
+                    ))
+                    updated += 1
+                else:
+                    skipped += 1
                 continue
 
             conn.execute("""
@@ -438,21 +421,19 @@ def import_confirm_post():
                      phone_work, phone_ext, phone_personal, email, notes)
                 VALUES (?,?,?,?,?,?,?,?,?)
             """, (
-                org_id,
-                r['full_name'],
-                r['position'],
-                r['room'],
-                r['phone_work'],
-                r['phone_ext'],
-                r['phone_personal'],
-                r['email'],
-                r['notes'],
+                org_id, r['full_name'], r['position'], r['room'],
+                r['phone_work'], r['phone_ext'], r['phone_personal'],
+                r['email'], r['notes'],
             ))
             created += 1
 
+        log_parts = [f'добавлено {created} контактов']
+        if updated:  log_parts.append(f'обновлено {updated}')
+        if skipped:  log_parts.append(f'пропущено {skipped} дублей')
+        if orgs_created: log_parts.append(f'создано {orgs_created} орг.')
+
         log_action(conn, session['user_id'], 'create', None,
-                   f'Импорт справочника: добавлено {created} контактов, '
-                   f'пропущено {skipped} дублей, создано {orgs_created} орг.')
+                   f'Импорт справочника: {", ".join(log_parts)}')
         conn.commit()
 
     except Exception as e:
@@ -467,21 +448,20 @@ def import_confirm_post():
     _delete_import_session(token)
     session.pop('import_token', None)
 
-    flash(
-        f'Импорт завершён: добавлено {created} контактов'
-        + (f', пропущено {skipped} дублей' if skipped else '')
-        + (f', создано {orgs_created} новых организаций' if orgs_created else ''),
-        'success'
-    )
+    msg_parts = [f'добавлено {created} контактов']
+    if updated:      msg_parts.append(f'обновлено {updated}')
+    if skipped:      msg_parts.append(f'пропущено {skipped} дублей')
+    if orgs_created: msg_parts.append(f'создано {orgs_created} новых организаций')
+
+    flash(f'Импорт завершён: {", ".join(msg_parts)}', 'success')
     return redirect(url_for('phonebook.phonebook'))
 
 
-# ─── AJAX: поиск организаций для datalist ────────────────────────────────────
+# ─── AJAX: поиск организаций ────────────────────────────────────────────────
 
 @pb_import_bp.route('/phonebook/import/orgs_search')
 @login_required
 def orgs_search():
-    """AJAX: возвращает список организаций для живого поиска."""
     q = request.args.get('q', '').strip()
     conn = get_db()
     if q:
@@ -500,13 +480,11 @@ def orgs_search():
 # ─── Утилиты ─────────────────────────────────────────────────────────────────
 
 def _org_slug(name: str) -> str:
-    """Создаёт безопасный slug из названия организации для имён полей формы."""
     import re
     return re.sub(r'[^a-zA-Z0-9а-яА-ЯёЁ]', '_', name)[:60]
 
 
 def _save_import_session_by_token(token: str, data: dict):
-    """Обновляет существующий временный файл импорта."""
     path = os.path.join(IMPORT_TEMP_DIR, f'import_{token}.json')
     with open(path, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False)
