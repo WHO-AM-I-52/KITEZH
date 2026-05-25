@@ -5,7 +5,7 @@ cd /d "%~dp0"
 title SONAR
 
 echo ============================================
-echo  SONAR - Nizhegorodskaya oblast
+echo  SONAR - Нижегородская область
 echo ============================================
 echo.
 
@@ -15,7 +15,7 @@ set "APP_DIR=%~dp0"
 set "PYTHON="
 set "SITEPKG="
 
-:: [1] Ishchem Python
+:: [1] Ищем Python
 if exist "%APP_DIR%WPy\python313\python.exe" (
   set "PYTHON=%APP_DIR%WPy\python313\python.exe"
   set "SITEPKG=%APP_DIR%WPy\python313\Lib\site-packages"
@@ -23,17 +23,17 @@ if exist "%APP_DIR%WPy\python313\python.exe" (
 
 if defined PYTHON goto :python_found
 
-:: [2] Python ne nayden
+:: [2] Python не найден
 echo.
-echo  [VNIMANIE] Python / WPy ne nayden v papke SONAR!
+echo  [ВНИМАНИЕ] Python / WPy не найден в папке SONAR!
 echo.
-echo  Vyberi variant:
-echo    [1] Zapustit install.bat - avtoystanovka
-echo    [2] Ukazat put k python.exe vruchnuyu
-echo    [0] Vyyti
+echo  Выбери вариант:
+echo    [1] Запустить install.bat - автоустановка
+echo    [2] Указать путь к python.exe вручную
+echo    [0] Выйти
 echo.
 set "PY_CHOICE="
-set /p PY_CHOICE=  Vybor (1/2/0): 
+set /p PY_CHOICE=  Выбор (1/2/0): 
 
 if "%PY_CHOICE%"=="1" goto :run_install
 if "%PY_CHOICE%"=="2" goto :manual_path
@@ -49,27 +49,27 @@ if exist "%APP_DIR%install.bat" (
     goto :python_found
   )
 ) else (
-  echo  [OSHIBKA] install.bat ne nayden.
+  echo  [ОШИБКА] install.bat не найден.
 )
 goto :no_python
 
 :manual_path
 echo.
-echo  Ukazhi polnyy put k python.exe
-echo  Primer: C:\Python313\python.exe
+echo  Укажи полный путь к python.exe
+echo  Пример: C:\Python313\python.exe
 echo.
 set "MANUAL_PY="
-set /p MANUAL_PY=  Put: 
+set /p MANUAL_PY=  Путь: 
 if exist "!MANUAL_PY!" (
   set "PYTHON=!MANUAL_PY!"
   set "SITEPKG="
   goto :python_found
 )
-echo  [OSHIBKA] Fayl ne nayden: !MANUAL_PY!
+echo  [ОШИБКА] Файл не найден: !MANUAL_PY!
 
 :no_python
 echo.
-echo  [OSHIBKA] Python ne nayden. Zapusti install.bat i povtori.
+echo  [ОШИБКА] Python не найден. Запусти install.bat и повтори.
 echo.
 pause
 exit /b 1
@@ -78,12 +78,12 @@ exit /b 1
 echo  OK: %PYTHON%
 echo.
 
-:: Ochistka starykh .pth
+:: Очистка устаревших .pth
 if not defined SITEPKG goto :skip_pth
 del /f /q "%SITEPKG%\distutils-precedence.pth" 2>nul
 :skip_pth
 
-:: Bekap BD - data cherez temp-fayl
+:: Бекап БД - дата через временный файл
 cd /d "%APP_DIR%"
 if not exist "%APP_DIR%db\backups" mkdir "%APP_DIR%db\backups"
 if exist "%APP_DIR%db\database.db" (
@@ -91,42 +91,42 @@ if exist "%APP_DIR%db\database.db" (
   set /p BKDATE=<"db\backups\.bkdate"
   del /f /q "db\backups\.bkdate" 2>nul
   xcopy /Y /I "%APP_DIR%db\database.db" "%APP_DIR%db\backups\database_!BKDATE!.db*" >nul
-  echo  Bekap: db\backups\database_!BKDATE!.db
+  echo  Бекап: db\backups\database_!BKDATE!.db
 ) else (
-  echo  [WARN] db\database.db ne nayden
+  echo  [ПРЕДУПРЕЖДЕНИЕ] db\database.db не найден
 )
 
 "%PYTHON%" -c "import os,glob;files=sorted(glob.glob('db/backups/database_*.db'));[os.remove(f) for f in files[:-5]]"
 echo.
 
-:: Health check
+:: Проверка целостности
 "%PYTHON%" -m py_compile app.py
 if errorlevel 1 (
   echo.
-  echo  [OSHIBKA] Sintaksicheskaya oshibka v app.py!
+  echo  [ОШИБКА] Синтаксическая ошибка в app.py!
   pause
   exit /b 1
 )
-echo  Health check OK.
+echo  Проверка целостности OK.
 echo.
 
-:: Proverka obnovleniy na GitHub
+:: Проверка обновлений на GitHub
 if exist "%APP_DIR%update.bat" (
   if exist "%APP_DIR%_updater.py" (
-    echo  Proverka obnovleniy na GitHub...
+    echo  Проверка обновлений на GitHub...
     "%PYTHON%" "%APP_DIR%_updater.py" --check
     set "CHECK_RESULT=!ERRORLEVEL!"
     echo.
 
     if "!CHECK_RESULT!"=="0" (
-      :: Obnovleniy net - propuskaem
-      echo  [OK] Ustanovlena aktualnaya versiya. Obnovleniye propushcheno.
+      :: Обновлений нет - пропускаем
+      echo  [OK] Установлена актуальная версия. Обновление пропущено.
       echo.
     ) else if "!CHECK_RESULT!"=="2" (
-      :: Oshibka soedineniya - predlagaem vse ravno
-      echo  [!] Ne udalos proverit obnovleniya. Zapustit obnovleniye?
+      :: Ошибка соединения - предлагаем всё равно
+      echo  [!] Не удалось проверить обновления. Запустить всё равно?
       set "UPD=x"
-      set /p UPD=  Skachat arkhiv obnovleniya s GitHub? [Enter=da / 0=net]: 
+      set /p UPD=  Скачать архив обновления с GitHub? [Ввод=да / 0=нет]: 
       if "!UPD!"=="x" (
         echo.
         call "%APP_DIR%update.bat"
@@ -141,7 +141,7 @@ if exist "%APP_DIR%update.bat" (
     ) else (
       :: Есть обновления (CHECK_RESULT=1) - спрашиваем
       set "UPD=x"
-      set /p UPD=  Skachat arkhiv obnovleniya s GitHub? [Enter=da / 0=net]: 
+      set /p UPD=  Скачать архив обновления с GitHub? [Ввод=да / 0=нет]: 
       if "!UPD!"=="x" (
         echo.
         call "%APP_DIR%update.bat"
@@ -155,9 +155,9 @@ if exist "%APP_DIR%update.bat" (
       )
     )
   ) else (
-    :: _updater.py ne nayden - staraya logika
+    :: _updater.py не найден - старая логика
     set "UPD=x"
-    set /p UPD=  Skachat arkhiv obnovleniya s GitHub? [Enter=da / 0=net]: 
+    set /p UPD=  Скачать архив обновления с GitHub? [Ввод=да / 0=нет]: 
     if "!UPD!"=="x" (
       echo.
       call "%APP_DIR%update.bat"
@@ -172,9 +172,9 @@ if exist "%APP_DIR%update.bat" (
   )
 )
 
-:: Sync changelog
+:: Синхронизация changelog
 set "SYNC=x"
-set /p SYNC=  Sync changelog? [Enter=da / 0=net]: 
+set /p SYNC=  Синхронизировать changelog? [Ввод=да / 0=нет]: 
 if "!SYNC!"=="x" (
   echo.
   "%PYTHON%" sync_changelog.py
@@ -185,14 +185,14 @@ if "!SYNC!"=="x" (
   echo.
 )
 
-:: Rezhim
+:: Режим запуска
 :ask_mode
-echo  Vyberi rezhim:
+echo  Выбери режим:
 echo    [1] Production
 echo    [2] Debug
 echo.
 set "MODE_CHOICE="
-set /p MODE_CHOICE=  Rezhim (1/2): 
+set /p MODE_CHOICE=  Режим (1/2): 
 if "%MODE_CHOICE%"=="1" (
   set "FLASK_ENV=production"
   set "APP_DEBUG=0"
@@ -200,25 +200,25 @@ if "%MODE_CHOICE%"=="1" (
   set "FLASK_ENV=development"
   set "APP_DEBUG=1"
 ) else (
-  echo  Neverniy vybor.
+  echo  Неверный выбор.
   goto :ask_mode
 )
 echo.
 
-:: Brauzer
+:: Открыть браузер
 :ask_open
 set "OPEN_CHOICE="
-set /p OPEN_CHOICE=  Otkryt brauzer? [1=da / 0=net]: 
+set /p OPEN_CHOICE=  Открыть браузер? [1=да / 0=нет]: 
 if "%OPEN_CHOICE%"=="1" (
   start "" http://127.0.0.1:5000
 ) else if "%OPEN_CHOICE%"=="0" (
   rem skip
 ) else (
-  echo  Vvedi 1 ili 0.
+  echo  Введи 1 или 0.
   goto :ask_open
 )
 
-:: IP
+:: Определяем IP
 set "ip=127.0.0.1"
 for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /i "IPv4"') do (
   set "ip=%%a"
@@ -229,13 +229,13 @@ set "ip=%ip: =%"
 
 echo.
 echo ============================================
-echo  Local:   http://127.0.0.1:5000
-echo  Network: http://%ip%:5000
+echo  Локальный:  http://127.0.0.1:5000
+echo  Сетевой:    http://%ip%:5000
 echo ============================================
 echo.
 
 :start_server
-echo  Server zapushen... Dlya ostanovki nazhmi Ctrl+C
+echo  Сервер запущен... Для остановки нажми Ctrl+C
 echo.
 set FLASK_ENV=%FLASK_ENV%
 set APP_DEBUG=%APP_DEBUG%
@@ -247,14 +247,14 @@ cd /d "%APP_DIR%"
 
 echo.
 echo ============================================
-echo   Server ostanovlen.
+echo   Сервер остановлен.
 echo ============================================
 echo.
-echo   [1] Povtornyy zapusk
-echo   [2] Vyyti
+echo   [1] Повторный запуск
+echo   [2] Выйти
 echo.
 set "CHOICE="
-set /p CHOICE=  Vybor (1/2): 
+set /p CHOICE=  Выбор (1/2): 
 if "%CHOICE%"=="1" goto :start_server
 
 :quit
