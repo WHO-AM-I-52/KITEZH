@@ -1,6 +1,7 @@
 # ╔══════════════════════════════════════════════════════════════════════════╗
 # ║                         _updater.py                                     ║
 # ║  Скачивает обновления SONAR с GitHub одним zip-архивом (1 API-запрос)   ║
+# ║  Режим --check: сравнивает SHA и выходит без скачивания                 ║
 # ║  Не трогает БД и файлы пользователя.                                    ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
@@ -19,7 +20,8 @@ REPO_NAME     = "SONAR"
 BRANCH        = "main"
 BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
 API_BASE      = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}"
-FALLBACK_KB   = 12000  # примерный размер архива если API не вернул размер
+COMMIT_FILE   = os.path.join(BASE_DIR, "_last_commit.txt")
+FALLBACK_KB   = 600  # реалистичный запасной размер архива (~600 КБ)
 
 BAT_NAME = "start SONAR.bat"
 
@@ -97,21 +99,110 @@ def show_rate_limit(headers):
           (f" (сброс в {reset_str})" if reset_str else ""))
 
 
-def get_repo_size_kb() -> int:
-    """Возвращает примерный размер zip-архива в КБ. При ошибке — FALLBACK_KB."""
+# ─── Проверка обновлений по SHA ───────────────────────────────────────────────
+
+def get_remote_sha() -> str | None:
+    """Возвращает SHA последнего коммита в ветке BRANCH."""
+    try:
+        data = get_json(f"{API_BASE}/commits/{BRANCH}")
+        return data.get("sha", "")
+    except Exception as e:
+        print(f"  [ОШИБКА] Не удалось получить SHA с GitHub: {e}")
+        return None
+
+def load_local_sha() -> str:
+    """Читает сохранённый SHA последнего обновления."""
+    if os.path.exists(COMMIT_FILE):
+        try:
+            return open(COMMIT_FILE, encoding="utf-8").read().strip()
+        except Exception:
+            pass
+    return ""
+
+def save_local_sha(sha: str):
+    """Сохраняет SHA после успешного обновления."""
+    try:
+        with open(COMMIT_FILE, "w", encoding="utf-8") as f:
+            f.write(sha)
+    except Exception as e:
+        print(f"  [Внимание] Не удалось сохранить SHA: {e}")
+
+
+def check_for_updates() -> int:
+    """
+    Режим --check: проверяет наличие обновлений.
+    Возвращает:
+      0 — обновлений нет (SHA совпадает)
+      1 — есть обновления (SHA отличается или файл не найден)
+      2 — ошибка соединения
+    """
+    print()
+    print("  ================================================")
+    print("   SONAR - Проверка обновлений")
+    print("  ================================================")
+    print()
+    print("  Подключаемся к GitHub...")
+    if TOKEN:
+        print("  Токен найден — лимит 5000 запросов/час")
+    else:
+        print("  Токен не найден — лимит 60 запросов/час")
+    print()
+
+    remote_sha = get_remote_sha()
+    if remote_sha is None:
+        return 2
+
+    local_sha = load_local_sha()
+
+    if not local_sha:
+        print("  Локальная версия не определена — рекомендуется скачать архив обновления.")
+        print(f"  Последний коммит GitHub: {remote_sha[:12]}...")
+        return 1
+
+    if remote_sha == local_sha:
+        print(f"  Актуальная версия: {remote_sha[:12]}...")
+        print("  Обновлений нет.")
+        return 0
+    else:
+        print(f"  Локальная версия : {local_sha[:12]}...")
+        print(f"  GitHub версия    : {remote_sha[:12]}...")
+        print("  Доступны обновления!")
+        return 1
+
+
+# ─── Размер архива ────────────────────────────────────────────────────────────
+
+def get_zip_size_kb() -> int:
+    """
+    Пытается получить реальный размер zip через HEAD-запрос (Content-Length).
+    При неудаче — использует суммарный размер файлов репо * 0.5 как оценку.
+    Финальный fallback — FALLBACK_KB.
+    """
+    url = f"{API_BASE}/zipball/{BRANCH}"
+    # Сначала пробуем HEAD-запрос
+    try:
+        req = urllib.request.Request(url, headers=_headers(), method="HEAD")
+        with urllib.request.urlopen(req, timeout=15) as r:
+            cl = r.headers.get("Content-Length")
+            if cl and int(cl) > 0:
+                return int(cl) // 1024
+    except Exception:
+        pass
+    # Fallback: суммарный размер файлов репо / 2 (учитываем сжатие)
     try:
         req = urllib.request.Request(API_BASE, headers=_headers())
         with urllib.request.urlopen(req, timeout=15) as r:
             data = json.loads(r.read().decode())
-            size = data.get("size", 0)  # размер репо в КБ (исходники)
-            # zip ~= size/2 из-за сжатия
-            return (size // 2) if size > 0 else FALLBACK_KB
+            size_kb = data.get("size", 0)  # GitHub возвращает КБ
+            if size_kb > 0:
+                return max(size_kb // 2, 50)
     except Exception:
-        return FALLBACK_KB
+        pass
+    return FALLBACK_KB
 
 
 def _print_progress(downloaded: int, estimated_kb: int, spinner_idx: int):
-    """Прогресс-бар с примерным размером."""
+    """Прогресс-бар с реальным или оценочным размером."""
     size_kb = downloaded // 1024
     if estimated_kb > 0:
         pct    = min(downloaded / (estimated_kb * 1024) * 100, 99.0)
@@ -125,12 +216,13 @@ def _print_progress(downloaded: int, estimated_kb: int, spinner_idx: int):
 
 def download_zip(zip_path: str):
     """Скачивает весь репозиторий одним архивом с прогресс-баром."""
-    print("  Определяем размер репозитория...")
-    estimated_kb = get_repo_size_kb()
+    print("  Определяем размер архива обновления...")
+    estimated_kb = get_zip_size_kb()
+    print(f"  Ожидаемый размер архива: ~{estimated_kb} КБ")
 
     url = f"{API_BASE}/zipball/{BRANCH}"
     req = urllib.request.Request(url, headers=_headers())
-    print(f"  Скачиваем архив репозитория...")
+    print("  Скачиваем архив обновления...")
     with urllib.request.urlopen(req, timeout=60) as r:
         show_rate_limit(r.headers)
         downloaded  = 0
@@ -147,7 +239,7 @@ def download_zip(zip_path: str):
                 _print_progress(downloaded, estimated_kb, spinner_idx)
     print()  # перевод строки после прогресс-бара
     size_kb = os.path.getsize(zip_path) // 1024
-    print(f"  Архив скачан: {size_kb} КБ")
+    print(f"  Архив обновления скачан: {size_kb} КБ")
 
 
 def extract_and_apply(zip_path: str):
@@ -157,7 +249,7 @@ def extract_and_apply(zip_path: str):
     bat_updated = False
 
     with tempfile.TemporaryDirectory() as tmp_dir:
-        print("  Распаковываем архив...")
+        print("  Распаковываем архив обновления...")
         with zipfile.ZipFile(zip_path, "r") as zf:
             zf.extractall(tmp_dir)
 
@@ -271,11 +363,19 @@ def ensure_github_release():
 
 
 def main():
+    # Режим --check: только проверка, без скачивания
+    if "--check" in sys.argv:
+        code = check_for_updates()
+        sys.exit(code)
+
     print("  Подключаемся к GitHub...")
     if TOKEN:
         print("  Токен найден — лимит 5000 запросов/час")
     else:
         print("  Токен не найден — лимит 60 запросов/час")
+
+    # Получаем SHA перед скачиванием
+    remote_sha = get_remote_sha()
 
     zip_path = os.path.join(BASE_DIR, "_sonar_update.zip")
 
@@ -296,7 +396,7 @@ def main():
             print(f"  [ОШИБКА] {e}")
         sys.exit(1)
     except Exception as e:
-        print(f"  [ОШИБКА] Не удалось скачать архив: {e}")
+        print(f"  [ОШИБКА] Не удалось скачать архив обновления: {e}")
         sys.exit(1)
 
     try:
@@ -304,10 +404,15 @@ def main():
     finally:
         if os.path.exists(zip_path):
             os.remove(zip_path)
-            print("  Архив удалён.")
+            print("  Архив обновления удалён.")
+
+    # Сохраняем SHA после успешного обновления
+    if remote_sha:
+        save_local_sha(remote_sha)
+        print(f"  Версия сохранена: {remote_sha[:12]}...")
 
     print()
-    print(f"  Обновлено файлов : {updated}")
+    print(f"  Обновлено файлов  : {updated}")
     print(f"  Пропущено (защита): {skipped}")
     print()
 
