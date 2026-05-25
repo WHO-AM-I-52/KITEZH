@@ -242,15 +242,15 @@
       </select>
     </div>
 
-<div class="col-md-4">
-  <label class="form-label fw-bold" style="font-size:12px">ИНН</label>
-  <input type="text" name="applicant_inn" class="form-control form-control-sm"
-         value="{{ req.applicant_inn if req else '' }}"
-         placeholder="10 или 12 цифр">
-  <div id="inn_help" class="form-text" style="font-size:11px; min-height:14px">
-    Необязательно, только цифры
-  </div>
-</div>
+    <div class="col-md-4">
+      <label class="form-label fw-bold" style="font-size:12px">ИНН</label>
+      <input type="text" name="applicant_inn" class="form-control form-control-sm"
+             value="{{ req.applicant_inn if req else '' }}"
+             placeholder="10 или 12 цифр">
+      <div id="inn_help" class="form-text" style="font-size:11px; min-height:14px">
+        Необязательно, только цифры
+      </div>
+    </div>
 
     <div class="col-md-4">
       <label class="form-label fw-bold" style="font-size:12px">Категория МСП</label>
@@ -264,34 +264,30 @@
       </select>
     </div>
 
-<div class="col-md-4">
-  <label class="form-label fw-bold" style="font-size:12px">Основной ОКВЭД</label>
-
-  <div class="position-relative mb-1">
-    <input type="text" name="applicant_okved_main"
-           class="form-control form-control-sm"
-           value="{{ req.applicant_okved_main if req else '' }}"
-           placeholder="например, 10.11"
-           autocomplete="off"
-           id="okved_main_input">
-    <div id="okved_suggestions"
-         class="list-group position-absolute w-100"
-         style="z-index:1050; max-height:220px; overflow-y:auto; display:none; font-size:12px;">
-      {# сюда JS будет подставлять варианты #}
+    <div class="col-md-4">
+      <label class="form-label fw-bold" style="font-size:12px">Основной ОКВЭД</label>
+      <div class="position-relative mb-1">
+        <input type="text" name="applicant_okved_main"
+               class="form-control form-control-sm"
+               value="{{ req.applicant_okved_main if req else '' }}"
+               placeholder="например, 10.11"
+               autocomplete="off"
+               id="okved_main_input">
+        <div id="okved_suggestions"
+             class="list-group position-absolute w-100"
+             style="z-index:1050; max-height:220px; overflow-y:auto; display:none; font-size:12px;">
+        </div>
+      </div>
+      <input type="text"
+             class="form-control form-control-sm mb-1"
+             id="okved_main_name"
+             value="{{ req.okved_main_name if req and req.okved_main_name else '' }}"
+             placeholder="Наименование вида деятельности"
+             readonly>
+      <div class="form-text" style="font-size:11px">
+        Начните вводить код или часть названия; из списка выберите нужный вариант
+      </div>
     </div>
-  </div>
-
-  <input type="text"
-         class="form-control form-control-sm mb-1"
-         id="okved_main_name"
-         value="{{ req.okved_main_name if req and req.okved_main_name else '' }}"
-         placeholder="Наименование вида деятельности"
-         readonly>
-
-  <div class="form-text" style="font-size:11px">
-    Начните вводить код или часть названия; из списка выберите нужный вариант
-  </div>
-</div>
 
     <div class="col-md-6">
       <label class="form-label fw-bold" style="font-size:12px">Почтовый адрес</label>
@@ -326,6 +322,28 @@
       <input type="email" name="contact_email" class="form-control form-control-sm"
              value="{{ req.contact_email if req else '' }}"
              placeholder="example@mail.ru">
+    </div>
+
+    {# ── МинЭК: Предмет обращения ── #}
+    <div class="col-md-6">
+      <label class="form-label fw-bold" style="font-size:12px">
+        Предмет обращения
+        <span class="badge bg-secondary ms-1" style="font-size:10px;font-weight:400">МинЭК</span>
+      </label>
+      <select name="subject_type_id" class="form-select form-select-sm">
+        <option value="">— не указан —</option>
+        {% for s in subjects %}
+        <option value="{{ s.id }}"
+          {{ 'selected' if req and req.subject_type_id == s.id }}>
+          {{ s.name }}
+        </option>
+        {% endfor %}
+      </select>
+      {% if not subjects %}
+      <div class="form-text text-warning" style="font-size:11px">
+        Справочник пуст — добавьте значения в разделе Справочники
+      </div>
+      {% endif %}
     </div>
 
   </div>
@@ -489,7 +507,6 @@
       </div>
     </div>
 
-    {# Площадь участка — min/max #}
     <div class="col-md-4">
       <label class="form-label fw-bold" style="font-size:12px">Площадь участка, га</label>
       <div class="input-group input-group-sm">
@@ -502,7 +519,6 @@
       </div>
     </div>
 
-    {# Площадь застройки — min/max #}
     <div class="col-md-4">
       <label class="form-label fw-bold" style="font-size:12px">Площадь застройки, м²</label>
       <div class="input-group input-group-sm">
@@ -862,6 +878,17 @@
              value="{{ req.answer_date if req else '' }}">
     </div>
 
+    {# ── МинЭК: Дата получения обратной связи ── #}
+    <div class="col-md-3">
+      <label class="form-label" style="font-size:12px">
+        Дата обратной связи
+        <span class="badge bg-secondary ms-1" style="font-size:10px;font-weight:400">МинЭК</span>
+      </label>
+      <input type="date" name="feedback_date" class="form-control form-control-sm"
+             value="{{ req.feedback_date if req else '' }}">
+      <div class="form-text" style="font-size:11px">Дата получения ответа от заявителя</div>
+    </div>
+
     <div class="col-md-4">
       <label class="form-label" style="font-size:12px">Способ направления ответа</label>
       <select name="answer_method" class="form-select form-select-sm" id="answer_method_sel">
@@ -871,12 +898,12 @@
           {{ 'selected' if req and req.answer_method==v }}>{{ v }}</option>
         {% endfor %}
       </select>
-        <div class="col-md-4" id="answerSystemNumBlock" style="display:none">
-          <label class="form-label" style="font-size:12px">№ ответа в системе</label>
-          <input type="text" name="answer_system_number" class="form-control form-control-sm"
-                 placeholder="Например: ИСХ-2026-0099"
-                 value="{{ req.answer_system_number or '' if req else '' }}">
-        </div>
+      <div id="answerSystemNumBlock" style="display:none; margin-top:6px">
+        <label class="form-label" style="font-size:12px">№ ответа в системе</label>
+        <input type="text" name="answer_system_number" class="form-control form-control-sm"
+               placeholder="Например: ИСХ-2026-0099"
+               value="{{ req.answer_system_number or '' if req else '' }}">
+      </div>
     </div>
 
     <div class="col-md-5" id="answer_method_other_wrap"
@@ -904,6 +931,33 @@
              accept=".pdf,.doc,.docx,.xlsx,.zip">
     </div>
 
+    {# ── МинЭК: Итоги работы по обращению ── #}
+    <div class="col-md-6">
+      <label class="form-label" style="font-size:12px">
+        Итоги работы по обращению
+        <span class="badge bg-secondary ms-1" style="font-size:10px;font-weight:400">МинЭК</span>
+      </label>
+      <select name="result_type_id" class="form-select form-select-sm" id="result_type_sel">
+        <option value="">— не определены —</option>
+        {% for r in results %}
+        <option value="{{ r.id }}"
+                data-color="{{ r.color_hex or '' }}"
+                {{ 'selected' if req and req.result_type_id == r.id }}>
+          {{ r.name }}
+        </option>
+        {% endfor %}
+      </select>
+      {# Цветовая индикация выбранного итога #}
+      <div id="result_color_preview" class="mt-1 rounded px-2 py-1"
+           style="font-size:11px; display:none">
+      </div>
+      {% if not results %}
+      <div class="form-text text-warning" style="font-size:11px">
+        Справочник пуст — добавьте значения в разделе Справочники
+      </div>
+      {% endif %}
+    </div>
+
   </div>
 </div>
 {% endif %}
@@ -911,22 +965,18 @@
 {# ===== КНОПКИ ===== #}
 <div class="d-flex gap-2 mb-4">
 
-  {# Режим редактирования существующего обращения (есть id) #}
   {% if req is not none and req.id is defined %}
     <button type="button" class="btn btn-primary px-4" onclick="showSaveModal()">
       <i class="bi bi-save me-1"></i>Сохранить изменения
     </button>
 
-  {# Режим создания нового обращения или OCR-черновик (нет id) #}
   {% else %}
-    {# Отдельная кнопка: только OCR, без сохранения #}
     <button type="submit"
             class="btn btn-outline-secondary px-4"
             name="action" value="ocr" id="btnOcr">
       <i class="bi bi-magic me-1"></i>Заполнить из анкеты (OCR)
     </button>
 
-    {# Обычное создание обращения #}
     <button type="submit"
             class="btn btn-primary px-4"
             name="action" value="save" id="btnSave">
@@ -938,7 +988,6 @@
     <i class="bi bi-x-lg me-1"></i>Отмена
   </a>
 
-  {# Ссылка "Просмотр карточки" только когда есть id (существующее обращение) #}
   {% if req is not none and req.id is defined %}
     <a href="{{ url_for('requests.view_request', rid=req.id) }}" class="btn btn-outline-primary ms-auto">
       <i class="bi bi-eye me-1"></i>Просмотр карточки
@@ -946,7 +995,7 @@
   {% endif %}
 </div>
 
-<!-- Модал причины правки (только при редактировании) -->
+<!-- Модал причины правки -->
 {% if req %}
 <div class="modal fade" id="saveModal" tabindex="-1">
   <div class="modal-dialog modal-sm"><div class="modal-content">
@@ -992,8 +1041,6 @@
   </div>
 </div>
 
-
-
 {% endblock %}
 
 {% block scripts %}
@@ -1003,14 +1050,9 @@
   var REQUIRED = {{ required_fields | tojson }};
 
   document.getElementById('mainForm').addEventListener('submit', function(e){
-    // Определяем, какая кнопка отправила форму
     var submitter = e.submitter || document.activeElement;
     var action = (submitter && submitter.name === 'action') ? submitter.value : 'save';
-
-    // Если нажата кнопка OCR — пропускаем проверку обязательных полей
-    if (action === 'ocr') {
-      return;
-    }
+    if (action === 'ocr') return;
 
     document.querySelectorAll('.field-required-error').forEach(function(el){
       el.classList.remove('field-required-error');
@@ -1031,19 +1073,14 @@
         }
         continue;
       }
-
       if(field === 'preferred_districts') continue;
-
       var el = document.querySelector('[name="' + field + '"]');
       if(!el) continue;
-
       var val = (el.value || '').trim();
       if(!val){
         missing.push(REQUIRED[field]);
         el.classList.add('field-required-error');
-        if(missing.length === 1){
-          el.scrollIntoView({behavior:'smooth', block:'center'});
-        }
+        if(missing.length === 1) el.scrollIntoView({behavior:'smooth', block:'center'});
       }
     }
 
@@ -1073,45 +1110,18 @@
   });
 })();
 
-// ===== ВАЛИДАЦИЯ ИНН (на лету) =====
+// ===== ВАЛИДАЦИЯ ИНН =====
 (function(){
   var innInput = document.querySelector('input[name="applicant_inn"]');
   var help     = document.getElementById('inn_help');
-
   if(!innInput || !help) return;
-
-  function resetClasses() {
-    help.classList.remove('text-danger', 'text-warning', 'text-muted');
-  }
-
+  function resetClasses() { help.classList.remove('text-danger','text-warning','text-muted'); }
   innInput.addEventListener('input', function(){
-    var raw = innInput.value;
-    var v   = (raw || '').trim();
-
-    if(!v){
-      resetClasses();
-      help.textContent = 'Необязательно, только цифры';
-      help.classList.add('text-muted');
-      return;
-    }
-
-    if(!/^\d+$/.test(v)){
-      resetClasses();
-      help.textContent = 'ИНН должен содержать только цифры';
-      help.classList.add('text-danger');
-      return;
-    }
-
-    if(v.length !== 10 && v.length !== 12){
-      resetClasses();
-      help.textContent = 'Длина ИНН должна быть 10 цифр (юрлица) или 12 цифр (ИП)';
-      help.classList.add('text-warning');
-      return;
-    }
-
-    resetClasses();
-    help.textContent = 'Формат ИНН выглядит корректно, окончательная проверка при сохранении';
-    help.classList.add('text-muted');
+    var v = (innInput.value || '').trim();
+    if(!v){ resetClasses(); help.textContent='Необязательно, только цифры'; help.classList.add('text-muted'); return; }
+    if(!/^\d+$/.test(v)){ resetClasses(); help.textContent='ИНН должен содержать только цифры'; help.classList.add('text-danger'); return; }
+    if(v.length !== 10 && v.length !== 12){ resetClasses(); help.textContent='Длина ИНН: 10 цифр (юрлица) или 12 цифр (ИП)'; help.classList.add('text-warning'); return; }
+    resetClasses(); help.textContent='Формат ИНН выглядит корректно'; help.classList.add('text-muted');
   });
 })();
 
@@ -1121,13 +1131,13 @@
   if(!ph) return;
   ph.addEventListener('input', function(){
     var v = ph.value.replace(/\D/g,'');
-    if(v.startsWith('7') || v.startsWith('8')) v = v.slice(1);
-    var r = '';
-    if(v.length > 0) r = '+7 ('+v.slice(0,3);
-    if(v.length >= 4) r += ') '+v.slice(3,6);
-    if(v.length >= 7) r += '-'+v.slice(6,8);
-    if(v.length >= 9) r += '-'+v.slice(8,10);
-    ph.value = r;
+    if(v.startsWith('7')||v.startsWith('8')) v=v.slice(1);
+    var r='';
+    if(v.length>0) r='+7 ('+v.slice(0,3);
+    if(v.length>=4) r+=') '+v.slice(3,6);
+    if(v.length>=7) r+='-'+v.slice(6,8);
+    if(v.length>=9) r+='-'+v.slice(8,10);
+    ph.value=r;
   });
 })();
 
@@ -1135,19 +1145,42 @@
 (function(){
   var sel  = document.getElementById('answer_method_sel');
   var wrap = document.getElementById('answer_method_other_wrap');
-  if(!sel || !wrap) return;
-  sel.addEventListener('change', function(){
-    wrap.style.display = sel.value === 'Иное' ? '' : 'none';
-  });
+  var numB = document.getElementById('answerSystemNumBlock');
+  if(!sel) return;
+  function update(){
+    if(wrap) wrap.style.display = sel.value==='Иное' ? '' : 'none';
+    if(numB) numB.style.display = (sel.value==='СЭДО'||sel.value==='Directum') ? '' : 'none';
+  }
+  sel.addEventListener('change', update);
+  update();
+})();
+
+// ===== ЦВЕТОВАЯ ИНДИКАЦИЯ ИТОГОВ РАБОТЫ =====
+(function(){
+  var sel     = document.getElementById('result_type_sel');
+  var preview = document.getElementById('result_color_preview');
+  if(!sel || !preview) return;
+  function update(){
+    var opt = sel.options[sel.selectedIndex];
+    var color = opt ? opt.dataset.color : '';
+    if(color && sel.value){
+      preview.style.display  = '';
+      preview.style.background = color;
+      preview.style.color = '#fff';
+      preview.textContent = opt.text;
+    } else {
+      preview.style.display = 'none';
+      preview.textContent   = '';
+    }
+  }
+  sel.addEventListener('change', update);
+  update();
 })();
 
 // ===== ПРИЧИНА ПРАВКИ =====
-function showSaveModal() {
-  new bootstrap.Modal(document.getElementById('saveModal')).show();
-}
+function showSaveModal() { new bootstrap.Modal(document.getElementById('saveModal')).show(); }
 function doSave() {
-  document.getElementById('editReasonHidden').value =
-    document.getElementById('editReasonInput').value;
+  document.getElementById('editReasonHidden').value = document.getElementById('editReasonInput').value;
   bootstrap.Modal.getInstance(document.getElementById('saveModal')).hide();
   document.querySelector('form').submit();
 }
@@ -1157,102 +1190,67 @@ function doSave() {
   var input     = document.getElementById('okved_main_input');
   var box       = document.getElementById('okved_suggestions');
   var nameField = document.getElementById('okved_main_name');
-  if (!input || !box) return;
-
-  var timer = null;
-
-  function hideBox() {
-    box.style.display = 'none';
-    box.innerHTML = '';
-  }
-
-  function fetchOkved(q) {
-    if (!q || q.length < 2) { hideBox(); return; }
-    fetch('/api/okved/search?q=' + encodeURIComponent(q) + '&limit=10', {
-      headers: {'X-Requested-With': 'XMLHttpRequest'}
-    })
+  if(!input||!box) return;
+  var timer=null;
+  function hideBox(){ box.style.display='none'; box.innerHTML=''; }
+  function fetchOkved(q){
+    if(!q||q.length<2){ hideBox(); return; }
+    fetch('/api/okved/search?q='+encodeURIComponent(q)+'&limit=10',{headers:{'X-Requested-With':'XMLHttpRequest'}})
       .then(function(r){ return r.json(); })
       .then(function(data){
-        if (!Array.isArray(data) || data.length === 0) { hideBox(); return; }
-        box.innerHTML = '';
+        if(!Array.isArray(data)||data.length===0){ hideBox(); return; }
+        box.innerHTML='';
         data.forEach(function(item){
-          var el = document.createElement('button');
-          el.type = 'button';
-          el.className = 'list-group-item list-group-item-action py-1 px-2';
-          el.textContent = item.code + ' — ' + item.name;
-          el.dataset.code = item.code;
-          el.dataset.name = item.name;
-          el.addEventListener('click', function(){
-            input.value = this.dataset.code;
-            if (nameField) nameField.value = this.dataset.name;
-            hideBox();
-          });
+          var el=document.createElement('button');
+          el.type='button';
+          el.className='list-group-item list-group-item-action py-1 px-2';
+          el.textContent=item.code+' — '+item.name;
+          el.dataset.code=item.code; el.dataset.name=item.name;
+          el.addEventListener('click',function(){ input.value=this.dataset.code; if(nameField) nameField.value=this.dataset.name; hideBox(); });
           box.appendChild(el);
         });
-        box.style.display = 'block';
-      })
-      .catch(function(){ hideBox(); });
+        box.style.display='block';
+      }).catch(function(){ hideBox(); });
   }
-
-  input.addEventListener('input', function(){
-    var q = input.value.trim();
-    if (nameField && q.length < 2) nameField.value = '';
-    if (timer) clearTimeout(timer);
-    timer = setTimeout(function(){ fetchOkved(q); }, 250);
+  input.addEventListener('input',function(){
+    var q=input.value.trim();
+    if(nameField&&q.length<2) nameField.value='';
+    if(timer) clearTimeout(timer);
+    timer=setTimeout(function(){ fetchOkved(q); },250);
   });
-
-  document.addEventListener('click', function(e){
-    if (!box.contains(e.target) && e.target !== input) hideBox();
-  });
-
-  input.addEventListener('keydown', function(e){
-    if (e.key === 'Escape') hideBox();
-  });
+  document.addEventListener('click',function(e){ if(!box.contains(e.target)&&e.target!==input) hideBox(); });
+  input.addEventListener('keydown',function(e){ if(e.key==='Escape') hideBox(); });
 })();
 
-// ===== № ВХОДЯЩЕГО — показывать только для Directum / СЭДО =====
-function toggleIncomingNumber() {
-  var checkboxes = document.querySelectorAll('input[name="source_type"]:checked');
-  var block = document.getElementById('incomingNumberBlock');
-  if (!block) return;
-  var show = false;
-  checkboxes.forEach(function(cb){
-    if (cb.value === 'Directum' || cb.value === 'СЭДО') show = true;
-  });
-  block.style.display = show ? '' : 'none';
+// ===== № ВХОДЯЩЕГО =====
+function toggleIncomingNumber(){
+  var checkboxes=document.querySelectorAll('input[name="source_type"]:checked');
+  var block=document.getElementById('incomingNumberBlock');
+  if(!block) return;
+  var show=false;
+  checkboxes.forEach(function(cb){ if(cb.value==='Directum'||cb.value==='СЭДО') show=true; });
+  block.style.display=show?'':'none';
 }
 
-// ===== ПРЕВЬЮ НОВЫХ ФАЙЛОВ =====
-function previewFiles(input) {
-  var preview = document.getElementById('filesPreview');
-  if (!preview) return;
-  preview.innerHTML = '';
-  var icons = {
-    pdf:  '<i class="bi bi-file-earmark-pdf text-danger" style="font-size:2rem"></i>',
-    doc:  '<i class="bi bi-file-earmark-word text-primary" style="font-size:2rem"></i>',
-    docx: '<i class="bi bi-file-earmark-word text-primary" style="font-size:2rem"></i>',
-    xls:  '<i class="bi bi-file-earmark-excel text-success" style="font-size:2rem"></i>',
-    xlsx: '<i class="bi bi-file-earmark-excel text-success" style="font-size:2rem"></i>',
-    ppt:  '<i class="bi bi-file-earmark-slides text-warning" style="font-size:2rem"></i>',
-    pptx: '<i class="bi bi-file-earmark-slides text-warning" style="font-size:2rem"></i>',
-    jpg:  '<i class="bi bi-file-earmark-image text-info" style="font-size:2rem"></i>',
-    jpeg: '<i class="bi bi-file-earmark-image text-info" style="font-size:2rem"></i>',
-    png:  '<i class="bi bi-file-earmark-image text-info" style="font-size:2rem"></i>',
-    zip:  '<i class="bi bi-file-earmark-zip text-secondary" style="font-size:2rem"></i>',
-  };
+// ===== ПРЕВЬЮ ФАЙЛОВ =====
+function previewFiles(input){
+  var preview=document.getElementById('filesPreview');
+  if(!preview) return;
+  preview.innerHTML='';
+  var icons={pdf:'<i class="bi bi-file-earmark-pdf text-danger" style="font-size:2rem"></i>',doc:'<i class="bi bi-file-earmark-word text-primary" style="font-size:2rem"></i>',docx:'<i class="bi bi-file-earmark-word text-primary" style="font-size:2rem"></i>',xls:'<i class="bi bi-file-earmark-excel text-success" style="font-size:2rem"></i>',xlsx:'<i class="bi bi-file-earmark-excel text-success" style="font-size:2rem"></i>',ppt:'<i class="bi bi-file-earmark-slides text-warning" style="font-size:2rem"></i>',pptx:'<i class="bi bi-file-earmark-slides text-warning" style="font-size:2rem"></i>',jpg:'<i class="bi bi-file-earmark-image text-info" style="font-size:2rem"></i>',jpeg:'<i class="bi bi-file-earmark-image text-info" style="font-size:2rem"></i>',png:'<i class="bi bi-file-earmark-image text-info" style="font-size:2rem"></i>',zip:'<i class="bi bi-file-earmark-zip text-secondary" style="font-size:2rem"></i>'};
   Array.from(input.files).forEach(function(f){
-    var ext  = f.name.split('.').pop().toLowerCase();
-    var icon = icons[ext] || '<i class="bi bi-file-earmark" style="font-size:2rem"></i>';
-    var name = f.name.length > 14 ? f.name.substring(0, 14) + '…' : f.name;
-    var div  = document.createElement('div');
-    div.className = 'd-flex flex-column align-items-center border rounded p-2';
-    div.style.cssText = 'width:80px;font-size:0.72rem;word-break:break-all';
-    div.innerHTML = icon + '<span class="mt-1 text-center">' + name + '</span>';
+    var ext=f.name.split('.').pop().toLowerCase();
+    var icon=icons[ext]||'<i class="bi bi-file-earmark" style="font-size:2rem"></i>';
+    var name=f.name.length>14?f.name.substring(0,14)+'…':f.name;
+    var div=document.createElement('div');
+    div.className='d-flex flex-column align-items-center border rounded p-2';
+    div.style.cssText='width:80px;font-size:0.72rem;word-break:break-all';
+    div.innerHTML=icon+'<span class="mt-1 text-center">'+name+'</span>';
     preview.appendChild(div);
   });
 }
 
-// ===== ИНИЦИАЛИЗАЦИЯ ПРИ ЗАГРУЗКЕ =====
+// ===== ИНИЦИАЛИЗАЦИЯ =====
 document.addEventListener('DOMContentLoaded', function(){
   toggleIncomingNumber();
 });
