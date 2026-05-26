@@ -25,8 +25,10 @@ FALLBACK_KB   = 600
 
 BAT_NAME = "start SONAR.bat"
 
+# update.bat намеренно НЕ защищён — обновляется автоматически как обычный файл
+# _updater.py защищён — самообновление небезопасно во время работы
 PROTECTED_DIRS  = {"uploads", "reports", "WPy", "Bacup", "db"}
-PROTECTED_FILES = {"_updater.py", "update.bat", ".env"}
+PROTECTED_FILES = {"_updater.py", ".env"}
 
 SPINNER = ["||", "|/", "--", "\\/"]
 
@@ -264,7 +266,6 @@ def extract_and_apply(zip_path: str):
                 dest = os.path.join(BASE_DIR, rel_path)
                 os.makedirs(os.path.dirname(dest), exist_ok=True)
 
-                # Сравниваем содержимое до копирования
                 new_content = open(src, "rb").read()
                 old_content = b""
                 if os.path.exists(dest):
@@ -399,7 +400,7 @@ def main():
     print()
     print(f"  Обновлено файлов     : {updated}")
     print(f"  Без изменений        : {unchanged}")
-    print(f"  Пропущено (защита)  : {skipped}")
+    print(f"  Пропущено (защита)   : {skipped}")
     print()
 
     ensure_github_release()
