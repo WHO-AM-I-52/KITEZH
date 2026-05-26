@@ -180,7 +180,6 @@ def get_zip_size_kb() -> int:
     3. Финальный fallback: FALLBACK_KB
     """
     url = f"{API_BASE}/zipball/{BRANCH}"
-    # HEAD-запрос — GitHub редиректит на S3, S3 иногда даёт Content-Length
     try:
         req = urllib.request.Request(url, headers=_headers(), method="HEAD")
         with urllib.request.urlopen(req, timeout=15) as r:
@@ -189,9 +188,6 @@ def get_zip_size_kb() -> int:
                 return int(cl) // 1024
     except Exception:
         pass
-    # Fallback: repo.size из API (размер git-хранилища в КБ) * 0.65
-    # repo.size включает всю историю, zip = только текущее состояние + сжатие
-    # коэффициент 0.65 даёт погрешность ~5-10% vs /2 которое давало ~18%
     try:
         req = urllib.request.Request(API_BASE, headers=_headers())
         with urllib.request.urlopen(req, timeout=15) as r:
@@ -208,7 +204,7 @@ def _print_progress(downloaded: int, estimated_kb: int, spinner_idx: int):
     """
     Прогресс-бар:
     - Если скачано <= оценки: показываем процент и бар
-    - Если скачано > оценки: переключаемся на спиннер (оценка оказалась занижена)
+    - Если скачано > оценки: переключаемся на спиннер
     """
     size_kb = downloaded // 1024
     if estimated_kb > 0 and downloaded <= estimated_kb * 1024:
@@ -217,7 +213,6 @@ def _print_progress(downloaded: int, estimated_kb: int, spinner_idx: int):
         bar    = "█" * filled + "░" * (20 - filled)
         print(f"  [{bar}] {pct:4.0f}%  {size_kb} / ~{estimated_kb} КБ", end="\r", flush=True)
     else:
-        # Реальный размер превысил оценку — переходим на спиннер
         spin = SPINNER[spinner_idx % len(SPINNER)]
         print(f"  [{spin}] Скачано: {size_kb} КБ...", end="\r", flush=True)
 
@@ -233,7 +228,6 @@ def download_zip(zip_path: str):
     print("  Скачиваем архив обновления...")
     with urllib.request.urlopen(req, timeout=60) as r:
         show_rate_limit(r.headers)
-        # Если Content-Length есть в заголовках GET-ответа — используем его
         cl = r.headers.get("Content-Length")
         if cl and int(cl) > 0:
             estimated_kb = int(cl) // 1024
@@ -250,7 +244,7 @@ def download_zip(zip_path: str):
                 downloaded  += len(chunk)
                 spinner_idx += 1
                 _print_progress(downloaded, estimated_kb, spinner_idx)
-    print()  # перевод строки после прогресс-бара
+    print()
     size_kb = os.path.getsize(zip_path) // 1024
     print(f"  Архив обновления скачан: {size_kb} КБ")
 
@@ -345,7 +339,6 @@ def ensure_github_release():
 
     tag = f"v{version}"
     try:
-:
         req = urllib.request.Request(
             f"{API_BASE}/releases/tags/{tag}", headers=_headers()
         )
@@ -377,7 +370,6 @@ def ensure_github_release():
 
 
 def main():
-    # Режим --check: только проверка, без скачивания
     if "--check" in sys.argv:
         code = check_for_updates()
         sys.exit(code)
@@ -388,7 +380,6 @@ def main():
     else:
         print("  Токен не найден — лимит 60 запросов/час")
 
-    # Получаем SHA перед скачиванием
     remote_sha = get_remote_sha()
 
     zip_path = os.path.join(BASE_DIR, "_sonar_update.zip")
@@ -410,7 +401,7 @@ def main():
             print(f"  [ОШИБКА] {e}")
         sys.exit(1)
     except Exception as e:
-        print(f"  [ОШИБКа] Не удалось скачать архив обновления: {e}")
+        print(f"  [ОШИБКА] Не удалось скачать архив обновления: {e}")
         sys.exit(1)
 
     try:
@@ -420,7 +411,6 @@ def main():
             os.remove(zip_path)
             print("  Архив обновления удалён.")
 
-    # Сохраняем SHA после успешного обновления
     if remote_sha:
         save_local_sha(remote_sha)
         print(f"  Версия сохранена: {remote_sha[:12]}...")
