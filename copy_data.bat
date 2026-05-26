@@ -3,7 +3,7 @@ chcp 65001 >nul
 setlocal
 
 echo ================================================
-echo   Kopirovaniye dannykh v LandApp
+echo   Копирование данных в SONAR
 echo ================================================
 echo.
 
@@ -11,61 +11,61 @@ set "SRC=%~dp0..\LandApp.bacup"
 set "DST=%~dp0"
 
 if not exist "%SRC%" (
-    echo [OSHIBKA] Papka LandApp.bacup ne naydena:
+    echo [ОШИБКА] Папка LandApp.bacup не найдена:
     echo          %SRC%
     echo.
-    echo Ubedis chto LandApp i LandApp.bacup lezhat ryadom.
+    echo Убедись, что LandApp и LandApp.bacup лежат рядом.
     pause
     exit /b 1
 )
 
-echo Istochnik : %SRC%
-echo Naznacheniye: %DST%
+echo Источник    : %SRC%
+echo Назначение: %DST%
 echo.
 
 :: -- .env
-echo Kopiruju .env...
+echo Копирую .env...
 if exist "%SRC%\.env" (
     copy /Y "%SRC%\.env" "%DST%\.env" >nul
     echo [OK] .env
 ) else (
-    echo [--] .env ne nayden -- propusk
+    echo [--] .env не найден — пропуск
 )
 
 :: -- database.db -> db\database.db
-echo Kopiruju database.db...
+echo Копирую database.db...
 if not exist "%DST%db" mkdir "%DST%db"
 if exist "%SRC%\database.db" (
     copy /Y "%SRC%\database.db" "%DST%db\database.db" >nul
-    echo [OK] database.db -> db\database.db
+    echo [OK] database.db -^> db\database.db
 ) else if exist "%SRC%\db\database.db" (
     copy /Y "%SRC%\db\database.db" "%DST%db\database.db" >nul
-    echo [OK] db\database.db -> db\database.db
+    echo [OK] db\database.db -^> db\database.db
 ) else (
-    echo [--] database.db ne nayden -- propusk
+    echo [--] database.db не найден — пропуск
 )
 
 :: -- uploads\
-echo Kopiruju uploads\...
+echo Копирую uploads\...
 if exist "%SRC%\uploads" (
     xcopy /E /I /Y /Q "%SRC%\uploads" "%DST%uploads" >nul
     echo [OK] uploads\
 ) else (
-    echo [--] uploads\ ne nayden -- propusk
+    echo [--] uploads\ не найден — пропуск
 )
 
 :: -- reports\
-echo Kopiruju reports\...
+echo Копирую reports\...
 if exist "%SRC%\reports" (
     xcopy /E /I /Y /Q "%SRC%\reports" "%DST%reports" >nul
     echo [OK] reports\
 ) else (
-    echo [--] reports\ ne nayden -- propusk
+    echo [--] reports\ не найден — пропуск
 )
 
 echo.
 echo ================================================
-echo  Gotovo! Teper mozhno zapuskat start SONAR.bat
+echo  Готово! Теперь можно запускать start SONAR.bat
 echo ================================================
 echo.
 pause
