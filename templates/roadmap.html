@@ -168,7 +168,8 @@
     <p>Инвестиционный земельный модуль Нижегородской области &nbsp;&mdash;&nbsp; план развития</p>
   </div>
 
-  {% for item in roadmap %}
+  {# Показываем только запланированные и идеи — выполненные версии отражены в Журнале версий #}
+  {% for item in roadmap if item.status != 'done' %}
   {% set icon_map = {'planned': '🔜', 'inprogress': '⚙️', 'done': '✅'} %}
   {% set badge_map = {'planned': 'Запланировано', 'inprogress': 'В работе', 'done': 'Готово'} %}
 
