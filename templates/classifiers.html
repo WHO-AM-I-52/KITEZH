@@ -3,8 +3,14 @@
 <style>
   .nav-tabs .nav-link { color: #1B5E7B !important; font-weight: 500; }
   .nav-tabs .nav-link.active { color: #111 !important; font-weight: 600; background:#fff; }
-  .color-swatch { display:inline-block; width:18px; height:18px; border-radius:3px;
-                  border:1px solid #ccc; vertical-align:middle; margin-right:6px; }
+  .color-swatch {
+    display: inline-block;
+    width: 20px; height: 20px;
+    border-radius: 3px;
+    border: 1px solid #aaa;
+    vertical-align: middle;
+    flex-shrink: 0;
+  }
   .result-row-selected { background: #fff3cd !important; }
 </style>
 
@@ -131,6 +137,7 @@
   </div>
   {% endfor %}
 
+  {# ===== ПРЕДМЕТ ОБРАЩЕНИЯ ===== #}
   <div class="tab-pane fade" id="tab-subject">
     <div class="row g-3">
       <div class="col-md-5">
@@ -208,6 +215,7 @@
     </div>
   </div>
 
+  {# ===== ИТОГИ РАБОТЫ ===== #}
   <div class="tab-pane fade" id="tab-result">
     <div class="row g-3">
       <div class="col-md-5">
@@ -234,9 +242,8 @@
           </form>
           <div class="alert alert-light border mt-3 mb-0 p-2" style="font-size:11px">
             <i class="bi bi-info-circle text-muted me-1"></i>
-            Цвет заливки используется для подсвечки строк выгрузки
-            МинЭК (лист «Легенда»). Значения отображаются
-            в форме обращения (раздел «Итоги»).
+            Цвет заливки используется для подсветки строк выгрузки
+            МинЭК (лист «Легенда»).
           </div>
         </div>
       </div>
@@ -246,10 +253,14 @@
             <h6 class="mb-0" style="color:#1B5E7B">
               <i class="bi bi-list-ul me-1"></i>Текущие значения
             </h6>
-            <form method="post" action="{{ url_for('admin.result_types_write') }}" onsubmit="return confirm('Удалить выбранные итоги?')">
+            {# Форма bulk-delete — ВНЕ таблицы, id привязан через JS #}
+            <form id="bulk-delete-form" method="post"
+                  action="{{ url_for('admin.result_types_write') }}"
+                  onsubmit="return confirm('Удалить выбранные итоги?')">
               <input type="hidden" name="action" value="bulk_delete">
-              <input type="hidden" name="selected_ids" id="bulk-delete-ids">
-              <button type="submit" class="btn btn-sm btn-outline-danger" id="bulk-delete-btn" disabled>
+              <input type="hidden" name="selected_ids" id="bulk-delete-ids" value="">
+              <button type="submit" id="bulk-delete-btn"
+                      class="btn btn-sm btn-outline-danger" disabled>
                 <i class="bi bi-trash"></i> Удалить выбранные
               </button>
             </form>
@@ -258,36 +269,42 @@
             <table class="table table-sm table-hover mb-0" style="font-size:12px">
               <thead>
                 <tr>
-                  <th style="background:#f8f9fa;width:34px">
+                  <th style="background:#f8f9fa;width:32px">
                     <input type="checkbox" id="select-all-results" title="Выбрать все">
                   </th>
                   <th style="background:#f8f9fa">#</th>
-                  <th style="background:#f8f9fa">Цвет</th>
+                  <th style="background:#f8f9fa;width:80px">Цвет</th>
                   <th style="background:#f8f9fa">Название</th>
-                  <th style="background:#f8f9fa" class="text-end">Действия</th>
+                  <th style="background:#f8f9fa" class="text-end">Del</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody id="result-types-tbody">
                 {% for rt in result_types %}
-                {% set color = (rt.color_hex or 'FFFFFF')|replace('#','')|upper %}
-                <tr data-result-id="{{ rt.id }}">
+                {# Нормализуем color_hex: убираем #, fallback FFFFFF, проверяем длину #}
+                {% set raw_color = rt.color_hex if rt.color_hex else 'FFFFFF' %}
+                {% set color = raw_color | replace('#','') | upper %}
+                {% set color = color if color | length == 6 else 'FFFFFF' %}
+                <tr>
                   <td>
-                    <input type="checkbox" class="result-select" value="{{ rt.id }}">
+                    <input type="checkbox" class="result-cb" value="{{ rt.id }}">
                   </td>
                   <td class="text-muted">{{ loop.index }}</td>
-                  <td style="width:90px">
-                    <div class="d-flex align-items-center gap-2">
-                      <span class="color-swatch" style="background:#{{ color }}"></span>
-                      <form method="post" action="{{ url_for('admin.result_types_write') }}" class="d-flex align-items-center gap-1 m-0">
+                  <td>
+                    <div class="d-flex align-items-center gap-1">
+                      {# Явная цветная плашка — всегда видна #}
+                      <span class="color-swatch" style="background:#{{ color }};"></span>
+                      {# Пикер цвета #}
+                      <form method="post" action="{{ url_for('admin.result_types_write') }}"
+                            class="m-0 p-0">
                         <input type="hidden" name="action" value="edit">
                         <input type="hidden" name="rid" value="{{ rt.id }}">
                         <input type="hidden" name="name" value="{{ rt.name }}">
                         <input type="color" name="color_hex"
                                value="#{{ color }}"
                                class="form-control form-control-color form-control-sm"
-                               style="width:36px;padding:2px"
+                               style="width:30px;height:24px;padding:1px;cursor:pointer"
                                onchange="this.form.submit()"
-                               title="Кликните для смены цвета">
+                               title="Сменить цвет">
                       </form>
                     </div>
                   </td>
@@ -297,9 +314,11 @@
                       <input type="hidden" name="action" value="edit">
                       <input type="hidden" name="rid" value="{{ rt.id }}">
                       <input type="hidden" name="color_hex" value="{{ color }}">
-                      <input type="text" name="name" class="form-control form-control-sm py-0"
+                      <input type="text" name="name"
+                             class="form-control form-control-sm py-0"
                              value="{{ rt.name }}" style="min-width:0">
-                      <button class="btn btn-sm btn-outline-secondary py-0 px-2" title="Сохранить">
+                      <button class="btn btn-sm btn-outline-secondary py-0 px-2"
+                              title="Сохранить">
                         <i class="bi bi-check-lg"></i>
                       </button>
                     </form>
@@ -327,6 +346,7 @@
     </div>
   </div>
 
+  {# ===== ОКВЭД ===== #}
   <div class="tab-pane fade" id="tab-okved">
     <div class="row g-3 mt-2">
       <div class="col-md-5">
@@ -389,49 +409,61 @@
 
 <script>
 (function () {
-  var hash = window.location.hash;
-  if (hash) {
+  /* ── 1. Автооткрытие вкладки по URL-якорю ── */
+  function openTabByHash(hash) {
+    if (!hash) return;
     var link = document.querySelector('#classTab a[href="' + hash + '"]');
-    if (link) {
-      var tab = new bootstrap.Tab(link);
-      tab.show();
-    }
+    if (link) { new bootstrap.Tab(link).show(); }
   }
+  openTabByHash(window.location.hash);
 
-  var selectAll = document.getElementById('select-all-results');
-  var checkboxes = Array.from(document.querySelectorAll('.result-select'));
-  var bulkBtn = document.getElementById('bulk-delete-btn');
-  var bulkIds = document.getElementById('bulk-delete-ids');
+  /* ── 2. Bulk-delete ──────────────────────────────────────────────
+     Используем делегирование на document — работает независимо от
+     того, видима вкладка при DOMContentLoaded или нет.
+  ────────────────────────────────────────────────────────────────── */
+  function syncBulk() {
+    var btn       = document.getElementById('bulk-delete-btn');
+    var idsInput  = document.getElementById('bulk-delete-ids');
+    var selAll    = document.getElementById('select-all-results');
+    if (!btn || !idsInput) return;
 
-  function syncSelection() {
-    var selected = checkboxes.filter(function(cb) { return cb.checked; });
-    bulkBtn.disabled = selected.length === 0;
-    bulkIds.value = selected.map(function(cb) { return cb.value; }).join(',');
+    var cbs      = Array.from(document.querySelectorAll('.result-cb'));
+    var selected = cbs.filter(function(cb){ return cb.checked; });
 
-    checkboxes.forEach(function(cb) {
+    /* активируем кнопку */
+    btn.disabled = (selected.length === 0);
+
+    /* собираем id */
+    idsInput.value = selected.map(function(cb){ return cb.value; }).join(',');
+
+    /* подсветка строк */
+    cbs.forEach(function(cb){
       var tr = cb.closest('tr');
-      if (!tr) return;
-      tr.classList.toggle('result-row-selected', cb.checked);
+      if (tr) tr.classList.toggle('result-row-selected', cb.checked);
     });
 
-    if (selectAll) {
-      selectAll.checked = checkboxes.length > 0 && selected.length === checkboxes.length;
-      selectAll.indeterminate = selected.length > 0 && selected.length < checkboxes.length;
+    /* состояние «выбрать все» */
+    if (selAll) {
+      selAll.checked       = cbs.length > 0 && selected.length === cbs.length;
+      selAll.indeterminate = selected.length > 0 && selected.length < cbs.length;
     }
   }
 
-  checkboxes.forEach(function(cb) {
-    cb.addEventListener('change', syncSelection);
+  /* Делегируем change на document — событие всплывает всегда */
+  document.addEventListener('change', function(e) {
+    if (e.target.classList.contains('result-cb')) {
+      syncBulk();
+      return;
+    }
+    if (e.target.id === 'select-all-results') {
+      var cbs = Array.from(document.querySelectorAll('.result-cb'));
+      cbs.forEach(function(cb){ cb.checked = e.target.checked; });
+      syncBulk();
+    }
   });
 
-  if (selectAll) {
-    selectAll.addEventListener('change', function() {
-      checkboxes.forEach(function(cb) { cb.checked = selectAll.checked; });
-      syncSelection();
-    });
-  }
-
-  syncSelection();
+  /* Первый вызов — синхронизирует начальное состояние */
+  syncBulk();
 })();
 </script>
 {% endblock %}
