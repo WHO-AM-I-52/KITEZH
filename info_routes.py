@@ -3,7 +3,8 @@
 # ║  Сервисные страницы: уведомления, журнал изменений, онлайн   ║
 # ║  v2.2.0: /ping фиксирует присутствие, /api/online — счётчик  ║
 # ║  v2.3.6: /api/update/check и /api/update/apply               ║
-# ║  fix: ?force=1 сбрасывает серверный кэш _update_available.json ║
+# ║  fix: ?force=1 сбрасывает серверный кэш               ║
+# ║  fix: TerminateProcess(pid) — не убивает батник          ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, render_template, session, jsonify, request as flask_request
@@ -129,6 +130,8 @@ def api_search():
 # Применение обновления выполняется в фоновом потоке; после завершения
 # создаётся _restart.flag, который перехватывает start SONAR.bat
 # и перезапускает сервер без интерактивных вопросов.
+# На Windows для остановки используется TerminateProcess(pid) —
+# только Python-процесс, без затрагивания родительского батника.
 # ────────────────────────────────────────────────────────────────────────────
 
 _FLAG_FILE    = os.path.join(BASE_DIR, '_update_available.json')
@@ -145,6 +148,40 @@ def _read_local_sha() -> str:
         except Exception:
             pass
     return ''
+
+
+def _terminate_self(pid: int) -> None:
+    """Останавливает только Python-процесс (pid), не трогая родительский батник.
+
+    Windows: OpenProcess + TerminateProcess — прямое завершение процесса
+             без распространения сигнала на всю консольную группу.
+    Linux:   SIGTERM, фоллбэк SIGKILL.
+    """
+    if sys.platform == 'win32':
+        try:
+            import ctypes
+            PROCESS_TERMINATE = 0x0001
+            handle = ctypes.windll.kernel32.OpenProcess(PROCESS_TERMINATE, False, pid)
+            if handle:
+                ctypes.windll.kernel32.TerminateProcess(handle, 1)
+                ctypes.windll.kernel32.CloseHandle(handle)
+                return
+        except Exception:
+            pass
+        # Фоллбэк: taskkill по PID
+        try:
+            subprocess.run(['taskkill', '/F', '/PID', str(pid)],
+                           capture_output=True, timeout=5)
+        except Exception:
+            pass
+    else:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except Exception:
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except Exception:
+                pass
 
 
 @misc_bp.route('/api/update/check')
@@ -239,10 +276,10 @@ def api_update_apply():
        a. Запускает _updater.py (скачивает zip, применяет файлы).
        b. Удаляет кэш проверки и lock.
        c. Создаёт _restart.flag.
-       d. Завершает Flask-процесс через SIGTERM (Windows-совместимо: CTRL_C_EVENT).
+       d. Завершает только Python-процесс через TerminateProcess(pid) —
+          батник при этом не получает сигнал, видит стоп и делает goto :start_server.
     4. Возвращает {'ok': True} сразу, не ожидая завершения фона.
-    Батник start SONAR.bat перехватит _restart.flag и перезапустит сервер
-    без интерактивных вопросов.
+    Батник start SONAR.bat перехватит _restart.flag и перезапустит сервер.
     """
     if session.get('role') != 'admin':
         return jsonify({'error': 'forbidden'}), 403
@@ -254,7 +291,6 @@ def api_update_apply():
     if not os.path.exists(_UPDATER):
         return jsonify({'error': '_updater.py not found'}), 500
 
-    # Создаём lock немедленно в основном потоке
     try:
         open(_LOCK_FILE, 'w').close()
     except Exception:
@@ -274,22 +310,14 @@ def api_update_apply():
                 except Exception:
                     pass
 
+        # Создаём флаг ДО остановки Flask — батник увидит его после завершения python
         try:
             open(_RESTART_FLAG, 'w').close()
         except Exception:
             pass
 
-        try:
-            if sys.platform == 'win32':
-                import ctypes
-                ctypes.windll.kernel32.GenerateConsoleCtrlEvent(0, 0)
-            else:
-                os.kill(pid, signal.SIGTERM)
-        except Exception:
-            try:
-                os.kill(pid, signal.SIGKILL)
-            except Exception:
-                pass
+        # Терминируем только Python-процесс — без сигнала на всю группу
+        _terminate_self(pid)
 
     threading.Thread(target=_worker, daemon=True).start()
     return jsonify({'ok': True,
