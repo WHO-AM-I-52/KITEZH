@@ -1,7 +1,7 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║ search_routes.py                                             ║
 # ║ GlobalSearch: быстрый API + полная страница результатов     ║
-# ║ Расширяемый список полей через SEARCH_FIELDS                ║
+# ║ Фильтр по can_view_all: пользователь видит только свои   ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, request, jsonify, render_template, session
@@ -10,9 +10,7 @@ from auth_utils import login_required
 
 search_bp = Blueprint('search', __name__)
 
-# ─── ПОЛЯ ПОИСКА ────────────────────────────────────────────────────────────────
-# Чтобы добавить новое поле — просто добавьте строку в список.
-# label — отображается в подсказке дропдауна рядом с совпадением
+# ─── ПОЛЯ ПОИСКА ────────────────────────────────────────────────────────────
 SEARCH_FIELDS = [
     {'col': 'request_number',      'label': '№ обращения'},
     {'col': 'applicant_full_name', 'label': 'Полн. наим.'},
@@ -25,21 +23,35 @@ SEARCH_FIELDS = [
     {'col': 'additional_info',     'label': 'Доп. инфо'},
 ]
 
-_MAX_DROPDOWN = 7   # максимум строк в дропдауне
-_MAX_PAGE     = 50  # максимум строк на странице результатов
+_MAX_DROPDOWN = 7
+_MAX_PAGE     = 50
 
-# Колонки, которые SELECT вытягивает из БД (для match_label нужны все поля поиска)
 _SELECT_COLS = [f['col'] for f in SEARCH_FIELDS]
 
 
+def _can_view_all() -> bool:
+    """True если пользователь имеет право видеть все обращения."""
+    return session.get('role') == 'admin' or bool(session.get('perm_can_view_all', 0))
+
+
 def _build_query(q: str, limit: int):
-    """Строит SQL и params для поиска по всем SEARCH_FIELDS."""
+    """Строит SQL и params для поиска по всем SEARCH_FIELDS.
+    Если can_view_all=False — ограничивает выборку обращениями пользователя.
+    """
     pattern = f'%{q}%'
     where_parts = ' OR '.join(f"r.{f['col']} LIKE ?" for f in SEARCH_FIELDS)
     params = [pattern] * len(SEARCH_FIELDS)
 
-    # Включаем ВСЕ поля из SEARCH_FIELDS в SELECT — чтобы match_label работал
     extra_cols = ',\n            '.join(f'r.{c}' for c in _SELECT_COLS)
+
+    # ─── Фильтр видимости: только свои если нет права can_view_all ───
+    if _can_view_all():
+        scope_clause = ''
+        scope_params = []
+    else:
+        user_id = session.get('user_id')
+        scope_clause = ' AND (r.created_by=? OR r.assigned_to=?)'
+        scope_params = [user_id, user_id]
 
     sql = f"""
         SELECT
@@ -50,15 +62,37 @@ def _build_query(q: str, limit: int):
             {extra_cols}
         FROM requests r
         LEFT JOIN users u ON r.assigned_to = u.id
-        WHERE ({where_parts})
+        WHERE ({where_parts}){scope_clause}
         ORDER BY r.id DESC
         LIMIT ?
     """
-    params.append(limit)
+    params = params + scope_params + [limit]
     return sql, params
 
 
-# ─── API: быстрый поиск для дропдауна ───────────────────────────────────────────
+def _build_count_query(q: str):
+    """Отдельный COUNT-запрос с тем же фильтром видимости."""
+    pattern = f'%{q}%'
+    where_parts = ' OR '.join(f"r.{f['col']} LIKE ?" for f in SEARCH_FIELDS)
+    params = [pattern] * len(SEARCH_FIELDS)
+
+    if _can_view_all():
+        scope_clause = ''
+        scope_params = []
+    else:
+        user_id = session.get('user_id')
+        scope_clause = ' AND (r.created_by=? OR r.assigned_to=?)'
+        scope_params = [user_id, user_id]
+
+    sql = f"""
+        SELECT COUNT(*) AS cnt
+        FROM requests r
+        WHERE ({where_parts}){scope_clause}
+    """
+    return sql, params + scope_params
+
+
+# ─── API: быстрый поиск для дропдауна ────────────────────────────────────────
 @search_bp.route('/api/search')
 @login_required
 def api_search():
@@ -74,7 +108,6 @@ def api_search():
     results = []
     for r in rows:
         row = dict(r)
-        # Определяем, в каком поле найдено совпадение (для подсказки)
         match_label = ''
         ql = q.lower()
         for f in SEARCH_FIELDS:
@@ -96,7 +129,7 @@ def api_search():
     return jsonify({'results': results, 'q': q})
 
 
-# ─── Страница полных результатов ─────────────────────────────────────────────────
+# ─── Страница полных результатов ───────────────────────────────────────────
 @search_bp.route('/search')
 @login_required
 def search_page():
@@ -109,15 +142,7 @@ def search_page():
         sql, params = _build_query(q, _MAX_PAGE)
         rows = conn.execute(sql, params).fetchall()
 
-        # Считаем точный total без LIMIT через отдельный COUNT запрос
-        pattern = f'%{q}%'
-        where_parts = ' OR '.join(f"r.{f['col']} LIKE ?" for f in SEARCH_FIELDS)
-        count_params = [pattern] * len(SEARCH_FIELDS)
-        count_sql = f"""
-            SELECT COUNT(*) AS cnt
-            FROM requests r
-            WHERE ({where_parts})
-        """
+        count_sql, count_params = _build_count_query(q)
         total = conn.execute(count_sql, count_params).fetchone()['cnt']
         conn.close()
         results = [dict(r) for r in rows]
