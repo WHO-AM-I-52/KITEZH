@@ -361,12 +361,12 @@ def inject_globals():
         try:
             if session.get('role') == 'admin' or session.get('can_view_all'):
                 active_requests_count = db.execute(
-                    "SELECT COUNT(*) FROM requests WHERE status NOT IN ('closed','rejected')"
+                    "SELECT COUNT(*) FROM requests WHERE status NOT IN ('closed','rejected','answered')"
                 ).fetchone()[0]
             else:
                 active_requests_count = db.execute(
                     "SELECT COUNT(*) FROM requests "
-                    "WHERE status NOT IN ('closed','rejected') AND created_by=?",
+                    "WHERE status NOT IN ('closed','rejected','answered') AND created_by=?",
                     (session['user_id'],)
                 ).fetchone()[0]
         except Exception:
