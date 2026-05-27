@@ -53,6 +53,30 @@
     height: 1px;
     background: #dee2e6;
   }
+
+  /* ── панель обновления ── */
+  #updatePanel { transition: border-color .3s; }
+  #updatePanel.has-update { border-left-color: #198754 !important; }
+  #updatePanel.no-update  { border-left-color: #6c757d !important; }
+  #updatePanel.upd-error  { border-left-color: #dc3545 !important; }
+  #updatePanel.in-progress { border-left-color: #ffc107 !important; }
+
+  #updateLogPre {
+    font-size: 11px;
+    background: #f8f9fa;
+    max-height: 130px;
+    overflow-y: auto;
+    border-radius: 6px;
+    padding: 8px 10px;
+    color: #495057;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  body[data-theme="dark"] #updateLogPre  { background:#1e2235; color:#e2e8f0; }
+  body[data-theme="zone"] #updateLogPre  { background:#161712; color:#c8c4a8; }
+
+  @keyframes spinOnce { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+  .spin { animation: spinOnce .7s linear infinite; display:inline-block; }
 </style>
 
 {# ── Карточка "О программе" ── #}
@@ -80,6 +104,39 @@
   </div>
 </div>
 
+{# ── Панель обновления (only admin) ── #}
+{% if session.get('role') == 'admin' %}
+<div id="updatePanel" class="card mb-4 p-3" style="border-left:4px solid #adb5bd">
+  <div class="d-flex align-items-center justify-content-between gap-3 flex-wrap">
+
+    <div style="min-width:0">
+      <div class="fw-bold" style="font-size:14px" id="updateTitle">
+        <i class="bi bi-cloud-arrow-down me-1" style="color:#1B5E7B"></i>
+        Обновление системы
+      </div>
+      <div id="updateStatus" class="text-muted mt-1" style="font-size:12px">
+        <span class="spin"><i class="bi bi-arrow-repeat"></i></span>
+        Проверяем обновления…
+      </div>
+    </div>
+
+    <div class="d-flex gap-2 flex-shrink-0">
+      <button id="btnCheck" class="btn btn-sm btn-outline-secondary" onclick="updCheck()">
+        <i class="bi bi-arrow-clockwise"></i> Проверить
+      </button>
+      <button id="btnUpdate" class="btn btn-sm btn-success d-none" onclick="updApply()">
+        <i class="bi bi-cloud-arrow-down-fill"></i> Обновить сейчас
+      </button>
+    </div>
+
+  </div>
+
+  <div id="updateLogWrap" class="mt-2 d-none">
+    <pre id="updateLogPre"></pre>
+  </div>
+</div>
+{% endif %}
+
 {# ── Заголовок ── #}
 <div class="d-flex align-items-center mb-4 gap-3">
   <a href="{{ url_for('requests.index') }}" class="btn btn-sm btn-outline-secondary">
@@ -97,7 +154,7 @@
 
 <div style="max-width:760px">
 
-  {# ── 1. Спойлер: история версий (все changelog кроме первого) ── #}
+  {# ── 1. Спойлер: история версий ── #}
   {% if changelog|length > 1 %}
   <details class="mb-3">
     <summary>
@@ -206,4 +263,178 @@
   {% endif %}
 
 </div>
+
+{% if session.get('role') == 'admin' %}
+<script>
+(function(){
+
+  var panel    = document.getElementById('updatePanel');
+  var statusEl = document.getElementById('updateStatus');
+  var btnUpd   = document.getElementById('btnUpdate');
+  var btnChk   = document.getElementById('btnCheck');
+  var logWrap  = document.getElementById('updateLogWrap');
+  var logPre   = document.getElementById('updateLogPre');
+
+  // Сохраняем результат через sessionStorage, чтобы не делать лишних запросов
+  var CACHE_KEY = 'sonar_upd_status';
+
+  function setStatus(html, type) {
+    // type: 'loading' | 'ok' | 'update' | 'error' | 'progress'
+    statusEl.innerHTML = html;
+    panel.className = panel.className
+      .replace(/\b(has-update|no-update|upd-error|in-progress)\b/g, '').trim();
+    if (type === 'update')   panel.classList.add('has-update');
+    if (type === 'ok')       panel.classList.add('no-update');
+    if (type === 'error')    panel.classList.add('upd-error');
+    if (type === 'progress') panel.classList.add('in-progress');
+  }
+
+  function showLog(text) {
+    if (!text) return;
+    logPre.textContent = text;
+    logWrap.classList.remove('d-none');
+  }
+
+  window.updCheck = function(force) {
+    if (force) sessionStorage.removeItem(CACHE_KEY);
+
+    // Проверяем кэш sessionStorage
+    var cached = null;
+    try { cached = JSON.parse(sessionStorage.getItem(CACHE_KEY)); } catch(e){}
+    if (cached && !force) {
+      renderResult(cached);
+      return;
+    }
+
+    btnChk.disabled = true;
+    btnUpd.classList.add('d-none');
+    setStatus('<span class="spin"><i class="bi bi-arrow-repeat"></i></span> Проверяем…', 'loading');
+
+    fetch('/api/update/check', {credentials: 'same-origin'})
+      .then(function(r){ return r.json(); })
+      .then(function(data){
+        try { sessionStorage.setItem(CACHE_KEY, JSON.stringify(data)); } catch(e){}
+        renderResult(data);
+      })
+      .catch(function(){
+        setStatus('<i class="bi bi-wifi-off me-1 text-danger"></i>Нет связи с сервером', 'error');
+      })
+      .finally(function(){ btnChk.disabled = false; });
+  };
+
+  function renderResult(data) {
+    if (data.has_update) {
+      setStatus(
+        '<i class="bi bi-arrow-up-circle-fill me-1" style="color:#198754"></i>' +
+        '<strong class="text-success">Доступна новая версия на GitHub</strong>' +
+        (data.local_sha ? '<span class="text-muted ms-2" style="font-size:11px">' + data.local_sha + '</span>' : ''),
+        'update'
+      );
+      btnUpd.classList.remove('d-none');
+    } else if (data.status === 0) {
+      setStatus(
+        '<i class="bi bi-check-circle-fill me-1 text-success"></i>Установлена актуальная версия' +
+        (data.local_sha ? ' <span class="text-muted ms-1" style="font-size:11px">(' + data.local_sha + ')</span>' : '') +
+        (data.cached ? ' <span class="text-muted" style="font-size:10px">• кэш</span>' : ''),
+        'ok'
+      );
+      btnUpd.classList.add('d-none');
+    } else {
+      setStatus(
+        '<i class="bi bi-exclamation-triangle-fill me-1 text-warning"></i>' +
+        'Не удалось проверить' +
+        (data.error ? ' <span class="text-muted" style="font-size:11px">(' + data.error + ')</span>' : ''),
+        'error'
+      );
+      btnUpd.classList.add('d-none');
+    }
+    if (data.output) showLog(data.output);
+  }
+
+  window.updApply = function() {
+    if (!confirm(
+      'Применить обновление?\n\n' +
+      'Сервер автоматически перезапустится — пользователи ' +
+      'получат кратковременный разрыв (~5-15 сек).')
+    ) return;
+
+    btnUpd.disabled = true;
+    btnChk.disabled = true;
+    btnUpd.innerHTML = '<span class="spin"><i class="bi bi-arrow-repeat"></i></span> Обновляем…';
+    sessionStorage.removeItem(CACHE_KEY);
+    setStatus(
+      '<span class="spin"><i class="bi bi-arrow-repeat"></i></span> ' +
+      'Скачиваем и применяем обновление… Сервер скоро перезапустится.',
+      'progress'
+    );
+
+    fetch('/api/update/apply', {method:'POST', credentials:'same-origin'})
+      .then(function(r){ return r.json(); })
+      .then(function(data){
+        if (data.ok) {
+          setStatus(
+            '<i class="bi bi-check-circle-fill me-1 text-success"></i>' +
+            'Обновление запущено. ' +
+            'Сервер перезапускается, страница обновится автоматически…',
+            'ok'
+          );
+          // Поллинг: проверяем живость сервера раз в 2 сек, потом reload
+          var attempts = 0;
+          var maxAttempts = 30; // 60 сек макс
+          var pollTimer = setInterval(function(){
+            attempts++;
+            fetch('/ping', {cache:'no-store', credentials:'same-origin'})
+              .then(function(r){
+                if (r.ok) {
+                  clearInterval(pollTimer);
+                  setStatus(
+                    '<i class="bi bi-check-circle-fill me-1 text-success"></i>' +
+                    'Обновление завершено! Перезагрузка…',
+                    'ok'
+                  );
+                  setTimeout(function(){ location.reload(); }, 800);
+                }
+              })
+              .catch(function(){}) // сервер ещё перезапускается — нормально
+            if (attempts >= maxAttempts) {
+              clearInterval(pollTimer);
+              setStatus('<i class="bi bi-exclamation-triangle-fill me-1 text-warning"></i>Ожидание перезапуска истекло. Обновите страницу вручную.', 'error');
+              btnChk.disabled = false;
+              btnUpd.disabled = false;
+              btnUpd.innerHTML = '<i class="bi bi-cloud-arrow-down-fill"></i> Обновить сейчас';
+            }
+          }, 2000);
+
+        } else if (data.error === 'already_in_progress') {
+          setStatus('<i class="bi bi-hourglass-split me-1 text-warning"></i>Обновление уже выполняется, подождите…', 'progress');
+          btnChk.disabled = false;
+        } else {
+          setStatus('<i class="bi bi-x-circle-fill me-1 text-danger"></i>Ошибка: ' + (data.error || 'неизвестно'), 'error');
+          btnChk.disabled = false;
+          btnUpd.disabled = false;
+          btnUpd.innerHTML = '<i class="bi bi-cloud-arrow-down-fill"></i> Обновить сейчас';
+        }
+      })
+      .catch(function(){
+        // Если fetch пупнул — скорее всего сервер уже перезапускается
+        setStatus(
+          '<span class="spin"><i class="bi bi-arrow-repeat"></i></span> ' +
+          'Сервер перезапускается…',
+          'progress'
+        );
+        var t = setInterval(function(){
+          fetch('/ping',{cache:'no-store',credentials:'same-origin'})
+            .then(function(r){ if(r.ok){ clearInterval(t); location.reload(); }})
+            .catch(function(){});
+        }, 2000);
+      });
+  };
+
+  // Автопроверка при загрузке страницы
+  document.addEventListener('DOMContentLoaded', function(){ updCheck(); });
+
+})();
+</script>
+{% endif %}
+
 {% endblock %}
