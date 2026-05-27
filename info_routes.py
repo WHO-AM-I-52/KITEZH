@@ -4,7 +4,7 @@
 # ║  v2.2.0: /ping фиксирует присутствие, /api/online — счётчик  ║
 # ║  v2.3.6: /api/update/check и /api/update/apply               ║
 # ║  fix: ?force=1 сбрасывает серверный кэш               ║
-# ║  fix: TerminateProcess(pid) — не убивает батник          ║
+# ║  fix: _restart.flag + sys.exit(42) → run_server.py          ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, render_template, session, jsonify, request as flask_request
@@ -127,11 +127,10 @@ def api_search():
 # Используют _updater.py для проверки и применения обновлений.
 # Результат проверки кэшируется в _update_available.json до следующего запуска.
 # ?force=1 — принудительно сбрасывает серверный кэш и делает живую проверку.
-# Применение обновления выполняется в фоновом потоке; после завершения
-# создаётся _restart.flag, который перехватывает start SONAR.bat
-# и перезапускает сервер без интерактивных вопросов.
-# На Windows для остановки используется TerminateProcess(pid) —
-# только Python-процесс, без затрагивания родительского батника.
+# Применение обновления: _worker создаёт _restart.flag, затем
+# вызывает os._exit(42) — Flask завершается с кодом 42.
+# run_server.py видит код 42, читает флаг и возвращает sys.exit(42) батнику.
+# Батник видит EXIT_CODE=42 и идёт goto :start_server.
 # ────────────────────────────────────────────────────────────────────────────
 
 _FLAG_FILE    = os.path.join(BASE_DIR, '_update_available.json')
@@ -148,40 +147,6 @@ def _read_local_sha() -> str:
         except Exception:
             pass
     return ''
-
-
-def _terminate_self(pid: int) -> None:
-    """Останавливает только Python-процесс (pid), не трогая родительский батник.
-
-    Windows: OpenProcess + TerminateProcess — прямое завершение процесса
-             без распространения сигнала на всю консольную группу.
-    Linux:   SIGTERM, фоллбэк SIGKILL.
-    """
-    if sys.platform == 'win32':
-        try:
-            import ctypes
-            PROCESS_TERMINATE = 0x0001
-            handle = ctypes.windll.kernel32.OpenProcess(PROCESS_TERMINATE, False, pid)
-            if handle:
-                ctypes.windll.kernel32.TerminateProcess(handle, 1)
-                ctypes.windll.kernel32.CloseHandle(handle)
-                return
-        except Exception:
-            pass
-        # Фоллбэк: taskkill по PID
-        try:
-            subprocess.run(['taskkill', '/F', '/PID', str(pid)],
-                           capture_output=True, timeout=5)
-        except Exception:
-            pass
-    else:
-        try:
-            os.kill(pid, signal.SIGTERM)
-        except Exception:
-            try:
-                os.kill(pid, signal.SIGKILL)
-            except Exception:
-                pass
 
 
 @misc_bp.route('/api/update/check')
@@ -230,7 +195,7 @@ def api_update_check():
                 'checked_at': cached.get('checked_at'),
             })
         except Exception:
-            pass  # кэш повреждён — делаем живую проверку
+            pass
 
     # ── Медленный путь: запускаем _updater.py --check ─────────────────────
     try:
@@ -270,16 +235,9 @@ def api_update_check():
 def api_update_apply():
     """Скачивает и применяет обновление с GitHub, затем тихо перезапускает сервер.
 
-    1. Проверяет роль — только admin.
-    2. Создаёт _updating.lock — защита от двойного запуска.
-    3. В фоновом потоке:
-       a. Запускает _updater.py (скачивает zip, применяет файлы).
-       b. Удаляет кэш проверки и lock.
-       c. Создаёт _restart.flag.
-       d. Завершает только Python-процесс через TerminateProcess(pid) —
-          батник при этом не получает сигнал, видит стоп и делает goto :start_server.
-    4. Возвращает {'ok': True} сразу, не ожидая завершения фона.
-    Батник start SONAR.bat перехватит _restart.flag и перезапустит сервер.
+    _worker создаёт _restart.flag, затем вызывает os._exit(42).
+    run_server.py видит код 42, читает флаг и возвращает sys.exit(42) батнику.
+    Батник видит EXIT_CODE=42 и идёт goto :start_server без любых вопросов.
     """
     if session.get('role') != 'admin':
         return jsonify({'error': 'forbidden'}), 403
@@ -296,8 +254,6 @@ def api_update_apply():
     except Exception:
         pass
 
-    pid = os.getpid()
-
     def _worker():
         try:
             subprocess.run([sys.executable, _UPDATER], timeout=300)
@@ -310,14 +266,15 @@ def api_update_apply():
                 except Exception:
                     pass
 
-        # Создаём флаг ДО остановки Flask — батник увидит его после завершения python
+        # Создаём флаг ДО завершения
         try:
             open(_RESTART_FLAG, 'w').close()
         except Exception:
             pass
 
-        # Терминируем только Python-процесс — без сигнала на всю группу
-        _terminate_self(pid)
+        # os._exit(42) — мгновенно завершает весь процесс Flask
+        # без каких-либо сигналов на родительский батник
+        os._exit(42)
 
     threading.Thread(target=_worker, daemon=True).start()
     return jsonify({'ok': True,
