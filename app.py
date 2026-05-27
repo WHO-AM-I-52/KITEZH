@@ -14,8 +14,13 @@ from changelog import CHANGELOG, ROADMAP
 from spravochnik import LEGAL_FORMS_DEFAULT, DISTRICTS_DEFAULT, SOURCE_TYPES_DEFAULT
 
 app = Flask(__name__)
+
+# ─── SECRET_KEY: читаем из .env / переменной окружения ────────────────────────
+# Генерация одноразового ключа: python -c "import secrets; print(secrets.token_hex(32))"
+# Добавить в .env: SECRET_KEY=<сгенерированный_ключ>
+# Если ключ не задан — генерируется временный (сессии сбросятся при перезапуске).
 import secrets as _secrets
-app.secret_key = _secrets.token_hex(32)
+app.secret_key = os.environ.get('SECRET_KEY') or _secrets.token_hex(32)
 
 # ─── Blueprints ───────────────────────────────────────────────
 from phonebook_routes import phonebook_bp
