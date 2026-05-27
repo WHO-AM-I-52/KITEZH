@@ -2,6 +2,7 @@
 # ║                      form_utils.py                           ║
 # ║  Работа с формой обращения: поля, приведение типов,          ║
 # ║  классификаторы                                              ║
+# ║  v2.1 bugfix: +incoming_number; site_area/build одиночные    ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from validators import _int, _flt
@@ -40,6 +41,8 @@ ALL_FIELDS = [
     "subject_type_id",   # Предмет обращения (FK → subject_types)
     "feedback_date",     # Дата получения обратной связи
     "result_type_id",    # Итоги работы по обращению (FK → result_types)
+    # ─ Входящий номер (Directum / СЭДО) ─────────────────────────────
+    "incoming_number",   # Bugfix #3: поле было в форме, но отсутствовало здесь
 ]
 
 # Наборы полей по типу
@@ -123,6 +126,10 @@ def build_values(form):
     for f in ALL_FIELDS:
         if f == 'source_type':
             selected = form.getlist('source_type')
+            vals.append(', '.join(selected) if selected else None)
+            continue
+        if f == 'preferred_districts':
+            selected = form.getlist('preferred_districts')
             vals.append(', '.join(selected) if selected else None)
             continue
         v = form.get(f, '')

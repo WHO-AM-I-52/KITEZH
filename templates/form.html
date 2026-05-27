@@ -88,7 +88,7 @@
       </div>
       <div class="form-text">Можно выбрать несколько</div>
 
-      {# Поле № входящего — только для Directum / СЭДО #}
+      {# Поле № входящего — только для Directum / СЭДО — Bugfix #3: name исправлен #}
       <div id="incomingNumberBlock" class="mt-2" style="display:none">
         <label class="form-label fw-bold" style="font-size:12px">№ входящего обращения</label>
         <input type="text" name="incoming_number" class="form-control form-control-sm"
@@ -252,12 +252,13 @@
       </div>
     </div>
 
+    {# Bugfix #1: было name="msp_category", исправлено на name="applicant_msp_category" #}
     <div class="col-md-4">
       <label class="form-label fw-bold" style="font-size:12px">Категория МСП</label>
-      <select name="msp_category" class="form-select form-select-sm">
+      <select name="applicant_msp_category" class="form-select form-select-sm">
         <option value="">— не указано —</option>
         {% for v, l in [('micro','Микро'),('small','Малое'),('medium','Среднее'),('none','Не МСП')] %}
-        <option value="{{ v }}" {{ 'selected' if req and req.msp_category==v }}>
+        <option value="{{ v }}" {{ 'selected' if req and req.applicant_msp_category==v }}>
           {{ l }}
         </option>
         {% endfor %}
@@ -507,28 +508,17 @@
       </div>
     </div>
 
+    {# Bugfix #2: были name="site_area_ha_min/max" — исправлено на одиночные поля site_area_ha и site_build_area_m2 #}
     <div class="col-md-4">
       <label class="form-label fw-bold" style="font-size:12px">Площадь участка, га</label>
-      <div class="input-group input-group-sm">
-        <span class="input-group-text" style="font-size:11px">мин.</span>
-        <input type="number" step="0.01" name="site_area_ha_min" class="form-control form-control-sm"
-               value="{{ req.site_area_ha_min if req else '' }}" placeholder="0.00">
-        <span class="input-group-text" style="font-size:11px">макс.</span>
-        <input type="number" step="0.01" name="site_area_ha_max" class="form-control form-control-sm"
-               value="{{ req.site_area_ha_max if req else '' }}" placeholder="0.00">
-      </div>
+      <input type="number" step="0.01" name="site_area_ha" class="form-control form-control-sm"
+             value="{{ req.site_area_ha if req else '' }}" placeholder="0.00">
     </div>
 
     <div class="col-md-4">
       <label class="form-label fw-bold" style="font-size:12px">Площадь застройки, м²</label>
-      <div class="input-group input-group-sm">
-        <span class="input-group-text" style="font-size:11px">мин.</span>
-        <input type="number" step="1" name="site_build_area_m2_min" class="form-control form-control-sm"
-               value="{{ req.site_build_area_m2_min if req else '' }}" placeholder="0">
-        <span class="input-group-text" style="font-size:11px">макс.</span>
-        <input type="number" step="1" name="site_build_area_m2_max" class="form-control form-control-sm"
-               value="{{ req.site_build_area_m2_max if req else '' }}" placeholder="0">
-      </div>
+      <input type="number" step="1" name="site_build_area_m2" class="form-control form-control-sm"
+             value="{{ req.site_build_area_m2 if req else '' }}" placeholder="0">
     </div>
 
     <div class="col-md-2">
@@ -1165,8 +1155,8 @@
     var color = opt ? opt.dataset.color : '';
     if(color && sel.value){
       preview.style.display  = '';
-      preview.style.background = color;
-      preview.style.color = '#fff';
+      preview.style.background = '#' + color;
+      preview.style.color = (color === 'FFFFFF') ? '#333' : '#fff';
       preview.textContent = opt.text;
     } else {
       preview.style.display = 'none';

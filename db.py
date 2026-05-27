@@ -151,6 +151,12 @@ def _migrate(conn):
             "ALTER TABLE requests ADD COLUMN result_type_id INTEGER REFERENCES result_types(id)"
         )
 
+    # ─ Bugfix #3: колонка incoming_number (номер входящего в Directum/СЭДО)
+    if not _has_column(conn, 'requests', 'incoming_number'):
+        conn.execute(
+            "ALTER TABLE requests ADD COLUMN incoming_number TEXT"
+        )
+
     conn.commit()
 
 
