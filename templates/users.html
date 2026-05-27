@@ -45,15 +45,15 @@
 </div>
 
 {% set perm_labels = [
-  ('can_create',      'Создавать обращения',          'bi-plus-circle',          'text-success'),
-  ('can_edit_others', 'Редактировать чужие',           'bi-pencil-square',        'text-primary'),
-  ('can_confirm',     'Принимать / отклонять',         'bi-check-circle',         'text-success'),
-  ('can_delete',      'Удалять обращения',             'bi-trash',                'text-danger'),
-  ('can_rollback',    'Откат истории',                 'bi-arrow-counterclockwise','text-warning'),
-  ('can_export',      'Экспорт в Excel',               'bi-file-excel',           'text-success'),
-  ('can_classifiers', 'Управление справочниками',      'bi-book',                 'text-info'),
-  ('can_users',       'Управление пользователями',     'bi-people',               'text-primary'),
-  ('can_view_all',    'Просмотр всех обращений',       'bi-eye',                  'text-secondary'),
+  ('can_create',      'Создавать обращения',                   'bi-plus-circle',          'text-success'),
+  ('can_edit_others', 'Редактировать чужие',                   'bi-pencil-square',        'text-primary'),
+  ('can_confirm',     'Принимать / отклонять',                 'bi-check-circle',         'text-success'),
+  ('can_delete',      'Удалять обращения',                     'bi-trash',                'text-danger'),
+  ('can_rollback',    'Откат истории',                         'bi-arrow-counterclockwise','text-warning'),
+  ('can_export',      'Экспорт в Excel',                       'bi-file-excel',           'text-success'),
+  ('can_classifiers', 'Управление справочниками',              'bi-book',                 'text-info'),
+  ('can_users',       'Управление пользователями',             'bi-people',               'text-primary'),
+  ('can_view_all',    'Видит все обращения (вкл. поиск)',      'bi-eye',                  'text-secondary'),
 ] %}
 
 <div class="row g-4">
@@ -297,7 +297,6 @@
     {# ══ ЖУРНАЛЫ — вкладки ══ #}
     <div class="card">
       <div class="card-header p-0" style="background:#1B5E7B">
-        {# journal-tabs — кастомный класс для override Bootstrap nav-link стилей #}
         <ul class="nav nav-tabs journal-tabs" style="border:none">
           <li class="nav-item">
             <button class="nav-link" id="tab-login"
@@ -358,7 +357,6 @@
         {# ─── Действия пользователей ─── #}
         <div class="tab-pane fade" id="pane-activity">
 
-          {# Панель фильтров (v2.0.1) #}
           <form method="get" action="{{ url_for('admin.manage_users') }}"
                 class="p-2 border-bottom d-flex flex-wrap gap-2 align-items-end"
                 style="background:#f8f9fa">
@@ -401,7 +399,6 @@
             {% endif %}
           </form>
 
-          {# Таблица действий #}
           <div class="table-responsive">
             <table class="table table-sm mb-0" style="font-size:12px">
               <thead class="table-light">
@@ -502,7 +499,6 @@ function applyRolePreset(role) {
 
 document.addEventListener('DOMContentLoaded', function () {
 
-  /* ── Бейджи счётчиков ── */
   var loginRows    = document.querySelectorAll('#pane-login tbody tr').length;
   var activityRows = document.querySelectorAll('#pane-activity tbody tr').length;
   var bl = document.getElementById('badge-login');
@@ -510,7 +506,6 @@ document.addEventListener('DOMContentLoaded', function () {
   if (bl && loginRows > 0)    bl.textContent = loginRows;
   if (ba && activityRows > 0) ba.textContent = activityRows;
 
-  /* ── Подсветка: вешаем/снимаем класс tab-active ── */
   function setActive(btn) {
     document.querySelectorAll('.journal-tabs .nav-link').forEach(function (b) {
       b.classList.remove('tab-active');
@@ -518,7 +513,6 @@ document.addEventListener('DOMContentLoaded', function () {
     btn.classList.add('tab-active');
   }
 
-  /* Открываем нужную вкладку при загрузке */
   var hasFilter = {{ 'true' if (af_user or af_action or af_date) else 'false' }};
   var firstTab  = hasFilter
     ? document.getElementById('tab-activity')
@@ -529,7 +523,6 @@ document.addEventListener('DOMContentLoaded', function () {
     setActive(firstTab);
   }
 
-  /* При переключении обновляем класс */
   document.querySelectorAll('.journal-tabs .nav-link').forEach(function (btn) {
     btn.addEventListener('shown.bs.tab', function () { setActive(btn); });
   });
