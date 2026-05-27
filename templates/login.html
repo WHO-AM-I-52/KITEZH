@@ -196,15 +196,8 @@
     font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
   }
 
-  /* обёртка для поля пароля с кнопкой */
-  .lf-pw-wrap {
-    position: relative;
-    display: flex;
-    align-items: center;
-  }
-
-  .lf-pw-wrap input {
-    width: 100%; padding: 11px 40px 11px 14px;
+  .lf-group input {
+    width: 100%; padding: 11px 14px;
     border: 1.5px solid rgba(255,255,255,0.1);
     border-radius: 12px; font-size: 14px;
     background: rgba(255,255,255,0.05); color: #fff;
@@ -212,8 +205,33 @@
     box-sizing: border-box;
   }
 
-  .lf-group input {
-    width: 100%; padding: 11px 14px;
+  /* обёртка: кнопка слева, поле со сдвигом под неё */
+  .lf-pw-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+
+  .lf-pw-toggle {
+    position: absolute;
+    left: 12px;
+    z-index: 1;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    color: rgba(255,255,255,0.35);
+    font-size: 16px;
+    line-height: 1;
+    transition: color 200ms;
+    display: flex;
+    align-items: center;
+  }
+  .lf-pw-toggle:hover { color: rgba(255,255,255,0.75); }
+
+  .lf-pw-wrap input {
+    width: 100%;
+    padding: 11px 14px 11px 38px; /* отступ слева под иконку */
     border: 1.5px solid rgba(255,255,255,0.1);
     border-radius: 12px; font-size: 14px;
     background: rgba(255,255,255,0.05); color: #fff;
@@ -231,23 +249,6 @@
     box-shadow: 0 0 12px rgba(230,200,126,0.15);
     background: rgba(255,255,255,0.08);
   }
-
-  /* кнопка глазка */
-  .lf-pw-toggle {
-    position: absolute;
-    right: 12px;
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: 0;
-    color: rgba(255,255,255,0.35);
-    font-size: 16px;
-    line-height: 1;
-    transition: color 200ms;
-    display: flex;
-    align-items: center;
-  }
-  .lf-pw-toggle:hover { color: rgba(255,255,255,0.75); }
 
   .lf-btn {
     width: 100%; padding: 13px; border: none;
@@ -312,10 +313,10 @@
       <div class="lf-group">
         <label for="password">Пароль</label>
         <div class="lf-pw-wrap">
-          <input type="password" id="password" name="password" placeholder="Введите пароль" required>
           <button type="button" class="lf-pw-toggle" onclick="togglePw('password', this)" tabindex="-1">
-            <i class="bi bi-eye" id="password-icon"></i>
+            <i class="bi bi-eye"></i>
           </button>
+          <input type="password" id="password" name="password" placeholder="Введите пароль" required>
         </div>
       </div>
       <button type="submit" class="lf-btn">Войти</button>
