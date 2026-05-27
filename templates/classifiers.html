@@ -5,6 +5,7 @@
   .nav-tabs .nav-link.active { color: #111 !important; font-weight: 600; background:#fff; }
   .color-swatch { display:inline-block; width:18px; height:18px; border-radius:3px;
                   border:1px solid #ccc; vertical-align:middle; margin-right:6px; }
+  .result-row-selected { background: #fff3cd !important; }
 </style>
 
 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -52,7 +53,6 @@
 
 <div class="tab-content">
 
-  {# ===== ПРАВОВЫЕ ФОРМЫ / РАЙОНЫ / ИСТОЧНИКИ ===== #}
   {% for tab_id, tab_label, tab_cat, tab_items in [
       ('lf','Правовые формы','legal_form', legal_forms),
       ('di','Районы НО','district', districts),
@@ -131,7 +131,6 @@
   </div>
   {% endfor %}
 
-  {# ===== ПРЕДМЕТ ОБРАЩЕНИЯ (subject_types) ===== #}
   <div class="tab-pane fade" id="tab-subject">
     <div class="row g-3">
       <div class="col-md-5">
@@ -209,7 +208,6 @@
     </div>
   </div>
 
-  {# ===== ИТОГИ РАБОТЫ (result_types) ===== #}
   <div class="tab-pane fade" id="tab-result">
     <div class="row g-3">
       <div class="col-md-5">
@@ -244,13 +242,25 @@
       </div>
       <div class="col-md-7">
         <div class="card p-3">
-          <h6 class="mb-2" style="color:#1B5E7B">
-            <i class="bi bi-list-ul me-1"></i>Текущие значения
-          </h6>
+          <div class="d-flex justify-content-between align-items-center mb-2 gap-2 flex-wrap">
+            <h6 class="mb-0" style="color:#1B5E7B">
+              <i class="bi bi-list-ul me-1"></i>Текущие значения
+            </h6>
+            <form method="post" action="{{ url_for('admin.result_types_write') }}" onsubmit="return confirm('Удалить выбранные итоги?')">
+              <input type="hidden" name="action" value="bulk_delete">
+              <input type="hidden" name="selected_ids" id="bulk-delete-ids">
+              <button type="submit" class="btn btn-sm btn-outline-danger" id="bulk-delete-btn" disabled>
+                <i class="bi bi-trash"></i> Удалить выбранные
+              </button>
+            </form>
+          </div>
           <div style="max-height:420px;overflow-y:auto">
             <table class="table table-sm table-hover mb-0" style="font-size:12px">
               <thead>
                 <tr>
+                  <th style="background:#f8f9fa;width:34px">
+                    <input type="checkbox" id="select-all-results" title="Выбрать все">
+                  </th>
                   <th style="background:#f8f9fa">#</th>
                   <th style="background:#f8f9fa">Цвет</th>
                   <th style="background:#f8f9fa">Название</th>
@@ -259,30 +269,34 @@
               </thead>
               <tbody>
                 {% for rt in result_types %}
-                <tr>
-                  <td class="text-muted">{{ loop.index }}</td>
-                  {# ── цветовая ячейка + пикер цвета ── #}
-                  <td style="width:60px">
-                    <form method="post" action="{{ url_for('admin.result_types_write') }}"
-                          class="d-flex align-items-center gap-1">
-                      <input type="hidden" name="action" value="edit">
-                      <input type="hidden" name="rid" value="{{ rt.id }}">
-                      <input type="hidden" name="name" value="{{ rt.name }}">
-                      <input type="color" name="color_hex"
-                             value="#{{ rt.color_hex }}"
-                             class="form-control form-control-color form-control-sm"
-                             style="width:36px;padding:2px"
-                             onchange="this.form.submit()"
-                             title="Кликните для смены цвета">
-                    </form>
+                {% set color = (rt.color_hex or 'FFFFFF')|replace('#','')|upper %}
+                <tr data-result-id="{{ rt.id }}">
+                  <td>
+                    <input type="checkbox" class="result-select" value="{{ rt.id }}">
                   </td>
-                  {# ── инлайн-редактирование названия ── #}
+                  <td class="text-muted">{{ loop.index }}</td>
+                  <td style="width:90px">
+                    <div class="d-flex align-items-center gap-2">
+                      <span class="color-swatch" style="background:#{{ color }}"></span>
+                      <form method="post" action="{{ url_for('admin.result_types_write') }}" class="d-flex align-items-center gap-1 m-0">
+                        <input type="hidden" name="action" value="edit">
+                        <input type="hidden" name="rid" value="{{ rt.id }}">
+                        <input type="hidden" name="name" value="{{ rt.name }}">
+                        <input type="color" name="color_hex"
+                               value="#{{ color }}"
+                               class="form-control form-control-color form-control-sm"
+                               style="width:36px;padding:2px"
+                               onchange="this.form.submit()"
+                               title="Кликните для смены цвета">
+                      </form>
+                    </div>
+                  </td>
                   <td>
                     <form method="post" class="d-flex gap-1 align-items-center"
                           action="{{ url_for('admin.result_types_write') }}">
                       <input type="hidden" name="action" value="edit">
                       <input type="hidden" name="rid" value="{{ rt.id }}">
-                      <input type="hidden" name="color_hex" value="{{ rt.color_hex }}">
+                      <input type="hidden" name="color_hex" value="{{ color }}">
                       <input type="text" name="name" class="form-control form-control-sm py-0"
                              value="{{ rt.name }}" style="min-width:0">
                       <button class="btn btn-sm btn-outline-secondary py-0 px-2" title="Сохранить">
@@ -303,7 +317,7 @@
                   </td>
                 </tr>
                 {% else %}
-                <tr><td colspan="4" class="text-center text-muted py-3">Нет значений</td></tr>
+                <tr><td colspan="5" class="text-center text-muted py-3">Нет значений</td></tr>
                 {% endfor %}
               </tbody>
             </table>
@@ -313,7 +327,6 @@
     </div>
   </div>
 
-  {# ===== ОКВЭД ===== #}
   <div class="tab-pane fade" id="tab-okved">
     <div class="row g-3 mt-2">
       <div class="col-md-5">
@@ -374,8 +387,6 @@
   </div>
 </div>
 
-{# ===== АВТООТКРЫТИЕ ВКЛАДКИ ПО #}
-{# fragment-анкору (после POST-редиректа с #tab-subject / #tab-result) #}
 <script>
 (function () {
   var hash = window.location.hash;
@@ -386,6 +397,41 @@
       tab.show();
     }
   }
+
+  var selectAll = document.getElementById('select-all-results');
+  var checkboxes = Array.from(document.querySelectorAll('.result-select'));
+  var bulkBtn = document.getElementById('bulk-delete-btn');
+  var bulkIds = document.getElementById('bulk-delete-ids');
+
+  function syncSelection() {
+    var selected = checkboxes.filter(function(cb) { return cb.checked; });
+    bulkBtn.disabled = selected.length === 0;
+    bulkIds.value = selected.map(function(cb) { return cb.value; }).join(',');
+
+    checkboxes.forEach(function(cb) {
+      var tr = cb.closest('tr');
+      if (!tr) return;
+      tr.classList.toggle('result-row-selected', cb.checked);
+    });
+
+    if (selectAll) {
+      selectAll.checked = checkboxes.length > 0 && selected.length === checkboxes.length;
+      selectAll.indeterminate = selected.length > 0 && selected.length < checkboxes.length;
+    }
+  }
+
+  checkboxes.forEach(function(cb) {
+    cb.addEventListener('change', syncSelection);
+  });
+
+  if (selectAll) {
+    selectAll.addEventListener('change', function() {
+      checkboxes.forEach(function(cb) { cb.checked = selectAll.checked; });
+      syncSelection();
+    });
+  }
+
+  syncSelection();
 })();
 </script>
 {% endblock %}

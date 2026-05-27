@@ -1,6 +1,6 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║                      admin_routes.py                         ║
-# ║  v2.3 bugfix: saved_filters site_area_ha; conn.close()      ║
+# ║  v2.4 bugfix: stable result_types delete + bulk delete      ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify
@@ -12,8 +12,6 @@ from auth_utils import login_required, admin_required, hash_pw, ALL_PERMISSIONS
 
 admin_bp = Blueprint('admin', __name__)
 
-
-# ─── СПРАВОЧНИКИ (основные) ────────────────────────────────────────────
 
 @admin_bp.route('/admin/classifiers', methods=['GET', 'POST'])
 @login_required
@@ -64,9 +62,9 @@ def classifiers():
     okved_last_sync = row['value'] if row else '—'
 
     subject_types = conn.execute("SELECT * FROM subject_types ORDER BY id").fetchall()
-    result_types  = conn.execute("SELECT * FROM result_types  ORDER BY id").fetchall()
+    result_types  = conn.execute("SELECT * FROM result_types ORDER BY id").fetchall()
 
-    conn.close()  # bugfix #6: закрываем соединение
+    conn.close()
     return render_template(
         'classifiers.html',
         legal_forms=lf, districts=di, source_types=src,
@@ -75,8 +73,6 @@ def classifiers():
         result_types=result_types,
     )
 
-
-# ─── СПРАВОЧНИК «ПРЕДМЕТ ОБРАЩЕНИЯ» ──────────────────────────────────
 
 @admin_bp.route('/admin/subject-types', methods=['POST'])
 @login_required
@@ -105,7 +101,6 @@ def subject_types_write():
 
     elif action == 'delete':
         sid = request.form.get('sid')
-        # Сбрасываем FK на NULL вместо блокировки — тогда записи не теряются
         conn.execute(
             "UPDATE requests SET subject_type_id=NULL WHERE subject_type_id=?", (sid,)
         )
@@ -116,8 +111,6 @@ def subject_types_write():
     conn.close()
     return redirect(url_for('admin.classifiers') + '#tab-subject')
 
-
-# ─── СПРАВОЧНИК «ИТОГИ РАБОТЫ» (форма, редирект на classifiers) ──────────
 
 @admin_bp.route('/admin/result-types', methods=['POST'])
 @login_required
@@ -154,19 +147,37 @@ def result_types_write():
 
     elif action == 'delete':
         rid = request.form.get('rid')
-        # Сбрасываем FK на NULL — не блокируем удаление
         conn.execute(
             "UPDATE requests SET result_type_id=NULL WHERE result_type_id=?", (rid,)
         )
-        conn.execute("DELETE FROM result_types WHERE id=?", (rid,))
+        cur = conn.execute("DELETE FROM result_types WHERE id=?", (rid,))
         conn.commit()
-        flash('Итог удалён', 'success')
+        if cur.rowcount:
+            flash('Итог удалён', 'success')
+        else:
+            flash('Итог не найден или уже удалён', 'warning')
+
+    elif action == 'bulk_delete':
+        raw_ids = (request.form.get('selected_ids') or '').strip()
+        ids = [x for x in raw_ids.split(',') if x.isdigit()]
+        if ids:
+            placeholders = ','.join(['?'] * len(ids))
+            conn.execute(
+                f"UPDATE requests SET result_type_id=NULL WHERE result_type_id IN ({placeholders})",
+                ids
+            )
+            cur = conn.execute(
+                f"DELETE FROM result_types WHERE id IN ({placeholders})",
+                ids
+            )
+            conn.commit()
+            flash(f'Удалено итогов: {cur.rowcount}', 'success')
+        else:
+            flash('Не выбраны итоги для удаления', 'warning')
 
     conn.close()
     return redirect(url_for('admin.classifiers') + '#tab-result')
 
-
-# ─── AJAX: итоги работы — для модала в saved_filters ──────────────────────
 
 @admin_bp.route('/admin/result-types/inline', methods=['GET', 'POST'])
 @login_required
@@ -218,8 +229,6 @@ def result_types_inline():
     conn.close()
     return jsonify({'error': 'Неизвестное действие'}), 400
 
-
-# ─── УПРАВЛЕНИЕ ПОЛЬЗОВАТЕЛЯМИ ─────────────────────────────────────────
 
 @admin_bp.route('/admin/users', methods=['GET', 'POST'])
 @login_required
@@ -322,8 +331,6 @@ def manage_users():
     )
 
 
-# ─── СОХРАНЁННЫЕ ФИЛЬТРЫ ───────────────────────────────────────────────
-
 @admin_bp.route('/saved-filters', methods=['GET', 'POST'])
 @login_required
 def saved_filters():
@@ -407,9 +414,6 @@ def saved_filters():
         except Exception:
             p = {}
 
-        # Bugfix #5: исправлены несуществующие колонки:
-        # было: r.site_area_ha_min / r.site_build_area_m2_min
-        # стало: r.site_area_ha / r.site_build_area_m2
         q2 = "SELECT COUNT(*) FROM requests r WHERE 1=1"
         p2 = []
         if p.get('status'):      q2 += " AND r.status=?"; p2.append(p['status'])
