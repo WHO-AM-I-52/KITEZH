@@ -1,13 +1,14 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║ app.py                                                       ║
 # ║ v2.3: pb_import_bp зарегистрирован (импорт справочника)     ║
-# ║ fix: SECRET_KEY хранится в _secret.key, сессии живут   ║
+# ║ fix: SECRET_KEY хранится в _secret.key, сессии живут        ║
+# ║ fix: SESSION_LIFETIME 15 мин бездействия                    ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 import os
 from flask import Flask, session
 import sqlite3, os, json
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 from db import get_db, DB_PATH, BASE_DIR, UPLOADS_DIR, REPORTS_DIR
 from auth_utils import hash_pw, ADMIN_PERMISSIONS
@@ -34,6 +35,10 @@ else:
         except Exception:
             pass
         app.secret_key = _new_key
+
+# ─── Сессии: постоянные, живут 15 минут бездействия ──────────────────
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=15)
+app.config['SESSION_REFRESH_EACH_REQUEST'] = True   # обновляет срок при каждом запросе
 
 # ─── Blueprints ───────────────────────────────────────────────
 from phonebook_routes import phonebook_bp
