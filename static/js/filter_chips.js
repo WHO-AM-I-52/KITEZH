@@ -3,17 +3,29 @@
  * Быстрые chip-фильтры над таблицей обращений.
  * Фильтрует строки <tbody> без перезагрузки страницы.
  * Группы: status, date, employee, favorite
+ *
+ * fix: при клике на чип или сбросе всех чипов — удаляем page из URL
+ * (чтобы при F5/обновлении не вернуться на старую страницу с пустым результатом).
  */
 
 (function () {
   'use strict';
 
   const state = {
-    status: null,
+    status:   null,
     employee: null,
-    date: null,
-    favorite: null   // '1' | null
+    date:     null,
+    favorite: null
   };
+
+  // ─── URL-хелпер: удаляем page из адресной строки через history.replaceState
+  function resetPageInUrl() {
+    const url = new URL(window.location.href);
+    if (url.searchParams.has('page')) {
+      url.searchParams.delete('page');
+      history.replaceState(null, '', url.toString());
+    }
+  }
 
   function today() {
     return new Date().toISOString().slice(0, 10);
@@ -128,6 +140,8 @@
           setActiveChip(group, value);
         }
 
+        // fix: сбрасываем page из URL чтобы при F5 не вернуться на старую страницу
+        resetPageInUrl();
         applyFilters();
       });
     });
@@ -136,13 +150,15 @@
     if (resetBtn) {
       resetBtn.addEventListener('click', function (e) {
         e.preventDefault();
-        state.status = null;
+        state.status   = null;
         state.employee = null;
-        state.date = null;
+        state.date     = null;
         state.favorite = null;
         ['status', 'employee', 'date', 'favorite'].forEach(function (g) {
           setActiveChip(g, null);
         });
+        // fix: сбрасываем page из URL и при полном сбросе чипов
+        resetPageInUrl();
         applyFilters();
       });
     }
