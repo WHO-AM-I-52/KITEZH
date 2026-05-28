@@ -3,50 +3,83 @@
 # ║  Конвертер выгрузки ГИС НСИ (инвестплощадки) → текст        ║
 # ║  Формат 1: 1 площадка (атрибут|значение по строкам)         ║
 # ║  Формат 2: N площадок (строки=площадки, столбцы=атрибуты)   ║
+# ║  Формат 3: 1 площадка ГИС НСИ (шапка на стр.2, 3 столбца)  ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 import openpyxl
 import io
+import re
 
 
 def _clean(val):
-    """Приводит значение ячейки к строке, убирает лишние пробелы."""
     if val is None:
         return ''
     s = str(val).strip()
-    # Убираем HTML-теги если вдруг попали
-    import re
     s = re.sub(r'<[^>]+>', '', s)
     return s
 
 
-def _is_format1(ws):
+def _detect_format(ws):
     """
-    Определяет формат выгрузки:
-    Формат 1: 2 столбца (атрибут | значение), много строк.
-    Формат 2: много столбцов (1я строка = заголовки), много строк-площадок.
+    Возвращает: 'f3', 'f1', 'f2'
+
+    Формат 3 (ГИС НСИ одна площадка):
+      - 3 столбца
+      - строка 2 содержит 'Полные наименования атрибутов' или 'Значения атрибутов'
+    Формат 1:
+      - 2 столбца, много строк
+    Формат 2:
+      - всё остальное (много столбцов = таблица площадок)
     """
     max_col = ws.max_column
     max_row = ws.max_row
+
+    # Формат 3: 3 столбца И строка 2 похожа на шапку ГИС НСИ
+    if max_col <= 4 and max_row >= 3:
+        row2 = [_clean(c.value).lower() for c in next(ws.iter_rows(min_row=2, max_row=2))]
+        row2_text = ' '.join(row2)
+        if 'атрибут' in row2_text or 'значени' in row2_text:
+            return 'f3'
+
+    # Формат 1: 2 столбца
     if max_col <= 2 and max_row >= 3:
-        return True
-    return False
+        return 'f1'
+
+    return 'f2'
 
 
 def parse_format1(ws):
     """
     Формат 1: 1 площадка.
     Каждая строка: (название атрибута, значение).
-    Возвращает список строк для вставки в чат.
     """
     lines = []
     for row in ws.iter_rows(min_row=1):
         cells = [_clean(c.value) for c in row]
-        # Берём первые два столбца
         attr = cells[0] if len(cells) > 0 else ''
         val  = cells[1] if len(cells) > 1 else ''
         if not attr:
             continue
+        val_out = val if val else 'ПУСТО'
+        lines.append(f"{attr} → {val_out}")
+    return lines
+
+
+def parse_format3(ws):
+    """
+    Формат 3: 1 площадка из ГИС НСИ.
+    Строка 1 — заголовок каталога (пропускаем).
+    Строка 2 — шапка: [Полные наименования атрибутов, Описание атрибута, Значения атрибутов].
+    Строки 3+ — данные: col A = атрибут, col B = описание, col C = значение.
+    """
+    lines = []
+    for row in ws.iter_rows(min_row=3):
+        cells = [_clean(c.value) for c in row]
+        attr = cells[0] if len(cells) > 0 else ''
+        val  = cells[2] if len(cells) > 2 else ''
+        if not attr:
+            continue
+        # Пропускаем служебные/технические поля (архивные, координаты и т.п.)
         val_out = val if val else 'ПУСТО'
         lines.append(f"{attr} → {val_out}")
     return lines
@@ -57,7 +90,6 @@ def parse_format2(ws):
     Формат 2: N площадок.
     Строка 1 = заголовки атрибутов.
     Строки 2+ = данные площадок.
-    Возвращает список блоков (каждый блок — список строк).
     """
     headers = []
     for cell in next(ws.iter_rows(min_row=1, max_row=1)):
@@ -66,7 +98,6 @@ def parse_format2(ws):
     blocks = []
     for row_idx, row in enumerate(ws.iter_rows(min_row=2), start=2):
         cells = [_clean(c.value) for c in row]
-        # Пропускаем полностью пустые строки
         if not any(cells):
             continue
         lines = [f"=== ПЛОЩАДКА {row_idx - 1} ==="]
@@ -85,7 +116,7 @@ def convert_excel_to_text(file_bytes):
     Принимает bytes файла .xlsx.
     Возвращает dict:
       {
-        'format': 1 или 2,
+        'format': 1, 2 или 3,
         'count': количество площадок,
         'text': итоговый текст для вставки в чат,
         'error': None или строка ошибки
@@ -95,7 +126,19 @@ def convert_excel_to_text(file_bytes):
         wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
         ws = wb.active
 
-        if _is_format1(ws):
+        fmt = _detect_format(ws)
+
+        if fmt == 'f3':
+            lines = parse_format3(ws)
+            text = '\n'.join(lines)
+            return {
+                'format': 3,
+                'count': 1,
+                'text': text,
+                'error': None
+            }
+
+        elif fmt == 'f1':
             lines = parse_format1(ws)
             text = '\n'.join(lines)
             return {
@@ -104,6 +147,7 @@ def convert_excel_to_text(file_bytes):
                 'text': text,
                 'error': None
             }
+
         else:
             blocks = parse_format2(ws)
             text = '\n\n'.join(['\n'.join(b) for b in blocks])
