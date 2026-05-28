@@ -1,6 +1,6 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║               tools/investmap_export.py                     ║
-# ║  Конвертер выгрузки ГИС НСИ (инвестплощадки) → текст        ║
+# ║  Конвертер выгрузки ГИС НСИ (инвестплощадки) → текст + dict ║
 # ║  Формат 1: 1 площадка (атрибут|значение по строкам)         ║
 # ║  Формат 2: N площадок (строки=площадки, столбцы=атрибуты)   ║
 # ║  Формат 3: 1 площадка ГИС НСИ (шапка на стр.2, 3 столбца)  ║
@@ -9,87 +9,131 @@
 import openpyxl
 import io
 import re
+import html
+
+# Служебные поля — не включать в data и не считать в оценке
+SERVICE_FIELDS = {
+    'global_id',
+    'код во внешнем источнике',
+    'тип последнего изменения',
+    'дата последнего изменения',
+    'дата создания',
+    'пользователь/система, производивший изменение',
+    'пользователь/система, производивший изменения',
+}
 
 
 def _clean(val):
+    """Нормализация значения ячейки: HTML-entities, теги, пробелы."""
     if val is None:
         return ''
     s = str(val).strip()
+    # HTML-теги
     s = re.sub(r'<[^>]+>', '', s)
+    # HTML-entities
+    s = html.unescape(s)
+    # Неразрывные пробелы
+    s = s.replace('\u00a0', ' ').strip()
     return s
+
+
+def _is_archive(attr_name):
+    """Поле с (архив) в названии — игнорировать."""
+    return '(архив)' in attr_name.lower()
+
+
+def _is_service(attr_name):
+    """Служебное поле системы ГИС НСИ — игнорировать."""
+    return attr_name.lower().strip() in SERVICE_FIELDS
+
+
+def _to_empty(val):
+    """Пустые/недопустимые значения → ПУСТО."""
+    if not val:
+        return 'ПУСТО'
+    lower = val.lower().strip()
+    if lower in ('-', '—', 'нет данных', 'н/д', 'не указано', 'не заполнено'):
+        return 'ПУСТО'
+    return val
 
 
 def _detect_format(ws):
     """
     Возвращает: 'f3', 'f1', 'f2'
-
-    Формат 3 (ГИС НСИ одна площадка):
-      - 3 столбца
-      - строка 2 содержит 'Полные наименования атрибутов' или 'Значения атрибутов'
-    Формат 1:
-      - 2 столбца, много строк
-    Формат 2:
-      - всё остальное (много столбцов = таблица площадок)
+    Формат 3 (ГИС НСИ одна площадка): 3 столбца, строка 2 — шапка с 'атрибут'/'значени'
+    Формат 1: 2 столбца, много строк
+    Формат 2: таблица — много столбцов
     """
     max_col = ws.max_column
     max_row = ws.max_row
 
-    # Формат 3: 3 столбца И строка 2 похожа на шапку ГИС НСИ
     if max_col <= 4 and max_row >= 3:
         row2 = [_clean(c.value).lower() for c in next(ws.iter_rows(min_row=2, max_row=2))]
         row2_text = ' '.join(row2)
         if 'атрибут' in row2_text or 'значени' in row2_text:
             return 'f3'
 
-    # Формат 1: 2 столбца
     if max_col <= 2 and max_row >= 3:
         return 'f1'
 
     return 'f2'
 
 
+def _build_output(attr, val):
+    """Возвращает (текстовая строка, val_normalized) или None если поле пропустить."""
+    if _is_archive(attr) or _is_service(attr):
+        return None
+    val_norm = _to_empty(_clean(val) if val else '')
+    return f"{attr} → {val_norm}", val_norm
+
+
 def parse_format1(ws):
-    """
-    Формат 1: 1 площадка.
-    Каждая строка: (название атрибута, значение).
-    """
     lines = []
+    data = {}
     for row in ws.iter_rows(min_row=1):
         cells = [_clean(c.value) for c in row]
         attr = cells[0] if len(cells) > 0 else ''
         val  = cells[1] if len(cells) > 1 else ''
         if not attr:
             continue
-        val_out = val if val else 'ПУСТО'
-        lines.append(f"{attr} → {val_out}")
-    return lines
+        result = _build_output(attr, val)
+        if result is None:
+            continue
+        line, val_norm = result
+        lines.append(line)
+        data[attr] = val_norm
+    return lines, data
 
 
 def parse_format3(ws):
     """
-    Формат 3: 1 площадка из ГИС НСИ.
+    Формат 3: 1 площадка ГИС НСИ.
     Строка 1 — заголовок каталога (пропускаем).
-    Строка 2 — шапка: [Полные наименования атрибутов, Описание атрибута, Значения атрибутов].
-    Строки 3+ — данные: col A = атрибут, col B = описание, col C = значение.
+    Строка 2 — шапка колонок (пропускаем).
+    Строки 3+: col A = атрибут, col B = описание, col C = значение.
     """
     lines = []
+    data = {}
     for row in ws.iter_rows(min_row=3):
         cells = [_clean(c.value) for c in row]
         attr = cells[0] if len(cells) > 0 else ''
         val  = cells[2] if len(cells) > 2 else ''
         if not attr:
             continue
-        # Пропускаем служебные/технические поля (архивные, координаты и т.п.)
-        val_out = val if val else 'ПУСТО'
-        lines.append(f"{attr} → {val_out}")
-    return lines
+        result = _build_output(attr, val)
+        if result is None:
+            continue
+        line, val_norm = result
+        lines.append(line)
+        data[attr] = val_norm
+    return lines, data
 
 
 def parse_format2(ws):
     """
     Формат 2: N площадок.
-    Строка 1 = заголовки атрибутов.
-    Строки 2+ = данные площадок.
+    Строка 1 = заголовки атрибутов. Строки 2+ = данные.
+    Возвращает список блоков (lines, data) — по одному на площадку.
     """
     headers = []
     for cell in next(ws.iter_rows(min_row=1, max_row=1)):
@@ -101,12 +145,17 @@ def parse_format2(ws):
         if not any(cells):
             continue
         lines = [f"=== ПЛОЩАДКА {row_idx - 1} ==="]
+        data = {}
         for h, v in zip(headers, cells):
             if not h:
                 continue
-            val_out = v if v else 'ПУСТО'
-            lines.append(f"{h} → {val_out}")
-        blocks.append(lines)
+            result = _build_output(h, v)
+            if result is None:
+                continue
+            line, val_norm = result
+            lines.append(line)
+            data[h] = val_norm
+        blocks.append((lines, data))
     return blocks
 
 
@@ -119,49 +168,28 @@ def convert_excel_to_text(file_bytes):
         'format': 1, 2 или 3,
         'count': количество площадок,
         'text': итоговый текст для вставки в чат,
+        'data': dict {атрибут: значение} для f1/f3, list[dict] для f2,
         'error': None или строка ошибки
       }
     """
     try:
         wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
         ws = wb.active
-
         fmt = _detect_format(ws)
 
         if fmt == 'f3':
-            lines = parse_format3(ws)
-            text = '\n'.join(lines)
-            return {
-                'format': 3,
-                'count': 1,
-                'text': text,
-                'error': None
-            }
+            lines, data = parse_format3(ws)
+            return {'format': 3, 'count': 1, 'text': '\n'.join(lines), 'data': data, 'error': None}
 
         elif fmt == 'f1':
-            lines = parse_format1(ws)
-            text = '\n'.join(lines)
-            return {
-                'format': 1,
-                'count': 1,
-                'text': text,
-                'error': None
-            }
+            lines, data = parse_format1(ws)
+            return {'format': 1, 'count': 1, 'text': '\n'.join(lines), 'data': data, 'error': None}
 
         else:
             blocks = parse_format2(ws)
-            text = '\n\n'.join(['\n'.join(b) for b in blocks])
-            return {
-                'format': 2,
-                'count': len(blocks),
-                'text': text,
-                'error': None
-            }
+            text = '\n\n'.join(['\n'.join(b[0]) for b in blocks])
+            data_list = [b[1] for b in blocks]
+            return {'format': 2, 'count': len(blocks), 'text': text, 'data': data_list, 'error': None}
 
     except Exception as e:
-        return {
-            'format': None,
-            'count': 0,
-            'text': '',
-            'error': str(e)
-        }
+        return {'format': None, 'count': 0, 'text': '', 'data': {}, 'error': str(e)}
