@@ -1,7 +1,6 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║ request_routes.py                                            ║
-# ║ v2.2: фикс дублирования номеров (request_counters)          ║
-# ║ feat #19: пагинация списка обращений (PER_PAGE=25)           ║
+# ║ v2.3: расчёт overdue_days на сервере в SQL                  ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from flask import (
@@ -35,7 +34,6 @@ def _build_filter(sf, df, dt, af, ef, src_f, search, quick, user_id, for_count=F
 
     for_count=True — режим для SELECT COUNT(*), где favorite_flag не вычисляется.
     for_count=False — режим для основного SELECT, где favorite_flag = CASE WHEN ...
-    fix #34
     """
     where = "WHERE 1=1 "
     params = [user_id]
@@ -124,12 +122,22 @@ def index():
     page        = min(page, total_pages)
     offset      = (page - 1) * PER_PAGE
 
+    norm_days = dash['kpi']['norm_days']
+
     # ─── Основной запрос: список обращений с LIMIT/OFFSET ─────────────
+    # overdue_days — количество дней с момента создания (NULL если нет даты).
+    # overdue      — 1 если обращение активное и просрочено, иначе 0.
+    # Оба поля вычисляются на сервере — шаблон не делает арифметику строк.
     where, params = _build_filter(sf, df, dt, af, ef, src_f, search, quick, uid, for_count=False)
     q = (
         "SELECT r.*, u.full_name AS employee_name, "
         "ass.full_name AS assigned_name, "
-        "CASE WHEN f.id IS NULL THEN 0 ELSE 1 END AS favorite_flag "
+        "CASE WHEN f.id IS NULL THEN 0 ELSE 1 END AS favorite_flag, "
+        f"CAST(julianday('now') - julianday(r.request_date) AS INTEGER) AS overdue_days, "
+        f"CASE WHEN r.status IN ('draft','review','accepted') "
+        f"     AND r.request_date IS NOT NULL "
+        f"     AND julianday('now') - julianday(r.request_date) > {norm_days} "
+        f"THEN 1 ELSE 0 END AS overdue "
         "FROM requests r "
         "LEFT JOIN users u   ON r.created_by  = u.id "
         "LEFT JOIN users ass ON r.assigned_to = ass.id "
@@ -195,7 +203,6 @@ def new_request():
         now    = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         action = request.form.get('action', 'save')
 
-        # ── Ветка OCR ─────────────────────────────────────────────────────
         if action == 'ocr':
             ocr_file = request.files.get('ocr_form')
             if not ocr_file or not ocr_file.filename:
@@ -259,7 +266,6 @@ def new_request():
                     subjects=subjects2, results=results2, ocr_message=msg
                 )
 
-        # ── Обычная ветка сохранения ───────────────────────────────
         inn = request.form.get('applicant_inn', '').strip()
         ok_inn, inn_reason = validate_inn(inn)
         if inn_reason == 'format':
@@ -300,7 +306,6 @@ def new_request():
         flash('Обращение сохранено', 'success')
         return redirect(url_for('requests.index'))
 
-    # ── GET: чистая форма ─────────────────────────────────────────────────────
     lf, di, src, emp, subjects, results = get_classifiers(conn)
     conn.close()
     return render_template(
@@ -483,7 +488,6 @@ def confirm_request(rid):
 
     if action == 'accept':
         year     = datetime.now().year
-        # ── Атомарная нумерация через таблицу-счётчик (fix: дубли при удалении) ──
         num      = next_request_number(conn, year)
         assigned = _int(request.form.get('assigned_to')) or req['assigned_to']
 
@@ -653,7 +657,6 @@ def assign_number(rid):
         return redirect(url_for('requests.view_request', rid=rid))
 
     year = datetime.now().year
-    # ── Атомарная нумерация через таблицу-счётчик (fix: дубли при удалении) ──
     num  = next_request_number(conn, year)
 
     conn.execute("UPDATE requests SET request_number=? WHERE id=?", (num, rid))

@@ -141,8 +141,6 @@
 
 {# ===== КНОПКИ ДЕЙСТВИЙ ===== #}
 <div class="mb-2 d-flex gap-2 align-items-center flex-wrap">
-
-  {# ── Стандартная выгрузка Excel ── #}
   <a href="{{ url_for('report.report',
         date_from=filters.get('date_from',''),
         date_to=filters.get('date_to',''),
@@ -151,11 +149,9 @@
      title="Стандартный отчёт по текущим фильтрам">
     <i class="bi bi-file-earmark-excel me-1"></i>Выгрузить Excel
   </a>
-
   <a href="{{ url_for('requests.dashboard') }}" class="btn btn-sm btn-outline-primary">
     <i class="bi bi-bar-chart-line"></i> Открыть дашборд
   </a>
-
   {% if active_filter_id %}
   <span class="badge bg-primary">
     <i class="bi bi-funnel-fill me-1"></i>Активный фильтр
@@ -191,13 +187,8 @@
       </td></tr>
       {% endif %}
       {% for r in requests %}
-      {% if r.request_date %}
-        {% set rd = r.request_date[:10] %}
-        {% set overdue = r.status in ('draft','review','accepted') and (today_str | string) > rd and ((today_str[:4]|int - rd[:4]|int)*365 + (today_str[5:7]|int - rd[5:7]|int)*30 + (today_str[8:10]|int - rd[8:10]|int)) > 7 %}
-      {% else %}
-        {% set overdue = false %}
-      {% endif %}
-      <tr class="{{ 'table-danger' if overdue else '' }}"
+      {# overdue вычислен на сервере в SQL — булево поле 0/1 #}
+      <tr class="{{ 'table-danger' if r.overdue else '' }}"
           data-preview-id="{{ r.id }}"
           data-status="{{ r.status }}"
           data-employee="{{ r.assigned_name or r.employee_name or '' }}"
@@ -214,13 +205,18 @@
         <td><a href="{{ url_for('requests.view_request', rid=r.id) }}" class="fw-bold text-decoration-none">
           {{ r.request_number or ('ЗУ-черн.' if r.status=='draft' else '—') }}
         </a></td>
-        <td class="text-nowrap">{{ r.request_date or '—' }}</td>
+        <td class="text-nowrap">
+          {{ r.request_date or '—' }}
+          {% if r.overdue %}
+          <span class="badge bg-danger ms-1" title="Просрочено на {{ r.overdue_days }} дн.">{{ r.overdue_days }}д</span>
+          {% endif %}
+        </td>
         <td>
           {% if r.status=='draft' %}<span class="badge bg-secondary">Черновик</span>
           {% elif r.status=='review' %}<span class="badge" style="background:#fd7e14">На проверке</span>
           {% elif r.status=='accepted' %}<span class="badge bg-primary">В работе</span>
           {% elif r.status=='answered' %}<span class="badge bg-success">Отвечено</span>{% endif %}
-          {% if overdue %}<i class="bi bi-exclamation-circle text-danger ms-1" title="Просрочено"></i>{% endif %}
+          {% if r.overdue %}<i class="bi bi-exclamation-circle text-danger ms-1" title="Просрочено"></i>{% endif %}
         </td>
         <td>
           {% if r.source_type %}{% for s in r.source_type.split(',') %}<span class="badge bg-light text-dark border" style="font-size:10px">{{ s.strip() }}</span>{% endfor %}
@@ -250,22 +246,15 @@
 
 {# ===== ФУТЕР: счётчик + пагинация ===== #}
 <div class="mt-2 d-flex align-items-center flex-wrap gap-3">
-
-  {# Легенда просроченных #}
   <div class="small text-muted">
     <span class="badge bg-danger me-1"> </span>
     Красные строки — активные обращения старше {{dash.kpi.norm_days}} дней без ответа
   </div>
-
-  {# Счётчик записей #}
   <div class="small text-muted ms-auto">
     Показано <strong>{{ requests|length }}</strong> из <strong>{{ total_filtered }}</strong>
     {% if total_filtered != total_all %}(всего в базе: {{ total_all }}){% endif %}
   </div>
 
-  {# ── Пагинация ─────────────────────────────────────────────────────────── #}
-  {# Алгоритм: всегда показываем стр.1 и последнюю; окно ±2 от текущей;      #}
-  {# «…» ставим явно через переменную prev_shown — надёжнее loop.changed.    #}
   {% if total_pages > 1 %}
   {% set qs_parts = [] %}
   {% for k,v in filters.items() %}{% if v %}{% set _ = qs_parts.append(k ~ '=' ~ v) %}{% endif %}{% endfor %}
@@ -275,19 +264,14 @@
 
   <nav aria-label="Страницы обращений">
     <ul class="pagination pagination-sm mb-0">
-
-      {# ← Назад #}
       <li class="page-item {{ 'disabled' if page <= 1 }}">
         <a class="page-link" href="?{{ qs }}page={{ page - 1 }}" aria-label="Назад">
           <i class="bi bi-chevron-left"></i>
         </a>
       </li>
-
-      {# Номера страниц с многоточиями #}
       {% set prev_shown = namespace(val=0) %}
       {% for p in range(1, total_pages + 1) %}
         {% if p == 1 or p == total_pages or (p >= page - 2 and p <= page + 2) %}
-          {# Вставляем «…» если между предыдущей показанной страницей и текущей есть пропуск #}
           {% if prev_shown.val > 0 and p - prev_shown.val > 1 %}
           <li class="page-item disabled"><span class="page-link">…</span></li>
           {% endif %}
@@ -297,18 +281,14 @@
           {% set prev_shown.val = p %}
         {% endif %}
       {% endfor %}
-
-      {# → Вперёд #}
       <li class="page-item {{ 'disabled' if page >= total_pages }}">
         <a class="page-link" href="?{{ qs }}page={{ page + 1 }}" aria-label="Вперёд">
           <i class="bi bi-chevron-right"></i>
         </a>
       </li>
-
     </ul>
   </nav>
   {% endif %}
-
 </div>
 
 <script src="{{ url_for('static', filename='js/filter_chips.js') }}"></script>
@@ -316,7 +296,6 @@
 
 {% block scripts %}
 <script>
-// ===== POPOVER ПРЕВЬЮ =====
 (function () {
   'use strict';
 
@@ -388,7 +367,6 @@
 
   document.querySelectorAll('tr[data-preview-id]').forEach(function(tr) {
     var rid = tr.dataset.previewId;
-
     tr.addEventListener('mouseenter', function() {
       clearTimeout(timer);
       currentTr = tr;
@@ -396,7 +374,6 @@
         fetchAndOpen(tr, rid);
       }, 300);
     });
-
     tr.addEventListener('mouseleave', function() {
       clearTimeout(timer);
       setTimeout(function() {
