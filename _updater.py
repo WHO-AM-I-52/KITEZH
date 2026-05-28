@@ -360,6 +360,28 @@ def ensure_github_release():
         print(f"  [Релиз] Не удалось создать {tag}: {msg}")
 
 
+def run_sync_changelog():
+    """Синхронизирует changelog.py с GitHub Releases после обновления.
+
+    fix: ранее sync_changelog.py запускался только из start SONAR.bat,
+    поэтому при обновлении через кнопку в интерфейсе раздел «Версии»
+    не обновлялся до следующего перезапуска системы.
+    """
+    sync_path = os.path.join(BASE_DIR, "sync_changelog.py")
+    if not os.path.exists(sync_path):
+        print("  [Changelog] sync_changelog.py не найден — пропуск.")
+        return
+    print("  Синхронизация changelog с GitHub...")
+    try:
+        import importlib.util
+        spec   = importlib.util.spec_from_file_location("sync_changelog", sync_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        module.main()
+    except Exception as e:
+        print(f"  [Changelog] Ошибка синхронизации: {e}")
+
+
 def main():
     if "--check" in sys.argv:
         code = check_for_updates()
@@ -418,6 +440,7 @@ def main():
     print()
 
     ensure_github_release()
+    run_sync_changelog()
 
     print()
     print("  Обновление завершено. База данных и файлы пользователей не тронуты.")
