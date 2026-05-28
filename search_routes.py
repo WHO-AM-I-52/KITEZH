@@ -1,7 +1,7 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║ search_routes.py                                             ║
 # ║ GlobalSearch: быстрый API + полная страница результатов     ║
-# ║ Фильтр по can_view_all: пользователь видит только свои   ║
+# ║ Фильтр по can_view_all: пользователь видит только свои      ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, request, jsonify, render_template, session
@@ -34,24 +34,27 @@ def _can_view_all() -> bool:
     return session.get('role') == 'admin' or bool(session.get('perm_can_view_all', 0))
 
 
-def _build_query(q: str, limit: int):
-    """Строит SQL и params для поиска по всем SEARCH_FIELDS.
-    Если can_view_all=False — ограничивает выборку обращениями пользователя.
+def _scope():
+    """Возвращает (clause, params) для ограничения видимости обращений.
+
+    Если у пользователя нет права can_view_all — добавляет условие
+    'только свои (created_by или assigned_to)'.
     """
+    if _can_view_all():
+        return '', []
+    user_id = session.get('user_id')
+    return ' AND (r.created_by=? OR r.assigned_to=?)', [user_id, user_id]
+
+
+def _build_query(q: str, limit: int):
+    """Строит SQL и params для поиска по всем SEARCH_FIELDS."""
     pattern = f'%{q}%'
     where_parts = ' OR '.join(f"r.{f['col']} LIKE ?" for f in SEARCH_FIELDS)
     params = [pattern] * len(SEARCH_FIELDS)
 
     extra_cols = ',\n            '.join(f'r.{c}' for c in _SELECT_COLS)
 
-    # ─── Фильтр видимости: только свои если нет права can_view_all ───
-    if _can_view_all():
-        scope_clause = ''
-        scope_params = []
-    else:
-        user_id = session.get('user_id')
-        scope_clause = ' AND (r.created_by=? OR r.assigned_to=?)'
-        scope_params = [user_id, user_id]
+    scope_clause, scope_params = _scope()
 
     sql = f"""
         SELECT
@@ -76,13 +79,7 @@ def _build_count_query(q: str):
     where_parts = ' OR '.join(f"r.{f['col']} LIKE ?" for f in SEARCH_FIELDS)
     params = [pattern] * len(SEARCH_FIELDS)
 
-    if _can_view_all():
-        scope_clause = ''
-        scope_params = []
-    else:
-        user_id = session.get('user_id')
-        scope_clause = ' AND (r.created_by=? OR r.assigned_to=?)'
-        scope_params = [user_id, user_id]
+    scope_clause, scope_params = _scope()
 
     sql = f"""
         SELECT COUNT(*) AS cnt
