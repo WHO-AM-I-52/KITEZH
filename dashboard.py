@@ -27,37 +27,26 @@ def build_dash(conn, period):
 
     pw_sql, pw_params = pw()
 
-    # ─── ОБЩЕЕ КОЛИЧЕСТВО ПО СТАТУСАМ ────────────────────────────────────────
-    # ВАЖНО: total и статусы считаются БЕЗ фильтра периода,
-    # чтобы счётчики на главной всегда показывали все обращения.
-    def cnt_all(status=None):
-        if status:
-            return conn.execute(
-                "SELECT COUNT(*) FROM requests r WHERE r.status=?",
-                [status]
-            ).fetchone()[0]
-        return conn.execute(
-            "SELECT COUNT(*) FROM requests r"
-        ).fetchone()[0]
+    # ─── ОБЩЕЕ КОЛИЧЕСТВО ПО СТАТУСАМ + ПРОСРОЧКА (1 запрос) ────────────────
+    # ВАЖНО: считается БЕЗ фильтра периода — счётчики всегда показывают все обращения
+    status_row = conn.execute("""
+        SELECT
+            COUNT(*)                                                        AS total,
+            SUM(status='draft')                                             AS draft,
+            SUM(status='review')                                            AS review,
+            SUM(status='accepted')                                          AS accepted,
+            SUM(status='answered')                                          AS answered,
+            SUM(status IN ('draft','review','accepted')
+                AND julianday('now')-julianday(request_date)>7)             AS overdue_active
+        FROM requests r
+    """).fetchone()
 
-    # Для графиков и аналитики — с фильтром периода
-    def cnt(status=None):
-        if status:
-            return conn.execute(
-                f"SELECT COUNT(*) FROM requests r WHERE r.status=?{pw_sql}",
-                [status] + pw_params
-            ).fetchone()[0]
-        return conn.execute(
-            f"SELECT COUNT(*) FROM requests r WHERE 1=1{pw_sql}",
-            pw_params
-        ).fetchone()[0]
-
-    # ─── ПРОСРОЧЕННЫЕ (всегда без фильтра периода) ───────────────────────────
-    overdue_active_all = conn.execute(
-        "SELECT COUNT(*) FROM requests r "
-        "WHERE r.status IN ('draft','review','accepted') "
-        "AND julianday('now')-julianday(r.request_date)>7"
-    ).fetchone()[0]
+    total_all        = status_row[0] or 0
+    draft_all        = status_row[1] or 0
+    review_all       = status_row[2] or 0
+    accepted_all     = status_row[3] or 0
+    answered_all     = status_row[4] or 0
+    overdue_active_all = status_row[5] or 0
 
     # ─── СУММАРНЫЕ ПОКАЗАТЕЛИ ────────────────────────────────────────────────
     sums = conn.execute(
@@ -129,49 +118,53 @@ def build_dash(conn, period):
         f"GROUP BY 1 ORDER BY 2 DESC LIMIT 12", pw_params
     ).fetchall()
 
-    # ─── ТИП ПЛОЩАДКИ ────────────────────────────────────────────────────────
-    st_free = conn.execute(
-        f"SELECT COUNT(*) FROM requests r WHERE site_type_free=1{pw_sql}",
-        pw_params
-    ).fetchone()[0]
-    st_ex = conn.execute(
-        f"SELECT COUNT(*) FROM requests r WHERE site_type_existing=1{pw_sql}",
-        pw_params
-    ).fetchone()[0]
-    st_both = conn.execute(
-        f"SELECT COUNT(*) FROM requests r "
-        f"WHERE site_type_free=1 AND site_type_existing=1{pw_sql}",
-        pw_params
-    ).fetchone()[0]
+    # ─── ТИП ПЛОЩАДКИ (1 запрос вместо 3) ───────────────────────────────────
+    st_row = conn.execute(
+        f"""SELECT
+            SUM(site_type_free=1)                           AS free,
+            SUM(site_type_existing=1)                       AS ex,
+            SUM(site_type_free=1 AND site_type_existing=1)  AS both
+        FROM requests r WHERE 1=1{pw_sql}""", pw_params
+    ).fetchone()
+    st_free = st_row[0] or 0
+    st_ex   = st_row[1] or 0
+    st_both = st_row[2] or 0
 
-    # ─── РАСПРЕДЕЛЕНИЕ ПО ПЛОЩАДИ (v1.9.1: используем _min поля) ────────────
-    area_buckets = [
-        ('<0.1 га', 0, .1), ('0.1–0.5', .1, .5), ('0.5–1', .5, 1),
-        ('1–2', 1, 2), ('2–5', 2, 5), ('5–10', 5, 10), ('>10', 10, 999999)
+    # ─── РАСПРЕДЕЛЕНИЕ ПО ПЛОЩАДИ (1 запрос вместо 7) ───────────────────────
+    area_row = conn.execute(
+        f"""SELECT
+            SUM(site_area_ha_min < 0.1)                                 AS b0,
+            SUM(site_area_ha_min >= 0.1  AND site_area_ha_min < 0.5)    AS b1,
+            SUM(site_area_ha_min >= 0.5  AND site_area_ha_min < 1)      AS b2,
+            SUM(site_area_ha_min >= 1    AND site_area_ha_min < 2)      AS b3,
+            SUM(site_area_ha_min >= 2    AND site_area_ha_min < 5)      AS b4,
+            SUM(site_area_ha_min >= 5    AND site_area_ha_min < 10)     AS b5,
+            SUM(site_area_ha_min >= 10)                                 AS b6
+        FROM requests r WHERE site_area_ha_min IS NOT NULL{pw_sql}""", pw_params
+    ).fetchone()
+
+    area_data = [
+        {'label': l, 'count': area_row[i] or 0}
+        for i, l in enumerate(['<0.1 га', '0.1–0.5', '0.5–1', '1–2', '2–5', '5–10', '>10'])
     ]
-    build_buckets = [
-        ('<100 м²', 0, 100), ('100–300', 100, 300), ('300–500', 300, 500),
-        ('500–1000', 500, 1000), ('1000–3000', 1000, 3000),
-        ('3000–5000', 3000, 5000), ('>5000', 5000, 999999)
+
+    # ─── РАСПРЕДЕЛЕНИЕ ПО ПЛОЩАДИ ЗАСТРОЙКИ (1 запрос вместо 7) ─────────────
+    build_row = conn.execute(
+        f"""SELECT
+            SUM(site_build_area_m2_min < 100)                                       AS b0,
+            SUM(site_build_area_m2_min >= 100   AND site_build_area_m2_min < 300)   AS b1,
+            SUM(site_build_area_m2_min >= 300   AND site_build_area_m2_min < 500)   AS b2,
+            SUM(site_build_area_m2_min >= 500   AND site_build_area_m2_min < 1000)  AS b3,
+            SUM(site_build_area_m2_min >= 1000  AND site_build_area_m2_min < 3000)  AS b4,
+            SUM(site_build_area_m2_min >= 3000  AND site_build_area_m2_min < 5000)  AS b5,
+            SUM(site_build_area_m2_min >= 5000)                                     AS b6
+        FROM requests r WHERE site_build_area_m2_min IS NOT NULL{pw_sql}""", pw_params
+    ).fetchone()
+
+    build_data = [
+        {'label': l, 'count': build_row[i] or 0}
+        for i, l in enumerate(['<100 м²', '100–300', '300–500', '500–1000', '1000–3000', '3000–5000', '>5000'])
     ]
-
-    area_data = [{
-        'label': l,
-        'count': conn.execute(
-            f"SELECT COUNT(*) FROM requests r "
-            f"WHERE site_area_ha_min>=? AND site_area_ha_min<?{pw_sql}",
-            [lo, hi] + pw_params
-        ).fetchone()[0]
-    } for l, lo, hi in area_buckets]
-
-    build_data = [{
-        'label': l,
-        'count': conn.execute(
-            f"SELECT COUNT(*) FROM requests r "
-            f"WHERE site_build_area_m2_min>=? AND site_build_area_m2_min<?{pw_sql}",
-            [lo, hi] + pw_params
-        ).fetchone()[0]
-    } for l, lo, hi in build_buckets]
 
     # ─── ИСТОЧНИКИ ОБРАЩЕНИЙ ─────────────────────────────────────────────────
     src_rows = conn.execute(
@@ -191,11 +184,11 @@ def build_dash(conn, period):
     return {
         'period':         period,
         # Счётчики — всегда все записи без фильтра периода
-        'total':          cnt_all(),
-        'draft':          cnt_all('draft'),
-        'review':         cnt_all('review'),
-        'accepted':       cnt_all('accepted'),
-        'answered':       cnt_all('answered'),
+        'total':          total_all,
+        'draft':          draft_all,
+        'review':         review_all,
+        'accepted':       accepted_all,
+        'answered':       answered_all,
         'overdue_active': overdue_active_all,
         # Аналитика — за выбранный период
         'investment_sum': float(sums[0]) if sums else 0,
@@ -210,7 +203,7 @@ def build_dash(conn, period):
             'existing':      st_ex,
             'both':          st_both,
             'only_free':     st_free - st_both,
-            'only_existing': st_ex - st_both,
+            'only_existing': st_ex  - st_both,
         },
         'area_data':      area_data,
         'build_data':     build_data,
