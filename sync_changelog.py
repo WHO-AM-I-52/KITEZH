@@ -9,6 +9,7 @@ REPO_NAME = "SONAR"
 BRANCH = "main"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CHANGELOG_PATH = os.path.join(BASE_DIR, "changelog.py")
+ROADMAP_PATH = os.path.join(BASE_DIR, "roadmap.py")
 
 
 def load_token():
@@ -87,10 +88,10 @@ def fetch_roadmap():
     roadmap = []
 
     STATUS_MAP = {
-        "\u0412 работе":      "in_progress",
-        "\u0417апланировано": "planned",
-        "\u0418деи":          "idea",
-        "\u0420еализовано":   "done",
+        "\u0412 \u0440\u0430\u0431\u043e\u0442\u0435":      "in_progress",
+        "\u0417\u0430\u043f\u043b\u0430\u043d\u0438\u0440\u043e\u0432\u0430\u043d\u043e": "planned",
+        "\u0418\u0434\u0435\u0438":          "idea",
+        "\u0420\u0435\u0430\u043b\u0438\u0437\u043e\u0432\u0430\u043d\u043e":   "done",
     }
 
     current_status = "planned"
@@ -131,8 +132,8 @@ def fetch_roadmap():
     return roadmap
 
 
-def write_changelog(changelog, roadmap):
-    """Генерирует changelog.py с корректным экранированием строк через repr()."""
+def write_changelog(changelog):
+    """Записывает только CHANGELOG в changelog.py."""
     lines = ["CHANGELOG = [\n"]
     for entry in changelog:
         lines.append("    {\n")
@@ -143,13 +144,21 @@ def write_changelog(changelog, roadmap):
             lines.append(f'            {_py_str(c)},\n')
         lines.append("        ],\n")
         lines.append("    },\n")
-    lines.append("]\n\n")
+    lines.append("]\n")
 
-    lines.append("ROADMAP = [\n")
+    with open(CHANGELOG_PATH, "w", encoding="utf-8") as f:
+        f.writelines(lines)
+
+
+def write_roadmap(roadmap):
+    """Записывает только ROADMAP в roadmap.py."""
+    lines = ["ROADMAP = [\n"]
     for entry in roadmap:
         lines.append("    {\n")
+        lines.append(f'        "version": {_py_str(entry.get("version", ""))},\n')
         lines.append(f'        "title": {_py_str(entry["title"])},\n')
         lines.append(f'        "status": {_py_str(entry["status"])},\n')
+        lines.append(f'        "eta": {_py_str(entry.get("eta", ""))},\n')
         lines.append('        "points": [\n')
         for p in entry["points"]:
             lines.append(f'            {_py_str(p)},\n')
@@ -157,7 +166,7 @@ def write_changelog(changelog, roadmap):
         lines.append("    },\n")
     lines.append("]\n")
 
-    with open(CHANGELOG_PATH, "w", encoding="utf-8") as f:
+    with open(ROADMAP_PATH, "w", encoding="utf-8") as f:
         f.writelines(lines)
 
 
@@ -181,8 +190,12 @@ def main():
                          "date": e["date"],
                          "changes": e["changes"]} for e in existing]
 
-        write_changelog(releases, roadmap)
+        write_changelog(releases)
         print("  changelog.py обновлён.")
+
+        write_roadmap(roadmap)
+        print("  roadmap.py обновлён.")
+
     except Exception as e:
         print(f"  [ОШИБКА] {e}")
 
