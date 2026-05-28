@@ -45,12 +45,16 @@ def _get_ocr_reader():
 # ─── БАЗОВОЕ ИЗВЛЕЧЕНИЕ ТЕКСТА ───────────────────────────────────────────────
 
 def _extract_text_pdf(path: str) -> str:
-    parts = []
-    with pdfplumber.open(path) as pdf:
-        for page in pdf.pages:
-            txt = page.extract_text() or ""
-            parts.append(txt)
-    return "\n".join(parts)
+    try:
+        parts = []
+        with pdfplumber.open(path) as pdf:
+            for page in pdf.pages:
+                txt = page.extract_text() or ""
+                parts.append(txt)
+        return "\n".join(parts)
+    except Exception as e:
+        logger.warning("OCR: не удалось извлечь текст из PDF '%s': %s", path, e)
+        return ""
 
 
 def _is_text_pdf(path: str) -> bool:
@@ -93,184 +97,188 @@ def _parse_docx_tables(path: str) -> Dict[str, str]:
       • construction_start, operation_start
       • product_nomenclature
     """
-    doc = Document(path)
-    fields: Dict[str, str] = {}
+    try:
+        doc = Document(path)
+        fields: Dict[str, str] = {}
 
-    def clean_value(val: str) -> str:
-        return val.strip(" \t:;–-|")
+        def clean_value(val: str) -> str:
+            return val.strip(" \t:;–-|")
 
-    def clean_fio(val: str) -> str:
-        v = val.strip()
-        low = v.lower()
-        if low.startswith("ф.и.о") or low.startswith("фио"):
-            parts = v.split(":", 1)
-            if len(parts) == 2:
-                v = parts[1].strip()
-        return v
+        def clean_fio(val: str) -> str:
+            v = val.strip()
+            low = v.lower()
+            if low.startswith("ф.и.о") or low.startswith("фио"):
+                parts = v.split(":", 1)
+                if len(parts) == 2:
+                    v = parts[1].strip()
+            return v
 
-    for table in doc.tables:
-        rows = [[cell.text.strip() for cell in row.cells] for row in table.rows]
+        for table in doc.tables:
+            rows = [[cell.text.strip() for cell in row.cells] for row in table.rows]
 
-        i = 0
-        while i < len(rows):
-            row = rows[i]
-            joined = " | ".join(row).lower()
+            i = 0
+            while i < len(rows):
+                row = rows[i]
+                joined = " | ".join(row).lower()
 
-            if "заявитель (инвестор" in joined:
-                value_parts = []
-                for c in row:
-                    if "заявитель (инвестор" not in c.lower():
-                        if c.strip():
-                            value_parts.append(c.strip())
-                j = i + 1
-                while j < len(rows) and "заявитель (инвестор" not in " | ".join(rows[j]).lower() \
-                        and "почтовый и юридический адрес" not in " | ".join(rows[j]).lower():
-                    for c in rows[j]:
-                        ct = c.strip()
-                        if ct:
-                            value_parts.append(ct)
-                    j += 1
-                if value_parts and "applicant_full_name" not in fields:
-                    fields["applicant_full_name"] = " ".join(value_parts)
-                i = j
-                continue
-
-            if "почтовый и юридический адрес" in joined:
-                value_parts = []
-                for c in row:
-                    if "почтовый и юридический адрес" not in c.lower():
-                        if c.strip():
-                            value_parts.append(c.strip())
-                if value_parts:
-                    fields["postal_address"] = " ".join(value_parts)
-                i += 1
-                continue
-
-            if "название проекта (краткое описание" in joined or "название проекта" in joined:
-                value_parts = []
-                for c in row:
-                    if "название проекта" not in c.lower():
-                        if c.strip():
-                            value_parts.append(c.strip())
-                if value_parts:
-                    fields["project_name"] = " ".join(value_parts)
-                i += 1
-                continue
-
-            if "уполномоченное лицо по ведению проекта" in joined:
-                j = i + 1
-                while j < len(rows):
-                    line = " | ".join(rows[j])
-                    low_line = line.lower()
-                    if "планируемое количество постоянных" in low_line \
-                            or "планируемый объем инвестиций" in low_line:
-                        break
-                    if "ф.и.о" in low_line or "фио" in low_line:
-                        val = clean_fio(line)
-                        if val:
-                            fields["contact_person"] = val
-                    if "тел" in low_line:
-                        idx = low_line.find("тел")
-                        tail = line[idx + len("тел"):].strip(" :\t")
-                        if tail:
-                            fields["contact_phone"] = tail
-                    if "e-mail" in low_line or "email" in low_line:
-                        idx = low_line.find("e-mail")
-                        if idx == -1:
-                            idx = low_line.find("email")
-                        tail = line[idx + len("email"):].strip(" :\t") if idx != -1 else line
-                        if tail:
-                            fields["contact_email"] = tail
-                    j += 1
-                i = j
-                continue
-
-            if "планируемое количество постоянных рабочих мест" in joined:
-                line = " ".join(row)
-                digits = [
-                    d for d in "".join(ch if ch.isdigit() else " " for ch in line).split()
-                    if d.isdigit()
-                ]
-                if digits:
-                    fields["jobs_total"] = digits[0]
-                if len(digits) > 1:
-                    fields["jobs_foreign"] = digits[1]
-                i += 1
-                continue
-
-            if "планируемый объем инвестиций" in joined or "планируемый объём инвестиций" in joined:
-                inv_lines = []
-                for c in row:
-                    if "планируемый объем инвестиций" not in c.lower() \
-                            and "планируемый объём инвестиций" not in c.lower():
-                        if c.strip():
-                            inv_lines.append(c.strip())
-                j = i + 1
-                while j < len(rows):
-                    l = " | ".join(rows[j]).strip()
-                    low_l = l.lower()
-                    if not l:
+                if "заявитель (инвестор" in joined:
+                    value_parts = []
+                    for c in row:
+                        if "заявитель (инвестор" not in c.lower():
+                            if c.strip():
+                                value_parts.append(c.strip())
+                    j = i + 1
+                    while j < len(rows) and "заявитель (инвестор" not in " | ".join(rows[j]).lower() \
+                            and "почтовый и юридический адрес" not in " | ".join(rows[j]).lower():
+                        for c in rows[j]:
+                            ct = c.strip()
+                            if ct:
+                                value_parts.append(ct)
                         j += 1
-                        continue
-                    if "описание строительства" in low_l or "планируемый срок начала строительства" in low_l:
-                        break
-                    inv_lines.append(l)
-                    j += 1
-                for l in inv_lines:
-                    if any(ch.isdigit() for ch in l):
-                        fields["investment_total"] = l
-                        break
-                i = j
-                continue
+                    if value_parts and "applicant_full_name" not in fields:
+                        fields["applicant_full_name"] = " ".join(value_parts)
+                    i = j
+                    continue
 
-            if "описание строительства" in joined:
-                value_parts = []
-                for c in row:
-                    if "описание строительства" not in c.lower():
-                        if c.strip():
-                            value_parts.append(c.strip())
-                j = i + 1
-                while j < len(rows):
-                    l = " | ".join(rows[j]).strip()
-                    if not l:
+                if "почтовый и юридический адрес" in joined:
+                    value_parts = []
+                    for c in row:
+                        if "почтовый и юридический адрес" not in c.lower():
+                            if c.strip():
+                                value_parts.append(c.strip())
+                    if value_parts:
+                        fields["postal_address"] = " ".join(value_parts)
+                    i += 1
+                    continue
+
+                if "название проекта (краткое описание" in joined or "название проекта" in joined:
+                    value_parts = []
+                    for c in row:
+                        if "название проекта" not in c.lower():
+                            if c.strip():
+                                value_parts.append(c.strip())
+                    if value_parts:
+                        fields["project_name"] = " ".join(value_parts)
+                    i += 1
+                    continue
+
+                if "уполномоченное лицо по ведению проекта" in joined:
+                    j = i + 1
+                    while j < len(rows):
+                        line = " | ".join(rows[j])
+                        low_line = line.lower()
+                        if "планируемое количество постоянных" in low_line \
+                                or "планируемый объем инвестиций" in low_line:
+                            break
+                        if "ф.и.о" in low_line or "фио" in low_line:
+                            val = clean_fio(line)
+                            if val:
+                                fields["contact_person"] = val
+                        if "тел" in low_line:
+                            idx = low_line.find("тел")
+                            tail = line[idx + len("тел"):].strip(" :\t")
+                            if tail:
+                                fields["contact_phone"] = tail
+                        if "e-mail" in low_line or "email" in low_line:
+                            idx = low_line.find("e-mail")
+                            if idx == -1:
+                                idx = low_line.find("email")
+                            tail = line[idx + len("email"):].strip(" :\t") if idx != -1 else line
+                            if tail:
+                                fields["contact_email"] = tail
                         j += 1
-                        continue
-                    low_l = l.lower()
-                    if "планируемый срок начала строительства" in low_l \
-                            or "планируемый срок ввода предприятия" in low_l:
-                        break
-                    value_parts.append(l)
-                    j += 1
-                if value_parts:
-                    fields["object_composition"] = " ".join(value_parts)
-                i = j
-                continue
+                    i = j
+                    continue
 
-            if "планируемый срок начала строительства" in joined:
-                for c in row:
-                    if "планируемый срок начала строительства" not in c.lower() and c.strip():
-                        fields["construction_start"] = c.strip()
+                if "планируемое количество постоянных рабочих мест" in joined:
+                    line = " ".join(row)
+                    digits = [
+                        d for d in "".join(ch if ch.isdigit() else " " for ch in line).split()
+                        if d.isdigit()
+                    ]
+                    if digits:
+                        fields["jobs_total"] = digits[0]
+                    if len(digits) > 1:
+                        fields["jobs_foreign"] = digits[1]
+                    i += 1
+                    continue
+
+                if "планируемый объем инвестиций" in joined or "планируемый объём инвестиций" in joined:
+                    inv_lines = []
+                    for c in row:
+                        if "планируемый объем инвестиций" not in c.lower() \
+                                and "планируемый объём инвестиций" not in c.lower():
+                            if c.strip():
+                                inv_lines.append(c.strip())
+                    j = i + 1
+                    while j < len(rows):
+                        l = " | ".join(rows[j]).strip()
+                        low_l = l.lower()
+                        if not l:
+                            j += 1
+                            continue
+                        if "описание строительства" in low_l or "планируемый срок начала строительства" in low_l:
+                            break
+                        inv_lines.append(l)
+                        j += 1
+                    for l in inv_lines:
+                        if any(ch.isdigit() for ch in l):
+                            fields["investment_total"] = l
+                            break
+                    i = j
+                    continue
+
+                if "описание строительства" in joined:
+                    value_parts = []
+                    for c in row:
+                        if "описание строительства" not in c.lower():
+                            if c.strip():
+                                value_parts.append(c.strip())
+                    j = i + 1
+                    while j < len(rows):
+                        l = " | ".join(rows[j]).strip()
+                        if not l:
+                            j += 1
+                            continue
+                        low_l = l.lower()
+                        if "планируемый срок начала строительства" in low_l \
+                                or "планируемый срок ввода предприятия" in low_l:
+                            break
+                        value_parts.append(l)
+                        j += 1
+                    if value_parts:
+                        fields["object_composition"] = " ".join(value_parts)
+                    i = j
+                    continue
+
+                if "планируемый срок начала строительства" in joined:
+                    for c in row:
+                        if "планируемый срок начала строительства" not in c.lower() and c.strip():
+                            fields["construction_start"] = c.strip()
+                    i += 1
+                    continue
+
+                if "планируемый срок ввода предприятия в эксплуатацию" in joined:
+                    val = " ".join([c for c in row if "планируемый срок ввода предприятия" not in c.lower()]).strip()
+                    if val:
+                        fields["operation_start"] = val
+                    i += 1
+                    continue
+
+                if "номенклатура планируемой к выпуску продукции" in joined:
+                    val = " ".join([c for c in row if "номенклатура планируемой к выпуску продукции" not in c.lower()]).strip()
+                    if val:
+                        fields["product_nomenclature"] = val
+                    i += 1
+                    continue
+
                 i += 1
-                continue
 
-            if "планируемый срок ввода предприятия в эксплуатацию" in joined:
-                val = " ".join([c for c in row if "планируемый срок ввода предприятия" not in c.lower()]).strip()
-                if val:
-                    fields["operation_start"] = val
-                i += 1
-                continue
-
-            if "номенклатура планируемой к выпуску продукции" in joined:
-                val = " ".join([c for c in row if "номенклатура планируемой к выпуску продукции" not in c.lower()]).strip()
-                if val:
-                    fields["product_nomenclature"] = val
-                i += 1
-                continue
-
-            i += 1
-
-    fields = {k: v for k, v in fields.items() if v}
-    return fields
+        fields = {k: v for k, v in fields.items() if v}
+        return fields
+    except Exception as e:
+        logger.warning("OCR: не удалось прочитать таблицы DOCX '%s': %s", path, e)
+        return {}
 
 
 # ─── ПАРСИНГ ТЕКСТА (РАЗДЕЛЫ 1.1–6, PDF и т.п.) ─────────────────────────────
