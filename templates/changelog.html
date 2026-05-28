@@ -77,6 +77,16 @@
 
   @keyframes spinOnce { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
   .spin { animation: spinOnce .7s linear infinite; display:inline-block; }
+
+  /* ── таймер до следующей автопроверки ── */
+  #nextCheckInfo {
+    font-size: 11px;
+    color: #6c757d;
+    white-space: nowrap;
+  }
+  #nextCheckInfo i { font-size: 11px; }
+  body[data-theme="dark"] #nextCheckInfo { color: #8899aa; }
+  body[data-theme="zone"] #nextCheckInfo { color: #9a9880; }
 </style>
 
 {# ── Карточка "О программе" ── #}
@@ -120,13 +130,19 @@
       </div>
     </div>
 
-    <div class="d-flex gap-2 flex-shrink-0">
-      <button id="btnCheck" class="btn btn-sm btn-outline-secondary" onclick="updCheck(true)">
-        <i class="bi bi-arrow-clockwise"></i> Проверить
-      </button>
-      <button id="btnUpdate" class="btn btn-sm btn-success d-none" onclick="updApply()">
-        <i class="bi bi-cloud-arrow-down-fill"></i> Обновить сейчас
-      </button>
+    <div class="d-flex flex-column align-items-end gap-1 flex-shrink-0">
+      <div class="d-flex gap-2">
+        <button id="btnCheck" class="btn btn-sm btn-outline-secondary" onclick="updCheck(true)">
+          <i class="bi bi-arrow-clockwise"></i> Проверить
+        </button>
+        <button id="btnUpdate" class="btn btn-sm btn-success d-none" onclick="updApply()">
+          <i class="bi bi-cloud-arrow-down-fill"></i> Обновить сейчас
+        </button>
+      </div>
+      <div id="nextCheckInfo" class="text-end">
+        <i class="bi bi-clock me-1"></i>
+        Следующая автопроверка через <span id="nextCheckCountdown">—</span>
+      </div>
     </div>
 
   </div>
@@ -266,14 +282,67 @@
 
 {% if session.get('role') == 'admin' %}
 <script>
-  var _updPanel   = document.getElementById('updatePanel');
-  var _updStatus  = document.getElementById('updateStatus');
-  var _btnUpdate  = document.getElementById('btnUpdate');
-  var _btnCheck   = document.getElementById('btnCheck');
-  var _logWrap    = document.getElementById('updateLogWrap');
-  var _logPre     = document.getElementById('updateLogPre');
-  var _UPD_CACHE  = 'sonar_upd_status';
+  var _updPanel       = document.getElementById('updatePanel');
+  var _updStatus      = document.getElementById('updateStatus');
+  var _btnUpdate      = document.getElementById('btnUpdate');
+  var _btnCheck       = document.getElementById('btnCheck');
+  var _logWrap        = document.getElementById('updateLogWrap');
+  var _logPre         = document.getElementById('updateLogPre');
+  var _countdown      = document.getElementById('nextCheckCountdown');
+  var _UPD_CACHE      = 'sonar_upd_status';
 
+  // ── Расписание автопроверок: 12:00 и 17:00 ──────────────────────────────
+  var AUTO_CHECK_HOURS = [12, 17];
+
+  // Возвращает ближайший момент автопроверки (Date)
+  function _nextCheckTarget() {
+    var now = new Date();
+    var candidates = AUTO_CHECK_HOURS.map(function(h) {
+      var t = new Date(now);
+      t.setHours(h, 0, 0, 0);
+      if (t <= now) t.setDate(t.getDate() + 1); // уже прошло — следующий день
+      return t;
+    });
+    return candidates.reduce(function(a, b) { return a < b ? a : b; });
+  }
+
+  var _nextTarget = _nextCheckTarget();
+  var _autoCheckFired = false; // защита от двойного срабатывания в одну секунду
+
+  // ── Тикающий счётчик ────────────────────────────────────────────────────
+  function _pad(n) { return n < 10 ? '0' + n : '' + n; }
+
+  function _tickCountdown() {
+    var now  = new Date();
+    var diff = _nextTarget - now;
+
+    if (diff <= 0) {
+      // Время пришло — запускаем автопроверку один раз
+      if (!_autoCheckFired) {
+        _autoCheckFired = true;
+        _countdown.textContent = '00:00:00';
+        updCheck(true);
+        // Сдвигаем цель на следующий период
+        setTimeout(function() {
+          _nextTarget = _nextCheckTarget();
+          _autoCheckFired = false;
+        }, 3000);
+      }
+      return;
+    }
+
+    var totalSec = Math.floor(diff / 1000);
+    var hh = Math.floor(totalSec / 3600);
+    var mm = Math.floor((totalSec % 3600) / 60);
+    var ss = totalSec % 60;
+    _countdown.textContent = _pad(hh) + ':' + _pad(mm) + ':' + _pad(ss);
+  }
+
+  // Запускаем счётчик сразу и затем каждую секунду
+  _tickCountdown();
+  setInterval(_tickCountdown, 1000);
+
+  // ── Вспомогательные функции панели ──────────────────────────────────────
   function _updSetStatus(html, type) {
     _updStatus.innerHTML = html;
     _updPanel.className = _updPanel.className
@@ -319,7 +388,7 @@
     if (data.output) _updShowLog(data.output);
   }
 
-  // force=true — сбрасывает и браузерный sessionStorage, и серверный кэш (?force=1)
+  // force=true — сбрасывает браузерный sessionStorage и серверный кэш (?force=1)
   function updCheck(force) {
     if (force) sessionStorage.removeItem(_UPD_CACHE);
 
@@ -334,7 +403,6 @@
     _btnUpdate.classList.add('d-none');
     _updSetStatus('<span class="spin"><i class="bi bi-arrow-repeat"></i></span> Проверяем…', 'loading');
 
-    // При force=true передаём ?force=1 — сервер удалит _update_available.json
     var url = force ? '/api/update/check?force=1' : '/api/update/check';
 
     fetch(url, {credentials: 'same-origin'})
@@ -401,7 +469,7 @@
           _updSetStatus('<i class="bi bi-hourglass-split me-1 text-warning"></i>Обновление уже выполняется, подождите…', 'progress');
           _btnCheck.disabled = false;
         } else {
-          _updSetStatus('<i class="bi bi-x-circle-fill me-1 text-danger"></i>Ошибка: ' + (data.error || 'неизвестно'), 'error');
+          _updSetStatus('<i class="bi bi-x-circle-fill me-1 text-danger\"></i>Ошибка: ' + (data.error || 'неизвестно'), 'error');
           _btnCheck.disabled  = false;
           _btnUpdate.disabled = false;
           _btnUpdate.innerHTML = '<i class="bi bi-cloud-arrow-down-fill"></i> Обновить сейчас';
@@ -420,13 +488,8 @@
       });
   }
 
-  // Автопроверка при загрузке — без force, берёт кэш если есть
+  // Автопроверка при загрузке страницы — берёт кэш если есть
   updCheck(false);
-
-  // Фоновая перепроверка каждые 30 минут — только если вкладка активна
-  setInterval(function() {
-    if (!document.hidden) updCheck(true);
-  }, 30 * 60 * 1000);
 </script>
 {% endif %}
 
