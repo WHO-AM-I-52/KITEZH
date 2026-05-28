@@ -34,6 +34,35 @@ def _table_exists(conn, table: str) -> bool:
     return row is not None
 
 
+def _table_has_cascade(conn, table: str, fk_column: str) -> bool:
+    """
+    Проверяет, есть ли ON DELETE CASCADE на указанном внешнем ключе таблицы.
+    Использует PRAGMA foreign_key_list для чтения метаданных FK.
+    """
+    rows = conn.execute(f"PRAGMA foreign_key_list({table})").fetchall()
+    for row in rows:
+        # row: id, seq, table, from, to, on_update, on_delete, match
+        if row['from'] == fk_column and row['on_delete'].upper() == 'CASCADE':
+            return True
+    return False
+
+
+def _recreate_with_cascade(conn, table: str, create_sql: str, columns: str):
+    """
+    Безопасное пересоздание таблицы с новым DDL (добавление ON DELETE CASCADE).
+    SQLite не поддерживает ALTER TABLE ... ADD CONSTRAINT, поэтому:
+      1. Переименовываем старую таблицу во временную
+      2. Создаём новую с правильным DDL
+      3. Копируем данные
+      4. Удаляем временную
+    Идемпотентно: вызывается только если CASCADE ещё не установлен.
+    """
+    conn.execute(f"ALTER TABLE {table} RENAME TO _{table}_old")
+    conn.execute(create_sql)
+    conn.execute(f"INSERT INTO {table} ({columns}) SELECT {columns} FROM _{table}_old")
+    conn.execute(f"DROP TABLE _{table}_old")
+
+
 def _migrate(conn):
     """
     Автоматическое добавление новых таблиц и колонок если они отсутствуют.
@@ -156,10 +185,6 @@ def _migrate(conn):
 
     # ════════════════════════════════════════════════════════════════
     # fix: таблица счётчиков нумерации обращений по годам
-    # Решает баг с дублированием номеров при удалении записей.
-    # Каждый год хранит свой независимый счётчик.
-    # Миграция: при первом запуске инициализирует счётчик текущего года
-    # на основе MAX существующих номеров вида «ЗУ-YYYY-NNNN».
     # ════════════════════════════════════════════════════════════════
     conn.execute("""
         CREATE TABLE IF NOT EXISTS request_counters (
@@ -167,9 +192,82 @@ def _migrate(conn):
             last_seq INTEGER NOT NULL DEFAULT 0
         )
     """)
-
-    # Инициализация счётчика из существующих данных (идемпотентно)
     _init_counters_from_existing(conn)
+
+    # ════════════════════════════════════════════════════════════════
+    # fix: ON DELETE CASCADE для favorites и notifications
+    #
+    # Проблема: при удалении обращения (DELETE FROM requests WHERE id=?)
+    # записи в favorites и notifications оставались «висеть» как сироты.
+    # SQLite не умеет добавить CASCADE через ALTER TABLE — пересоздаём таблицы.
+    # _table_has_cascade() проверяет текущий DDL: повторный запуск безопасен.
+    # ════════════════════════════════════════════════════════════════
+    conn.execute("PRAGMA foreign_keys = OFF")
+
+    # ─ favorites
+    if _table_exists(conn, 'favorites') and not _table_has_cascade(conn, 'favorites', 'request_id'):
+        _recreate_with_cascade(
+            conn,
+            table='favorites',
+            create_sql="""
+                CREATE TABLE favorites (
+                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    request_id INTEGER NOT NULL REFERENCES requests(id) ON DELETE CASCADE,
+                    UNIQUE(user_id, request_id)
+                )
+            """,
+            columns='id, user_id, request_id'
+        )
+
+    # ─ notifications
+    if _table_exists(conn, 'notifications') and not _table_has_cascade(conn, 'notifications', 'request_id'):
+        # notifications может не иметь request_id — проверяем наличие колонки
+        if _has_column(conn, 'notifications', 'request_id'):
+            _recreate_with_cascade(
+                conn,
+                table='notifications',
+                create_sql="""
+                    CREATE TABLE notifications (
+                        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        request_id INTEGER REFERENCES requests(id) ON DELETE CASCADE,
+                        message    TEXT NOT NULL DEFAULT '',
+                        link       TEXT,
+                        is_read    INTEGER NOT NULL DEFAULT 0,
+                        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                    )
+                """,
+                columns='id, user_id, request_id, message, link, is_read, created_at'
+            )
+        else:
+            # notifications без request_id — только CASCADE по user_id
+            _recreate_with_cascade(
+                conn,
+                table='notifications',
+                create_sql="""
+                    CREATE TABLE notifications (
+                        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        message    TEXT NOT NULL DEFAULT '',
+                        link       TEXT,
+                        is_read    INTEGER NOT NULL DEFAULT 0,
+                        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                    )
+                """,
+                columns='id, user_id, message, link, is_read, created_at'
+            )
+
+    conn.execute("PRAGMA foreign_keys = ON")
+
+    # ─ Индекс на notifications.request_id (для быстрого CASCADE-удаления)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_notif_request ON notifications(request_id)"
+    )
+    # ─ Индекс на favorites.request_id
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_fav_request ON favorites(request_id)"
+    )
 
     conn.commit()
 
@@ -186,7 +284,6 @@ def _init_counters_from_existing(conn):
     year_max = {}
     for row in rows:
         num = row[0] or ''
-        # Формат: ЗУ-YYYY-NNNN
         parts = num.split('-')
         if len(parts) == 3:
             try:
@@ -197,7 +294,6 @@ def _init_counters_from_existing(conn):
             except ValueError:
                 pass
     for year, max_seq in year_max.items():
-        # INSERT OR IGNORE: не трогает строку, если год уже есть в таблице
         conn.execute(
             "INSERT OR IGNORE INTO request_counters (year, last_seq) VALUES (?, ?)",
             (year, max_seq)
@@ -209,10 +305,9 @@ def next_request_number(conn, year: int) -> str:
     Атомарно увеличивает счётчик для указанного года и возвращает
     готовый номер вида «ЗУ-YYYY-NNNN».
 
-    Использует INSERT OR REPLACE + SELECT для атомарной операции в SQLite.
+    Использует INSERT OR IGNORE + UPDATE + SELECT для атомарной операции в SQLite.
     Вызывать внутри уже открытой транзакции (conn.commit() делает вызывающий код).
     """
-    # Создаём строку года если её нет (первый номер в году)
     conn.execute(
         "INSERT OR IGNORE INTO request_counters (year, last_seq) VALUES (?, 0)",
         (year,)
