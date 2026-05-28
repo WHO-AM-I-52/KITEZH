@@ -395,14 +395,19 @@ def main():
         print(f"  [ОШИБКА] Не удалось скачать архив обновления: {e}")
         sys.exit(1)
 
+    apply_ok = False
     try:
         updated, unchanged, skipped, bat_updated = extract_and_apply(zip_path)
+        apply_ok = True
+    except Exception as e:
+        print(f"  [ОШИБКА] Не удалось применить обновление: {e}")
+        sys.exit(1)
     finally:
         if os.path.exists(zip_path):
             os.remove(zip_path)
             print("  Архив обновления удалён.")
 
-    if remote_sha:
+    if apply_ok and remote_sha:
         save_local_sha(remote_sha)
         print(f"  Версия сохранена: {remote_sha[:12]}...")
 
