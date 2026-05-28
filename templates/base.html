@@ -2,7 +2,7 @@
 {# ╔══════════════════════════════════════════════════════════════╗ #}
 {# ║                        base.html                            ║ #}
 {# ║  Базовый шаблон приложения "Подбор ЗУ — НО"                 ║ #}
-{# ║  v2.11: Значок обновления в сайдбаре (#10)                  ║ #}
+{# ║  v2.12: ping 30s/5min, значок обновления — живая проверка  ║ #}
 {# ╚══════════════════════════════════════════════════════════════╝ #}
 <html lang="ru">
 <head>
@@ -526,7 +526,8 @@
     .then(function(r){ setOffline(!r.ok); })
     .catch(function(){ setOffline(true); });
   }
-  setTimeout(function(){ ping(); setInterval(ping, 10000); }, 5000);
+  /* Первый пинг через 30 сек, далее каждые 5 минут */
+  setTimeout(function(){ ping(); setInterval(ping, 5 * 60 * 1000); }, 30 * 1000);
 })();
 </script>
 
@@ -622,7 +623,8 @@
   var CHECK_INTERVAL = 30 * 60 * 1000; /* 30 минут */
 
   function doCheck() {
-    fetch('/api/update/check', {credentials:'same-origin', cache:'no-store'})
+    /* Всегда живая проверка — без кэша, с force=1 чтобы сбросить серверный кэш */
+    fetch('/api/update/check?force=1', {credentials:'same-origin', cache:'no-store'})
       .then(function(r){ return r.ok ? r.json() : null; })
       .then(function(data){
         if (!data) return;
@@ -633,14 +635,8 @@
       .catch(function(){});
   }
 
-  /* При загрузке — читаем кэш, если нет — проверяем сразу */
-  var cached = null;
-  try { cached = JSON.parse(sessionStorage.getItem(CACHE_KEY)); } catch(e){}
-  if (cached) {
-    if (cached.has_update) dot.classList.remove('d-none');
-  } else {
-    doCheck();
-  }
+  /* При загрузке — всегда живая проверка (не читаем кэш) */
+  doCheck();
 
   /* Фоновая перепроверка каждые 30 минут, только когда вкладка активна */
   setInterval(function(){
