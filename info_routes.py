@@ -17,7 +17,6 @@ import sys
 import subprocess
 import json
 import threading
-import signal
 
 misc_bp = Blueprint('misc', __name__)
 
