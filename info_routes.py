@@ -5,6 +5,7 @@
 # ║  v2.3.6: /api/update/check и /api/update/apply               ║
 # ║  fix: ?force=1 сбрасывает серверный кэш               ║
 # ║  fix: _restart.flag + sys.exit(42) → run_server.py          ║
+# ║  fix: active_branch передаётся в changelog.html              ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, render_template, session, jsonify, request as flask_request
@@ -19,6 +20,19 @@ import json
 import threading
 
 misc_bp = Blueprint('misc', __name__)
+
+_BRANCH_FILE  = os.path.join(BASE_DIR, '_branch.txt')
+
+
+def _get_active_branch() -> str:
+    if os.path.exists(_BRANCH_FILE):
+        try:
+            val = open(_BRANCH_FILE, encoding='utf-8').read().strip()
+            if val in ('main', 'dev'):
+                return val
+        except Exception:
+            pass
+    return 'main'
 
 
 @misc_bp.route('/notifications')
@@ -41,7 +55,8 @@ def changelog():
     current_version = CHANGELOG[0]['version'] if CHANGELOG else ''
     session['seen_version'] = current_version
     return render_template('changelog.html', changelog=CHANGELOG,
-                           version=current_version, roadmap=ROADMAP)
+                           version=current_version, roadmap=ROADMAP,
+                           active_branch=_get_active_branch())
 
 
 @misc_bp.route('/ping')
@@ -122,15 +137,6 @@ def api_search():
 
 
 # ─── Обновления SONAR через GitHub ──────────────────────────────────────────
-# Маршруты доступны только администратору (role == 'admin').
-# Используют _updater.py для проверки и применения обновлений.
-# Результат проверки кэшируется в _update_available.json до следующего запуска.
-# ?force=1 — принудительно сбрасывает серверный кэш и делает живую проверку.
-# Применение обновления: _worker создаёт _restart.flag, затем
-# вызывает os._exit(42) — Flask завершается с кодом 42.
-# run_server.py видит код 42, читает флаг и возвращает sys.exit(42) батнику.
-# Батник видит EXIT_CODE=42 и идёт goto :start_server.
-# ────────────────────────────────────────────────────────────────────────────
 
 _FLAG_FILE    = os.path.join(BASE_DIR, '_update_available.json')
 _LOCK_FILE    = os.path.join(BASE_DIR, '_updating.lock')
@@ -150,20 +156,6 @@ def _read_local_sha() -> str:
 
 @misc_bp.route('/api/update/check')
 def api_update_check():
-    """Проверяет наличие обновлений на GitHub.
-
-    Параметры запроса:
-      ?force=1  — сбросить серверный кэш и сделать живую проверку через GitHub API
-
-    Возвращает JSON:
-      status     — 0 = актуально, 1 = есть обновления, 2 = ошибка / нет сети
-      has_update — bool
-      local_sha  — первые 12 символов SHA установленной версии
-      output     — последние строки вывода _updater.py --check
-      cached     — True если результат взят из кэша, False если свежая проверка
-
-    Доступно только администратору.
-    """
     if session.get('role') != 'admin':
         return jsonify({'error': 'forbidden'}), 403
 
@@ -171,7 +163,6 @@ def api_update_check():
         return jsonify({'status': 2, 'error': '_updater.py not found',
                         'has_update': False, 'local_sha': _read_local_sha()}), 200
 
-    # ── Принудительный сброс серверного кэша ──────────────────────────────
     force = flask_request.args.get('force') == '1'
     if force and os.path.exists(_FLAG_FILE):
         try:
@@ -179,7 +170,6 @@ def api_update_check():
         except Exception:
             pass
 
-    # ── Быстрый путь: отдаём кэш (если не force) ──────────────────────────
     if not force and os.path.exists(_FLAG_FILE):
         try:
             with open(_FLAG_FILE, 'r', encoding='utf-8') as f:
@@ -196,7 +186,6 @@ def api_update_check():
         except Exception:
             pass
 
-    # ── Медленный путь: запускаем _updater.py --check ─────────────────────
     try:
         result = subprocess.run(
             [sys.executable, _UPDATER, '--check'],
@@ -232,12 +221,6 @@ def api_update_check():
 
 @misc_bp.route('/api/update/apply', methods=['POST'])
 def api_update_apply():
-    """Скачивает и применяет обновление с GitHub, затем тихо перезапускает сервер.
-
-    _worker создаёт _restart.flag, затем вызывает os._exit(42).
-    run_server.py видит код 42, читает флаг и возвращает sys.exit(42) батнику.
-    Батник видит EXIT_CODE=42 и идёт goto :start_server без любых вопросов.
-    """
     if session.get('role') != 'admin':
         return jsonify({'error': 'forbidden'}), 403
 
@@ -265,14 +248,11 @@ def api_update_apply():
                 except Exception:
                     pass
 
-        # Создаём флаг ДО завершения
         try:
             open(_RESTART_FLAG, 'w').close()
         except Exception:
             pass
 
-        # os._exit(42) — мгновенно завершает весь процесс Flask
-        # без каких-либо сигналов на родительский батник
         os._exit(42)
 
     threading.Thread(target=_worker, daemon=True).start()
@@ -282,7 +262,6 @@ def api_update_apply():
 
 @misc_bp.route('/api/update/status')
 def api_update_status():
-    """Возвращает текущий статус процесса обновления."""
     if session.get('role') != 'admin':
         return jsonify({'error': 'forbidden'}), 403
     return jsonify({'in_progress': os.path.exists(_LOCK_FILE)})
