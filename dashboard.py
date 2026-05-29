@@ -9,7 +9,7 @@ from datetime import date, timedelta
 def build_dash(conn, period):
     today = date.today()
 
-    # ─── ФИЛЬТР ПО ПЕРИОДУ ────────────────────────────────────────────────────
+    # ─── ФИЛЬТР ПО ПЕРИОДУ ───────────────────────────────────────
     def pw():
         if   period == 'today':
             pf = today.isoformat()
@@ -27,7 +27,7 @@ def build_dash(conn, period):
 
     pw_sql, pw_params = pw()
 
-    # ─── ОБЩЕЕ КОЛИЧЕСТВО ПО СТАТУСАМ ──────────────────────────────────────────
+    # ─── ОБЩЕЕ КОЛИЧЕСТВО ПО СТАТУСАМ ────────────────────────────
     # ВАЖНО: total и статусы считаются БЕЗ фильтра периода,
     # чтобы счётчики на главной всегда показывали все обращения.
     def cnt_all(status=None):
@@ -52,14 +52,14 @@ def build_dash(conn, period):
             pw_params
         ).fetchone()[0]
 
-    # ─── ПРОСРОЧЕННЫЕ (всегда без фильтра периода) ──────────────────────────────
+    # ─── ПРОСРОЧЕННЫЕ (всегда без фильтра периода) ──────────────────────
     overdue_active_all = conn.execute(
         "SELECT COUNT(*) FROM requests r "
         "WHERE r.status IN ('draft','review','accepted') "
         "AND julianday('now')-julianday(r.request_date)>7"
     ).fetchone()[0]
 
-    # ─── СУММАРНЫЕ ПОКАЗАТЕЛИ ──────────────────────────────────────────────────────
+    # ─── СУММАРНЫЕ ПОКАЗАТЕЛИ ───────────────────────────────────
     sums = conn.execute(
         f"SELECT COALESCE(SUM(investment_total),0), COALESCE(SUM(jobs_total),0) "
         f"FROM requests r WHERE 1=1{pw_sql}", pw_params
@@ -71,7 +71,7 @@ def build_dash(conn, period):
         pw_params
     ).fetchone()
 
-    # ─── KPI ПО СРОКАМ ─────────────────────────────────────────────────────────────────
+    # ─── KPI ПО СРОКАМ ───────────────────────────────────────────────────
     norm_total = 7
     kpi = conn.execute(f"""
         SELECT COUNT(*),
@@ -90,7 +90,7 @@ def build_dash(conn, period):
         'pct':            round(kpi[1] / kpi[0] * 100) if kpi[0] else 0,
     }
 
-    # ─── ТРЕНД ПО ВРЕМЕНИ ────────────────────────────────────────────────────────────
+    # ─── ТРЕНД ПО ВРЕМЕНИ ────────────────────────────────────────────
     if period == 'today':
         tr = conn.execute(
             "SELECT strftime('%H:00',request_date),COUNT(*) "
@@ -116,7 +116,7 @@ def build_dash(conn, period):
             " GROUP BY 1 ORDER BY 1", pw_params
         ).fetchall()
 
-    # ─── ТОП СОТРУДНИКОВ И РАЙОНЫ ────────────────────────────────────────────
+    # ─── ТОП СОТРУДНИКОВ И РАЙОНЫ ────────────────────────────
     emp_rows = conn.execute(
         f"SELECT COALESCE(u.full_name,'Не назначен'),COUNT(*) FROM requests r "
         f"LEFT JOIN users u ON r.assigned_to=u.id WHERE 1=1{pw_sql} "
@@ -129,7 +129,7 @@ def build_dash(conn, period):
         f"GROUP BY 1 ORDER BY 2 DESC LIMIT 12", pw_params
     ).fetchall()
 
-    # ─── ТИП ПЛОЩАДКИ ────────────────────────────────────────────────────────────────
+    # ─── ТИП ПЛОЩАДКИ ──────────────────────────────────────────────
     st_free = conn.execute(
         f"SELECT COUNT(*) FROM requests r WHERE site_type_free=1{pw_sql}",
         pw_params
@@ -144,7 +144,7 @@ def build_dash(conn, period):
         pw_params
     ).fetchone()[0]
 
-    # ─── РАСПРЕДЕЛЕНИЕ ПО ПЛОЩАДИ (v1.9.1: используем _min поля) ────────────
+    # ─── РАСПРЕДЕЛЕНИЕ ПО ПЛОЩАДИ (v1.9.1: используем _min поля) ────────
     area_buckets = [
         ('<0.1 га', 0, .1), ('0.1–0.5', .1, .5), ('0.5–1', .5, 1),
         ('1–2', 1, 2), ('2–5', 2, 5), ('5–10', 5, 10), ('>10', 10, 999999)
@@ -173,7 +173,7 @@ def build_dash(conn, period):
         ).fetchone()[0]
     } for lbl, lo, hi in build_buckets]
 
-    # ─── ИСТОЧНИКИ ОБРАЩЕНИЙ ─────────────────────────────────────────────────────────
+    # ─── ИСТОЧНИКИ ОБРАЩЕНИЙ ───────────────────────────────────
     src_rows = conn.execute(
         f"SELECT source_type,COUNT(*) FROM requests r "
         f"WHERE source_type IS NOT NULL AND source_type!=''{pw_sql} "
@@ -187,7 +187,7 @@ def build_dash(conn, period):
             if s:
                 src_counts[s] = src_counts.get(s, 0) + row[1]
 
-    # ─── ФИНАЛЬНЫЙ НАБОР ДАННЫХ ───────────────────────────────────────────────────────
+    # ─── ФИНАЛЬНЫЙ НАБОР ДАННЫХ ────────────────────────────────────
     return {
         'period':         period,
         # Счётчики — всегда все записи без фильтра периода
