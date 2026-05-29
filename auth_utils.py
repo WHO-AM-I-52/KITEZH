@@ -49,6 +49,7 @@ ALL_PERMISSIONS = {
     'can_classifiers': 'Управление справочниками',
     'can_users':       'Управление пользователями',
     'can_view_all':    'Видит все обращения (вкл. поиск)',
+    'can_investmap':   'Инвестиционные площадки',
 }
 
 ADMIN_PERMISSIONS = {k: 1 for k in ALL_PERMISSIONS}
