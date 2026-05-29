@@ -1,6 +1,12 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║                      info_routes.py                          ║
-# ║  v2.3.6: active_branch + commits list in /api/update/check   ║
+# ║  Сервисные страницы: уведомления, журнал изменений, онлайн   ║
+# ║  v2.2.0: /ping фиксирует присутствие, /api/online — счётчик  ║
+# ║  v2.3.6: /api/update/check и /api/update/apply               ║
+# ║  fix: ?force=1 сбрасывает серверный кэш               ║
+# ║  fix: _restart.flag + sys.exit(42) → run_server.py          ║
+# ║  fix: active_branch передаётся в changelog.html              ║
+# ║  feat: commits передаётся в JSON-ответе /api/update/check    ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, render_template, session, jsonify, request as flask_request
@@ -58,6 +64,7 @@ def changelog():
 
 @misc_bp.route('/ping')
 def ping():
+    """Heartbeat: обновляет online_presence если пользователь авторизован."""
     uid = session.get('user_id')
     if uid:
         try:
@@ -81,6 +88,7 @@ def ping():
 @misc_bp.route('/api/online')
 @login_required
 def api_online():
+    """Возвращает число уникальных пользователей активных за последние 5 минут."""
     conn = get_db()
     row = conn.execute(
         """
@@ -97,6 +105,7 @@ def api_online():
 @misc_bp.route('/api/search')
 @login_required
 def api_search():
+    """Глобальный поиск по обращениям: номер или имя заявителя."""
     q = flask_request.args.get('q', '').strip()
     if not q or len(q) < 2:
         return jsonify({'results': []})
@@ -130,6 +139,8 @@ def api_search():
     return jsonify({'results': results})
 
 
+# ─── Обновления SONAR через GitHub ──────────────────────────────────────────────
+
 _FLAG_FILE    = os.path.join(BASE_DIR, '_update_available.json')
 _LOCK_FILE    = os.path.join(BASE_DIR, '_updating.lock')
 _RESTART_FLAG = os.path.join(BASE_DIR, '_restart.flag')
@@ -160,6 +171,7 @@ def _read_local_sha_full() -> str:
 
 
 def _gh_headers() -> dict:
+    """Заголовки для GitHub API. Читает токен из .env если есть."""
     env_path = os.path.join(BASE_DIR, '.env')
     token = None
     if os.path.exists(env_path):
@@ -179,6 +191,9 @@ def _gh_headers() -> dict:
 
 
 def _fetch_commits(local_sha: str, remote_sha: str) -> list:
+    """Запрашивает GitHub Compare API и возвращает список коммитов.
+    Используется только когда есть обновления (code == 1).
+    """
     if not local_sha or not remote_sha or local_sha == remote_sha:
         return []
     try:
@@ -193,7 +208,7 @@ def _fetch_commits(local_sha: str, remote_sha: str) -> list:
             date_raw = c.get('commit', {}).get('author', {}).get('date', '')
             date_str = date_raw[:10] if date_raw else ''
             commits.append({'sha': sha, 'message': msg, 'date': date_str})
-        commits.reverse()
+        commits.reverse()  # новые сверху
         return commits
     except Exception:
         return []
@@ -239,8 +254,9 @@ def api_update_check():
         code       = result.returncode
         local_sha  = _read_local_sha_full()
         remote_sha = ''
+        # Парсим remote SHA из stdout _updater.py
         for line in result.stdout.splitlines():
-            if 'GitHub' in line and ':' in line:
+            if 'GitHub версия' in line or 'Последний коммит GitHub' in line:
                 parts = line.split(':')
                 if len(parts) > 1:
                     remote_sha = parts[-1].strip().rstrip('...')
@@ -284,7 +300,7 @@ def api_update_apply():
 
     if os.path.exists(_LOCK_FILE):
         return jsonify({'error': 'already_in_progress',
-                        'message': 'Already in progress'}), 409
+                        'message': 'Обновление уже выполняется'}), 409
 
     if not os.path.exists(_UPDATER):
         return jsonify({'error': '_updater.py not found'}), 500
@@ -305,14 +321,17 @@ def api_update_apply():
                     os.remove(path)
                 except Exception:
                     pass
+
         try:
             open(_RESTART_FLAG, 'w').close()
         except Exception:
             pass
+
         os._exit(42)
 
     threading.Thread(target=_worker, daemon=True).start()
-    return jsonify({'ok': True, 'message': 'Update started. Server will restart in ~10-30 sec.'})
+    return jsonify({'ok': True,
+                    'message': 'Обновление запущено. Сервер перезапустится через ~10–30 сек.'})
 
 
 @misc_bp.route('/api/update/status')
