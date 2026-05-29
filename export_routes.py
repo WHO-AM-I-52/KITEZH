@@ -1,7 +1,7 @@
-# ╔══════════════════════════════════════════════════════════════╗
-# ║                       export_routes.py                       ║
-# ║  v2.5: даты ДД.ММ.ГГГГ, исправлен цвет строк, логирование     ║
-# ╚══════════════════════════════════════════════════════════════╝
+# ╔═════════════════════════════════════════════════════════════════════════════╗
+# ║                       export_routes.py                                       ║
+# ║  v2.7: права can_export_full / can_import_full вместо role==admin            ║
+# ╚═════════════════════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, request, send_file, jsonify, session
 from datetime import datetime, date, timedelta
@@ -11,13 +11,13 @@ from openpyxl.utils import get_column_letter
 import os
 
 from db import get_db, REPORTS_DIR
-from auth_utils import login_required
+from auth_utils import login_required, get_user_perm
 from activity_log import log_action
 
 report_bp = Blueprint('report', __name__)
 
 
-# ─── ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ───────────────────────────────────────────────
+# ─── ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ────────────────────────────────────────────────────
 
 def _short_fio(full_name: str) -> str:
     if not full_name:
@@ -36,17 +36,15 @@ def _std_border(color='CCCCCC'):
 
 
 def _hex_to_argb(hex_color: str) -> str:
-    """'#RRGGBB', 'RRGGBB', '#AARRGGBB' → 'FFRRGGBB' (ARGB без #)."""
     c = hex_color.lstrip('#').upper() if hex_color else ''
     if len(c) == 6:
         return 'FF' + c
     if len(c) == 8:
         return c
-    return ''   # пустая — значит не красить
+    return ''
 
 
 def _fmt_date(iso) -> str:
-    """Преобразует 'YYYY-MM-DD' или datetime → 'ДД.ММ.ГГГГ'."""
     if not iso:
         return '—'
     if isinstance(iso, (date, datetime)):
@@ -79,7 +77,7 @@ def _contact_cell(person: str, phone: str, email: str) -> str:
     return '\n'.join(parts) if parts else '—'
 
 
-# ─── СТАНДАРТНАЯ ВЫГРУЗКА ───────────────────────────────────────────────────
+# ─── СТАНДАРТНАЯ ВЫГРУЗКА ─────────────────────────────────────────────────────────────
 
 @report_bp.route('/report')
 @login_required
@@ -184,7 +182,6 @@ def report():
     fp = os.path.join(REPORTS_DIR, fn)
     wb.save(fp)
 
-    # ── Журнал ──
     log_parts = []
     if df or dt:
         log_parts.append(f"период: {_fmt_date(df)} – {_fmt_date(dt)}")
@@ -203,7 +200,7 @@ def report():
                      mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 
-# ─── ЕЖЕНЕДЕЛЬНАЯ ВЫГРУЗКА ДЛЯ МИНЭК ─────────────────────────────────────────
+# ─── ЕЖЕНЕДЕЛЬНАЯ ВЫГРУЗКА ДЛЯ МИНЭК ───────────────────────────────────────────────
 
 @report_bp.route('/report/minek')
 @login_required
@@ -277,7 +274,8 @@ def report_minek():
         'Дата обращения',
         'Наименование компании',
         'Наименование проекта',
-        'Объем инвестиций,\nмлрд рублей',
+        'Объем инвестиций,
+млрд рублей',
         'Рабочие места',
         'Предмет обращения',
         'Дата направления презентации',
@@ -294,7 +292,6 @@ def report_minek():
     ws.row_dimensions[3].height = 40
 
     for ri, r in enumerate(rows, 4):
-        # Цвет строки: result_color хранится как 'RRGGBB' (без #)
         argb = _hex_to_argb(r['result_color']) if r['result_color'] else ''
         if argb:
             rfill = PatternFill('solid', fgColor=argb)
@@ -339,7 +336,6 @@ def report_minek():
 
     ws.freeze_panes = 'B4'
 
-    # ── Лист 2: справочник ──
     wl = wb.create_sheet(title='Справочник')
     wl.merge_cells('A1:C1')
     wl['A1'].value     = 'Легенда цветов (итоги работы по обращению)'
@@ -381,7 +377,6 @@ def report_minek():
     fp = os.path.join(REPORTS_DIR, fn)
     wb.save(fp)
 
-    # ── Журнал ──
     detail = f"период: {_fmt_date(df)} – {_fmt_date(dt)}; всего {len(rows)} обращ."
     try:
         log_action(conn, session['user_id'], 'export_minek', detail=detail)
@@ -394,7 +389,236 @@ def report_minek():
                      mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 
-# ─── AUTOSAVE / WAL CHECKPOINT ───────────────────────────────────────────────
+# ─── ПОЛНАЯ ВЫГРУЗКА БАЗЫ (для дозаполнения и импорта) ─────────────────────────────
+
+@report_bp.route('/export/full')
+@login_required
+def export_full():
+    if not get_user_perm('can_export_full'):
+        return jsonify({'error': 'Недостаточно прав: Скачать полную базу (Excel)'}), 403
+
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT r.*,
+               ass.full_name AS assigned_name,
+               st.name       AS subject_type_name,
+               rt.name       AS result_type_name
+        FROM requests r
+        LEFT JOIN users         ass ON r.assigned_to     = ass.id
+        LEFT JOIN subject_types st  ON r.subject_type_id = st.id
+        LEFT JOIN result_types  rt  ON r.result_type_id  = rt.id
+        ORDER BY r.id
+    """).fetchall()
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'База обращений'
+
+    hfill   = PatternFill("solid", fgColor="1B5E7B")
+    id_fill = PatternFill("solid", fgColor="2E4057")
+    hfont   = Font(bold=True, color="FFFFFF", size=10)
+    br      = _std_border()
+
+    COLS = [
+        ('id',                   'ID (не менять)'),
+        ('request_number',       '№ обращения'),
+        ('request_date',         'Дата обращения'),
+        ('status',               'Статус'),
+        ('applicant_full_name',  'Полное наименование'),
+        ('applicant_short_name', 'Краткое наименование'),
+        ('applicant_inn',        'ИНН'),
+        ('project_name',         'Название проекта'),
+        ('contact_person',       'Контактное лицо'),
+        ('contact_phone',        'Телефон'),
+        ('contact_email',        'E-mail'),
+        ('investment_total',     'Инвестиции (млн руб.)'),
+        ('jobs_total',           'Рабочих мест'),
+        ('site_area_ha',         'Площадь (га)'),
+        ('site_build_area_m2',   'Застройка (м²)'),
+        ('preferred_districts',  'Районы'),
+        ('source_type',          'Источник'),
+        ('assigned_name',        'Ответственный'),
+        ('subject_type_name',    'Предмет обращения'),
+        ('feedback_date',        'Дата обратной связи'),
+        ('result_type_name',     'Итоги работы'),
+        ('incoming_number',      'Входящий номер'),
+        ('answer_date',          'Дата ответа'),
+        ('answer_method',        'Способ ответа'),
+        ('answer_notes',         'Примечания к ответу'),
+        ('additional_info',      'Доп. информация'),
+    ]
+
+    for ci, (field, header) in enumerate(COLS, 1):
+        c = ws.cell(row=1, column=ci, value=header)
+        c.fill = id_fill if field == 'id' else hfill
+        c.font = hfont
+        c.border = br
+        c.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    ws.row_dimensions[1].height = 36
+    ws.freeze_panes = 'A2'
+
+    for ri, r in enumerate(rows, 2):
+        row_keys = list(r.keys())
+        for ci, (field, _) in enumerate(COLS, 1):
+            val = r[field] if field in row_keys else None
+            c = ws.cell(row=ri, column=ci, value=val)
+            c.border = br
+            c.alignment = Alignment(vertical='center', wrap_text=(ci == len(COLS)))
+
+    col_widths = [8, 16, 14, 12, 35, 25, 14, 30, 22, 16, 24, 14, 12, 10, 12, 24, 16, 20, 22, 14, 28, 18, 14, 18, 28, 30]
+    for ci, w in enumerate(col_widths[:len(COLS)], 1):
+        ws.column_dimensions[get_column_letter(ci)].width = w
+
+    fn = f"sonar_full_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    fp = os.path.join(REPORTS_DIR, fn)
+    wb.save(fp)
+
+    log_action(conn, session['user_id'], 'export_full',
+               detail=f'Полная выгрузка базы: {len(rows)} обращений')
+    conn.commit()
+    conn.close()
+
+    return send_file(fp, as_attachment=True, download_name=fn,
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+# ─── ИМПОРТ ОБНОВЛЁННОГО EXCEL ────────────────────────────────────────────────────────
+
+@report_bp.route('/import/full', methods=['POST'])
+@login_required
+def import_full():
+    if not get_user_perm('can_import_full'):
+        return jsonify({'error': 'Недостаточно прав: Загрузить обновлённый Excel (импорт)'}), 403
+
+    file = request.files.get('import_file')
+    if not file or not file.filename.endswith('.xlsx'):
+        return jsonify({'error': 'Загрузите файл .xlsx'}), 400
+
+    overwrite = request.form.get('overwrite') == '1'
+
+    try:
+        wb = openpyxl.load_workbook(file, read_only=True, data_only=True)
+        ws = wb.active
+    except Exception as e:
+        return jsonify({'error': f'Ошибка чтения файла: {e}'}), 400
+
+    headers = [str(c.value).strip() if c.value else '' for c in next(ws.iter_rows(min_row=1, max_row=1))]
+
+    COL_MAP = {
+        'Дата обращения':        'request_date',
+        'Полное наименование':   'applicant_full_name',
+        'Краткое наименование':  'applicant_short_name',
+        'ИНН':                   'applicant_inn',
+        'Название проекта':      'project_name',
+        'Контактное лицо':       'contact_person',
+        'Телефон':               'contact_phone',
+        'E-mail':                'contact_email',
+        'Инвестиции (млн руб.)': 'investment_total',
+        'Рабочих мест':          'jobs_total',
+        'Площадь (га)':          'site_area_ha',
+        'Застройка (м²)':        'site_build_area_m2',
+        'Районы':               'preferred_districts',
+        'Источник':              'source_type',
+        'Дата обратной связи':   'feedback_date',
+        'Входящий номер':        'incoming_number',
+        'Дата ответа':           'answer_date',
+        'Способ ответа':          'answer_method',
+        'Примечания к ответу':   'answer_notes',
+        'Доп. информация':       'additional_info',
+    }
+    FK_MAP = {
+        'Предмет обращения': ('subject_type_id', 'subject_types'),
+        'Итоги работы':      ('result_type_id',  'result_types'),
+        'Ответственный':     ('assigned_to',      'users'),
+    }
+
+    try:
+        id_idx = headers.index('ID (не менять)')
+    except ValueError:
+        return jsonify({'error': 'Колонка «ID (не менять)» не найдена. Используйте файл из «Скачать базу»'}), 400
+
+    conn = get_db()
+
+    subjects  = {r['name']: r['id'] for r in conn.execute('SELECT id,name FROM subject_types').fetchall()}
+    results   = {r['name']: r['id'] for r in conn.execute('SELECT id,name FROM result_types').fetchall()}
+    users_map = {r['full_name']: r['id'] for r in conn.execute('SELECT id,full_name FROM users').fetchall()}
+    fk_lookup = {
+        'subject_type_id': subjects,
+        'result_type_id':  results,
+        'assigned_to':     users_map,
+    }
+
+    updated = 0
+    skipped = 0
+    errors  = []
+    now     = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        raw_id = row[id_idx]
+        if not raw_id:
+            continue
+        try:
+            rid = int(raw_id)
+        except (ValueError, TypeError):
+            errors.append(f'Невалидный ID: {raw_id}')
+            continue
+
+        existing = conn.execute('SELECT * FROM requests WHERE id=?', (rid,)).fetchone()
+        if not existing:
+            errors.append(f'ID {rid}: обращение не найдено в базе')
+            continue
+
+        updates = {}
+
+        for ci, header in enumerate(headers):
+            if ci == id_idx:
+                continue
+            cell_val = row[ci]
+
+            if header in COL_MAP:
+                field = COL_MAP[header]
+                if cell_val is None or str(cell_val).strip() == '':
+                    continue
+                val = str(cell_val).strip()
+                if not overwrite and existing[field] not in (None, ''):
+                    continue
+                updates[field] = val
+
+            elif header in FK_MAP:
+                field, _ = FK_MAP[header]
+                if cell_val is None or str(cell_val).strip() == '':
+                    continue
+                name = str(cell_val).strip()
+                lookup = fk_lookup[field]
+                fk_id = lookup.get(name)
+                if fk_id is None:
+                    errors.append(f'ID {rid}: «{name}» не найдено в справочнике «{header}»')
+                    continue
+                if not overwrite and existing[field] not in (None, ''):
+                    continue
+                updates[field] = fk_id
+
+        if not updates:
+            skipped += 1
+            continue
+
+        set_clause = ', '.join(f'{k}=?' for k in updates)
+        vals = list(updates.values()) + [now, session['user_id'], rid]
+        conn.execute(
+            f'UPDATE requests SET {set_clause}, updated_at=?, updated_by=? WHERE id=?',
+            vals
+        )
+        log_action(conn, session['user_id'], 'import_xlsx', rid,
+                   f'Импорт Excel: обновлены поля: {", ".join(updates.keys())}')
+        updated += 1
+
+    conn.commit()
+    conn.close()
+
+    return jsonify({'updated': updated, 'skipped': skipped, 'errors': errors})
+
+
+# ─── AUTOSAVE / WAL CHECKPOINT ─────────────────────────────────────────────────────────────
 
 @report_bp.route('/autosave', methods=['POST'])
 @login_required
