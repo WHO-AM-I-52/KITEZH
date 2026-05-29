@@ -60,19 +60,33 @@
   #updatePanel.upd-error  { border-left-color: #dc3545 !important; }
   #updatePanel.in-progress { border-left-color: #ffc107 !important; }
 
-  #updateLogPre {
-    font-size: 11px;
+  #updateCommitsList {
+    font-size: 12px;
     background: #f8f9fa;
-    max-height: 130px;
+    max-height: 160px;
     overflow-y: auto;
     border-radius: 6px;
     padding: 8px 10px;
     color: #495057;
-    white-space: pre-wrap;
-    word-break: break-all;
   }
-  body[data-theme="dark"] #updateLogPre  { background:#1e2235; color:#e2e8f0; }
-  body[data-theme="zone"] #updateLogPre  { background:#161712; color:#c8c4a8; }
+  body[data-theme="dark"] #updateCommitsList { background:#1e2235; color:#e2e8f0; }
+  body[data-theme="zone"] #updateCommitsList { background:#161712; color:#c8c4a8; }
+
+  .commit-row {
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+    padding: 2px 0;
+    border-bottom: 1px solid rgba(0,0,0,.04);
+  }
+  .commit-row:last-child { border-bottom: none; }
+  .commit-date { color: #adb5bd; font-size: 10px; min-width: 60px; flex-shrink: 0; }
+  .commit-sha  { color: #adb5bd; font-size: 10px; font-family: monospace; flex-shrink: 0; }
+  .commit-msg  { word-break: break-word; }
+  body[data-theme="dark"] .commit-date,
+  body[data-theme="dark"] .commit-sha  { color: #4a5568; }
+  body[data-theme="zone"] .commit-date,
+  body[data-theme="zone"] .commit-sha  { color: #6b6a50; }
 
   @keyframes spinOnce { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
   .spin { animation: spinOnce .7s linear infinite; display:inline-block; }
@@ -142,7 +156,8 @@
     </div>
   </div>
   <div id="updateLogWrap" class="mt-2 d-none">
-    <pre id="updateLogPre"></pre>
+    <div class="mb-1 text-muted" style="font-size:11px">Что изменится:</div>
+    <div id="updateCommitsList"></div>
   </div>
 </div>
 
@@ -322,7 +337,7 @@
   var _btnUpdate      = document.getElementById('btnUpdate');
   var _btnCheck       = document.getElementById('btnCheck');
   var _logWrap        = document.getElementById('updateLogWrap');
-  var _logPre         = document.getElementById('updateLogPre');
+  var _commitsList    = document.getElementById('updateCommitsList');
   var _countdown      = document.getElementById('nextCheckCountdown');
   var _UPD_CACHE      = 'sonar_upd_status';
   var AUTO_CHECK_HOURS = [12, 17];
@@ -375,10 +390,34 @@
     if (type === 'progress') _updPanel.classList.add('in-progress');
   }
 
-  function _updShowLog(text) {
-    if (!text) return;
-    _logPre.textContent = text;
+  function _updShowCommits(commits) {
+    _commitsList.innerHTML = '';
+    if (!commits || !commits.length) {
+      _logWrap.classList.add('d-none');
+      return;
+    }
+    var frag = document.createDocumentFragment();
+    commits.forEach(function(c) {
+      var icon = c.message.startsWith('fix')  ? '🔧' :
+                 c.message.startsWith('feat') ? '✨' :
+                 c.message.startsWith('docs') ? '📄' :
+                 c.message.startsWith('refactor') ? '♻️' : '▸';
+      var row = document.createElement('div');
+      row.className = 'commit-row';
+      row.innerHTML =
+        '<span class="commit-date">' + (c.date || '') + '</span>' +
+        '<span class="commit-sha">'  + (c.sha  || '') + '</span>' +
+        '<span class="commit-msg">'  + icon + ' ' + _esc(c.message) + '</span>';
+      frag.appendChild(row);
+    });
+    _commitsList.appendChild(frag);
     _logWrap.classList.remove('d-none');
+  }
+
+  function _esc(s) {
+    return String(s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
   function _updRenderResult(data) {
@@ -390,6 +429,7 @@
         'update'
       );
       _btnUpdate.classList.remove('d-none');
+      _updShowCommits(data.commits || []);
     } else if (data.status === 0) {
       _updSetStatus(
         '<i class="bi bi-check-circle-fill me-1 text-success"></i>Установлена актуальная версия' +
@@ -398,6 +438,7 @@
         'ok'
       );
       _btnUpdate.classList.add('d-none');
+      _logWrap.classList.add('d-none');
     } else {
       _updSetStatus(
         '<i class="bi bi-exclamation-triangle-fill me-1 text-warning"></i>' +
@@ -406,8 +447,8 @@
         'error'
       );
       _btnUpdate.classList.add('d-none');
+      _logWrap.classList.add('d-none');
     }
-    if (data.output) _updShowLog(data.output);
   }
 
   function updCheck(force) {
@@ -417,6 +458,7 @@
     if (cached && !force) { _updRenderResult(cached); return; }
     _btnCheck.disabled = true;
     _btnUpdate.classList.add('d-none');
+    _logWrap.classList.add('d-none');
     _updSetStatus('<span class="spin"><i class="bi bi-arrow-repeat"></i></span> Проверяем…', 'loading');
     var url = force ? '/api/update/check?force=1' : '/api/update/check';
     fetch(url, {credentials: 'same-origin'})
@@ -437,6 +479,7 @@
     _btnCheck.disabled  = true;
     _btnUpdate.innerHTML = '<span class="spin"><i class="bi bi-arrow-repeat"></i></span> Обновляем…';
     sessionStorage.removeItem(_UPD_CACHE);
+    _logWrap.classList.add('d-none');
     _updSetStatus('<span class="spin"><i class="bi bi-arrow-repeat"></i></span> Скачиваем и применяем обновление… Сервер скоро перезапустится.', 'progress');
     fetch('/api/update/apply', {method: 'POST', credentials: 'same-origin'})
       .then(function(r){ return r.json(); })

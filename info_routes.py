@@ -6,6 +6,7 @@
 # ║  fix: ?force=1 сбрасывает серверный кэш               ║
 # ║  fix: _restart.flag + sys.exit(42) → run_server.py          ║
 # ║  fix: active_branch передаётся в changelog.html              ║
+# ║  feat: commits передаётся в JSON-ответе /api/update/check    ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, render_template, session, jsonify, request as flask_request
@@ -18,6 +19,8 @@ import sys
 import subprocess
 import json
 import threading
+import urllib.request
+import urllib.error
 
 misc_bp = Blueprint('misc', __name__)
 
@@ -144,6 +147,10 @@ _RESTART_FLAG = os.path.join(BASE_DIR, '_restart.flag')
 _UPDATER      = os.path.join(BASE_DIR, '_updater.py')
 _COMMIT_FILE  = os.path.join(BASE_DIR, '_last_commit.txt')
 
+_REPO_OWNER = 'WHO-AM-I-52'
+_REPO_NAME  = 'SONAR'
+_API_BASE   = f'https://api.github.com/repos/{_REPO_OWNER}/{_REPO_NAME}'
+
 
 def _read_local_sha() -> str:
     if os.path.exists(_COMMIT_FILE):
@@ -152,6 +159,59 @@ def _read_local_sha() -> str:
         except Exception:
             pass
     return ''
+
+
+def _read_local_sha_full() -> str:
+    if os.path.exists(_COMMIT_FILE):
+        try:
+            return open(_COMMIT_FILE, encoding='utf-8').read().strip()
+        except Exception:
+            pass
+    return ''
+
+
+def _gh_headers() -> dict:
+    """Заголовки для GitHub API. Читает токен из .env если есть."""
+    env_path = os.path.join(BASE_DIR, '.env')
+    token = None
+    if os.path.exists(env_path):
+        try:
+            with open(env_path, encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith('GITHUB_TOKEN='):
+                        token = line.split('=', 1)[1].strip()
+                        break
+        except Exception:
+            pass
+    h = {'User-Agent': 'SONAR-Updater', 'Accept': 'application/vnd.github+json'}
+    if token:
+        h['Authorization'] = f'Bearer {token}'
+    return h
+
+
+def _fetch_commits(local_sha: str, remote_sha: str) -> list:
+    """Запрашивает GitHub Compare API и возвращает список коммитов.
+    Используется только когда есть обновления (code == 1).
+    """
+    if not local_sha or not remote_sha or local_sha == remote_sha:
+        return []
+    try:
+        url = f'{_API_BASE}/compare/{local_sha}...{remote_sha}'
+        req = urllib.request.Request(url, headers=_gh_headers())
+        with urllib.request.urlopen(req, timeout=15) as r:
+            data = json.loads(r.read().decode())
+        commits = []
+        for c in data.get('commits', [])[:20]:
+            msg      = c.get('commit', {}).get('message', '').split('\n')[0]
+            sha      = c.get('sha', '')[:7]
+            date_raw = c.get('commit', {}).get('author', {}).get('date', '')
+            date_str = date_raw[:10] if date_raw else ''
+            commits.append({'sha': sha, 'message': msg, 'date': date_str})
+        commits.reverse()  # новые сверху
+        return commits
+    except Exception:
+        return []
 
 
 @misc_bp.route('/api/update/check')
@@ -179,7 +239,7 @@ def api_update_check():
                 'status':     code,
                 'has_update': code == 1,
                 'local_sha':  _read_local_sha(),
-                'output':     cached.get('output', '')[-800:],
+                'commits':    cached.get('commits', []),
                 'cached':     True,
                 'checked_at': cached.get('checked_at'),
             })
@@ -191,11 +251,23 @@ def api_update_check():
             [sys.executable, _UPDATER, '--check'],
             capture_output=True, text=True, timeout=25
         )
-        code = result.returncode
+        code       = result.returncode
+        local_sha  = _read_local_sha_full()
+        remote_sha = ''
+        # Парсим remote SHA из stdout _updater.py
+        for line in result.stdout.splitlines():
+            if 'GitHub версия' in line or 'Последний коммит GitHub' in line:
+                parts = line.split(':')
+                if len(parts) > 1:
+                    remote_sha = parts[-1].strip().rstrip('...')
+                    break
+
+        commits = _fetch_commits(local_sha, remote_sha) if code == 1 and remote_sha else []
+
         payload = {
             'code':       code,
             'checked_at': datetime.now().isoformat(),
-            'output':     result.stdout[-4000:],
+            'commits':    commits,
         }
         try:
             with open(_FLAG_FILE, 'w', encoding='utf-8') as f:
@@ -207,16 +279,18 @@ def api_update_check():
             'status':     code,
             'has_update': code == 1,
             'local_sha':  _read_local_sha(),
-            'output':     result.stdout[-800:],
+            'commits':    commits,
             'cached':     False,
             'checked_at': payload['checked_at'],
         })
     except subprocess.TimeoutExpired:
         return jsonify({'status': 2, 'error': 'timeout',
-                        'has_update': False, 'local_sha': _read_local_sha()}), 200
+                        'has_update': False, 'local_sha': _read_local_sha(),
+                        'commits': []}), 200
     except Exception as e:
         return jsonify({'status': 2, 'error': str(e),
-                        'has_update': False, 'local_sha': _read_local_sha()}), 200
+                        'has_update': False, 'local_sha': _read_local_sha(),
+                        'commits': []}), 200
 
 
 @misc_bp.route('/api/update/apply', methods=['POST'])

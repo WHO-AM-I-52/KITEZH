@@ -3,6 +3,7 @@
 # ║  Скачивает обновления SONAR с GitHub одним zip-архивом (1 API-запрос)   ║
 # ║  Режим --check: сравнивает SHA и выходит без скачивания                 ║
 # ║  Не трогает БД и файлы пользователя.                                    ║
+# ║  get_commits_between: список коммитов для панели обновлений              ║
 # ╚════════════════════════════════════════════════════════════════════════╝
 
 import urllib.request
@@ -113,6 +114,29 @@ def show_rate_limit(headers):
             pass
     print(f"  Лимит API: {remaining}/{limit} осталось" +
           (f" (сброс в {reset_str})" if reset_str else ""))
+
+
+# ─── Список коммитов между двумя SHA ────────────────────────────────────────
+
+def get_commits_between(local_sha: str, remote_sha: str) -> list:
+    """Возвращает список коммитов между local_sha и remote_sha (до 20 шт.).
+    Каждый элемент: {'sha': str, 'message': str, 'date': str}.
+    Используется панелью обновлений в changelog.html.
+    """
+    try:
+        data = get_json(f"{API_BASE}/compare/{local_sha}...{remote_sha}")
+        commits = []
+        for c in data.get("commits", [])[:20]:
+            msg      = c.get("commit", {}).get("message", "").split("\n")[0]
+            sha      = c.get("sha", "")[:7]
+            date_raw = c.get("commit", {}).get("author", {}).get("date", "")
+            date_str = date_raw[:10] if date_raw else ""
+            commits.append({"sha": sha, "message": msg, "date": date_str})
+        commits.reverse()  # новые сверху
+        return commits
+    except Exception as e:
+        print(f"  [Внимание] Не удалось получить список коммитов: {e}")
+        return []
 
 
 # ─── Проверка обновлений по SHA ─────────────────────────────────────────────
