@@ -3,6 +3,7 @@
 {# ║ settings.html                                               ║ #}
 {# ║ feat #10: Страница настроек пользователя                   ║ #}
 {# ║ feat #9:  Тема «Тёмная V2» в выборе оформления             ║ #}
+{# ║ feat: переключение ветки main/dev (только admin)           ║ #}
 {# ╚══════════════════════════════════════════════════════════════╝ #}
 
 {% block content %}
@@ -153,6 +154,56 @@
     </div>
   </div>
 </div>
+
+{# ── Версия системы (только admin) ───────────────────────── #}
+{% if user and user.role == 'admin' %}
+<div class="card mt-4 border-warning">
+  <div class="card-header bg-white fw-semibold d-flex align-items-center gap-2">
+    <i class="bi bi-git text-warning"></i> Версия системы
+    {% if active_branch == 'dev' %}
+      <span class="badge bg-warning text-dark ms-1">🧪 DEV</span>
+    {% else %}
+      <span class="badge bg-success ms-1">✅ STABLE</span>
+    {% endif %}
+  </div>
+  <div class="card-body">
+    <div class="row g-3 align-items-center">
+      <div class="col-sm-6">
+        <div class="text-muted" style="font-size:11px">АКТИВНАЯ ВЕТКА</div>
+        <div class="fw-semibold font-monospace">{{ active_branch }}</div>
+        <div class="form-text mt-1">
+          {% if active_branch == 'dev' %}
+            <i class="bi bi-exclamation-triangle-fill text-warning me-1"></i>
+            Экспериментальная версия. Могут быть нестабильные изменения.
+          {% else %}
+            Стабильная версия. Рекомендуется для работы.
+          {% endif %}
+        </div>
+      </div>
+      <div class="col-sm-6">
+        {% if active_branch == 'main' %}
+          <form method="POST" action="{{ url_for('settings.switch_branch') }}"
+                onsubmit="return confirm('Переключиться на экспериментальную ветку dev?\nСервер перезапустится автоматически (~5 сек).')">
+            <input type="hidden" name="branch" value="dev">
+            <button type="submit" class="btn btn-outline-warning w-100">
+              <i class="bi bi-arrow-repeat me-1"></i> Переключиться на 🧪 DEV
+            </button>
+          </form>
+        {% else %}
+          <form method="POST" action="{{ url_for('settings.switch_branch') }}"
+                onsubmit="return confirm('Вернуться на стабильную ветку main?\nСервер перезапустится автоматически (~5 сек).')">
+            <input type="hidden" name="branch" value="main">
+            <button type="submit" class="btn btn-outline-success w-100">
+              <i class="bi bi-arrow-repeat me-1"></i> Вернуться на ✅ STABLE (main)
+            </button>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 {% endblock %}
 
 {% block scripts %}

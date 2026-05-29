@@ -19,11 +19,24 @@ from datetime import datetime
 
 REPO_OWNER    = "WHO-AM-I-52"
 REPO_NAME     = "SONAR"
-BRANCH        = "main"
 BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
 API_BASE      = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}"
 COMMIT_FILE   = os.path.join(BASE_DIR, "_last_commit.txt")
+BRANCH_FILE   = os.path.join(BASE_DIR, "_branch.txt")
 FALLBACK_KB   = 600
+
+# ── Читаем активную ветку из _branch.txt (по умолчанию main) ─────────────────
+def load_branch() -> str:
+    if os.path.exists(BRANCH_FILE):
+        try:
+            val = open(BRANCH_FILE, encoding="utf-8").read().strip()
+            if val in ("main", "dev"):
+                return val
+        except Exception:
+            pass
+    return "main"
+
+BRANCH = load_branch()
 
 BAT_NAME = "start SONAR.bat"
 
@@ -131,7 +144,7 @@ def save_local_sha(sha: str):
 def check_for_updates() -> int:
     print()
     print("  ================================================")
-    print("   SONAR - Проверка обновлений")
+    print(f"   SONAR - Проверка обновлений (ветка: {BRANCH})")
     print("  ================================================")
     print()
     print("  Подключаемся к GitHub...")
@@ -200,7 +213,7 @@ def _print_progress(downloaded: int, estimated_kb: int, spinner_idx: int):
 
 
 def download_zip(zip_path: str):
-    print("  Определяем размер архива обновления...")
+    print(f"  Определяем размер архива обновления (ветка: {BRANCH})...")
     estimated_kb = get_zip_size_kb()
     print(f"  Ожидаемый размер архива: ~{estimated_kb} КБ")
 
@@ -322,6 +335,11 @@ def ensure_github_release():
         print("  [Релиз] Токен не найден — автосоздание релиза пропущено.")
         return
 
+    # Релиз создаём только для main-ветки
+    if BRANCH != "main":
+        print(f"  [Релиз] Ветка {BRANCH} — автосоздание релиза пропущено.")
+        return
+
     version, body = load_changelog()
     if not version:
         print("  [Релиз] Не удалось определить версию — пропуск.")
@@ -360,12 +378,7 @@ def ensure_github_release():
 
 
 def run_sync_changelog():
-    """Синхронизирует changelog.py с GitHub Releases после обновления.
-
-    fix: ранее sync_changelog.py запускался только из start SONAR.bat,
-    поэтому при обновлении через кнопку в интерфейсе раздел «Версии»
-    не обновлялся до следующего перезапуска системы.
-    """
+    """Синхронизирует changelog.py с GitHub Releases после обновления."""
     sync_path = os.path.join(BASE_DIR, "sync_changelog.py")
     if not os.path.exists(sync_path):
         print("  [Changelog] sync_changelog.py не найден — пропуск.")
@@ -391,6 +404,7 @@ def main():
         print("  Токен найден — лимит 5000 запросов/час")
     else:
         print("  Токен не найден — лимит 60 запросов/час")
+    print(f"  Активная ветка: {BRANCH}")
 
     remote_sha = get_remote_sha()
 
@@ -442,7 +456,7 @@ def main():
     run_sync_changelog()
 
     print()
-    print("  Обновление завершено. База данных и файлы пользователей не тронуты.")
+    print(f"  Обновление завершено (ветка: {BRANCH}). База данных и файлы пользователей не тронуты.")
 
     if bat_updated:
         print()
