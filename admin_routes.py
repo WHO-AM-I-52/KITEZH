@@ -4,7 +4,6 @@
 # ╚══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify
-from datetime import datetime
 import json
 
 from db import get_db
@@ -340,18 +339,40 @@ def _build_filter_query(p):
     params = []
     has_like = False
 
-    if p.get('status'):     q += " AND r.status=?";          params.append(p['status'])
-    if p.get('date_from'):  q += " AND r.request_date>=?";   params.append(p['date_from'])
-    if p.get('date_to'):    q += " AND r.request_date<=?";   params.append(p['date_to'])
-    if p.get('employee'):   q += " AND r.assigned_to=?";     params.append(p['employee'])
-    if p.get('site_type_free') == '1':     q += " AND r.site_type_free=1"
-    if p.get('site_type_existing') == '1': q += " AND r.site_type_existing=1"
-    if p.get('area_min'):   q += " AND r.site_area_ha>=?";        params.append(float(p['area_min']))
-    if p.get('area_max'):   q += " AND r.site_area_ha<=?";        params.append(float(p['area_max']))
-    if p.get('build_min'):  q += " AND r.site_build_area_m2>=?"; params.append(float(p['build_min']))
-    if p.get('build_max'):  q += " AND r.site_build_area_m2<=?"; params.append(float(p['build_max']))
-    if p.get('inv_min'):    q += " AND r.investment_total>=?";    params.append(float(p['inv_min']))
-    if p.get('inv_max'):    q += " AND r.investment_total<=?";    params.append(float(p['inv_max']))
+    if p.get('status'):
+        q += " AND r.status=?"
+        params.append(p['status'])
+    if p.get('date_from'):
+        q += " AND r.request_date>=?"
+        params.append(p['date_from'])
+    if p.get('date_to'):
+        q += " AND r.request_date<=?"
+        params.append(p['date_to'])
+    if p.get('employee'):
+        q += " AND r.assigned_to=?"
+        params.append(p['employee'])
+    if p.get('site_type_free') == '1':
+        q += " AND r.site_type_free=1"
+    if p.get('site_type_existing') == '1':
+        q += " AND r.site_type_existing=1"
+    if p.get('area_min'):
+        q += " AND r.site_area_ha>=?"
+        params.append(float(p['area_min']))
+    if p.get('area_max'):
+        q += " AND r.site_area_ha<=?"
+        params.append(float(p['area_max']))
+    if p.get('build_min'):
+        q += " AND r.site_build_area_m2>=?"
+        params.append(float(p['build_min']))
+    if p.get('build_max'):
+        q += " AND r.site_build_area_m2<=?"
+        params.append(float(p['build_max']))
+    if p.get('inv_min'):
+        q += " AND r.investment_total>=?"
+        params.append(float(p['inv_min']))
+    if p.get('inv_max'):
+        q += " AND r.investment_total<=?"
+        params.append(float(p['inv_max']))
 
     if p.get('applicant'):
         q += " AND (r.applicant_full_name LIKE ? OR r.applicant_short_name LIKE ?)"
@@ -441,7 +462,7 @@ def saved_filters():
         ).fetchall()
     ]
 
-    # ─── fix #7: заменяем N+1 запросов на UNION ALL ─────────────────────────
+    # ─── fix #7: заменяем N+1 запросов на UNION ALL ───────────────────────
     #
     # Фильтры без LIKE → батчим в один UNION ALL запрос
     # Фильтры с LIKE (applicant/district) → отдельный SELECT запрос (таких обычно мало)
@@ -473,7 +494,6 @@ def saved_filters():
         union_params = []
         for fid in batch_ids:
             q, params, _ = _build_filter_query(parsed[fid])
-            # Переписываем SELECT COUNT(*) → SELECT ? AS fid, COUNT(*)
             q_with_fid = q.replace(
                 "SELECT COUNT(*) FROM requests r WHERE 1=1",
                 f"SELECT {fid} AS fid, COUNT(*) AS cnt FROM requests r WHERE 1=1",
