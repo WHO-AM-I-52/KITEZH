@@ -2,7 +2,7 @@ ROADMAP = [
     {
         "version": "v2.4",
         "title": "OCR и автозаполнение",
-        "status": "idea",
+        "status": "planned",
         "eta": "",
         "points": [
             "Автозаполнение полей формы по скану анкеты (PDF/DOCX)",
@@ -13,7 +13,7 @@ ROADMAP = [
     {
         "version": "v2.5",
         "title": "Уведомления на почту",
-        "status": "idea",
+        "status": "planned",
         "eta": "",
         "points": [
             "Уведомления на почту при назначении обращения",
@@ -24,7 +24,7 @@ ROADMAP = [
     {
         "version": "",
         "title": "Автообновление в интерфейсе",
-        "status": "idea",
+        "status": "planned",
         "eta": "",
         "points": [
             "Встроенная проверка новых версий при запуске",
@@ -35,7 +35,7 @@ ROADMAP = [
     {
         "version": "v3.0",
         "title": "Автоподбор земельных участков (#37)",
-        "status": "idea",
+        "status": "planned",
         "eta": "",
         "points": [
             "Автоматический подбор участков под анкеты по базе land_plots и request_plots",
@@ -46,7 +46,7 @@ ROADMAP = [
     {
         "version": "v3.1",
         "title": "ИИ-поиск по участкам (#38)",
-        "status": "idea",
+        "status": "planned",
         "eta": "",
         "points": [
             "Поиск по участкам на естественном языке через Perplexity Sonar API",
@@ -57,7 +57,7 @@ ROADMAP = [
     {
         "version": "v3.2",
         "title": "Telegram-уведомления (#39)",
-        "status": "idea",
+        "status": "planned",
         "eta": "",
         "points": [
             "Уведомления о заявках, релизах и сводках dashboard через Telegram (Вариант А)",
@@ -68,7 +68,7 @@ ROADMAP = [
     {
         "version": "v3.3",
         "title": "Telegram как канал приёма заявок (#40)",
-        "status": "idea",
+        "status": "planned",
         "eta": "",
         "points": [
             "Intake-бот на aiogram 3.x для приёма обращений через Telegram",
