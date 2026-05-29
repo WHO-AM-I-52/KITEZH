@@ -136,8 +136,21 @@ def _migrate(conn):
         )
 
     # ════════════════════════════════════════════════════════════════
+    # Права доступа: новые колонки в таблице users
+    # ════════════════════════════════════════════════════════════════
+
+    if not _has_column(conn, 'users', 'can_export_full'):
+        conn.execute(
+            "ALTER TABLE users ADD COLUMN can_export_full INTEGER NOT NULL DEFAULT 0"
+        )
+
+    if not _has_column(conn, 'users', 'can_import_full'):
+        conn.execute(
+            "ALTER TABLE users ADD COLUMN can_import_full INTEGER NOT NULL DEFAULT 0"
+        )
+
+    # ════════════════════════════════════════════════════════════════
     # Индексы — fix #6
-    # CREATE INDEX IF NOT EXISTS безопасен: не сломает БД при повторном запуске
     # ════════════════════════════════════════════════════════════════
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_req_status ON requests(status)"

@@ -1,6 +1,6 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║                      auth_utils.py                           ║
-# ║  v2.2: scrypt (werkzeug 3.x) + pbkdf2 + sha256 legacy       ║
+# ║  v2.3: +can_export_full, +can_import_full                    ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 import hashlib
@@ -25,10 +25,8 @@ def check_pw(stored: str, entered: str) -> bool:
     """
     if not stored:
         return False
-    # werkzeug сам распознаёт свои форматы (scrypt и pbkdf2)
     if stored.startswith('scrypt:') or stored.startswith('pbkdf2:'):
         return check_password_hash(stored, entered)
-    # Legacy: старый SHA-256 без соли
     return stored == hashlib.sha256(entered.encode()).hexdigest()
 
 
@@ -40,15 +38,17 @@ def is_legacy_hash(stored: str) -> bool:
 # ─── ПРАВА ───────────────────────────────────────────────────────────────
 
 ALL_PERMISSIONS = {
-    'can_create':      'Создавать обращения',
-    'can_edit_others': 'Редактировать чужие обращения',
-    'can_confirm':     'Принимать / отклонять обращения',
-    'can_delete':      'Удалять обращения',
-    'can_rollback':    'Откат истории',
-    'can_export':      'Экспорт в Excel',
-    'can_classifiers': 'Управление справочниками',
-    'can_users':       'Управление пользователями',
-    'can_view_all':    'Видит все обращения (вкл. поиск)',
+    'can_create':       'Создавать обращения',
+    'can_edit_others':  'Редактировать чужие обращения',
+    'can_confirm':      'Принимать / отклонять обращения',
+    'can_delete':       'Удалять обращения',
+    'can_rollback':     'Откат истории',
+    'can_export':       'Экспорт в Excel (стандартный)',
+    'can_export_full':  'Скачать полную базу (Excel)',
+    'can_import_full':  'Загрузить обновлённый Excel (импорт)',
+    'can_classifiers':  'Управление справочниками',
+    'can_users':        'Управление пользователями',
+    'can_view_all':     'Видит все обращения (вкл. поиск)',
 }
 
 ADMIN_PERMISSIONS = {k: 1 for k in ALL_PERMISSIONS}
