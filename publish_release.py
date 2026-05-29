@@ -7,37 +7,59 @@
 # github.com → Settings → Developer settings → Personal access tokens → Fine-grained
 # Права: Contents (read/write), Metadata (read)
 
+import urllib.request
 import urllib.error
+import json
 import os
-from github_utils import load_token, get_json, post_json
 
 REPO_OWNER = "WHO-AM-I-52"
 REPO_NAME  = "SONAR"
 BRANCH     = "main"
 
-AGENT = "SONAR-Publisher"
-
+def load_token():
+    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    if os.path.exists(env_path):
+        with open(env_path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("GITHUB_TOKEN="):
+                    return line.split("=", 1)[1].strip()
+    return None
 
 def get_existing_tags(token):
     url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/releases?per_page=100"
-    data = get_json(url, agent=AGENT)
+    req = urllib.request.Request(url, headers={
+        "Authorization": f"Bearer {token}",
+        "User-Agent": "SONAR-Publisher",
+        "Accept": "application/vnd.github+json",
+    })
+    with urllib.request.urlopen(req, timeout=15) as r:
+        data = json.loads(r.read().decode())
     return {r["tag_name"] for r in data}
 
-
-def create_release(tag, name, body):
+def create_release(token, tag, name, body):
     url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/releases"
-    status, resp = post_json(url, {
+    payload = json.dumps({
         "tag_name":         tag,
         "target_commitish": BRANCH,
         "name":             name,
         "body":             body,
         "draft":            False,
         "prerelease":       False,
-    }, agent=AGENT)
-    if status == 201:
-        return True, resp.get("html_url", "")
-    return False, resp.get("message", str(resp))
-
+    }).encode("utf-8")
+    req = urllib.request.Request(url, data=payload, method="POST", headers={
+        "Authorization": f"Bearer {token}",
+        "User-Agent":    "SONAR-Publisher",
+        "Accept":        "application/vnd.github+json",
+        "Content-Type":  "application/json",
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            result = json.loads(r.read().decode())
+            return True, result.get("html_url", "")
+    except urllib.error.HTTPError as e:
+        err = e.read().decode()
+        return False, err
 
 def load_releases_from_changelog():
     try:
@@ -54,7 +76,6 @@ def load_releases_from_changelog():
         body = "\n".join(f"- {c}" for c in entry.get("changes", []))
         result.append({"tag": version, "name": name, "body": body})
     return result
-
 
 def main():
     print()
@@ -103,19 +124,18 @@ def main():
             print(f"  ⏭  {tag} — уже существует, пропускаю")
             skipped += 1
             continue
-        ok, info = create_release(tag, r["name"], r["body"])
+        ok, info = create_release(token, tag, r["name"], r["body"])
         if ok:
             print(f"  ✅  {tag} — опубликован")
             created += 1
         else:
-            print(f"  ❌  {tag} — ошибка: {str(info)[:120]}")
+            print(f"  ❌  {tag} — ошибка: {info[:120]}")
             errors += 1
 
     print()
     print(f"  Итог: создано {created}, пропущено {skipped}, ошибок {errors}")
     print()
     input("Press any key to exit...")
-
 
 if __name__ == "__main__":
     main()
