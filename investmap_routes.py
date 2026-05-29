@@ -1,10 +1,11 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║                  investmap_routes.py                        ║
-# ║  Конвертер + анализатор инвестплощадок — только для админа  ║
+# ║  Конвертер + анализатор инвестплощадок              ║
+# ║  Доступ: админ или can_view_investmap                 ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, render_template, request, jsonify
-from auth_utils import login_required, admin_required
+from auth_utils import login_required, permission_required
 from tools.investmap_export import convert_excel_to_text
 from tools.investmap_analyzer import analyze
 
@@ -13,14 +14,14 @@ investmap_bp = Blueprint('investmap', __name__)
 
 @investmap_bp.route('/admin/investmap')
 @login_required
-@admin_required
+@permission_required('can_view_investmap')
 def investmap():
     return render_template('investmap.html')
 
 
 @investmap_bp.route('/admin/investmap/convert', methods=['POST'])
 @login_required
-@admin_required
+@permission_required('can_view_investmap')
 def investmap_convert():
     """Только конвертация в текст — без анализа. Используется для отправки в AI-чат."""
     f = request.files.get('file')
@@ -35,7 +36,7 @@ def investmap_convert():
 
 @investmap_bp.route('/admin/investmap/analyze', methods=['POST'])
 @login_required
-@admin_required
+@permission_required('can_view_investmap')
 def investmap_analyze():
     """
     Полный анализ карточки инвестплощадки.
@@ -90,7 +91,6 @@ def investmap_analyze():
     data = export.get('data', {})
     fmt  = export.get('format')
 
-    # Формат 2: список площадок
     if fmt == 2 and isinstance(data, list):
         analysis = [analyze(d) for d in data]
     else:

@@ -9,6 +9,7 @@
 {# ║  - Модалки: редактирование прав, смена пароля               ║ #}
 {# ║  - Журнал входов                                            ║ #}
 {# ║  - Журнал действий пользователей (v2.0) с фильтрами (v2.0.1)║ #}
+{# ║  v2.4: +can_view_investmap                                   ║ #}
 {# ╚══════════════════════════════════════════════════════════════╝ #}
 
 <style>
@@ -45,15 +46,16 @@
 </div>
 
 {% set perm_labels = [
-  ('can_create',      'Создавать обращения',                   'bi-plus-circle',          'text-success'),
-  ('can_edit_others', 'Редактировать чужие',                   'bi-pencil-square',        'text-primary'),
-  ('can_confirm',     'Принимать / отклонять',                 'bi-check-circle',         'text-success'),
-  ('can_delete',      'Удалять обращения',                     'bi-trash',                'text-danger'),
-  ('can_rollback',    'Откат истории',                         'bi-arrow-counterclockwise','text-warning'),
-  ('can_export',      'Экспорт в Excel',                       'bi-file-excel',           'text-success'),
-  ('can_classifiers', 'Управление справочниками',              'bi-book',                 'text-info'),
-  ('can_users',       'Управление пользователями',             'bi-people',               'text-primary'),
-  ('can_view_all',    'Видит все обращения (вкл. поиск)',      'bi-eye',                  'text-secondary'),
+  ('can_create',           'Создавать обращения',                   'bi-plus-circle',          'text-success'),
+  ('can_edit_others',      'Редактировать чужие',                   'bi-pencil-square',        'text-primary'),
+  ('can_confirm',          'Принимать / отклонять',                 'bi-check-circle',         'text-success'),
+  ('can_delete',           'Удалять обращения',                     'bi-trash',                'text-danger'),
+  ('can_rollback',         'Откат истории',                         'bi-arrow-counterclockwise','text-warning'),
+  ('can_export',           'Экспорт в Excel',                       'bi-file-excel',           'text-success'),
+  ('can_classifiers',      'Управление справочниками',              'bi-book',                 'text-info'),
+  ('can_users',            'Управление пользователями',             'bi-people',               'text-primary'),
+  ('can_view_all',         'Видит все обращения (вкл. поиск)',      'bi-eye',                  'text-secondary'),
+  ('can_view_investmap',   'Инвест. карта',                        'bi-map',                  'text-info'),
 ] %}
 
 <div class="row g-4">
@@ -483,11 +485,14 @@ function genPasswordFor(fid) { document.getElementById(fid).value = genPw(); }
 
 var PRESETS = {
   employee: { can_create:1, can_edit_others:0, can_confirm:0, can_delete:0,
-              can_rollback:0, can_export:1, can_classifiers:0, can_users:0, can_view_all:1 },
+              can_rollback:0, can_export:1, can_classifiers:0, can_users:0,
+              can_view_all:1, can_view_investmap:0 },
   manager:  { can_create:1, can_edit_others:1, can_confirm:1, can_delete:0,
-              can_rollback:0, can_export:1, can_classifiers:0, can_users:0, can_view_all:1 },
+              can_rollback:0, can_export:1, can_classifiers:0, can_users:0,
+              can_view_all:1, can_view_investmap:0 },
   admin:    { can_create:1, can_edit_others:1, can_confirm:1, can_delete:1,
-              can_rollback:1, can_export:1, can_classifiers:1, can_users:1, can_view_all:1 }
+              can_rollback:1, can_export:1, can_classifiers:1, can_users:1,
+              can_view_all:1, can_view_investmap:1 }
 };
 function applyRolePreset(role) {
   var p = PRESETS[role]; if (!p) return;

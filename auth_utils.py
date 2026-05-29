@@ -1,6 +1,6 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║                      auth_utils.py                           ║
-# ║  v2.3: +can_export_full, +can_import_full                    ║
+# ║  v2.4: +can_view_investmap                                   ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 import hashlib
@@ -9,7 +9,7 @@ from flask import session, redirect, url_for, flash
 from werkzeug.security import generate_password_hash, check_password_hash
 
 
-# ─── ХЕШИРОВАНИЕ ───────────────────────────────────────────────────────────
+# ─── ХЕШИРОВАНИЕ ────────────────────────────────────────────────────────────────────
 
 def hash_pw(p: str) -> str:
     """Хеширует пароль через werkzeug (scrypt или pbkdf2 в зависимости от версии)."""
@@ -35,20 +35,21 @@ def is_legacy_hash(stored: str) -> bool:
     return bool(stored) and not stored.startswith('scrypt:') and not stored.startswith('pbkdf2:')
 
 
-# ─── ПРАВА ───────────────────────────────────────────────────────────────
+# ─── ПРАВА ────────────────────────────────────────────────────────────────────────────
 
 ALL_PERMISSIONS = {
-    'can_create':       'Создавать обращения',
-    'can_edit_others':  'Редактировать чужие обращения',
-    'can_confirm':      'Принимать / отклонять обращения',
-    'can_delete':       'Удалять обращения',
-    'can_rollback':     'Откат истории',
-    'can_export':       'Экспорт в Excel (стандартный)',
-    'can_export_full':  'Скачать полную базу (Excel)',
-    'can_import_full':  'Загрузить обновлённый Excel (импорт)',
-    'can_classifiers':  'Управление справочниками',
-    'can_users':        'Управление пользователями',
-    'can_view_all':     'Видит все обращения (вкл. поиск)',
+    'can_create':           'Создавать обращения',
+    'can_edit_others':      'Редактировать чужие обращения',
+    'can_confirm':          'Принимать / отклонять обращения',
+    'can_delete':           'Удалять обращения',
+    'can_rollback':         'Откат истории',
+    'can_export':           'Экспорт в Excel (стандартный)',
+    'can_export_full':      'Скачать полную базу (Excel)',
+    'can_import_full':      'Загрузить обновлённый Excel (импорт)',
+    'can_classifiers':      'Управление справочниками',
+    'can_users':            'Управление пользователями',
+    'can_view_all':         'Видит все обращения (вкл. поиск)',
+    'can_view_investmap':   'Просмотр инвест. карты',
 }
 
 ADMIN_PERMISSIONS = {k: 1 for k in ALL_PERMISSIONS}
@@ -60,7 +61,7 @@ def get_user_perm(key: str) -> bool:
     return bool(session.get(f'perm_{key}', 0))
 
 
-# ─── ДЕКОРАТОРЫ ──────────────────────────────────────────────────────────────
+# ─── ДЕКОРАТОРЫ ────────────────────────────────────────────────────────────────────────
 
 def login_required(f):
     @wraps(f)
