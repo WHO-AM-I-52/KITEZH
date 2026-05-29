@@ -149,6 +149,20 @@
      title="Стандартный отчёт по текущим фильтрам">
     <i class="bi bi-file-earmark-excel me-1"></i>Выгрузить Excel
   </a>
+  {% if session.perm_can_export_full or session.role == 'admin' %}
+  <a href="{{ url_for('report.export_full') }}"
+     class="btn btn-sm btn-outline-success"
+     title="Скачать все обращения со всеми полями. Дозаполните файл и загрузите обратно через кнопку рядом.">
+    <i class="bi bi-download me-1"></i>Скачать базу (Excel)
+  </a>
+  {% endif %}
+  {% if session.perm_can_import_full or session.role == 'admin' %}
+  <button class="btn btn-sm btn-outline-warning"
+          data-bs-toggle="modal" data-bs-target="#importModal"
+          title="Загрузить дозаполненный Excel. Обновляются только заполненные ячейки. Используйте файл из 'Скачать базу'.">
+    <i class="bi bi-upload me-1"></i>Загрузить обновлённый Excel
+  </button>
+  {% endif %}
   <a href="{{ url_for('requests.dashboard') }}" class="btn btn-sm btn-outline-primary">
     <i class="bi bi-bar-chart-line"></i> Открыть дашборд
   </a>
@@ -187,7 +201,6 @@
       </td></tr>
       {% endif %}
       {% for r in requests %}
-      {# overdue вычислен на сервере в SQL — булево поле 0/1 #}
       <tr class="{{ 'table-danger' if r.overdue else '' }}"
           data-preview-id="{{ r.id }}"
           data-status="{{ r.status }}"
@@ -291,6 +304,47 @@
   {% endif %}
 </div>
 
+{# ===== МОДАЛЬНОЕ ОКНО ИМПОРТА ===== #}
+{% if session.perm_can_import_full or session.role == 'admin' %}
+<div class="modal fade" id="importModal" tabindex="-1" aria-labelledby="importModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header" style="background:#1B5E7B;color:#fff">
+        <h6 class="modal-title" id="importModalLabel"><i class="bi bi-upload me-2"></i>Загрузить обновлённый Excel</h6>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-info py-2 small mb-3">
+          <i class="bi bi-info-circle me-1"></i>
+          Используйте только файл, скачанный через <strong>«Скачать базу (Excel)»</strong>.
+          Колонка <strong>ID (не менять)</strong> обязательна — по ней происходит сопоставление.
+        </div>
+        <div id="importResult" class="d-none mb-3"></div>
+        <form id="importForm" enctype="multipart/form-data">
+          <div class="mb-3">
+            <label class="form-label small fw-bold">Файл .xlsx</label>
+            <input type="file" name="import_file" class="form-control form-control-sm" accept=".xlsx" required>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="overwrite" id="overwriteCheck" value="1">
+            <label class="form-check-label small" for="overwriteCheck">
+              Перезаписывать уже заполненные поля
+              <span class="text-muted">(по умолчанию — только пустые)</span>
+            </label>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Отмена</button>
+        <button type="button" class="btn btn-warning btn-sm" id="importSubmitBtn">
+          <i class="bi bi-upload me-1"></i>Загрузить
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <script src="{{ url_for('static', filename='js/filter_chips.js') }}"></script>
 {% endblock %}
 
@@ -299,6 +353,45 @@
 (function () {
   'use strict';
 
+  // ── Импорт Excel ──
+  var importBtn = document.getElementById('importSubmitBtn');
+  if (importBtn) {
+    importBtn.addEventListener('click', function () {
+      var form = document.getElementById('importForm');
+      var fd   = new FormData(form);
+      var btn  = this;
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Загрузка...';
+      fetch('/import/full', { method: 'POST', body: fd })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          var el = document.getElementById('importResult');
+          el.classList.remove('d-none');
+          if (data.error) {
+            el.innerHTML = '<div class="alert alert-danger py-2 small"><i class="bi bi-x-circle me-1"></i>' + data.error + '</div>';
+          } else {
+            var errs = '';
+            if (data.errors && data.errors.length) {
+              errs = '<details class="mt-2"><summary class="small text-danger" style="cursor:pointer">Ошибки (' + data.errors.length + ')</summary>'
+                + '<ul class="mb-0 mt-1 small">' + data.errors.map(function(e){ return '<li>' + e + '</li>'; }).join('') + '</ul></details>';
+            }
+            el.innerHTML = '<div class="alert alert-success py-2 small">'
+              + '<i class="bi bi-check-circle me-1"></i>'
+              + '<strong>Обновлено:</strong> ' + data.updated + ' обращений. '
+              + '<strong>Без изменений:</strong> ' + data.skipped + '.'
+              + errs + '</div>';
+          }
+          btn.disabled = false;
+          btn.innerHTML = '<i class="bi bi-upload me-1"></i>Загрузить';
+        })
+        .catch(function() {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="bi bi-upload me-1"></i>Загрузить';
+        });
+    });
+  }
+
+  // ── Превью строк таблицы ──
   var STATUS_COLOR = {
     draft:    '#6c757d',
     review:   '#fd7e14',
