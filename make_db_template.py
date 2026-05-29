@@ -1,7 +1,16 @@
 # ╔══════════════════════════════════════════════════════════════════════╗
 # ║                      make_db_template.py                                ║
 # ║  Создаёт облегчённый шаблон БД (db_template.db) из боевой database.db   ║
-# ║  Использование: python make_db_template.py                            ║
+# ║                                                                          ║
+# ║  Что делает:                                                             ║
+# ║    1. Копирует database.db → db_template.db                             ║
+# ║    2. Очищает боевые данные (заявки, уведомления, история и т.п.)       ║
+# ║    3. Оставляет структуру таблиц + справочники + admin-пользователя     ║
+# ║                                                                          ║
+# ║  Использование:                                                          ║
+# ║    python make_db_template.py                                            ║
+# ║                                                                          ║
+# ║  ВАЖНО: запускай только когда в database.db нужная схема и справочники  ║
 # ╚══════════════════════════════════════════════════════════════════════╝
 
 import sqlite3
@@ -13,17 +22,26 @@ DB_DIR       = os.path.join(BASE_DIR, "db")
 SRC_DB       = os.path.join(DB_DIR, "database.db")
 TEMPLATE_DB  = os.path.join(DB_DIR, "db_template.db")
 
+# ─── Таблицы с боевыми данными — будут очищены в шаблоне ────────────
 TABLES_TO_CLEAR = [
-    "requests",
-    "notifications",
-    "savedfilters",
-    "favorites",
-    "activity_log",
-    "request_history",
+    "requests",          # Обращения
+    "notifications",     # Уведомления
+    "savedfilters",      # Сохранённые фильтры
+    "favorites",         # Избранное
+    "activity_log",      # Лог активности (если есть)
+    "request_history",   # История изменений обращений (если есть)
 ]
+
+# ─── Таблицы, которые ОСТАЙОТСЯ нетронутыми (справочники, пользователи) ───
+# users          → admin-аккаунт остаётся
+# classifiers    → районы, правовые формы, типы источников
+# okved          → справочник ОКВЭД
+# subject_types  → Предмет обращения (подбор зу, мер поддержки и т.п.) — НЕ ОЧИЩАЕТСЯ
+# result_types   → Итоги работы / легенда цветов для МинЭК — НЕ ОЧИЩАЕТСЯ
 
 
 def get_tables(conn):
+    """Возвращает список всех таблиц в БД."""
     rows = conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
     ).fetchall()
@@ -35,6 +53,7 @@ def main():
         raise SystemExit(f"[ОШИБКА] Исходная БД не найдена: {SRC_DB}")
 
     os.makedirs(DB_DIR, exist_ok=True)
+
     print(f"Копируем {SRC_DB}")
     print(f"      -> {TEMPLATE_DB}")
     shutil.copy2(SRC_DB, TEMPLATE_DB)
@@ -79,6 +98,8 @@ def main():
     print(f"  Пропущено: {len(skipped)}")
     print()
     print("Справочники subject_types и result_types — НЕ ОЧИЩАЮТСЯ.")
+    print("Они переносятся в шаблон вместе со структурой (предзаполнены начальными значениями).")
+    print()
     print("Теперь можно закоммитить db/db_template.db в GitHub.")
     print("Боевая db/database.db осталась нетронутой.")
 
