@@ -155,6 +155,95 @@ def _migrate(conn):
         )
 
     # ════════════════════════════════════════════════════════════════
+    # Issue #53: новая логика статусов обращений
+    # ════════════════════════════════════════════════════════════════
+
+    # ─ Срок рассмотрения
+    if not _has_column(conn, 'requests', 'review_days'):
+        conn.execute(
+            "ALTER TABLE requests ADD COLUMN review_days INTEGER NOT NULL DEFAULT 7"
+        )
+    if not _has_column(conn, 'requests', 'review_deadline'):
+        conn.execute(
+            "ALTER TABLE requests ADD COLUMN review_deadline TEXT"
+        )
+    if not _has_column(conn, 'requests', 'registered_at'):
+        conn.execute(
+            "ALTER TABLE requests ADD COLUMN registered_at TEXT"
+        )
+
+    # ─ Ответственное лицо за подбор (отдельно от assigned_to/исполнителя)
+    if not _has_column(conn, 'requests', 'responsible_id'):
+        conn.execute(
+            "ALTER TABLE requests ADD COLUMN responsible_id INTEGER REFERENCES users(id)"
+        )
+    if not _has_column(conn, 'requests', 'responsible_not_in_system'):
+        conn.execute(
+            "ALTER TABLE requests ADD COLUMN responsible_not_in_system INTEGER NOT NULL DEFAULT 0"
+        )
+    if not _has_column(conn, 'requests', 'responsible_name_external'):
+        conn.execute(
+            "ALTER TABLE requests ADD COLUMN responsible_name_external TEXT"
+        )
+
+    # ─ Проверяющий площадки
+    if not _has_column(conn, 'requests', 'reviewer_id'):
+        conn.execute(
+            "ALTER TABLE requests ADD COLUMN reviewer_id INTEGER REFERENCES users(id)"
+        )
+    if not _has_column(conn, 'requests', 'reviewer_not_in_system'):
+        conn.execute(
+            "ALTER TABLE requests ADD COLUMN reviewer_not_in_system INTEGER NOT NULL DEFAULT 0"
+        )
+    if not _has_column(conn, 'requests', 'reviewer_name_external'):
+        conn.execute(
+            "ALTER TABLE requests ADD COLUMN reviewer_name_external TEXT"
+        )
+    if not _has_column(conn, 'requests', 'reviewer_comment'):
+        conn.execute(
+            "ALTER TABLE requests ADD COLUMN reviewer_comment TEXT"
+        )
+    if not _has_column(conn, 'requests', 'reviewer_decision'):
+        conn.execute(
+            "ALTER TABLE requests ADD COLUMN reviewer_decision TEXT"
+        )
+    if not _has_column(conn, 'requests', 'reviewer_decision_at'):
+        conn.execute(
+            "ALTER TABLE requests ADD COLUMN reviewer_decision_at TEXT"
+        )
+
+    # ─ Отправка заявителю
+    if not _has_column(conn, 'requests', 'sent_to_applicant_at'):
+        conn.execute(
+            "ALTER TABLE requests ADD COLUMN sent_to_applicant_at TEXT"
+        )
+    if not _has_column(conn, 'requests', 'send_method'):
+        conn.execute(
+            "ALTER TABLE requests ADD COLUMN send_method TEXT"
+        )
+
+    # ─ Обратная связь от заявителя
+    if not _has_column(conn, 'requests', 'applicant_feedback'):
+        conn.execute(
+            "ALTER TABLE requests ADD COLUMN applicant_feedback TEXT"
+        )
+    if not _has_column(conn, 'requests', 'applicant_feedback_at'):
+        conn.execute(
+            "ALTER TABLE requests ADD COLUMN applicant_feedback_at TEXT"
+        )
+
+    # ─ Маппинг старых статусов → новые (идемпотентный)
+    conn.execute(
+        "UPDATE requests SET status='registered'        WHERE status='review'"
+    )
+    conn.execute(
+        "UPDATE requests SET status='in_progress'       WHERE status='accepted'"
+    )
+    conn.execute(
+        "UPDATE requests SET status='sent_to_applicant' WHERE status='answered'"
+    )
+
+    # ════════════════════════════════════════════════════════════════
     # Индексы — fix #6
     # ════════════════════════════════════════════════════════════════
     conn.execute(
