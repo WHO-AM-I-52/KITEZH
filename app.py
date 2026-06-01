@@ -1,6 +1,6 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║ app.py                                                       ║
-# ║ v2.5: todatetime Jinja-фильтр + статусы inject_globals (#53)  ║
+# ║ v2.6: +14 колонок requests для цепочки статусов (#53)  ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 import os
@@ -56,11 +56,48 @@ def todatetime_filter(value):
         return date.today()
 
 
-# ─── Blueprints (ранние: без зависимостей от DB) ──────────────────────────
+# ─── Blueprints (ранние) ─────────────────────────────────────────────────────
 from phonebook_routes import phonebook_bp
 from search_routes    import search_bp
 app.register_blueprint(phonebook_bp)
 app.register_blueprint(search_bp)
+
+
+# ──────────────────────────────────────────────────────────────────
+# НОВЫЕ КОЛОНКИ requests (#53):
+#   registered_at, review_days, review_deadline
+#   responsible_id, responsible_not_in_system, responsible_name_external
+#   reviewer_id, reviewer_not_in_system, reviewer_name_external
+#   reviewer_decision, reviewer_comment, reviewer_decision_at
+#   sent_to_applicant_at, send_method
+#   applicant_feedback, applicant_feedback_at
+# ──────────────────────────────────────────────────────────────────
+_NEW_REQUEST_COLS = [
+    ('registered_at',                'TEXT'),
+    ('review_days',                  'INTEGER'),
+    ('review_deadline',              'TEXT'),
+    ('responsible_id',               'INTEGER'),
+    ('responsible_not_in_system',    'INTEGER DEFAULT 0'),
+    ('responsible_name_external',    'TEXT'),
+    ('reviewer_id',                  'INTEGER'),
+    ('reviewer_not_in_system',       'INTEGER DEFAULT 0'),
+    ('reviewer_name_external',       'TEXT'),
+    ('reviewer_decision',            'TEXT'),
+    ('reviewer_comment',             'TEXT'),
+    ('reviewer_decision_at',         'TEXT'),
+    ('sent_to_applicant_at',         'TEXT'),
+    ('send_method',                  'TEXT'),
+    ('applicant_feedback',           'TEXT'),
+    ('applicant_feedback_at',        'TEXT'),
+]
+
+
+def _migrate_request_cols(conn):
+    """ADD COLUMN для всех новых колонок requests (#53)."""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(requests)").fetchall()}
+    for col, typ in _NEW_REQUEST_COLS:
+        if col not in cols:
+            conn.execute(f"ALTER TABLE requests ADD COLUMN {col} {typ}")
 
 
 def init_db():
@@ -166,7 +203,24 @@ CREATE TABLE IF NOT EXISTS requests (
     answer_date TEXT, answer_method TEXT, answer_method_other TEXT,
     answer_notes TEXT, answer_file TEXT, answer_system_number TEXT,
     request_files TEXT,
-    edit_reason TEXT, updated_by INTEGER
+    edit_reason TEXT, updated_by INTEGER,
+    -- #53: цепочка статусов
+    registered_at TEXT,
+    review_days INTEGER,
+    review_deadline TEXT,
+    responsible_id INTEGER,
+    responsible_not_in_system INTEGER DEFAULT 0,
+    responsible_name_external TEXT,
+    reviewer_id INTEGER,
+    reviewer_not_in_system INTEGER DEFAULT 0,
+    reviewer_name_external TEXT,
+    reviewer_decision TEXT,
+    reviewer_comment TEXT,
+    reviewer_decision_at TEXT,
+    sent_to_applicant_at TEXT,
+    send_method TEXT,
+    applicant_feedback TEXT,
+    applicant_feedback_at TEXT
 );
 CREATE TABLE IF NOT EXISTS okved (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -179,7 +233,7 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """)
 
     # ── Миграция requests ───────────────────────────────────────────────────
-    cols = [r[1] for r in conn.execute("PRAGMA table_info(requests)").fetchall()]
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(requests)").fetchall()}
     for col in ['source_type', 'request_files', 'edit_reason', 'updated_by']:
         if col not in cols:
             conn.execute(f"ALTER TABLE requests ADD COLUMN {col} TEXT")
@@ -196,9 +250,10 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
     }.items():
         if col not in cols:
             conn.execute(f"ALTER TABLE requests ADD COLUMN {col} {typ}")
+    _migrate_request_cols(conn)  # #53: 16 новых колонок
 
     # ── Миграция users ─────────────────────────────────────────────────────
-    user_cols = [r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()]
+    user_cols = {r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
     for col in ['can_create', 'can_edit_others', 'can_confirm', 'can_delete',
                 'can_rollback', 'can_export', 'can_classifiers', 'can_users',
                 'can_view_all']:
@@ -210,12 +265,12 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         ('email',               'TEXT DEFAULT NULL'),
         ('theme',               "TEXT DEFAULT 'light'"),
         ('email_notifications', 'INTEGER DEFAULT 0'),
-        ('is_active',           'INTEGER NOT NULL DEFAULT 1'),  # #53
+        ('is_active',           'INTEGER NOT NULL DEFAULT 1'),
     ]:
         if col not in user_cols:
             conn.execute(f"ALTER TABLE users ADD COLUMN {col} {definition}")
 
-    # ── Создание admin если нет ──────────────────────────────────────────
+    # ── admin ─────────────────────────────────────────────────────────────
     if not conn.execute("SELECT id FROM users WHERE username='admin'").fetchone():
         conn.execute(
             "INSERT INTO users (username,password,full_name,role,"
@@ -251,7 +306,7 @@ def migrate_db():
     conn.row_factory = sqlite3.Row
 
     # ── requests ───────────────────────────────────────────────────────────────
-    cols = [r[1] for r in conn.execute("PRAGMA table_info(requests)").fetchall()]
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(requests)").fetchall()}
     for col in ['request_files', 'source_type', 'edit_reason', 'updated_by']:
         if col not in cols:
             conn.execute(f"ALTER TABLE requests ADD COLUMN {col} TEXT")
@@ -265,9 +320,10 @@ def migrate_db():
     }.items():
         if col not in cols:
             conn.execute(f"ALTER TABLE requests ADD COLUMN {col} {typ}")
+    _migrate_request_cols(conn)  # #53: 16 новых колонок
 
-    # ── users (v2.0 + #53 is_active) ───────────────────────────────────────────
-    user_cols = [r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()]
+    # ── users ───────────────────────────────────────────────────────────────
+    user_cols = {r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
     for col in ['can_create', 'can_edit_others', 'can_confirm', 'can_delete',
                 'can_rollback', 'can_export', 'can_classifiers', 'can_users',
                 'can_view_all']:
@@ -279,12 +335,17 @@ def migrate_db():
         ('email',               'TEXT DEFAULT NULL'),
         ('theme',               "TEXT DEFAULT 'light'"),
         ('email_notifications', 'INTEGER DEFAULT 0'),
-        ('is_active',           'INTEGER NOT NULL DEFAULT 1'),  # #53
+        ('is_active',           'INTEGER NOT NULL DEFAULT 1'),
     ]:
         if col not in user_cols:
             conn.execute(f"ALTER TABLE users ADD COLUMN {col} {definition}")
 
-    # ── login_log (v2.0) ──────────────────────────────────────────────────────────
+    conn.execute("""
+        UPDATE users SET can_create=1, can_export=1, can_view_all=1
+        WHERE role='employee' AND can_create=0
+    """)
+
+    # ── login_log ───────────────────────────────────────────────────────────
     conn.executescript("""
 CREATE TABLE IF NOT EXISTS login_log (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -298,12 +359,7 @@ CREATE INDEX IF NOT EXISTS idx_ll_user  ON login_log(user_id);
 CREATE INDEX IF NOT EXISTS idx_ll_event ON login_log(event);
 """)
 
-    conn.execute("""
-        UPDATE users SET can_create=1, can_export=1, can_view_all=1
-        WHERE role='employee' AND can_create=0
-    """)
-
-    # ── activity_log (v2.0) ─────────────────────────────────────────────────────
+    # ── activity_log ─────────────────────────────────────────────────────
     conn.executescript("""
 CREATE TABLE IF NOT EXISTS activity_log (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -318,7 +374,7 @@ CREATE INDEX IF NOT EXISTS idx_al_request ON activity_log(request_id);
 CREATE INDEX IF NOT EXISTS idx_al_action  ON activity_log(action);
 """)
 
-    # ── phonebook_orgs (v2.1.0) ─────────────────────────────────────────────────
+    # ── phonebook ────────────────────────────────────────────────────────
     conn.executescript("""
 CREATE TABLE IF NOT EXISTS phonebook_orgs (
     id      INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -340,9 +396,7 @@ CREATE TABLE IF NOT EXISTS phonebook (
 CREATE INDEX IF NOT EXISTS idx_pb_org  ON phonebook(org_id);
 CREATE INDEX IF NOT EXISTS idx_pb_name ON phonebook(full_name);
 """)
-
-    # ── phonebook source_type (v2.3) ──────────────────────────────────────────
-    pb_cols = [r[1] for r in conn.execute("PRAGMA table_info(phonebook)").fetchall()]
+    pb_cols = {r[1] for r in conn.execute("PRAGMA table_info(phonebook)").fetchall()}
     if 'source_type' not in pb_cols:
         conn.execute(
             "ALTER TABLE phonebook ADD COLUMN source_type TEXT DEFAULT 'general'"
@@ -390,7 +444,6 @@ def inject_globals():
         ).fetchone()[0]
 
         try:
-            # #53: активные = всё кроме closed и draft
             if session.get('role') == 'admin' or session.get('can_view_all'):
                 active_requests_count = db.execute(
                     "SELECT COUNT(*) FROM requests "
