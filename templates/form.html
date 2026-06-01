@@ -543,95 +543,115 @@
 </div>
 
 {# ===== РАЗДЕЛ 5: ИНЖЕНЕРНАЯ ИНФРАСТРУКТУРА ===== #}
+{#
+  Issue #48: единицы измерения
+  Каждое инфраструктурное числовое поле снабжается <select> с единицами.
+  При редактировании select инициализируется из req.<field>_unit.
+  JS-функция unitChanged() обновляет placeholder/hint без пересчёта
+  значения (значение в БД всегда в базовых единицах; form_utils.py
+  нормализует при сохранении).
+#}
+
+{# Макрос: числовое поле + select единиц рядом #}
+{% macro infra_field(label, fname, unit_name, units_list, step='0.1',
+                     id_suffix='', extra_class='', oninput='', readonly=false) %}
+  {% set cur_unit = req[unit_name] if req and req[unit_name] else units_list[0] %}
+  <label class="form-label" style="font-size:12px">{{ label }}</label>
+  <div class="input-group input-group-sm">
+    <input type="number" step="{{ step }}" name="{{ fname }}"
+           id="{{ id_suffix or fname }}"
+           class="form-control form-control-sm{{ ' ' + extra_class if extra_class }}"
+           value="{{ req[fname] if req and req[fname] is not none else '' }}"
+           placeholder="0"
+           {% if readonly %}readonly{% endif %}
+           {% if oninput %}oninput="{{ oninput }}"{% endif %}>
+    <select name="{{ unit_name }}" class="form-select form-select-sm"
+            style="max-width:110px"
+            onchange="onUnitChange('{{ id_suffix or fname }}', this)">
+      {% for u in units_list %}
+      <option value="{{ u }}" {{ 'selected' if cur_unit == u }}>{{ u }}</option>
+      {% endfor %}
+    </select>
+  </div>
+{% endmacro %}
+
 <div class="card mb-3">
   <div class="card-header py-2" style="background:#1B5E7B;color:#fff;font-size:13px;font-weight:600">
     <i class="bi bi-lightning-charge me-1"></i>6. Инженерная инфраструктура
   </div>
   <div class="card-body">
 
+    {# ── Водоснабжение ── #}
     <p class="text-muted mb-2" style="font-size:11px">
       <i class="bi bi-droplet me-1"></i><strong>Водоснабжение и водоотведение</strong>
     </p>
-    {# #49: 4 поля + строка «Итого» с автосуммой #}
     <div class="row g-2 mb-1">
       <div class="col-md-3">
-        <label class="form-label" style="font-size:12px">Хоз-питьевое, м³/сут</label>
-        <input type="number" step="0.1" name="water_household" id="water_household"
-               class="form-control form-control-sm"
-               value="{{ req.water_household if req else '' }}" placeholder="0"
-               oninput="calcWaterTotal()">
+        {{ infra_field('Хоз-питьевое', 'water_household', 'water_unit',
+                       ['м³/сут','м³/ч'], id_suffix='water_household',
+                       oninput='calcWaterTotal()') }}
       </div>
       <div class="col-md-3">
-        <label class="form-label" style="font-size:12px">Производственное, м³/сут</label>
-        <input type="number" step="0.1" name="water_production" id="water_production"
-               class="form-control form-control-sm"
-               value="{{ req.water_production if req else '' }}" placeholder="0"
-               oninput="calcWaterTotal()">
+        {{ infra_field('Производственное', 'water_production', 'water_unit',
+                       ['м³/сут','м³/ч'], id_suffix='water_production',
+                       oninput='calcWaterTotal()') }}
       </div>
       <div class="col-md-3">
-        <label class="form-label" style="font-size:12px">Водоотведение, м³/сут</label>
-        <input type="number" step="0.1" name="sewage" id="water_sewage"
-               class="form-control form-control-sm"
-               value="{{ req.sewage if req else '' }}" placeholder="0"
-               oninput="calcWaterTotal()">
+        {{ infra_field('Водоотведение', 'sewage', 'water_unit',
+                       ['м³/сут','м³/ч'], id_suffix='water_sewage',
+                       oninput='calcWaterTotal()') }}
       </div>
       <div class="col-md-3">
-        <label class="form-label" style="font-size:12px">Пожаротушение, м³/сут</label>
-        <input type="number" step="0.1" name="firefighting" id="water_firefighting"
-               class="form-control form-control-sm"
-               value="{{ req.firefighting if req else '' }}" placeholder="0"
-               oninput="calcWaterTotal()">
+        {{ infra_field('Пожаротушение', 'firefighting', 'water_unit',
+                       ['м³/сут','м³/ч'], id_suffix='water_firefighting',
+                       oninput='calcWaterTotal()') }}
       </div>
     </div>
     <div class="row g-2 mb-3">
       <div class="col-md-3">
-        <label class="form-label" style="font-size:12px">Итого, м³/сут</label>
-        <input type="number" step="0.1" id="water_total"
-               class="form-control form-control-sm bg-light"
-               placeholder="авто" readonly
-               title="Сумма: хоз-питьевое + производственное + водоотведение + пожаротушение">
+        <label class="form-label" style="font-size:12px">Итого</label>
+        <div class="input-group input-group-sm">
+          <input type="number" step="0.1" id="water_total"
+                 class="form-control form-control-sm bg-light"
+                 placeholder="авто" readonly
+                 title="Сумма: хоз-питьевое + производственное + водоотведение + пожаротушение">
+          <span class="input-group-text" id="water_total_unit" style="font-size:11px;min-width:70px">
+            {{ req.water_unit if req and req.water_unit else 'м³/сут' }}
+          </span>
+        </div>
         <div class="form-text" style="font-size:11px">Сумма всех категорий</div>
       </div>
     </div>
 
+    {# ── Электроснабжение ── #}
     <p class="text-muted mb-2" style="font-size:11px">
       <i class="bi bi-plug me-1"></i><strong>Электроснабжение</strong>
     </p>
     <div class="row g-2 mb-3">
       <div class="col-md-3">
-        <label class="form-label" style="font-size:12px">Общая мощность, кВт</label>
-        <input type="number" step="0.1" name="electricity_total"
-               id="electricity_total"
-               class="form-control form-control-sm bg-light"
-               value="{{ req.electricity_total if req else '' }}"
-               placeholder="авто" readonly
-               title="Вычисляется автоматически как сумма категорий I+II+III">
+        {{ infra_field('Общая мощность', 'electricity_total', 'elec_unit',
+                       ['кВт','МВт'], id_suffix='electricity_total',
+                       extra_class='bg-light', readonly=true) }}
         <div class="form-text" style="font-size:11px">Сумма категорий I+II+III</div>
       </div>
       <div class="col-md-3">
-        <label class="form-label" style="font-size:12px">Категория I, кВт</label>
-        <input type="number" step="0.1" name="electricity_cat1" id="electricity_cat1"
-               class="form-control form-control-sm"
-               value="{{ req.electricity_cat1 if req else '' }}" placeholder="0"
-               oninput="calcElectricityTotal()">
+        {{ infra_field('Категория I', 'electricity_cat1', 'elec_unit',
+                       ['кВт','МВт'], id_suffix='electricity_cat1',
+                       oninput='calcElectricityTotal()') }}
       </div>
       <div class="col-md-3">
-        <label class="form-label" style="font-size:12px">Категория II, кВт</label>
-        <input type="number" step="0.1" name="electricity_cat2" id="electricity_cat2"
-               class="form-control form-control-sm"
-               value="{{ req.electricity_cat2 if req else '' }}" placeholder="0"
-               oninput="calcElectricityTotal()">
+        {{ infra_field('Категория II', 'electricity_cat2', 'elec_unit',
+                       ['кВт','МВт'], id_suffix='electricity_cat2',
+                       oninput='calcElectricityTotal()') }}
       </div>
       <div class="col-md-3">
-        <label class="form-label" style="font-size:12px">Категория III, кВт</label>
-        <input type="number" step="0.1" name="electricity_cat3" id="electricity_cat3"
-               class="form-control form-control-sm"
-               value="{{ req.electricity_cat3 if req else '' }}" placeholder="0"
-               oninput="calcElectricityTotal()">
+        {{ infra_field('Категория III', 'electricity_cat3', 'elec_unit',
+                       ['кВт','МВт'], id_suffix='electricity_cat3',
+                       oninput='calcElectricityTotal()') }}
       </div>
     </div>
 
-    {# #51: Теплоснабжение — отдельный блок #}
+    {# ── Теплоснабжение ── #}
     <p class="text-muted mb-2" style="font-size:11px">
       <i class="bi bi-thermometer-half me-1"></i><strong>Теплоснабжение</strong>
     </p>
@@ -646,9 +666,8 @@
         </select>
       </div>
       <div class="col-md-4">
-        <label class="form-label" style="font-size:12px">Теплопотребление, Гкал/ч</label>
-        <input type="number" step="0.01" name="heat_gcal" class="form-control form-control-sm"
-               value="{{ req.heat_gcal if req else '' }}" placeholder="0.00">
+        {{ infra_field('Теплопотребление', 'heat_gcal', 'heat_unit',
+                       ['Гкал/ч','МВт','кДж/ч'], step='0.01') }}
       </div>
       <div class="col-md-4">
         <label class="form-label" style="font-size:12px">Отапливаемая площадь, м²</label>
@@ -657,20 +676,18 @@
       </div>
     </div>
 
-    {# #51: Газоснабжение — отдельный блок #}
+    {# ── Газоснабжение ── #}
     <p class="text-muted mb-2" style="font-size:11px">
       <i class="bi bi-fire me-1"></i><strong>Газоснабжение</strong>
     </p>
     <div class="row g-2 mb-3">
       <div class="col-md-3">
-        <label class="form-label" style="font-size:12px">Газ, м³/ч</label>
-        <input type="number" step="0.1" name="gas_m3h" class="form-control form-control-sm"
-               value="{{ req.gas_m3h if req else '' }}" placeholder="0">
+        {{ infra_field('Расход газа (часовой)', 'gas_m3h', 'gas_unit_h',
+                       ['м³/ч','тыс.м³/ч']) }}
       </div>
       <div class="col-md-3">
-        <label class="form-label" style="font-size:12px">Газ, м³/год</label>
-        <input type="number" step="1" name="gas_m3y" class="form-control form-control-sm"
-               value="{{ req.gas_m3y if req else '' }}" placeholder="0">
+        {{ infra_field('Расход газа (годовой)', 'gas_m3y', 'gas_unit_y',
+                       ['м³/год','тыс.м³/год'], step='1') }}
       </div>
       <div class="col-md-6">
         <label class="form-label" style="font-size:12px">Цель газоснабжения</label>
@@ -680,6 +697,7 @@
       </div>
     </div>
 
+    {# ── Связь ── #}
     <p class="text-muted mb-2" style="font-size:11px">
       <i class="bi bi-wifi me-1"></i><strong>Связь</strong>
     </p>
@@ -1155,6 +1173,10 @@ function calcWaterTotal(){
   var total = Math.round((w1 + w2 + w3 + w4) * 10) / 10;
   var el = document.getElementById('water_total');
   if(el) el.value = (total > 0) ? total : '';
+  // Обновляем единицу в span «итого»
+  var unitSel = document.querySelector('select[name="water_unit"]');
+  var unitSpan = document.getElementById('water_total_unit');
+  if(unitSel && unitSpan) unitSpan.textContent = unitSel.value;
 }
 
 // ===== #50: АВТОСУММА ЭЛЕКТРОСНАБЖЕНИЕ =====
@@ -1176,6 +1198,26 @@ function filterDistricts(){
 }
 function clearDistricts(){
   document.querySelectorAll('input[name="preferred_districts"]').forEach(function(cb){ cb.checked = false; });
+}
+
+// ===== #48: СМЕНА ЕДИНИЦЫ — только синхронизация дублирующих select =====
+// water_unit используется для 4 полей — при смене одного синхронизируем остальные
+function onUnitChange(fieldId, selectEl) {
+  var name = selectEl.name;
+  // Для water_unit — синхронизируем все селекты с этим именем
+  if (name === 'water_unit') {
+    document.querySelectorAll('select[name="water_unit"]').forEach(function(s) {
+      s.value = selectEl.value;
+    });
+    calcWaterTotal();
+  }
+  // Для elec_unit — синхронизируем все
+  if (name === 'elec_unit') {
+    document.querySelectorAll('select[name="elec_unit"]').forEach(function(s) {
+      s.value = selectEl.value;
+    });
+    calcElectricityTotal();
+  }
 }
 
 // ===== ИНИЦИАЛИЗАЦИЯ =====
