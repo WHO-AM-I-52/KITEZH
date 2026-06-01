@@ -6,14 +6,14 @@
 # ║  Маршрут:                                                    ║
 # ║    GET /api/egrul/lookup?inn=<ИНН>                           ║
 # ║                                                              ║
-# ║  Возвращает JSON:                                          ║
-# ║    {"ok": true, "data": {                                     ║
-# ║      "applicant_full_name":  "ООО «Ромашка»",              ║
-# ║      "applicant_short_name": "ООО «ромашка»",              ║
-# ║      "legal_address":       "123456, г. Москва, ...",      ║
-# ║      "applicant_okved_main": "10.11"                          ║
-# ║    }}                                                         ║
-# ║  Или {"ok": false, "error": "<причина>"} при неудаче.         ║
+# ║  Возвращает JSON:                                            ║
+# ║    {"ok": true, "data": {                                    ║
+# ║      "applicant_full_name":  "ООО «Ромашка»",               ║
+# ║      "applicant_short_name": "ООО «Ромашка»",               ║
+# ║      "legal_address":       "123456, г. Москва, ...",        ║
+# ║      "applicant_okved_main": "10.11"                         ║
+# ║    }}                                                        ║
+# ║  Или {"ok": false, "error": "<причина>"} при неудаче.        ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 import re
@@ -43,63 +43,97 @@ def _validate_inn(inn: str) -> str | None:
     return inn
 
 
+def _build_address(addr_rf: dict) -> str:
+    """Собирает строку адреса из блока АдресРФ."""
+    if not isinstance(addr_rf, dict):
+        return ''
+    attrs  = addr_rf.get('@attributes', {})
+    parts  = []
+    index  = attrs.get('Индекс', '')
+    if index:
+        parts.append(index)
+    region = (addr_rf.get('Регион') or {}).get('@attributes', {}).get('НаимРегион', '')
+    if region:
+        parts.append(region)
+    city = (addr_rf.get('Город') or {}).get('@attributes', {})
+    if city:
+        parts.append(f"{city.get('ТипГород', 'г.')} {city.get('НаимГород', '')}".strip())
+    street = (addr_rf.get('Улица') or {}).get('@attributes', {})
+    if street:
+        parts.append(f"{street.get('ТипУлица', '')} {street.get('НаимУлица', '')}".strip())
+    for key in ('Дом', 'Корпус', 'Кварт'):
+        val = attrs.get(key, '')
+        if val:
+            parts.append(val)
+    return ', '.join(p for p in parts if p)
+
+
 def _parse_egrul(data: dict) -> dict:
     """
     Извлекает нужные поля из ответа egrul.org.
-    Поддерживает два формата:
-      - вложенные русскоязычные ключи (структура ФНС XML)
-      - плоский JSON (egrul.org REST)
+
+    egrul.org отдаёт ФНС-структуру с ключом СвЮЛ (юрлицо)
+    или СвИП (индивидуальный предприниматель).
+    Все атрибуты XML лежат под ключом @attributes.
     """
+    sv    = data.get('СвЮЛ') or {}
+    attrs = sv.get('@attributes') or {}
 
-    def _get(*keys):
-        obj = data
-        for k in keys:
-            if not isinstance(obj, dict):
-                return ''
-            obj = obj.get(k) or ''
-        return str(obj).strip() if obj else ''
-
-    # Наименование: сначала вложенные ключи ФНС, затем плоские egrul.org
+    # ── Наименование ────────────────────────────────────────────
+    sv_naim = sv.get('СвНаимЮЛ') or {}
     full_name = (
-        _get('ЮЛ', 'НаимЮЛПолн') or _get('ИП', 'ФИОПолн')
-        or data.get('full_name') or data.get('name') or ''
+        (sv_naim.get('@attributes') or {}).get('НаимЮЛПолн', '')
+        or attrs.get('НаимЮЛПолн', '')
     )
+    sv_sokr = sv_naim.get('СвНаимЮЛСокр') or {}
     short_name = (
-        _get('ЮЛ', 'НаимЮЛСокр') or data.get('short_name') or full_name
-    )
-    inn_val = (
-        _get('ЮЛ', 'ИННЮЛ') or _get('ИП', 'ИННФЛ')
-        or data.get('inn') or ''
-    )
-    ogrn = (
-        _get('ЮЛ', 'ОГРН') or _get('ИП', 'ОГРНИП')
-        or data.get('ogrn') or ''
-    )
-    kpp = _get('ЮЛ', 'КПП') or data.get('kpp') or ''
-    director = _get('ЮЛ', 'РуководителЬФИО') or data.get('director') or ''
-
-    # ОКВЭД: может быть строкой или {"code": "..."}
-    okved_raw = (
-        _get('ОснОКВЭД', 'КодОКВЭД')
-        or data.get('okved') or data.get('okved_main') or ''
-    )
-    if isinstance(okved_raw, dict):
-        okved_raw = okved_raw.get('code', '')
-    okved = str(okved_raw).strip()
-
-    # Адрес: несколько вариантов структуры
-    addr = (
-        _get('АдрЮЛЛокГАР', 'АдресПолн')
-        or _get('СвАдрЮЛ', 'АдресПолн')
-        or _get('АдрЮЛЛокГАР', 'АдресРФ')
-        or _get('СвАдрЮЛ', 'АдресРФ')
-        or data.get('address') or data.get('legal_address')
-        or (data.get('address_details') or {}).get('full_address', '')
-        or ''
+        (sv_sokr.get('@attributes') or {}).get('НаимСокр', '')
+        or full_name
     )
 
-    status_raw = _get('СведСтатусЮЛ', 'НаимСтатусЮЛ') or data.get('status') or ''
-    status = 'active' if 'действующ' in status_raw.lower() else (status_raw or 'unknown')
+    # ── ИП: если СвЮЛ пуст, ищем в СвИП ────────────────────────
+    if not full_name:
+        sv_ip      = data.get('СвИП') or {}
+        sv_fl      = sv_ip.get('СвФЛ') or {}
+        fl_attrs   = sv_fl.get('@attributes') or {}
+        full_name  = ' '.join(filter(None, [
+            fl_attrs.get('Фамилия', ''),
+            fl_attrs.get('Имя', ''),
+            fl_attrs.get('Отчество', ''),
+        ]))
+        short_name = full_name
+
+    # ── Реквизиты ───────────────────────────────────────────────
+    inn_val = attrs.get('ИНН', '')
+    ogrn    = attrs.get('ОГРН', '')
+    kpp     = attrs.get('КПП', '')
+
+    # ── Руководитель ────────────────────────────────────────────
+    dir_fl    = (sv.get('СведДолжнФЛ') or {})
+    dir_attrs = (dir_fl.get('СвФЛ') or {}).get('@attributes') or {}
+    director  = ' '.join(filter(None, [
+        dir_attrs.get('Фамилия', ''),
+        dir_attrs.get('Имя', ''),
+        dir_attrs.get('Отчество', ''),
+    ]))
+
+    # ── ОКВЭД ───────────────────────────────────────────────────
+    okved = (
+        ((sv.get('СвОКВЭД') or {}).get('СвОКВЭДОсн') or {})
+        .get('@attributes', {})
+        .get('КодОКВЭД', '')
+    )
+
+    # ── Адрес ───────────────────────────────────────────────────
+    sv_addr  = sv.get('СвАдресЮЛ') or {}
+    addr_rf  = sv_addr.get('АдресРФ') or {}
+    addr     = _build_address(addr_rf)
+    if not addr:
+        # fallback: регион из СвМНЮЛ
+        mn = sv_addr.get('СвМНЮЛ') or {}
+        addr = mn.get('НаимРегион', '')
+
+    status = 'active' if full_name else 'unknown'
 
     return {
         'applicant_full_name':  full_name,
