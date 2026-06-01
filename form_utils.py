@@ -2,7 +2,7 @@
 # ║                      form_utils.py                           ║
 # ║  Работа с формой обращения: поля, приведение типов,          ║
 # ║  классификаторы                                              ║
-# ║  v2.1 bugfix: +incoming_number; site_area/build одиночные    ║
+# ║  v2.2: +поля логики статусов (#53)                          ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from validators import _int, _flt
@@ -33,7 +33,7 @@ ALL_FIELDS = [
     "staff_management", "staff_workers", "staff_other", "staff_it", "staff_admin",
     "raw_materials", "raw_extra", "additional_info",
     "assigned_to",
-    # ─ Сведения об ответе ──────────────────────────────────────────
+    # ─ Сведения об ответе ──────────────────────────────────────────────────
     "answer_date", "answer_method", "answer_method_other", "answer_notes", "answer_file",
     "request_files",
     "edit_reason",
@@ -41,20 +41,34 @@ ALL_FIELDS = [
     "subject_type_id",   # Предмет обращения (FK → subject_types)
     "feedback_date",     # Дата получения обратной связи
     "result_type_id",    # Итоги работы по обращению (FK → result_types)
-    # ─ Входящий номер (Directum / СЭДО) ─────────────────────────────
-    "incoming_number",   # Bugfix #3: поле было в форме, но отсутствовало здесь
+    # ─ Входящий номер (Directum / СЭДО) ────────────────────────────
+    "incoming_number",
+    # ─ Issue #53: новая логика статусов ───────────────────────────────
+    "review_days",               # Срок рассмотрения (календарные дни, по умолчанию 7)
+    "responsible_id",            # Ответственный за подбор площадок (FK → users)
+    "responsible_not_in_system", # Галочка: не зарегистрирован в системе
+    "responsible_name_external", # ФИО если не в системе
+    "reviewer_id",               # Проверяющий площадки (FK → users)
+    "reviewer_not_in_system",    # Галочка: не зарегистрирован в системе
+    "reviewer_name_external",    # ФИО если не в системе
+    "sent_to_applicant_at",      # Дата отправки документов заявителю
+    "send_method",               # Способ отправки
+    "applicant_feedback",        # Обратная связь от заявителя
+    "applicant_feedback_at",     # Дата получения ОС от заявителя
 ]
 
 # Наборы полей по типу
 BOOL_F = {
     "consent_disclosure", "site_type_free", "site_type_existing",
-    "site_area_expansion", "railway_needed", "distance_nn_matters"
+    "site_area_expansion", "railway_needed", "distance_nn_matters",
+    "responsible_not_in_system", "reviewer_not_in_system",
 }
 
 INT_F = {
     "jobs_total", "jobs_foreign", "phones_qty", "staff_management",
     "staff_workers", "staff_other", "staff_it", "staff_admin", "assigned_to",
-    "subject_type_id", "result_type_id",   # FK-поля хранят целые ID
+    "subject_type_id", "result_type_id",
+    "review_days", "responsible_id", "reviewer_id",  # #53
 }
 
 FLOAT_F = {
@@ -85,8 +99,9 @@ def get_classifiers(conn):
     - список районов,
     - список источников обращений,
     - список сотрудников (для назначения ответственных),
-    - справочник предметов обращения (subject_types),
-    - справочник итогов работы (result_types).
+    - справочник предметов обращений (subject_types),
+    - справочник итогов работы (result_types),
+    - список пользователей для выбора ответственного/проверяющего (#53).
     """
     lf  = [r['value'] for r in conn.execute(
         "SELECT value FROM classifiers WHERE category='legal_form' "
@@ -102,18 +117,20 @@ def get_classifiers(conn):
     ).fetchall()]
     emp = conn.execute(
         "SELECT id,full_name FROM users "
-        "WHERE role IN ('employee','admin') "
+        "WHERE role IN ('employee','admin','manager') "
         "ORDER BY full_name"
     ).fetchall()
-    # МинЭК: предметы обращений
     subjects = conn.execute(
         "SELECT id, name FROM subject_types ORDER BY id"
     ).fetchall()
-    # МинЭК: итоги работы
     results = conn.execute(
         "SELECT id, name, color_hex FROM result_types ORDER BY id"
     ).fetchall()
-    return lf, di, src, emp, subjects, results
+    # #53: все пользователи для выбора ответственного и проверяющего
+    all_users = conn.execute(
+        "SELECT id, full_name, role FROM users WHERE is_active=1 ORDER BY full_name"
+    ).fetchall()
+    return lf, di, src, emp, subjects, results, all_users
 
 
 def build_values(form):
