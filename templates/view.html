@@ -327,4 +327,445 @@
   </div>
   <div class="card-body p-0">
     <table class="table table-sm table-borderless mb-0">
-      {{ 
+      {{ field('Полное наименование', req.applicant_full_name) }}
+      {{ field('Краткое наименование', req.applicant_short_name) }}
+      {{ field('Правовая форма', req.applicant_legal_form) }}
+      {{ field('ИНН', req.applicant_inn) }}
+      {{ field('Категория МСП', req.applicant_msp_category) }}
+      {% if req.applicant_okved_main %}
+      <tr>
+        <td class="text-muted" style="width:45%">ОКВЭД (основной)</td>
+        <td>{{ req.applicant_okved_main }}{% if okved_name %} — {{ okved_name }}{% endif %}</td>
+      </tr>
+      {% endif %}
+      {{ field('Почтовый адрес', req.postal_address) }}
+      {{ field('Юридический адрес', req.legal_address) }}
+      {{ field('Контактное лицо', req.contact_person) }}
+      {{ field('Телефон', req.contact_phone) }}
+      {{ field('E-mail', req.contact_email) }}
+    </table>
+  </div>
+</div>
+
+{# ── ПРОЕКТ ────────────────────────────────────────────────────── #}
+<div class="card mb-3">
+  <div class="card-header fw-bold" style="background:#EEF4F7">
+    <i class="bi bi-briefcase me-1"></i> О проекте
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-borderless mb-0">
+      {{ field('Наименование проекта', req.project_name) }}
+      {{ field('Рабочих мест (всего)', req.jobs_total) }}
+      {{ field('Рабочих мест (ин. инвест.)', req.jobs_foreign) }}
+      {{ field('Инвестиции всего, руб.', req.investment_total) }}
+      {{ field('Инвестиции заёмные, руб.', req.investment_borrowed) }}
+      {{ field('Этапы строительства', req.construction_stages) }}
+      {{ field('Начало строительства', req.construction_start) }}
+      {{ field('Начало операционной деятельности', req.operation_start) }}
+      {{ field('Номенклатура продукции', req.product_nomenclature) }}
+      {{ field('Описание производства', req.production_description) }}
+      {{ field('Состав объектов', req.object_composition) }}
+    </table>
+  </div>
+</div>
+
+{# ── ТРЕБОВАНИЯ К ПЛОЩАДКЕ ─────────────────────────────────────── #}
+<div class="card mb-3">
+  <div class="card-header fw-bold" style="background:#EEF4F7">
+    <i class="bi bi-geo-alt me-1"></i> Требования к площадке
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-borderless mb-0">
+      {% if req.site_type_free or req.site_type_existing %}
+      <tr>
+        <td class="text-muted" style="width:45%">Тип площадки</td>
+        <td>
+          {% if req.site_type_free %}Свободный земельный участок{% endif %}
+          {% if req.site_type_free and req.site_type_existing %} / {% endif %}
+          {% if req.site_type_existing %}Существующее здание{% endif %}
+        </td>
+      </tr>
+      {% endif %}
+      {% if req.site_area_ha_min or req.site_area_ha_max %}
+      <tr>
+        <td class="text-muted">Площадь участка, га</td>
+        <td>
+          {% if req.site_area_ha_min and req.site_area_ha_max %}
+            от {{ req.site_area_ha_min }} до {{ req.site_area_ha_max }}
+          {% elif req.site_area_ha_min %}
+            от {{ req.site_area_ha_min }}
+          {% else %}
+            до {{ req.site_area_ha_max }}
+          {% endif %}
+        </td>
+      </tr>
+      {% endif %}
+      {{ field('Возможность расширения', 'Да' if req.site_area_expansion else '') }}
+      {% if req.site_build_area_m2_min or req.site_build_area_m2_max %}
+      <tr>
+        <td class="text-muted">Площадь зданий, м²</td>
+        <td>
+          {% if req.site_build_area_m2_min and req.site_build_area_m2_max %}
+            от {{ req.site_build_area_m2_min }} до {{ req.site_build_area_m2_max }}
+          {% elif req.site_build_area_m2_min %}
+            от {{ req.site_build_area_m2_min }}
+          {% else %}
+            до {{ req.site_build_area_m2_max }}
+          {% endif %}
+        </td>
+      </tr>
+      {% endif %}
+      {{ field('Право на участок', req.site_right) }}
+      {{ field('Санитарная зона, м', req.sanitary_zone_m) }}
+      {{ field('Класс опасности', req.hazard_class) }}
+      {{ field('Форма участка', req.site_shape) }}
+      {{ field('Мин. длина, м', req.site_length_min) }}
+      {{ field('Мин. ширина, м', req.site_width_min) }}
+      {{ field('Доп. требования к площадке', req.site_other) }}
+    </table>
+  </div>
+</div>
+
+{# ── ИНЖЕНЕРИЯ ─────────────────────────────────────────────────── #}
+<div class="card mb-3">
+  <div class="card-header fw-bold" style="background:#EEF4F7">
+    <i class="bi bi-lightning me-1"></i> Инженерная инфраструктура
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-borderless mb-0">
+      {{ field('Водоснабжение хозяйственное, м³/сут', req.water_household) }}
+      {{ field('Водоснабжение производственное, м³/сут', req.water_production) }}
+      {{ field('Водоотведение, м³/сут', req.sewage) }}
+      {{ field('Пожаротушение, м³/сут', req.firefighting) }}
+      {{ field('Электроснабжение (итого), кВт', req.electricity_total) }}
+      {{ field('Электроснабжение 1 кат., кВт', req.electricity_cat1) }}
+      {{ field('Электроснабжение 2 кат., кВт', req.electricity_cat2) }}
+      {{ field('Электроснабжение 3 кат., кВт', req.electricity_cat3) }}
+      {{ field('Источник теплоснабжения', req.heat_source) }}
+      {{ field('Теплоснабжение, Гкал/ч', req.heat_gcal) }}
+      {{ field('Газоснабжение, м³/ч', req.gas_m3h) }}
+      {{ field('Газоснабжение, м³/год', req.gas_m3y) }}
+      {{ field('Цель газоснабжения', req.gas_purpose) }}
+      {{ field('Отапливаемая площадь, м²', req.heated_area) }}
+      {{ field('Интернет', req.internet) }}
+      {{ field('Количество телефонных линий', req.phones_qty) }}
+      {{ field('Прочее (инженерия)', req.engineering_extra) }}
+    </table>
+  </div>
+</div>
+
+{# ── ТРАНСПОРТНАЯ ДОСТУПНОСТЬ ──────────────────────────────────── #}
+<div class="card mb-3">
+  <div class="card-header fw-bold" style="background:#EEF4F7">
+    <i class="bi bi-truck me-1"></i> Транспортная доступность
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-borderless mb-0">
+      {{ field('Расстояние до фед. трассы, км', req.road_federal_dist) }}
+      {{ field('Расстояние до рег. трассы, км', req.road_regional_dist) }}
+      {{ field('Расстояние до мест. дороги, км', req.road_local_dist) }}
+      {{ field('Расстояние до частной дороги, км', req.road_private_dist) }}
+      {{ field('Прочее (дороги)', req.road_extra) }}
+      {{ field('Ж/д ветка необходима', 'Да' if req.railway_needed else '') }}
+      {{ field('Расстояние до ж/д, км', req.railway_dist) }}
+      {{ field('Грузооборот, т/год', req.railway_cargo) }}
+      {{ field('Прочее (ж/д)', req.railway_extra) }}
+      {{ field('Прочее (транспорт)', req.transport_extra) }}
+    </table>
+  </div>
+</div>
+
+{# ── МЕСТОПОЛОЖЕНИЕ ────────────────────────────────────────────── #}
+<div class="card mb-3">
+  <div class="card-header fw-bold" style="background:#EEF4F7">
+    <i class="bi bi-pin-map me-1"></i> Местоположение
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-borderless mb-0">
+      {{ field('Важно расстояние до Н.Новгорода', 'Да' if req.distance_nn_matters else '') }}
+      {{ field('Макс. расстояние до Н.Новгорода, км', req.distance_nn_max) }}
+      {{ field('Предпочтительные районы', req.preferred_districts) }}
+      {{ field('Прочее (местоположение)', req.location_extra) }}
+    </table>
+  </div>
+</div>
+
+{# ── ПЕРСОНАЛ ──────────────────────────────────────────────────── #}
+<div class="card mb-3">
+  <div class="card-header fw-bold" style="background:#EEF4F7">
+    <i class="bi bi-people me-1"></i> Персонал
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-borderless mb-0">
+      {{ field('Управленческий персонал', req.staff_management) }}
+      {{ field('Рабочие', req.staff_workers) }}
+      {{ field('Прочий персонал', req.staff_other) }}
+      {{ field('ИТ-специалисты', req.staff_it) }}
+      {{ field('Административный персонал', req.staff_admin) }}
+    </table>
+  </div>
+</div>
+
+{# ── СЫРЬЁ / ДОППАРАМЕТРЫ ──────────────────────────────────────── #}
+<div class="card mb-3">
+  <div class="card-header fw-bold" style="background:#EEF4F7">
+    <i class="bi bi-box-seam me-1"></i> Сырьё и дополнительные параметры
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-borderless mb-0">
+      {{ field('Сырьё / материалы', req.raw_materials) }}
+      {{ field('Прочее (сырьё)', req.raw_extra) }}
+      {{ field('Дополнительная информация', req.additional_info) }}
+    </table>
+  </div>
+</div>
+
+{# ── ОТВЕТ / ФАЙЛЫ ─────────────────────────────────────────────── #}
+<div class="card mb-3">
+  <div class="card-header fw-bold" style="background:#EEF4F7">
+    <i class="bi bi-paperclip me-1"></i> Ответ и файлы
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-borderless mb-0">
+      {{ field('Дата ответа', req.answer_date) }}
+      {{ field('Метод ответа', req.answer_method) }}
+      {{ field('Примечания к ответу', req.answer_notes) }}
+      {{ field('№ системы', req.answer_system_number) }}
+      {% if req.answer_file %}
+      <tr>
+        <td class="text-muted" style="width:45%">Файл ответа</td>
+        <td>
+          <a href="{{ url_for('requests.uploaded_file', filename=req.answer_file) }}"
+             class="btn btn-sm btn-outline-primary" target="_blank">
+            <i class="bi bi-download me-1"></i>{{ req.answer_file }}
+          </a>
+        </td>
+      </tr>
+      {% endif %}
+      {% if req.request_files %}
+      <tr>
+        <td class="text-muted">Файлы обращения</td>
+        <td>
+          {% for fn in req.request_files.split(',') %}
+            {% if fn.strip() %}
+            <a href="{{ url_for('requests.uploaded_file', filename=fn.strip()) }}"
+               class="btn btn-sm btn-outline-secondary me-1 mb-1" target="_blank">
+              <i class="bi bi-file-earmark me-1"></i>{{ fn.strip() }}
+            </a>
+            {% endif %}
+          {% endfor %}
+        </td>
+      </tr>
+      {% endif %}
+    </table>
+  </div>
+</div>
+
+{# ── СЛУЖЕБНАЯ ИНФОРМАЦИЯ ──────────────────────────────────────── #}
+<div class="card mb-4">
+  <div class="card-header fw-bold" style="background:#EEF4F7">
+    <i class="bi bi-person-badge me-1"></i> Служебная информация
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-borderless mb-0">
+      {{ field('Создал', req.employee_name) }}
+      {{ field('Дата создания', req.created_at) }}
+      {{ field('Последнее изменение', req.updated_at) }}
+      {{ field('Изменил', req.updated_by_name) }}
+      {{ field('Причина редактирования', req.edit_reason) }}
+      {{ field('Назначен', req.assigned_name) }}
+    </table>
+  </div>
+</div>
+
+{# ══════════════════════════════════════════════════════════════════
+   МОДАЛЬНОЕ ОКНО: «Присвоить номер» (#registerModal)
+   Форма → POST /request/<rid>/register
+   Поля: responsible_id / not_in_system + name_external, review_days
+══════════════════════════════════════════════════════════════════ #}
+<div class="modal fade" id="registerModal" tabindex="-1" aria-labelledby="registerModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+
+      <div class="modal-header" style="background:#FFF8E1">
+        <h5 class="modal-title" id="registerModalLabel">
+          <i class="bi bi-hash me-2"></i>Регистрация обращения
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <form method="post" action="{{ url_for('requests.register_request', rid=req.id) }}">
+        <div class="modal-body">
+
+          {# ── Срок рассмотрения ── #}
+          <div class="mb-3">
+            <label class="form-label fw-semibold">
+              Срок рассмотрения (рабочих дней)
+              <span class="text-danger">*</span>
+            </label>
+            <input type="number" name="review_days" class="form-control"
+                   value="7" min="1" max="365" required>
+            <div class="form-text">По умолчанию — 7 дней. Дедлайн будет рассчитан автоматически.</div>
+          </div>
+
+          {# ── Ответственный за подбор ── #}
+          <div class="mb-3">
+            <label class="form-label fw-semibold">
+              Ответственный за подбор площадок
+              <span class="text-danger">*</span>
+            </label>
+
+            {# Галка «не в системе» #}
+            <div class="form-check mb-2">
+              <input class="form-check-input" type="checkbox"
+                     id="regNotInSystem" name="responsible_not_in_system"
+                     value="1"
+                     onchange="toggleResponsible()">
+              <label class="form-check-label" for="regNotInSystem">
+                Сотрудник не в системе
+              </label>
+            </div>
+
+            {# Выпадающий список — пользователи системы #}
+            <div id="regSelectWrap">
+              <select name="responsible_id" class="form-select" id="regSelect">
+                <option value="">— выберите —</option>
+                {% for u in all_users %}
+                  {% if u.role in ('employee', 'admin', 'manager') %}
+                  <option value="{{ u.id }}">
+                    {{ u.full_name }}
+                    {% if u.role == 'admin' %}(адм.){% elif u.role == 'manager' %}(мен.){% endif %}
+                  </option>
+                  {% endif %}
+                {% endfor %}
+              </select>
+            </div>
+
+            {# Поле ФИО вручную #}
+            <div id="regExternalWrap" style="display:none">
+              <input type="text" name="responsible_name_external"
+                     class="form-control" id="regExternal"
+                     placeholder="Фамилия Имя Отчество">
+            </div>
+          </div>
+
+        </div>{# /modal-body #}
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary"
+                  data-bs-dismiss="modal">Отмена</button>
+          <button type="submit" class="btn btn-warning">
+            <i class="bi bi-hash me-1"></i> Присвоить номер и назначить
+          </button>
+        </div>
+      </form>
+
+    </div>
+  </div>
+</div>
+
+{# ══════════════════════════════════════════════════════════════════
+   МОДАЛЬНОЕ ОКНО: «Направить на проверку» (#reviewerModal)
+   Форма → POST /request/<rid>/status  (status=under_review)
+   Поля: reviewer_id / not_in_system + name_external
+══════════════════════════════════════════════════════════════════ #}
+<div class="modal fade" id="reviewerModal" tabindex="-1" aria-labelledby="reviewerModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+
+      <div class="modal-header" style="background:#E3F2FD">
+        <h5 class="modal-title" id="reviewerModalLabel">
+          <i class="bi bi-search me-2"></i>Направить на проверку
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <form method="post" action="{{ url_for('requests.change_status', rid=req.id) }}">
+        <input type="hidden" name="status" value="under_review">
+        <div class="modal-body">
+
+          {% if not req.answer_file %}
+          <div class="alert alert-warning d-flex align-items-center gap-2 py-2 mb-3">
+            <i class="bi bi-exclamation-triangle-fill"></i>
+            <span>Загрузите файл подбора в разделе «Ответ» перед отправкой на проверку.</span>
+          </div>
+          {% endif %}
+
+          {# ── Проверяющий ── #}
+          <div class="mb-3">
+            <label class="form-label fw-semibold">
+              Проверяющий площадки
+              <span class="text-danger">*</span>
+            </label>
+
+            <div class="form-check mb-2">
+              <input class="form-check-input" type="checkbox"
+                     id="revNotInSystem" name="reviewer_not_in_system"
+                     value="1"
+                     onchange="toggleReviewer()">
+              <label class="form-check-label" for="revNotInSystem">
+                Проверяющий не в системе
+              </label>
+            </div>
+
+            <div id="revSelectWrap">
+              <select name="reviewer_id" class="form-select" id="revSelect">
+                <option value="">— выберите —</option>
+                {% for u in all_users %}
+                  {% if u.role in ('employee', 'admin', 'manager') %}
+                  <option value="{{ u.id }}">
+                    {{ u.full_name }}
+                    {% if u.role == 'admin' %}(адм.){% elif u.role == 'manager' %}(мен.){% endif %}
+                  </option>
+                  {% endif %}
+                {% endfor %}
+              </select>
+            </div>
+
+            <div id="revExternalWrap" style="display:none">
+              <input type="text" name="reviewer_name_external"
+                     class="form-control" id="revExternal"
+                     placeholder="Фамилия Имя Отчество">
+            </div>
+          </div>
+
+        </div>{# /modal-body #}
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary"
+                  data-bs-dismiss="modal">Отмена</button>
+          <button type="submit" class="btn btn-info text-white"
+                  {% if not req.answer_file %}disabled{% endif %}>
+            <i class="bi bi-send me-1"></i> Направить на проверку
+          </button>
+        </div>
+      </form>
+
+    </div>
+  </div>
+</div>
+
+{# ── JS: переключение полей в модалках ────────────────────────── #}
+<script>
+function toggleResponsible() {
+  const cb = document.getElementById('regNotInSystem');
+  document.getElementById('regSelectWrap').style.display  = cb.checked ? 'none'  : 'block';
+  document.getElementById('regExternalWrap').style.display = cb.checked ? 'block' : 'none';
+  document.getElementById('regSelect').required   = !cb.checked;
+  document.getElementById('regExternal').required =  cb.checked;
+}
+function toggleReviewer() {
+  const cb = document.getElementById('revNotInSystem');
+  document.getElementById('revSelectWrap').style.display  = cb.checked ? 'none'  : 'block';
+  document.getElementById('revExternalWrap').style.display = cb.checked ? 'block' : 'none';
+  document.getElementById('revSelect').required   = !cb.checked;
+  document.getElementById('revExternal').required =  cb.checked;
+}
+// Инициализация required при загрузке
+document.addEventListener('DOMContentLoaded', function() {
+  document.getElementById('regSelect').required  = true;
+  document.getElementById('revSelect').required  = true;
+});
+</script>
+
+{% endblock %}
