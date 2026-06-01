@@ -15,12 +15,12 @@
   .roadmap-header h1 {
     font-size: 26px;
     font-weight: 700;
-    color: #1a2a3a;
+    color: var(--text);
     margin-bottom: 6px;
   }
 
   .roadmap-header p {
-    color: #6c757d;
+    color: var(--text-muted);
     font-size: 14px;
   }
 
@@ -38,7 +38,7 @@
     top: 44px;
     bottom: -32px;
     width: 2px;
-    background: linear-gradient(to bottom, #dee2e6, transparent);
+    background: linear-gradient(to bottom, var(--border), transparent);
   }
 
   .roadmap-icon {
@@ -50,9 +50,9 @@
     align-items: center;
     justify-content: center;
     font-size: 16px;
-    background: #f0f4f8;
-    border: 2px solid #dee2e6;
-    color: #6c757d;
+    background: var(--surface2);
+    border: 2px solid var(--border);
+    color: var(--text-muted);
     position: relative;
     z-index: 1;
   }
@@ -62,26 +62,32 @@
     border-color: #e6c87e;
     color: #b39346;
   }
+  body[data-theme="dark"]  .roadmap-icon.status-planned { background:#2d2510; border-color:#6b5a20; color:#e2c96e; }
+  body[data-theme="zone"]  .roadmap-icon.status-planned { background:#251e08; border-color:#c8a84b; color:#c8a84b; }
 
   .roadmap-icon.status-inprogress {
     background: #e8f4fd;
     border-color: #1b7ec2;
     color: #1b7ec2;
   }
+  body[data-theme="dark"]  .roadmap-icon.status-inprogress { background:#0d2438; border-color:#3b82f6; color:#60a5fa; }
+  body[data-theme="zone"]  .roadmap-icon.status-inprogress { background:#0a1820; border-color:#3b82f6; color:#60a5fa; }
 
   .roadmap-icon.status-done {
     background: #e8f5e9;
     border-color: #43a047;
     color: #43a047;
   }
+  body[data-theme="dark"]  .roadmap-icon.status-done { background:#0d2410; border-color:#22c55e; color:#4ade80; }
+  body[data-theme="zone"]  .roadmap-icon.status-done { background:#0a1e0c; border-color:#22c55e; color:#4ade80; }
 
   .roadmap-body {
     flex: 1;
-    background: #fff;
-    border: 1px solid #e9ecef;
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 14px;
     padding: 20px 24px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    box-shadow: var(--card-shadow);
   }
 
   .roadmap-meta {
@@ -96,8 +102,8 @@
     font-size: 12px;
     font-weight: 700;
     letter-spacing: 1px;
-    color: #1b5e7b;
-    background: #e8f4fd;
+    color: var(--accent);
+    background: var(--surface2);
     padding: 2px 10px;
     border-radius: 20px;
   }
@@ -105,7 +111,7 @@
   .roadmap-title {
     font-size: 16px;
     font-weight: 600;
-    color: #1a2a3a;
+    color: var(--text);
   }
 
   .roadmap-badge {
@@ -117,9 +123,15 @@
     letter-spacing: 0.5px;
   }
 
-  .badge-planned  { background: #fff3cd; color: #856404; }
+  .badge-planned    { background: #fff3cd; color: #856404; }
   .badge-inprogress { background: #cce5ff; color: #004085; }
-  .badge-done     { background: #d4edda; color: #155724; }
+  .badge-done       { background: #d4edda; color: #155724; }
+  body[data-theme="dark"]  .badge-planned    { background:#2d2510; color:#e2c96e; }
+  body[data-theme="dark"]  .badge-inprogress { background:#0d2438; color:#60a5fa; }
+  body[data-theme="dark"]  .badge-done       { background:#0d2410; color:#4ade80; }
+  body[data-theme="zone"]  .badge-planned    { background:#251e08; color:#c8a84b; }
+  body[data-theme="zone"]  .badge-inprogress { background:#0a1820; color:#60a5fa; }
+  body[data-theme="zone"]  .badge-done       { background:#0a1e0c; color:#4ade80; }
 
   .roadmap-items {
     list-style: none;
@@ -132,16 +144,16 @@
     align-items: flex-start;
     gap: 8px;
     font-size: 14px;
-    color: #495057;
+    color: var(--text);
     padding: 5px 0;
-    border-top: 1px solid #f0f2f4;
+    border-top: 1px solid var(--border);
   }
 
   .roadmap-items li:first-child { border-top: none; }
 
   .roadmap-items li::before {
     content: '→';
-    color: #adb5bd;
+    color: var(--text-muted);
     flex-shrink: 0;
     margin-top: 1px;
   }
@@ -150,14 +162,14 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    color: #1b5e7b;
+    color: var(--accent);
     font-size: 14px;
     text-decoration: none;
     margin-bottom: 28px;
     font-weight: 500;
     transition: color 0.2s;
   }
-  .back-link:hover { color: #0d3f57; }
+  .back-link:hover { opacity: .8; }
 </style>
 
 <div class="roadmap-page">
@@ -170,7 +182,7 @@
 
   {# Показываем только запланированные и идеи — выполненные версии отражены в Журнале версий #}
   {% for item in roadmap if item.status != 'done' %}
-  {% set icon_map = {'planned': '🔜', 'inprogress': '⚙️', 'done': '✅'} %}
+  {% set icon_map  = {'planned': '🔜', 'inprogress': '⚙️', 'done': '✅'} %}
   {% set badge_map = {'planned': 'Запланировано', 'inprogress': 'В работе', 'done': 'Готово'} %}
 
   <div class="roadmap-item">
