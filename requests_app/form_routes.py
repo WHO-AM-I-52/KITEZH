@@ -13,6 +13,23 @@ from ocr_utils import extract_anketa_fields
 from request_history import save_history
 from . import requests_bp
 
+# Поля issue #53, которых нет в форме редактирования form.html.
+# При UPDATE их значение берётся из текущей записи БД, чтобы не затереть
+# NOT NULL-колонки (например review_days INTEGER NOT NULL DEFAULT 7).
+_PRESERVE_FIELDS = [
+    'review_days',
+    'responsible_id',
+    'responsible_not_in_system',
+    'responsible_name_external',
+    'reviewer_id',
+    'reviewer_not_in_system',
+    'reviewer_name_external',
+    'sent_to_applicant_at',
+    'send_method',
+    'applicant_feedback',
+    'applicant_feedback_at',
+]
+
 
 @requests_bp.route('/request/new', methods=['GET', 'POST'])
 @login_required
@@ -163,6 +180,17 @@ def edit_request(rid):
             flash('ИНН указан с ошибкой. Контрольная сумма не совпадает.', 'warning')
 
         vals = build_values(request.form)
+
+        # ── Сохраняем поля #53, которых нет в form.html ──────────────────────
+        # build_values вернёт None для них (форма не передаёт эти значения),
+        # что нарушит NOT NULL-ограничение review_days и DEFAULT-поля булевых.
+        # Берём текущие значения из БД и подставляем вместо None.
+        for field in _PRESERVE_FIELDS:
+            if field in ALL_FIELDS:
+                idx = ALL_FIELDS.index(field)
+                if vals[idx] is None:
+                    vals[idx] = req[field]
+        # ─────────────────────────────────────────────────────────────────────
 
         af   = req['answer_file']
         file = request.files.get('answer_file')
