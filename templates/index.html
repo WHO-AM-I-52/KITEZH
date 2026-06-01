@@ -1,5 +1,17 @@
 {% extends 'base.html' %}
 {% block content %}
+
+{# ── Карта кодов статусов #53 ─────────────────────────────────── #}
+{%- set STATUS_MAP = {
+  'draft':            ('secondary', 'bi-pencil-square',    'Черновик'),
+  'registered':       ('info',      'bi-hash',             'Зарегистрировано'),
+  'in_progress':      ('primary',   'bi-person-workspace', 'В работе'),
+  'under_review':     ('warning',   'bi-search',           'На проверке'),
+  'ready_to_send':    ('success',   'bi-check2-circle',    'Готово к отправке'),
+  'sent_to_applicant':('teal',      'bi-envelope-check',   'Документы отправлены'),
+  'closed':           ('dark',      'bi-archive',          'Закрыто'),
+} -%}
+
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h5 class="mb-0" style="color:#1B5E7B"><i class="bi bi-list-ul me-1"></i>Обращения на подбор ЗУ</h5>
   <a href="{{ url_for('requests.new_request') }}" class="btn btn-sm" style="background:#1B5E7B;color:#fff">
@@ -7,15 +19,15 @@
   </a>
 </div>
 
-{# ===== МИНИ-KPI СТРОКА ===== #}
+{# ===== МИНИ-KPI СТРОКА (#53) ===== #}
 <div class="row g-2 mb-3">
   {% for label,val,color,icon in [
-    ('Всего',dash.total,'#1B5E7B','bi-inbox'),
-    ('Черновик',dash.draft,'#6c757d','bi-pencil-square'),
-    ('На проверке',dash.review,'#fd7e14','bi-hourglass-split'),
-    ('В работе',dash.accepted,'#0d6efd','bi-briefcase'),
-    ('Отвечено',dash.answered,'#198754','bi-check2-circle'),
-    ('Просрочено',dash.kpi.overdue_active,'#dc3545','bi-exclamation-triangle')] %}
+    ('Всего',          dash.total,           '#1B5E7B', 'bi-inbox'),
+    ('Черновик',       dash.draft,           '#6c757d', 'bi-pencil-square'),
+    ('Зарегистрировано',dash.registered,     '#0dcaf0', 'bi-hash'),
+    ('В работе',       dash.in_progress,     '#0d6efd', 'bi-person-workspace'),
+    ('На проверке',    dash.under_review,    '#fd7e14', 'bi-search'),
+    ('Просрочено',     dash.kpi.overdue_active,'#dc3545','bi-exclamation-triangle')] %}
   <div class="col-6 col-sm-4 col-md-2">
     <div class="card py-2 px-3" style="border-left:4px solid {{color}}">
       <div class="d-flex align-items-center gap-2">
@@ -72,7 +84,15 @@
     <label class="form-label mb-1" style="font-size:12px">Статус</label>
     <select name="status" class="form-select form-select-sm">
       <option value="">Все</option>
-      {% for v,l in [('draft','Черновик'),('review','На проверке'),('accepted','В работе'),('answered','Отвечено')] %}
+      {% for v,l in [
+        ('draft',            'Черновик'),
+        ('registered',       'Зарегистрировано'),
+        ('in_progress',      'В работе'),
+        ('under_review',     'На проверке'),
+        ('ready_to_send',    'Готово к отправке'),
+        ('sent_to_applicant','Документы отправлены'),
+        ('closed',           'Закрыто'),
+      ] %}
       <option value="{{ v }}" {{ 'selected' if filters.get('status')==v }}>{{ l }}</option>
       {% endfor %}
     </select>
@@ -102,21 +122,24 @@
   </div>
 </form>
 
-{# ===== CHIP-ФИЛЬТРЫ ===== #}
+{# ===== CHIP-ФИЛЬТРЫ (#53) ===== #}
 <div class="chip-filterbar card mb-3 p-2" style="background:#f8f9fa;border:1px solid #dee2e6">
   <div class="d-flex flex-wrap gap-3 align-items-center">
     <div class="d-flex align-items-center gap-1 flex-wrap">
       <span class="text-muted" style="font-size:11px;white-space:nowrap"><i class="bi bi-circle-half me-1"></i>Статус:</span>
-      <button class="btn btn-sm btn-outline-secondary" data-chip-group="status" data-chip-value="draft" data-chip-base="secondary"><i class="bi bi-pencil-square me-1"></i>Черновик</button>
-      <button class="btn btn-sm btn-outline-warning" data-chip-group="status" data-chip-value="review" data-chip-base="warning"><i class="bi bi-hourglass-split me-1"></i>На проверке</button>
-      <button class="btn btn-sm btn-outline-primary" data-chip-group="status" data-chip-value="accepted" data-chip-base="primary"><i class="bi bi-briefcase me-1"></i>В работе</button>
-      <button class="btn btn-sm btn-outline-success" data-chip-group="status" data-chip-value="answered" data-chip-base="success"><i class="bi bi-check2-circle me-1"></i>Отвечено</button>
+      <button class="btn btn-sm btn-outline-secondary"   data-chip-group="status" data-chip-value="draft"             data-chip-base="secondary"><i class="bi bi-pencil-square me-1"></i>Черновик</button>
+      <button class="btn btn-sm btn-outline-info"        data-chip-group="status" data-chip-value="registered"        data-chip-base="info">    <i class="bi bi-hash me-1"></i>Зарег.</button>
+      <button class="btn btn-sm btn-outline-primary"     data-chip-group="status" data-chip-value="in_progress"       data-chip-base="primary"> <i class="bi bi-person-workspace me-1"></i>В работе</button>
+      <button class="btn btn-sm btn-outline-warning"     data-chip-group="status" data-chip-value="under_review"      data-chip-base="warning"> <i class="bi bi-search me-1"></i>На проверке</button>
+      <button class="btn btn-sm btn-outline-success"     data-chip-group="status" data-chip-value="ready_to_send"     data-chip-base="success"> <i class="bi bi-check2-circle me-1"></i>Готово</button>
+      <button class="btn btn-sm btn-outline-secondary"   data-chip-group="status" data-chip-value="sent_to_applicant" data-chip-base="secondary"><i class="bi bi-envelope-check me-1"></i>Отправлено</button>
+      <button class="btn btn-sm btn-outline-dark"        data-chip-group="status" data-chip-value="closed"            data-chip-base="dark">    <i class="bi bi-archive me-1"></i>Закрыто</button>
     </div>
     <div class="vr d-none d-md-block"></div>
     <div class="d-flex align-items-center gap-1 flex-wrap">
       <span class="text-muted" style="font-size:11px;white-space:nowrap"><i class="bi bi-calendar3 me-1"></i>Дата:</span>
       <button class="btn btn-sm btn-outline-info" data-chip-group="date" data-chip-value="today" data-chip-base="info"><i class="bi bi-calendar-day me-1"></i>Сегодня</button>
-      <button class="btn btn-sm btn-outline-info" data-chip-group="date" data-chip-value="week" data-chip-base="info"><i class="bi bi-calendar-week me-1"></i>Неделя</button>
+      <button class="btn btn-sm btn-outline-info" data-chip-group="date" data-chip-value="week"  data-chip-base="info"><i class="bi bi-calendar-week me-1"></i>Неделя</button>
       <button class="btn btn-sm btn-outline-info" data-chip-group="date" data-chip-value="month" data-chip-base="info"><i class="bi bi-calendar-month me-1"></i>Месяц</button>
     </div>
     <div class="vr d-none d-md-block"></div>
@@ -152,14 +175,14 @@
   {% if session.perm_can_export_full or session.role == 'admin' %}
   <a href="{{ url_for('report.export_full') }}"
      class="btn btn-sm btn-outline-success"
-     title="Скачать все обращения со всеми полями. Дозаполните файл и загрузите обратно через кнопку рядом.">
+     title="Скачать все обращения со всеми полями.">
     <i class="bi bi-download me-1"></i>Скачать базу (Excel)
   </a>
   {% endif %}
   {% if session.perm_can_import_full or session.role == 'admin' %}
   <button class="btn btn-sm btn-outline-warning"
           data-bs-toggle="modal" data-bs-target="#importModal"
-          title="Загрузить дозаполненный Excel. Обновляются только заполненные ячейки. Используйте файл из 'Скачать базу'.">
+          title="Загрузить дозаполненный Excel.">
     <i class="bi bi-upload me-1"></i>Загрузить обновлённый Excel
   </button>
   {% endif %}
@@ -201,6 +224,7 @@
       </td></tr>
       {% endif %}
       {% for r in requests %}
+      {%- set st = STATUS_MAP.get(r.status, ('secondary','bi-question-circle', r.status or '?')) -%}
       <tr class="{{ 'table-danger' if r.overdue else '' }}"
           data-preview-id="{{ r.id }}"
           data-status="{{ r.status }}"
@@ -225,10 +249,9 @@
           {% endif %}
         </td>
         <td>
-          {% if r.status=='draft' %}<span class="badge bg-secondary">Черновик</span>
-          {% elif r.status=='review' %}<span class="badge" style="background:#fd7e14">На проверке</span>
-          {% elif r.status=='accepted' %}<span class="badge bg-primary">В работе</span>
-          {% elif r.status=='answered' %}<span class="badge bg-success">Отвечено</span>{% endif %}
+          <span class="badge bg-{{ st[0] }}">
+            <i class="bi {{ st[1] }} me-1"></i>{{ st[2] }}
+          </span>
           {% if r.overdue %}<i class="bi bi-exclamation-circle text-danger ms-1" title="Просрочено"></i>{% endif %}
         </td>
         <td>
@@ -257,7 +280,7 @@
   </table>
 </div>
 
-{# ===== ФУТЕР: счётчик + пагинация ===== #}
+{# ===== ФУТЕР ===== #}
 <div class="mt-2 d-flex align-items-center flex-wrap gap-3">
   <div class="small text-muted">
     <span class="badge bg-danger me-1"> </span>
@@ -317,7 +340,7 @@
         <div class="alert alert-info py-2 small mb-3">
           <i class="bi bi-info-circle me-1"></i>
           Используйте только файл, скачанный через <strong>«Скачать базу (Excel)»</strong>.
-          Колонка <strong>ID (не менять)</strong> обязательна — по ней происходит сопоставление.
+          Колонка <strong>ID (не менять)</strong> обязательна.
         </div>
         <div id="importResult" class="d-none mb-3"></div>
         <form id="importForm" enctype="multipart/form-data">
@@ -353,7 +376,6 @@
 (function () {
   'use strict';
 
-  // ── Импорт Excel ──
   var importBtn = document.getElementById('importSubmitBtn');
   if (importBtn) {
     importBtn.addEventListener('click', function () {
@@ -391,12 +413,24 @@
     });
   }
 
-  // ── Превью строк таблицы ──
+  // Превью строк
   var STATUS_COLOR = {
-    draft:    '#6c757d',
-    review:   '#fd7e14',
-    accepted: '#0d6efd',
-    answered: '#198754'
+    draft:             '#6c757d',
+    registered:        '#0dcaf0',
+    in_progress:       '#0d6efd',
+    under_review:      '#fd7e14',
+    ready_to_send:     '#198754',
+    sent_to_applicant: '#6c757d',
+    closed:            '#212529'
+  };
+  var STATUS_LABEL = {
+    draft:             'Черновик',
+    registered:        'Зарегистрировано',
+    in_progress:       'В работе',
+    under_review:      'На проверке',
+    ready_to_send:     'Готово к отправке',
+    sent_to_applicant: 'Документы отправлены',
+    closed:            'Закрыто'
   };
 
   var cache      = {};
@@ -406,10 +440,11 @@
 
   function buildHtml(d) {
     var c = STATUS_COLOR[d.status] || '#333';
+    var l = STATUS_LABEL[d.status] || d.status || '—';
     return '<table class="table table-sm mb-0" style="font-size:12px;min-width:220px">'
       + '<tr><th class="text-muted fw-normal pe-2">№</th><td class="fw-bold">' + (d.number||'—') + '</td></tr>'
       + '<tr><th class="text-muted fw-normal">Заявитель</th><td>' + (d.applicant||'—') + '</td></tr>'
-      + '<tr><th class="text-muted fw-normal">Статус</th><td><span class="badge" style="background:' + c + '">' + (d.status_label||'—') + '</span></td></tr>'
+      + '<tr><th class="text-muted fw-normal">Статус</th><td><span class="badge" style="background:' + c + '">' + l + '</span></td></tr>'
       + '<tr><th class="text-muted fw-normal">Контакт</th><td>' + (d.contact||'—') + '</td></tr>'
       + '<tr><th class="text-muted fw-normal">Тел.</th><td>' + (d.phone||'—') + '</td></tr>'
       + '<tr><th class="text-muted fw-normal">Изменено</th><td>' + (d.updated_at||'—') + '</td></tr>'
@@ -444,10 +479,7 @@
   }
 
   function fetchAndOpen(tr, rid) {
-    if (cache[rid]) {
-      openPop(tr, cache[rid]);
-      return;
-    }
+    if (cache[rid]) { openPop(tr, cache[rid]); return; }
     fetch('/api/request/' + rid + '/preview')
       .then(function(r) { return r.ok ? r.json() : null; })
       .then(function(data) {
@@ -463,9 +495,7 @@
     tr.addEventListener('mouseenter', function() {
       clearTimeout(timer);
       currentTr = tr;
-      timer = setTimeout(function() {
-        fetchAndOpen(tr, rid);
-      }, 300);
+      timer = setTimeout(function() { fetchAndOpen(tr, rid); }, 300);
     });
     tr.addEventListener('mouseleave', function() {
       clearTimeout(timer);

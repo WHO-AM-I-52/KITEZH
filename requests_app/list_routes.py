@@ -11,6 +11,12 @@ from . import requests_bp
 
 PAGE_SIZE = 50
 
+# Все допустимые статусы issue #53
+ALL_STATUSES = (
+    'draft', 'registered', 'in_progress',
+    'under_review', 'ready_to_send', 'sent_to_applicant', 'closed'
+)
+
 
 def _build_filter(sf, df, dt, af, ef, src_f, search, quick, user_id, for_count=False):
     where = "WHERE 1=1 "
@@ -44,7 +50,7 @@ def _build_filter(sf, df, dt, af, ef, src_f, search, quick, user_id, for_count=F
         params += [f"%{search}%"] * 8
 
     if quick == 'overdue':
-        where += (" AND r.status IN ('draft','review','accepted') "
+        where += (" AND r.status IN ('draft','registered','in_progress') "
                   "AND julianday('now')-julianday(r.request_date) > 7")
     elif quick == 'mine':
         where += " AND r.assigned_to=?"
@@ -147,6 +153,7 @@ def index():
         saved_filter_list=saved_filter_list, active_filter_id=active_filter_id,
         total_all=total_all, total_filtered=total_filtered, active_quick=quick,
         page=page, total_pages=total_pages,
+        all_statuses=ALL_STATUSES,
     )
 
 

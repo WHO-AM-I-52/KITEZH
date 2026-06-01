@@ -7,6 +7,19 @@ from auth_utils import login_required, admin_required
 from activity_log import log_action
 from . import requests_bp
 
+# Допустимые переходы статусов для change_status (issue #53)
+_VALID_STATUSES = (
+    'draft', 'registered', 'in_progress',
+    'under_review', 'ready_to_send', 'sent_to_applicant', 'closed'
+)
+
+# Дополнительные поля, которые могут приходить вместе со сменой статуса
+_STATUS_EXTRA_FIELDS = {
+    'sent_to_applicant': ['sent_to_applicant_at', 'send_method'],
+    'closed':            ['applicant_feedback', 'applicant_feedback_at'],
+    'under_review':      ['reviewer_id', 'reviewer_not_in_system', 'reviewer_name_external'],
+}
+
 
 @requests_bp.route('/request/<int:rid>/confirm', methods=['POST'])
 @login_required
@@ -37,7 +50,7 @@ def confirm_request(rid):
                 assigned = req['assigned_to']
 
         conn.execute(
-            "UPDATE requests SET status='accepted', request_number=?, "
+            "UPDATE requests SET status='in_progress', request_number=?, "
             "confirmed_by=?, confirmed_at=?, admin_comment=?, assigned_to=? WHERE id=?",
             (num, session['user_id'], now, comment, assigned, rid)
         )
@@ -104,16 +117,17 @@ def answer_request(rid):
         af = fn2
 
     conn.execute(
-        "UPDATE requests SET status='answered', answer_date=?, "
+        "UPDATE requests SET status='ready_to_send', answer_date=?, "
         "answer_method=?, answer_method_other=?, answer_notes=?, "
         "answer_file=?, answer_system_number=?, updated_at=? WHERE id=?",
         (date.today().isoformat(), method, m_other, notes, af, answer_sys_num, now, rid)
     )
     log_action(conn, session['user_id'], 'answer', rid,
-               f'Способ: {method}' + (f' ({answer_sys_num})' if answer_sys_num else ''))
+               f'Подбор загружен, статус → ready_to_send. Способ: {method}'
+               + (f' ({answer_sys_num})' if answer_sys_num else ''))
     conn.commit()
     conn.close()
-    flash('Ответ зафиксирован', 'success')
+    flash('Ответ зафиксирован, статус изменён на «Готово к отправке»', 'success')
     return redirect(url_for('requests.view_request', rid=rid))
 
 
@@ -121,17 +135,71 @@ def answer_request(rid):
 @login_required
 def change_status(rid):
     ns = request.form.get('status')
-    if ns not in ('draft', 'review', 'accepted', 'answered'):
+    if ns not in _VALID_STATUSES:
         flash('Неверный статус', 'error')
         return redirect(url_for('requests.view_request', rid=rid))
+
     conn = get_db()
+    now  = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+    # Базовый UPDATE
+    upd_fields = ['status=?', 'updated_at=?']
+    upd_vals   = [ns, now]
+
+    # Дополнительные поля в зависимости от нового статуса
+    for field in _STATUS_EXTRA_FIELDS.get(ns, []):
+        val = request.form.get(field)
+        if val is not None:          # None = не пришло в форме, не трогаем
+            upd_fields.append(f'{field}=?')
+            upd_vals.append(val or None)
+
+    # При переходе в registered — фиксируем дату регистрации
+    if ns == 'registered':
+        upd_fields.append('registered_at=?')
+        upd_vals.append(now[:10])
+
+    upd_vals.append(rid)
     conn.execute(
-        "UPDATE requests SET status=?, updated_at=? WHERE id=?",
-        (ns, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), rid)
+        f"UPDATE requests SET {', '.join(upd_fields)} WHERE id=?",
+        upd_vals
     )
     log_action(conn, session['user_id'], 'status', rid, f'Новый статус: {ns}')
     conn.commit()
     conn.close()
+    return redirect(url_for('requests.view_request', rid=rid))
+
+
+@requests_bp.route('/request/<int:rid>/reviewer_decision', methods=['POST'])
+@login_required
+def reviewer_decision(rid):
+    """Решение проверяющего: approved → ready_to_send, rejected → in_progress."""
+    decision = request.form.get('decision')
+    comment  = request.form.get('reviewer_comment', '').strip()
+    if decision not in ('approved', 'rejected'):
+        flash('Неверное решение', 'error')
+        return redirect(url_for('requests.view_request', rid=rid))
+
+    new_status = 'ready_to_send' if decision == 'approved' else 'in_progress'
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+    conn = get_db()
+    conn.execute(
+        "UPDATE requests SET status=?, reviewer_decision=?, "
+        "reviewer_comment=?, reviewer_decision_at=?, updated_at=? WHERE id=?",
+        (new_status, decision, comment or None, now, now, rid)
+    )
+    log_action(conn, session['user_id'], 'review', rid,
+               f'Решение проверяющего: {decision}, статус → {new_status}')
+    conn.commit()
+    conn.close()
+    flash('Решение зафиксировано', 'success')
+    return redirect(url_for('requests.view_request', rid=rid))
+
+
+@requests_bp.route('/request/<int:rid>/status', methods=['POST'])
+@login_required
+def change_status_duplicate(rid):
+    """Заглушка — реальный обработчик выше."""
     return redirect(url_for('requests.view_request', rid=rid))
 
 
@@ -158,7 +226,7 @@ def delete_request(rid):
 @requests_bp.route('/request/<int:rid>/assign_number', methods=['POST'])
 @login_required
 def assign_number(rid):
-    if session.get('role') != 'admin':
+    if session.get('role') not in ('admin', 'employee', 'manager'):
         abort(403)
     conn = get_db()
     req  = conn.execute("SELECT * FROM requests WHERE id=?", (rid,)).fetchone()
@@ -172,10 +240,15 @@ def assign_number(rid):
         "SELECT COUNT(*) FROM requests WHERE request_number IS NOT NULL"
     ).fetchone()[0] + 1
     num   = f"ЗУ-{year}-{count:04d}"
+    now   = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-    conn.execute("UPDATE requests SET request_number=? WHERE id=?", (num, rid))
+    conn.execute(
+        "UPDATE requests SET request_number=?, status='registered', "
+        "registered_at=?, updated_at=? WHERE id=?",
+        (num, now[:10], now, rid)
+    )
     log_action(conn, session['user_id'], 'status', rid,
-               f'Присвоен номер: {num}')
+               f'Присвоен номер: {num}, статус → registered')
     conn.commit()
     conn.close()
     flash(f'Присвоен номер: {num}', 'success')
