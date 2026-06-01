@@ -242,14 +242,26 @@
       </select>
     </div>
 
+    {# ===== ИНН + кнопка ЕГРЮЛ (Этап 3) ===== #}
     <div class="col-md-4">
       <label class="form-label fw-bold" style="font-size:12px">ИНН</label>
-      <input type="text" name="applicant_inn" class="form-control form-control-sm"
-             value="{{ req.applicant_inn if req else '' }}"
-             placeholder="10 или 12 цифр">
+      <div class="input-group input-group-sm">
+        <input type="text" name="applicant_inn" id="applicant_inn"
+               class="form-control form-control-sm"
+               value="{{ req.applicant_inn if req else '' }}"
+               placeholder="10 или 12 цифр">
+        <button type="button"
+                class="btn btn-outline-primary"
+                id="btn_egrul_lookup"
+                onclick="egrulLookup()"
+                title="Заполнить реквизиты по ИНН из ЕГРЮЛ">
+          <i class="bi bi-search" id="egrul_btn_icon"></i>
+        </button>
+      </div>
       <div id="inn_help" class="form-text" style="font-size:11px; min-height:14px">
         Необязательно, только цифры
       </div>
+      <div id="egrul_status" style="font-size:11px; min-height:14px"></div>
     </div>
 
     {# Bugfix #1: было name="msp_category", исправлено на name="applicant_msp_category" #}
@@ -1237,6 +1249,75 @@ function previewFiles(input){
     div.style.cssText='width:80px;font-size:0.72rem;word-break:break-all';
     div.innerHTML=icon+'<span class="mt-1 text-center">'+name+'</span>';
     preview.appendChild(div);
+  });
+}
+
+// ===== АВТОЗАПОЛНЕНИЕ ПО ИНН (ЕГРЮЛ) =====
+function egrulLookup() {
+  var innEl  = document.getElementById('applicant_inn');
+  var status = document.getElementById('egrul_status');
+  var btn    = document.getElementById('btn_egrul_lookup');
+  var icon   = document.getElementById('egrul_btn_icon');
+  if (!innEl || !status || !btn) return;
+
+  var inn = (innEl.value || '').trim();
+  if (!inn) {
+    status.textContent = 'Введите ИНН';
+    status.className   = 'text-danger';
+    return;
+  }
+
+  // Спиннер
+  btn.disabled   = true;
+  icon.className = 'spinner-border spinner-border-sm';
+  icon.setAttribute('role', 'status');
+  status.textContent = 'Запрос к ЕГРЮЛ…';
+  status.className   = 'text-muted';
+
+  fetch('/api/egrul/lookup?inn=' + encodeURIComponent(inn), {
+    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(resp) {
+    btn.disabled   = false;
+    icon.className = 'bi bi-search';
+    icon.removeAttribute('role');
+
+    if (!resp.ok) {
+      status.textContent = resp.error || 'Ошибка запроса';
+      status.className   = 'text-danger';
+      return;
+    }
+
+    var d = resp.data;
+    var map = {
+      'applicant_full_name':  d.applicant_full_name,
+      'applicant_short_name': d.applicant_short_name,
+      'legal_address':        d.legal_address,
+      'applicant_okved_main': d.applicant_okved_main
+    };
+
+    Object.keys(map).forEach(function(name) {
+      if (!map[name]) return;
+      var el = document.querySelector('[name="' + name + '"]');
+      if (el && !el.value) el.value = map[name];
+    });
+
+    status.textContent = '✓ Реквизиты найдены и заполнены';
+    status.className   = 'text-success';
+
+    // Сбросить статус через 4 сек
+    setTimeout(function() {
+      status.textContent = '';
+      status.className   = '';
+    }, 4000);
+  })
+  .catch(function() {
+    btn.disabled   = false;
+    icon.className = 'bi bi-search';
+    icon.removeAttribute('role');
+    status.textContent = 'Ошибка сети — повторите попытку';
+    status.className   = 'text-danger';
   });
 }
 
