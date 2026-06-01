@@ -38,7 +38,7 @@
     <input type="text" class="form-control form-control-sm org-address-field"
            readonly placeholder="Подтягивается из справочника"
            value="{{ c.org_address if c and c.org_address else '' }}"
-           style="background:#f8f9fa;font-size:12px">
+           style="background:var(--surface2);font-size:12px">
   </div>
 
   {# Должность #}
@@ -114,7 +114,7 @@
   }
   .pb-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,.1); }
   .pb-org-header {
-    background: #f0f4f8;
+    background: var(--surface2);
     border-left: 4px solid #1B5E7B;
     padding: 6px 12px;
     font-weight: 600;
@@ -123,10 +123,18 @@
     margin-bottom: 8px;
     border-radius: 4px;
   }
+  body[data-theme="dark"]  .pb-org-header { color: #60a5fa; }
+  body[data-theme="zone"]  .pb-org-header { color: #c8a84b; border-left-color: #c8a84b; }
   .pb-org-address {
     font-size: 11px;
     color: #6c757d;
     font-weight: normal;
+  }
+  .pb-room-badge {
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    font-size: 10px;
   }
 </style>
 
@@ -239,7 +247,7 @@
             <div class="text-muted" style="font-size:12px">
               {{ c.position }}
               {% if c.room %}
-              <span class="ms-1 badge bg-light text-dark border" style="font-size:10px">
+              <span class="ms-1 badge pb-room-badge">
                 <i class="bi bi-door-open me-1"></i>каб. {{ c.room }}
               </span>
               {% endif %}
@@ -278,7 +286,7 @@
 
             {% if c.notes %}
             <div class="mt-1 text-muted"
-                 style="font-size:11px;border-top:1px solid #eee;padding-top:4px">
+                 style="font-size:11px;border-top:1px solid var(--border);padding-top:4px">
               <i class="bi bi-chat-left-text me-1"></i>{{ c.notes }}
             </div>
             {% endif %}
