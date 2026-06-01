@@ -1,11 +1,11 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║ app.py                                                       ║
-# ║ v2.5: +todatetime filter, статусы #53, is_active миграция   ║
+# ║ v2.5: todatetime Jinja-фильтр + статусы inject_globals (#53)  ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 import os
 import sqlite3
-from datetime import timedelta, datetime
+from datetime import timedelta, datetime, date
 
 from flask import Flask, session
 
@@ -16,7 +16,7 @@ from spravochnik import LEGAL_FORMS_DEFAULT, DISTRICTS_DEFAULT, SOURCE_TYPES_DEF
 
 app = Flask(__name__)
 
-# ─── SECRET_KEY ──────────────────────────────────────────────────────────────
+# ─── SECRET_KEY ───────────────────────────────────────────────────────────
 import secrets as _secrets
 _KEY_FILE = os.path.join(BASE_DIR, '_secret.key')
 _env_key  = os.environ.get('SECRET_KEY')
@@ -34,28 +34,29 @@ else:
             pass
         app.secret_key = _new_key
 
-# ─── Настройки сессий ───────────────────────────────────────────────────────
+# ─── Настройки сессий ──────────────────────────────────────────────────────
 app.config['PERMANENT_SESSION_LIFETIME']  = timedelta(minutes=15)
 app.config['SESSION_REFRESH_EACH_REQUEST'] = True
 
-# ─── Jinja2-ФИЛЬТРЫ ───────────────────────────────────────────────────────────
+# ─── JINJA ФИЛЬТРЫ (#53) ───────────────────────────────────────────────────
 @app.template_filter('todatetime')
-def _todatetime(value):
+def todatetime_filter(value):
     """
-    Jinja2-фильтр: преобразует строку 'YYYY-MM-DD' в datetime.date.
-    Используется в view.html для сравнения дедлайнов.
+    Преобразует 'YYYY-MM-DD' в datetime.date.
+    Используется в view.html для вычисления deadline_diff.
+    При ошибке парсинга — возвращает текущую дату (deadline_diff = 0).
     """
-    if not value:
-        return None
-    if isinstance(value, str):
-        try:
-            return datetime.strptime(value[:10], '%Y-%m-%d').date()
-        except ValueError:
-            return None
-    return value
+    if isinstance(value, date):
+        return value
+    if isinstance(value, datetime):
+        return value.date()
+    try:
+        return datetime.strptime(str(value).strip()[:10], '%Y-%m-%d').date()
+    except (ValueError, TypeError):
+        return date.today()
 
 
-# ─── Blueprints (до init_db) ─────────────────────────────────────────────────────
+# ─── Blueprints (ранние: без зависимостей от DB) ──────────────────────────
 from phonebook_routes import phonebook_bp
 from search_routes    import search_bp
 app.register_blueprint(phonebook_bp)
@@ -74,7 +75,6 @@ CREATE TABLE IF NOT EXISTS users (
     role                 TEXT NOT NULL DEFAULT 'employee',
     created_at           TEXT DEFAULT CURRENT_TIMESTAMP,
     must_change_password INTEGER DEFAULT 0,
-    is_active            INTEGER NOT NULL DEFAULT 1,
     can_create           INTEGER DEFAULT 0,
     can_edit_others      INTEGER DEFAULT 0,
     can_confirm          INTEGER DEFAULT 0,
@@ -83,7 +83,8 @@ CREATE TABLE IF NOT EXISTS users (
     can_export           INTEGER DEFAULT 0,
     can_classifiers      INTEGER DEFAULT 0,
     can_users            INTEGER DEFAULT 0,
-    can_view_all         INTEGER DEFAULT 0
+    can_view_all         INTEGER DEFAULT 0,
+    is_active            INTEGER NOT NULL DEFAULT 1
 );
 CREATE TABLE IF NOT EXISTS login_log (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -177,6 +178,7 @@ CREATE INDEX  IF NOT EXISTS idx_okved_name ON okved(name);
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """)
 
+    # ── Миграция requests ───────────────────────────────────────────────────
     cols = [r[1] for r in conn.execute("PRAGMA table_info(requests)").fetchall()]
     for col in ['source_type', 'request_files', 'edit_reason', 'updated_by']:
         if col not in cols:
@@ -195,6 +197,7 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         if col not in cols:
             conn.execute(f"ALTER TABLE requests ADD COLUMN {col} {typ}")
 
+    # ── Миграция users ─────────────────────────────────────────────────────
     user_cols = [r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()]
     for col in ['can_create', 'can_edit_others', 'can_confirm', 'can_delete',
                 'can_rollback', 'can_export', 'can_classifiers', 'can_users',
@@ -203,27 +206,26 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
             conn.execute(f"ALTER TABLE users ADD COLUMN {col} INTEGER DEFAULT 0")
     if 'must_change_password' not in user_cols:
         conn.execute("ALTER TABLE users ADD COLUMN must_change_password INTEGER DEFAULT 0")
-    # #53: is_active
-    if 'is_active' not in user_cols:
-        conn.execute("ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
-
     for col, definition in [
         ('email',               'TEXT DEFAULT NULL'),
         ('theme',               "TEXT DEFAULT 'light'"),
         ('email_notifications', 'INTEGER DEFAULT 0'),
+        ('is_active',           'INTEGER NOT NULL DEFAULT 1'),  # #53
     ]:
         if col not in user_cols:
             conn.execute(f"ALTER TABLE users ADD COLUMN {col} {definition}")
 
+    # ── Создание admin если нет ──────────────────────────────────────────
     if not conn.execute("SELECT id FROM users WHERE username='admin'").fetchone():
         conn.execute(
-            "INSERT INTO users (username,password,full_name,role,is_active,"
+            "INSERT INTO users (username,password,full_name,role,"
             "can_create,can_edit_others,can_confirm,can_delete,"
-            "can_rollback,can_export,can_classifiers,can_users,can_view_all) "
+            "can_rollback,can_export,can_classifiers,can_users,can_view_all,is_active) "
             "VALUES (?,?,?,?,1,1,1,1,1,1,1,1,1,1)",
             ('admin', hash_pw('admin123'), 'Администратор', 'admin')
         )
 
+    # ── Справочники ───────────────────────────────────────────────────────
     if not conn.execute("SELECT id FROM classifiers LIMIT 1").fetchone():
         for v in LEGAL_FORMS_DEFAULT:
             conn.execute("INSERT INTO classifiers (category,value) VALUES ('legal_form',?)", (v,))
@@ -248,6 +250,7 @@ def migrate_db():
     conn = sqlite3.connect(DB_PATH, timeout=15)
     conn.row_factory = sqlite3.Row
 
+    # ── requests ───────────────────────────────────────────────────────────────
     cols = [r[1] for r in conn.execute("PRAGMA table_info(requests)").fetchall()]
     for col in ['request_files', 'source_type', 'edit_reason', 'updated_by']:
         if col not in cols:
@@ -263,6 +266,7 @@ def migrate_db():
         if col not in cols:
             conn.execute(f"ALTER TABLE requests ADD COLUMN {col} {typ}")
 
+    # ── users (v2.0 + #53 is_active) ───────────────────────────────────────────
     user_cols = [r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()]
     for col in ['can_create', 'can_edit_others', 'can_confirm', 'can_delete',
                 'can_rollback', 'can_export', 'can_classifiers', 'can_users',
@@ -271,18 +275,16 @@ def migrate_db():
             conn.execute(f"ALTER TABLE users ADD COLUMN {col} INTEGER DEFAULT 0")
     if 'must_change_password' not in user_cols:
         conn.execute("ALTER TABLE users ADD COLUMN must_change_password INTEGER DEFAULT 0")
-    # #53: is_active
-    if 'is_active' not in user_cols:
-        conn.execute("ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
-
     for col, definition in [
         ('email',               'TEXT DEFAULT NULL'),
         ('theme',               "TEXT DEFAULT 'light'"),
         ('email_notifications', 'INTEGER DEFAULT 0'),
+        ('is_active',           'INTEGER NOT NULL DEFAULT 1'),  # #53
     ]:
         if col not in user_cols:
             conn.execute(f"ALTER TABLE users ADD COLUMN {col} {definition}")
 
+    # ── login_log (v2.0) ──────────────────────────────────────────────────────────
     conn.executescript("""
 CREATE TABLE IF NOT EXISTS login_log (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -301,6 +303,7 @@ CREATE INDEX IF NOT EXISTS idx_ll_event ON login_log(event);
         WHERE role='employee' AND can_create=0
     """)
 
+    # ── activity_log (v2.0) ─────────────────────────────────────────────────────
     conn.executescript("""
 CREATE TABLE IF NOT EXISTS activity_log (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -315,6 +318,7 @@ CREATE INDEX IF NOT EXISTS idx_al_request ON activity_log(request_id);
 CREATE INDEX IF NOT EXISTS idx_al_action  ON activity_log(action);
 """)
 
+    # ── phonebook_orgs (v2.1.0) ─────────────────────────────────────────────────
     conn.executescript("""
 CREATE TABLE IF NOT EXISTS phonebook_orgs (
     id      INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -337,6 +341,7 @@ CREATE INDEX IF NOT EXISTS idx_pb_org  ON phonebook(org_id);
 CREATE INDEX IF NOT EXISTS idx_pb_name ON phonebook(full_name);
 """)
 
+    # ── phonebook source_type (v2.3) ──────────────────────────────────────────
     pb_cols = [r[1] for r in conn.execute("PRAGMA table_info(phonebook)").fetchall()]
     if 'source_type' not in pb_cols:
         conn.execute(
@@ -385,16 +390,16 @@ def inject_globals():
         ).fetchone()[0]
 
         try:
-            # #53: активные = не closed и не draft
+            # #53: активные = всё кроме closed и draft
             if session.get('role') == 'admin' or session.get('can_view_all'):
                 active_requests_count = db.execute(
                     "SELECT COUNT(*) FROM requests "
-                    "WHERE status NOT IN ('closed','draft')"
+                    "WHERE status NOT IN ('closed', 'draft')"
                 ).fetchone()[0]
             else:
                 active_requests_count = db.execute(
                     "SELECT COUNT(*) FROM requests "
-                    "WHERE status NOT IN ('closed','draft') AND created_by=?",
+                    "WHERE status NOT IN ('closed', 'draft') AND created_by=?",
                     (session['user_id'],)
                 ).fetchone()[0]
         except Exception:
