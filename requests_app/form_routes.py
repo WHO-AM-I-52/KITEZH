@@ -41,9 +41,12 @@ def new_request():
         action = request.form.get('action', 'save')
 
         if action == 'ocr':
-            ocr_file = request.files.get('ocr_form')
-            if not ocr_file or not ocr_file.filename:
-                flash('Не выбран файл анкеты для OCR.', 'warning')
+            # Берём первый файл из поля request_files (единый инпут)
+            uploaded = request.files.getlist('request_files')
+            ocr_file = next((f for f in uploaded if f and f.filename), None)
+
+            if not ocr_file:
+                flash('Прикрепите файл анкеты перед распознаванием.', 'warning')
                 conn.close()
                 conn2 = get_db()
                 lf2, di2, src2, emp2, subjects2, results2, all_users2 = get_classifiers(conn2)
@@ -62,14 +65,29 @@ def new_request():
             tmp_name = f'_ocr_tmp_anketa{ext}'
             tmp_path = os.path.join(UPLOADS_DIR, tmp_name)
 
+            # Сохраняем остальные файлы из того же инпута
+            saved_names = []
+            for uf in uploaded:
+                if uf and uf.filename and allowed_file(uf.filename):
+                    fn2 = secure_filename(uf.filename)
+                    uf.save(os.path.join(UPLOADS_DIR, fn2))
+                    saved_names.append(fn2)
+
             try:
-                ocr_file.save(tmp_path)
-                fields, msg = extract_anketa_fields(tmp_path)
+                # Читаем первый файл повторно из диска (уже сохранён выше)
+                first_saved = saved_names[0] if saved_names else None
+                ocr_path = os.path.join(UPLOADS_DIR, first_saved) if first_saved else None
+                if not ocr_path:
+                    ocr_file.seek(0)
+                    ocr_file.save(tmp_path)
+                    ocr_path = tmp_path
+                fields, msg = extract_anketa_fields(ocr_path)
             finally:
-                try:
-                    os.remove(tmp_path)
-                except Exception:
-                    pass
+                if os.path.exists(tmp_path):
+                    try:
+                        os.remove(tmp_path)
+                    except Exception:
+                        pass
 
             conn.close()
             conn2 = get_db()
@@ -81,6 +99,8 @@ def new_request():
                 for k, v in fields.items():
                     if k in fake_req:
                         fake_req[k] = v
+                # Сохраняем прикреплённые файлы чтобы не потерять после OCR
+                fake_req['request_files'] = ','.join(saved_names) if saved_names else ''
                 flash(
                     'Анкета распознана: часть полей заполнена автоматически. '
                     'Проверьте перед сохранением.', 'success'
@@ -182,9 +202,6 @@ def edit_request(rid):
         vals = build_values(request.form)
 
         # ── Сохраняем поля #53, которых нет в form.html ──────────────────────
-        # build_values вернёт None для них (форма не передаёт эти значения),
-        # что нарушит NOT NULL-ограничение review_days и DEFAULT-поля булевых.
-        # Берём текущие значения из БД и подставляем вместо None.
         for field in _PRESERVE_FIELDS:
             if field in ALL_FIELDS:
                 idx = ALL_FIELDS.index(field)
