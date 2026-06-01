@@ -29,13 +29,13 @@ def new_request():
                 flash('Не выбран файл анкеты для OCR.', 'warning')
                 conn.close()
                 conn2 = get_db()
-                lf2, di2, src2, emp2, subjects2, results2 = get_classifiers(conn2)
+                lf2, di2, src2, emp2, subjects2, results2, all_users2 = get_classifiers(conn2)
                 conn2.close()
                 return render_template(
                     'form.html', req=None, today=date.today().isoformat(),
                     legal_forms=lf2, districts=di2, source_types=src2,
                     employees=emp2, required_fields=REQUIRED_FIELDS,
-                    subjects=subjects2, results=results2
+                    subjects=subjects2, results=results2, all_users=all_users2
                 )
 
             orig_name = ocr_file.filename or ''
@@ -56,7 +56,7 @@ def new_request():
 
             conn.close()
             conn2 = get_db()
-            lf2, di2, src2, emp2, subjects2, results2 = get_classifiers(conn2)
+            lf2, di2, src2, emp2, subjects2, results2, all_users2 = get_classifiers(conn2)
             conn2.close()
 
             if fields:
@@ -72,7 +72,8 @@ def new_request():
                     'form.html', req=fake_req, today=date.today().isoformat(),
                     legal_forms=lf2, districts=di2, source_types=src2,
                     employees=emp2, required_fields=REQUIRED_FIELDS,
-                    subjects=subjects2, results=results2, ocr_message=msg
+                    subjects=subjects2, results=results2, all_users=all_users2,
+                    ocr_message=msg
                 )
             else:
                 flash(
@@ -83,7 +84,7 @@ def new_request():
                     'form.html', req=None, today=date.today().isoformat(),
                     legal_forms=lf2, districts=di2, source_types=src2,
                     employees=emp2, required_fields=REQUIRED_FIELDS,
-                    subjects=subjects2, results=results2,
+                    subjects=subjects2, results=results2, all_users=all_users2,
                     ocr_message=msg if 'msg' in locals() else ''
                 )
 
@@ -127,13 +128,13 @@ def new_request():
         flash('Обращение сохранено', 'success')
         return redirect(url_for('requests.index'))
 
-    lf, di, src, emp, subjects, results = get_classifiers(conn)
+    lf, di, src, emp, subjects, results, all_users = get_classifiers(conn)
     conn.close()
     return render_template(
         'form.html', req=None, today=date.today().isoformat(),
         legal_forms=lf, districts=di, source_types=src,
         employees=emp, required_fields=REQUIRED_FIELDS,
-        subjects=subjects, results=results
+        subjects=subjects, results=results, all_users=all_users
     )
 
 
@@ -202,11 +203,11 @@ def edit_request(rid):
         flash('Обращение обновлено', 'success')
         return redirect(url_for('requests.index'))
 
-    lf, di, src, emp, subjects, results = get_classifiers(conn)
+    lf, di, src, emp, subjects, results, all_users = get_classifiers(conn)
     conn.close()
     return render_template(
         'form.html', req=req, today=date.today().isoformat(),
         legal_forms=lf, districts=di, source_types=src,
         employees=emp, required_fields=REQUIRED_FIELDS,
-        subjects=subjects, results=results
+        subjects=subjects, results=results, all_users=all_users
     )
