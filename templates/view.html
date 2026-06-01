@@ -427,24 +427,35 @@
 </div>
 
 {# ── ИНЖЕНЕРИЯ ─────────────────────────────────────────────────── #}
+{#
+  Issue #48: единицы берутся из req.*_unit (сохранены при вводе),
+  значения — из display_vals (денормализованы в view_routes.py).
+  Базовые единицы: кВт / Гкал/ч / м³/ч / м³/год / м³/сут
+#}
+{%- set u_water = req.water_unit or 'м³/сут' -%}
+{%- set u_elec  = req.elec_unit  or 'кВт' -%}
+{%- set u_heat  = req.heat_unit  or 'Гкал/ч' -%}
+{%- set u_gash  = req.gas_unit_h or 'м³/ч' -%}
+{%- set u_gasy  = req.gas_unit_y or 'м³/год' -%}
+
 <div class="card mb-3">
   <div class="card-header fw-bold" style="background:#EEF4F7">
     <i class="bi bi-lightning me-1"></i> Инженерная инфраструктура
   </div>
   <div class="card-body p-0">
     <table class="table table-sm table-borderless mb-0">
-      {{ field('Водоснабжение хозяйственное, м³/сут', req.water_household) }}
-      {{ field('Водоснабжение производственное, м³/сут', req.water_production) }}
-      {{ field('Водоотведение, м³/сут', req.sewage) }}
-      {{ field('Пожаротушение, м³/сут', req.firefighting) }}
-      {{ field('Электроснабжение (итого), кВт', req.electricity_total) }}
-      {{ field('Электроснабжение 1 кат., кВт', req.electricity_cat1) }}
-      {{ field('Электроснабжение 2 кат., кВт', req.electricity_cat2) }}
-      {{ field('Электроснабжение 3 кат., кВт', req.electricity_cat3) }}
+      {{ field('Водоснабжение хозяйственное, ' ~ u_water, display_vals.water_household) }}
+      {{ field('Водоснабжение производственное, ' ~ u_water, display_vals.water_production) }}
+      {{ field('Водоотведение, ' ~ u_water, display_vals.sewage) }}
+      {{ field('Пожаротушение, ' ~ u_water, display_vals.firefighting) }}
+      {{ field('Электроснабжение (итого), ' ~ u_elec, display_vals.electricity_total) }}
+      {{ field('Электроснабжение 1 кат., ' ~ u_elec, display_vals.electricity_cat1) }}
+      {{ field('Электроснабжение 2 кат., ' ~ u_elec, display_vals.electricity_cat2) }}
+      {{ field('Электроснабжение 3 кат., ' ~ u_elec, display_vals.electricity_cat3) }}
       {{ field('Источник теплоснабжения', req.heat_source) }}
-      {{ field('Теплоснабжение, Гкал/ч', req.heat_gcal) }}
-      {{ field('Газоснабжение, м³/ч', req.gas_m3h) }}
-      {{ field('Газоснабжение, м³/год', req.gas_m3y) }}
+      {{ field('Теплоснабжение, ' ~ u_heat, display_vals.heat_gcal) }}
+      {{ field('Газоснабжение, ' ~ u_gash, display_vals.gas_m3h) }}
+      {{ field('Газоснабжение, ' ~ u_gasy, display_vals.gas_m3y) }}
       {{ field('Цель газоснабжения', req.gas_purpose) }}
       {{ field('Отапливаемая площадь, м²', req.heated_area) }}
       {{ field('Интернет', req.internet) }}
