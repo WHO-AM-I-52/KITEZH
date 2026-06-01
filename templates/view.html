@@ -114,7 +114,6 @@
       {% endfor %}
     </div>
 
-    {# Блок дат цепочки #}
     <table class="table table-sm table-borderless mb-0">
       {{ field('Номер обращения', req.request_number) }}
       {{ field('Дата регистрации', req.registered_at) }}
@@ -162,7 +161,7 @@
   </div>
 </div>
 
-{# ── БЛОК ДЕЙСТВИЙ ПО СТАТУСУ (#53) ──────────────────────────── #}
+{# ── БЛОК ДЕЙСТВИЙ ПО СТАТУСУ ──────────────────────────────────── #}
 
 {# — ЧЕРНОВИК: кнопка «Присвоить номер» — #}
 {% if req.status == 'draft' and not req.request_number and session.role in ('admin','employee','manager') %}
@@ -171,11 +170,14 @@
     <i class="bi bi-hash me-1"></i> Регистрация обращения
   </div>
   <div class="card-body">
-    <p class="text-muted small mb-2">Нажмите кнопку, чтобы присвоить регистрационный номер и назначить ответственное лицо за подбор.</p>
-    <button class="btn btn-warning"
-            data-bs-toggle="modal" data-bs-target="#registerModal">
-      <i class="bi bi-hash me-1"></i> Присвоить номер
-    </button>
+    <p class="text-muted small mb-2">Нажмите кнопку, чтобы присвоить регистрационный номер.</p>
+    <form method="post"
+          action="{{ url_for('requests.assign_number', rid=req.id) }}"
+          onsubmit="return confirm('Присвоить номер обращению?')">
+      <button type="submit" class="btn btn-warning">
+        <i class="bi bi-hash me-1"></i> Присвоить номер
+      </button>
+    </form>
   </div>
 </div>
 {% endif %}
@@ -211,12 +213,10 @@
                   placeholder="Необязательно"></textarea>
       </div>
       <div class="d-flex gap-2">
-        <button type="submit" name="decision" value="approved"
-                class="btn btn-success">
+        <button type="submit" name="decision" value="approved" class="btn btn-success">
           <i class="bi bi-check-circle me-1"></i> Одобрить
         </button>
-        <button type="submit" name="decision" value="rejected"
-                class="btn btn-danger">
+        <button type="submit" name="decision" value="rejected" class="btn btn-danger">
           <i class="bi bi-x-circle me-1"></i> Отклонить
         </button>
       </div>
@@ -426,12 +426,7 @@
   </div>
 </div>
 
-{# ── ИНЖЕНЕРИЯ ─────────────────────────────────────────────────── #}
-{#
-  Issue #48: единицы берутся из req.*_unit (сохранены при вводе),
-  значения — из display_vals (денормализованы в view_routes.py).
-  Базовые единицы: кВт / Гкал/ч / м³/ч / м³/год / м³/сут
-#}
+{# ── ИНЖЕНЕРИЯ (#48: динамические единицы + display_vals) ───────────────── #}
 {%- set u_water = req.water_unit or 'м³/сут' -%}
 {%- set u_elec  = req.elec_unit  or 'кВт' -%}
 {%- set u_heat  = req.heat_unit  or 'Гкал/ч' -%}
@@ -589,193 +584,70 @@
   </div>
 </div>
 
-{# ══════════════════════════════════════════════════════════════════
-   МОДАЛЬНОЕ ОКНО: «Присвоить номер» (#registerModal)
-   Форма → POST /request/<rid>/register
-   Поля: responsible_id / not_in_system + name_external, review_days
-══════════════════════════════════════════════════════════════════ #}
-<div class="modal fade" id="registerModal" tabindex="-1" aria-labelledby="registerModalLabel" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content">
-
-      <div class="modal-header" style="background:#FFF8E1">
-        <h5 class="modal-title" id="registerModalLabel">
-          <i class="bi bi-hash me-2"></i>Регистрация обращения
-        </h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-
-      <form method="post" action="{{ url_for('requests.register_request', rid=req.id) }}">
-        <div class="modal-body">
-
-          {# ── Срок рассмотрения ── #}
-          <div class="mb-3">
-            <label class="form-label fw-semibold">
-              Срок рассмотрения (рабочих дней)
-              <span class="text-danger">*</span>
-            </label>
-            <input type="number" name="review_days" class="form-control"
-                   value="7" min="1" max="365" required>
-            <div class="form-text">По умолчанию — 7 дней. Дедлайн будет рассчитан автоматически.</div>
-          </div>
-
-          {# ── Ответственный за подбор ── #}
-          <div class="mb-3">
-            <label class="form-label fw-semibold">
-              Ответственный за подбор площадок
-              <span class="text-danger">*</span>
-            </label>
-
-            {# Галка «не в системе» #}
-            <div class="form-check mb-2">
-              <input class="form-check-input" type="checkbox"
-                     id="regNotInSystem" name="responsible_not_in_system"
-                     value="1"
-                     onchange="toggleResponsible()">
-              <label class="form-check-label" for="regNotInSystem">
-                Сотрудник не в системе
-              </label>
-            </div>
-
-            {# Выпадающий список — пользователи системы #}
-            <div id="regSelectWrap">
-              <select name="responsible_id" class="form-select" id="regSelect">
-                <option value="">— выберите —</option>
-                {% for u in all_users %}
-                  {% if u.role in ('employee', 'admin', 'manager') %}
-                  <option value="{{ u.id }}">
-                    {{ u.full_name }}
-                    {% if u.role == 'admin' %}(адм.){% elif u.role == 'manager' %}(мен.){% endif %}
-                  </option>
-                  {% endif %}
-                {% endfor %}
-              </select>
-            </div>
-
-            {# Поле ФИО вручную #}
-            <div id="regExternalWrap" style="display:none">
-              <input type="text" name="responsible_name_external"
-                     class="form-control" id="regExternal"
-                     placeholder="Фамилия Имя Отчество">
-            </div>
-          </div>
-
-        </div>{# /modal-body #}
-
-        <div class="modal-footer">
-          <button type="button" class="btn btn-outline-secondary"
-                  data-bs-dismiss="modal">Отмена</button>
-          <button type="submit" class="btn btn-warning">
-            <i class="bi bi-hash me-1"></i> Присвоить номер и назначить
-          </button>
-        </div>
-      </form>
-
-    </div>
-  </div>
-</div>
-
-{# ══════════════════════════════════════════════════════════════════
-   МОДАЛЬНОЕ ОКНО: «Направить на проверку» (#reviewerModal)
-   Форма → POST /request/<rid>/status  (status=under_review)
-   Поля: reviewer_id / not_in_system + name_external
-══════════════════════════════════════════════════════════════════ #}
+{# ── МОДАЛЬНОЕ ОКНО: «Направить на проверку» (#reviewerModal) ── #}
 <div class="modal fade" id="reviewerModal" tabindex="-1" aria-labelledby="reviewerModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
-
       <div class="modal-header" style="background:#E3F2FD">
         <h5 class="modal-title" id="reviewerModalLabel">
           <i class="bi bi-search me-2"></i>Направить на проверку
         </h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
-
       <form method="post" action="{{ url_for('requests.change_status', rid=req.id) }}">
         <input type="hidden" name="status" value="under_review">
         <div class="modal-body">
-
           {% if not req.answer_file %}
           <div class="alert alert-warning d-flex align-items-center gap-2 py-2 mb-3">
             <i class="bi bi-exclamation-triangle-fill"></i>
             <span>Загрузите файл подбора в разделе «Ответ» перед отправкой на проверку.</span>
           </div>
           {% endif %}
-
-          {# ── Проверяющий ── #}
           <div class="mb-3">
-            <label class="form-label fw-semibold">
-              Проверяющий площадки
-              <span class="text-danger">*</span>
-            </label>
-
+            <label class="form-label fw-semibold">Проверяющий площадки <span class="text-danger">*</span></label>
             <div class="form-check mb-2">
-              <input class="form-check-input" type="checkbox"
-                     id="revNotInSystem" name="reviewer_not_in_system"
-                     value="1"
-                     onchange="toggleReviewer()">
-              <label class="form-check-label" for="revNotInSystem">
-                Проверяющий не в системе
-              </label>
+              <input class="form-check-input" type="checkbox" id="revNotInSystem"
+                     name="reviewer_not_in_system" value="1" onchange="toggleReviewer()">
+              <label class="form-check-label" for="revNotInSystem">Проверяющий не в системе</label>
             </div>
-
             <div id="revSelectWrap">
               <select name="reviewer_id" class="form-select" id="revSelect">
                 <option value="">— выберите —</option>
                 {% for u in all_users %}
                   {% if u.role in ('employee', 'admin', 'manager') %}
-                  <option value="{{ u.id }}">
-                    {{ u.full_name }}
-                    {% if u.role == 'admin' %}(адм.){% elif u.role == 'manager' %}(мен.){% endif %}
-                  </option>
+                  <option value="{{ u.id }}">{{ u.full_name }}{% if u.role == 'admin' %} (адм.){% elif u.role == 'manager' %} (мен.){% endif %}</option>
                   {% endif %}
                 {% endfor %}
               </select>
             </div>
-
             <div id="revExternalWrap" style="display:none">
-              <input type="text" name="reviewer_name_external"
-                     class="form-control" id="revExternal"
-                     placeholder="Фамилия Имя Отчество">
+              <input type="text" name="reviewer_name_external" class="form-control"
+                     id="revExternal" placeholder="Фамилия Имя Отчество">
             </div>
           </div>
-
-        </div>{# /modal-body #}
-
+        </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-outline-secondary"
-                  data-bs-dismiss="modal">Отмена</button>
-          <button type="submit" class="btn btn-info text-white"
-                  {% if not req.answer_file %}disabled{% endif %}>
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
+          <button type="submit" class="btn btn-info text-white" {% if not req.answer_file %}disabled{% endif %}>
             <i class="bi bi-send me-1"></i> Направить на проверку
           </button>
         </div>
       </form>
-
     </div>
   </div>
 </div>
 
-{# ── JS: переключение полей в модалках ────────────────────────── #}
+{# ── JS ───────────────────────────────────────────────────────────── #}
 <script>
-function toggleResponsible() {
-  const cb = document.getElementById('regNotInSystem');
-  document.getElementById('regSelectWrap').style.display  = cb.checked ? 'none'  : 'block';
-  document.getElementById('regExternalWrap').style.display = cb.checked ? 'block' : 'none';
-  document.getElementById('regSelect').required   = !cb.checked;
-  document.getElementById('regExternal').required =  cb.checked;
-}
 function toggleReviewer() {
   const cb = document.getElementById('revNotInSystem');
-  document.getElementById('revSelectWrap').style.display  = cb.checked ? 'none'  : 'block';
+  document.getElementById('revSelectWrap').style.display   = cb.checked ? 'none'  : 'block';
   document.getElementById('revExternalWrap').style.display = cb.checked ? 'block' : 'none';
   document.getElementById('revSelect').required   = !cb.checked;
   document.getElementById('revExternal').required =  cb.checked;
 }
-// Инициализация required при загрузке
 document.addEventListener('DOMContentLoaded', function() {
-  document.getElementById('regSelect').required  = true;
-  document.getElementById('revSelect').required  = true;
+  document.getElementById('revSelect').required = true;
 });
 </script>
 
