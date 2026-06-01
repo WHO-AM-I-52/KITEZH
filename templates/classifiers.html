@@ -2,7 +2,7 @@
 {% block content %}
 <style>
   .nav-tabs .nav-link { color: #1B5E7B !important; font-weight: 500; }
-  .nav-tabs .nav-link.active { color: #111 !important; font-weight: 600; background:#fff; }
+  .nav-tabs .nav-link.active { color: var(--text) !important; font-weight: 600; background: var(--surface); }
   .color-swatch {
     display: inline-block;
     width: 20px; height: 20px;
@@ -12,6 +12,10 @@
     flex-shrink: 0;
   }
   .result-row-selected { background: #fff3cd !important; }
+  body[data-theme="dark"] .result-row-selected { background: #2d2510 !important; }
+  body[data-theme="zone"] .result-row-selected { background: #251e08 !important; }
+  .cls-th { background: var(--surface2) !important; color: var(--text) !important; }
+  .cls-info { background: var(--surface2) !important; border-color: var(--border) !important; color: var(--text) !important; }
 </style>
 
 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -92,9 +96,9 @@
             <table class="table table-sm table-hover mb-0" style="font-size:12px">
               <thead>
                 <tr>
-                  <th style="background:#f8f9fa">#</th>
-                  <th style="background:#f8f9fa">Значение</th>
-                  <th style="background:#f8f9fa" class="text-end">Действия</th>
+                  <th class="cls-th">#</th>
+                  <th class="cls-th">Значение</th>
+                  <th class="cls-th text-end">Действия</th>
                 </tr>
               </thead>
               <tbody>
@@ -155,7 +159,7 @@
               </button>
             </div>
           </form>
-          <div class="alert alert-light border mt-3 mb-0 p-2" style="font-size:11px">
+          <div class="cls-info alert border mt-3 mb-0 p-2" style="font-size:11px">
             <i class="bi bi-info-circle text-muted me-1"></i>
             Значения отображаются в форме обращения (раздел «Предмет»)
             и в выгрузке МинЭК (колонка E).
@@ -171,9 +175,9 @@
             <table class="table table-sm table-hover mb-0" style="font-size:12px">
               <thead>
                 <tr>
-                  <th style="background:#f8f9fa">#</th>
-                  <th style="background:#f8f9fa">Предмет</th>
-                  <th style="background:#f8f9fa" class="text-end">Действия</th>
+                  <th class="cls-th">#</th>
+                  <th class="cls-th">Предмет</th>
+                  <th class="cls-th text-end">Действия</th>
                 </tr>
               </thead>
               <tbody>
@@ -240,7 +244,7 @@
               <i class="bi bi-plus-lg"></i> Добавить
             </button>
           </form>
-          <div class="alert alert-light border mt-3 mb-0 p-2" style="font-size:11px">
+          <div class="cls-info alert border mt-3 mb-0 p-2" style="font-size:11px">
             <i class="bi bi-info-circle text-muted me-1"></i>
             Цвет заливки используется для подсветки строк выгрузки
             МинЭК (лист «Легенда»).
@@ -258,7 +262,6 @@
                   onsubmit="return confirm('Удалить выбранные итоги?')">
               <input type="hidden" name="action" value="bulk_delete">
               <input type="hidden" name="selected_ids" id="bulk-delete-ids" value="">
-              {# НЕТ атрибута disabled в HTML — управляем только через JS #}
               <button type="submit" id="bulk-delete-btn"
                       class="btn btn-sm btn-outline-danger">
                 <i class="bi bi-trash"></i> Удалить выбранные
@@ -269,13 +272,13 @@
             <table class="table table-sm table-hover mb-0" style="font-size:12px">
               <thead>
                 <tr>
-                  <th style="background:#f8f9fa;width:32px">
+                  <th class="cls-th" style="width:32px">
                     <input type="checkbox" id="select-all-results" title="Выбрать все">
                   </th>
-                  <th style="background:#f8f9fa">#</th>
-                  <th style="background:#f8f9fa;width:80px">Цвет</th>
-                  <th style="background:#f8f9fa">Название</th>
-                  <th style="background:#f8f9fa" class="text-end">Del</th>
+                  <th class="cls-th">#</th>
+                  <th class="cls-th" style="width:80px">Цвет</th>
+                  <th class="cls-th">Название</th>
+                  <th class="cls-th text-end">Del</th>
                 </tr>
               </thead>
               <tbody id="result-types-tbody">
@@ -388,9 +391,9 @@
   <p class="small text-muted mb-2">
     Если в форме обращения появляется новое обязательное поле — администратор получает
     уведомления по всем карточкам, где оно не заполнено.
-    Уведомления отображаются в разделе <a href="{{ url_for('misc.notifications') }}">Уведомления</a>.
+    Уведомления отображаются в разделе <a href="{{ url_for('misc.notifications') }}">{Уведомления}</a>.
   </p>
-  <div class="alert alert-light border small mb-0 p-2">
+  <div class="cls-info alert border small mb-0 p-2">
     <strong>Текущие обязательные поля:</strong>
     <ul class="mb-0 mt-1">
       <li>Дата обращения</li>
@@ -415,7 +418,7 @@
   }
   openTabByHash(window.location.hash);
 
-  /* ── 2. Bulk-delete ─────────────────────────────────────────────── */
+  /* ── 2. Bulk-delete ────────────────────────────────────────────────────────── */
 
   function syncBulk() {
     var btn      = document.getElementById('bulk-delete-btn');
@@ -426,8 +429,6 @@
     var cbs      = Array.from(document.querySelectorAll('.result-cb'));
     var selected = cbs.filter(function (cb) { return cb.checked; });
 
-    /* ключевое: используем setAttribute/removeAttribute,
-       а не btn.disabled = bool — это надёжнее в Bootstrap 5 */
     if (selected.length === 0) {
       btn.setAttribute('disabled', '');
     } else {
@@ -447,7 +448,6 @@
     }
   }
 
-  /* делегирование change на весь document */
   document.addEventListener('change', function (e) {
     if (e.target.classList.contains('result-cb')) {
       syncBulk();
@@ -460,8 +460,6 @@
     }
   });
 
-  /* дополнительный вызов syncBulk при ПОКАЗЕ вкладки «Итоги работы» —
-     Bootstrap 5 генерирует событие show.bs.tab на ссылке вкладки */
   var resultTabLink = document.querySelector('#classTab a[href="#tab-result"]');
   if (resultTabLink) {
     resultTabLink.addEventListener('shown.bs.tab', function () {
@@ -469,7 +467,6 @@
     });
   }
 
-  /* начальный вызов — выставляет disabled сразу */
   syncBulk();
 
 })();
