@@ -481,7 +481,7 @@ def inject_globals():
 
 
 from login_routes      import auth_bp
-from request_routes    import requests_bp
+from requests_app      import requests_bp
 from admin_routes      import admin_bp
 from export_routes     import report_bp
 from info_routes       import misc_bp
