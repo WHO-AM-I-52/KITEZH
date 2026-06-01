@@ -156,7 +156,7 @@
   <form method="POST" action="{{ url_for('pb_import.import_confirm_post') }}">
 
     {# ── Опция: обновлять дубли ── #}
-    <div class="card mb-3 border-0 bg-light">
+    <div class="card mb-3 border-0" style="background:var(--surface2);">
       <div class="card-body py-2 px-3">
         <div class="form-check">
           <input class="form-check-input" type="checkbox"
@@ -189,18 +189,36 @@
 {% endblock %}
 
 {% block scripts %}
+<style>
+.org-search-results {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  position: relative;
+  z-index: 100;
+  box-shadow: 0 2px 8px rgba(0,0,0,.12);
+}
+</style>
+
 <script>
-// ── Переключение панелей создать/привязать ────────────────────────────────
+// ── Переключение панелей создать/привязать ───────────────────────────────────
 function toggleOrgMode(slug, mode) {
   document.getElementById('panel_create_' + slug).style.display = (mode === 'create') ? '' : 'none';
-  document.getElementById('panel_map_' + slug).style.display    = (mode === 'map')    ? '' : 'none';
+  document.getElementById('panel_map_'    + slug).style.display = (mode === 'map')    ? '' : 'none';
 }
 
-// ── Живой поиск организаций ───────────────────────────────────────────────
+// ── Чтение CSS-переменных для JS-hover ──────────────────────────────────
+function getCssVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+// ── Живой поиск организаций ─────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function () {
   document.querySelectorAll('.org-search-input').forEach(function (input) {
-    const slug    = input.dataset.slug;
-    const results = document.getElementById('results_' + slug);
+    const slug     = input.dataset.slug;
+    const results  = document.getElementById('results_' + slug);
     const hiddenId = document.getElementById('org_map_id_' + slug);
     let debounce;
 
@@ -217,15 +235,20 @@ document.addEventListener('DOMContentLoaded', function () {
             if (!data.length) {
               results.innerHTML = '<div class="text-muted p-2" style="font-size:.85em;">Ничего не найдено</div>';
             } else {
+              const borderColor = getCssVar('--border') || '#dee2e6';
               data.forEach(function (org) {
                 const item = document.createElement('div');
                 item.className = 'org-search-item p-2';
-                item.style.cssText = 'cursor:pointer;border-bottom:1px solid #eee;font-size:.9em;';
+                item.style.cssText = 'cursor:pointer;border-bottom:1px solid ' + borderColor + ';font-size:.9em;';
                 item.textContent = org.name;
-                item.addEventListener('mouseenter', () => item.style.background = '#f0f4ff');
-                item.addEventListener('mouseleave', () => item.style.background = '');
+                item.addEventListener('mouseenter', function () {
+                  item.style.background = getCssVar('--table-hover') || '#f1f4f7';
+                });
+                item.addEventListener('mouseleave', function () {
+                  item.style.background = '';
+                });
                 item.addEventListener('click', function () {
-                  input.value   = org.name;
+                  input.value    = org.name;
                   hiddenId.value = org.id;
                   results.style.display = 'none';
                 });
@@ -237,7 +260,6 @@ document.addEventListener('DOMContentLoaded', function () {
       }, 250);
     });
 
-    // Скрываем по клику вне поиска
     document.addEventListener('click', function (e) {
       if (!input.contains(e.target) && !results.contains(e.target)) {
         results.style.display = 'none';
@@ -246,17 +268,4 @@ document.addEventListener('DOMContentLoaded', function () {
   });
 });
 </script>
-
-<style>
-.org-search-results {
-  background: #fff;
-  border: 1px solid #ced4da;
-  border-radius: 4px;
-  max-height: 200px;
-  overflow-y: auto;
-  position: relative;
-  z-index: 100;
-  box-shadow: 0 2px 8px rgba(0,0,0,.12);
-}
-</style>
 {% endblock %}
