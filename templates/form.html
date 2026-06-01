@@ -88,7 +88,6 @@
       </div>
       <div class="form-text">Можно выбрать несколько</div>
 
-      {# Поле № входящего — только для Directum / СЭДО — Bugfix #3: name исправлен #}
       <div id="incomingNumberBlock" class="mt-2" style="display:none">
         <label class="form-label fw-bold" style="font-size:12px">№ входящего обращения</label>
         <input type="text" name="incoming_number" class="form-control form-control-sm"
@@ -168,22 +167,18 @@
     <div class="form-text">
       Можно выбрать несколько файлов: PDF, DOC, XLSX, PPT, изображения, ZIP
     </div>
-
     <div id="filesPreview" class="d-flex flex-wrap gap-2 mt-2"></div>
-
   </div>
 </div>
 
-{# ─── Анкета для OCR (v2.1.1) ─── #}
+{# ─── Анкета для OCR ─── #}
 <div class="card mb-3">
   <div class="card-header py-2" style="background:#1B5E7B;color:#fff;font-size:13px;font-weight:600">
     <i class="bi bi-file-earmark-text me-1"></i>Анкета для подбора площадки (OCR)
   </div>
   <div class="card-body">
     <div class="mb-2">
-      <label class="form-label fw-bold" style="font-size:12px">
-        Файл анкеты
-      </label>
+      <label class="form-label fw-bold" style="font-size:12px">Файл анкеты</label>
       <input type="file" name="ocr_form"
              class="form-control form-control-sm"
              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png">
@@ -191,7 +186,6 @@
         Загрузите заполненную анкету (PDF, DOCX или скан). Можно попробовать автоматически заполнить поля.
       </div>
     </div>
-
     <div class="form-check">
       <input class="form-check-input" type="checkbox"
              name="use_ocr" value="1" id="useOcrChk">
@@ -199,11 +193,8 @@
         Попробовать распознать анкету и заполнить форму автоматически
       </label>
     </div>
-
     {% if ocr_message %}
-    <div class="form-text mt-1" style="font-size:11px;color:#6c757d">
-      {{ ocr_message }}
-    </div>
+    <div class="form-text mt-1" style="font-size:11px;color:#6c757d">{{ ocr_message }}</div>
     {% endif %}
   </div>
 </div>
@@ -235,14 +226,11 @@
       <select name="applicant_legal_form" class="form-select form-select-sm">
         <option value="">— выберите —</option>
         {% for lf in legal_forms %}
-        <option value="{{ lf }}" {{ 'selected' if req and req.applicant_legal_form==lf }}>
-          {{ lf }}
-        </option>
+        <option value="{{ lf }}" {{ 'selected' if req and req.applicant_legal_form==lf }}>{{ lf }}</option>
         {% endfor %}
       </select>
     </div>
 
-    {# ===== ИНН + кнопка ЕГРЮЛ (Этап 3) ===== #}
     <div class="col-md-4">
       <label class="form-label fw-bold" style="font-size:12px">ИНН</label>
       <div class="input-group input-group-sm">
@@ -250,29 +238,21 @@
                class="form-control form-control-sm"
                value="{{ req.applicant_inn if req else '' }}"
                placeholder="10 или 12 цифр">
-        <button type="button"
-                class="btn btn-outline-primary"
-                id="btn_egrul_lookup"
-                onclick="egrulLookup()"
-                title="Заполнить реквизиты по ИНН из ЕГРЮЛ">
+        <button type="button" class="btn btn-outline-primary" id="btn_egrul_lookup"
+                onclick="egrulLookup()" title="Заполнить реквизиты по ИНН из ЕГРЮЛ">
           <i class="bi bi-search" id="egrul_btn_icon"></i>
         </button>
       </div>
-      <div id="inn_help" class="form-text" style="font-size:11px; min-height:14px">
-        Необязательно, только цифры
-      </div>
-      <div id="egrul_status" style="font-size:11px; min-height:14px"></div>
+      <div id="inn_help" class="form-text" style="font-size:11px;min-height:14px">Необязательно, только цифры</div>
+      <div id="egrul_status" style="font-size:11px;min-height:14px"></div>
     </div>
 
-    {# Bugfix #1: было name="msp_category", исправлено на name="applicant_msp_category" #}
     <div class="col-md-4">
       <label class="form-label fw-bold" style="font-size:12px">Категория МСП</label>
       <select name="applicant_msp_category" class="form-select form-select-sm">
         <option value="">— не указано —</option>
         {% for v, l in [('micro','Микро'),('small','Малое'),('medium','Среднее'),('none','Не МСП')] %}
-        <option value="{{ v }}" {{ 'selected' if req and req.applicant_msp_category==v }}>
-          {{ l }}
-        </option>
+        <option value="{{ v }}" {{ 'selected' if req and req.applicant_msp_category==v }}>{{ l }}</option>
         {% endfor %}
       </select>
     </div>
@@ -283,23 +263,14 @@
         <input type="text" name="applicant_okved_main"
                class="form-control form-control-sm"
                value="{{ req.applicant_okved_main if req else '' }}"
-               placeholder="например, 10.11"
-               autocomplete="off"
-               id="okved_main_input">
-        <div id="okved_suggestions"
-             class="list-group position-absolute w-100"
-             style="z-index:1050; max-height:220px; overflow-y:auto; display:none; font-size:12px;">
-        </div>
+               placeholder="например, 10.11" autocomplete="off" id="okved_main_input">
+        <div id="okved_suggestions" class="list-group position-absolute w-100"
+             style="z-index:1050;max-height:220px;overflow-y:auto;display:none;font-size:12px;"></div>
       </div>
-      <input type="text"
-             class="form-control form-control-sm mb-1"
-             id="okved_main_name"
+      <input type="text" class="form-control form-control-sm mb-1" id="okved_main_name"
              value="{{ req.okved_main_name if req and req.okved_main_name else '' }}"
-             placeholder="Наименование вида деятельности"
-             readonly>
-      <div class="form-text" style="font-size:11px">
-        Начните вводить код или часть названия; из списка выберите нужный вариант
-      </div>
+             placeholder="Наименование вида деятельности" readonly>
+      <div class="form-text" style="font-size:11px">Начните вводить код или часть названия</div>
     </div>
 
     <div class="col-md-6">
@@ -317,8 +288,7 @@
     <div class="col-md-4">
       <label class="form-label fw-bold" style="font-size:12px">Контактное лицо</label>
       <input type="text" name="contact_person" class="form-control form-control-sm"
-             value="{{ req.contact_person if req else '' }}"
-             placeholder="ФИО">
+             value="{{ req.contact_person if req else '' }}" placeholder="ФИО">
     </div>
 
     <div class="col-md-4">
@@ -333,11 +303,9 @@
     <div class="col-md-4">
       <label class="form-label fw-bold" style="font-size:12px">E-mail</label>
       <input type="email" name="contact_email" class="form-control form-control-sm"
-             value="{{ req.contact_email if req else '' }}"
-             placeholder="example@mail.ru">
+             value="{{ req.contact_email if req else '' }}" placeholder="example@mail.ru">
     </div>
 
-    {# ── МинЭК: Предмет обращения ── #}
     <div class="col-md-6">
       <label class="form-label fw-bold" style="font-size:12px">
         Предмет обращения
@@ -346,16 +314,11 @@
       <select name="subject_type_id" class="form-select form-select-sm">
         <option value="">— не указан —</option>
         {% for s in subjects %}
-        <option value="{{ s.id }}"
-          {{ 'selected' if req and req.subject_type_id == s.id }}>
-          {{ s.name }}
-        </option>
+        <option value="{{ s.id }}" {{ 'selected' if req and req.subject_type_id == s.id }}>{{ s.name }}</option>
         {% endfor %}
       </select>
       {% if not subjects %}
-      <div class="form-text text-warning" style="font-size:11px">
-        Справочник пуст — добавьте значения в разделе Справочники
-      </div>
+      <div class="form-text text-warning" style="font-size:11px">Справочник пуст — добавьте значения в разделе Справочники</div>
       {% endif %}
     </div>
 
@@ -368,7 +331,6 @@
     <i class="bi bi-briefcase me-1"></i>3. Сведения о проекте
   </div>
   <div class="card-body row g-3">
-
     <div class="col-md-8">
       <label class="form-label fw-bold" style="font-size:12px">
         Название проекта <span class="text-danger">*</span>
@@ -377,25 +339,21 @@
              value="{{ req.project_name if req else '' }}"
              placeholder="Краткое название инвестиционного проекта">
     </div>
-
     <div class="col-md-4">
       <label class="form-label fw-bold" style="font-size:12px">Номенклатура продукции</label>
       <input type="text" name="product_nomenclature" class="form-control form-control-sm"
              value="{{ req.product_nomenclature if req else '' }}">
     </div>
-
     <div class="col-12">
       <label class="form-label fw-bold" style="font-size:12px">Описание производства</label>
       <textarea name="production_description" class="form-control form-control-sm" rows="2"
-                placeholder="Краткое описание технологического процесса, вида деятельности">{{ req.production_description if req else '' }}</textarea>
+                placeholder="Краткое описание технологического процесса">{{ req.production_description if req else '' }}</textarea>
     </div>
-
     <div class="col-12">
       <label class="form-label fw-bold" style="font-size:12px">Состав объектов</label>
       <textarea name="object_composition" class="form-control form-control-sm" rows="2"
-                placeholder="Перечень зданий, сооружений, объектов инфраструктуры">{{ req.object_composition if req else '' }}</textarea>
+                placeholder="Перечень зданий, сооружений">{{ req.object_composition if req else '' }}</textarea>
     </div>
-
   </div>
 </div>
 
@@ -405,7 +363,6 @@
     <i class="bi bi-currency-exchange me-1"></i>4. Инвестиции и персонал
   </div>
   <div class="card-body row g-3">
-
     <div class="col-md-3">
       <label class="form-label fw-bold" style="font-size:12px">
         Объём инвестиций, млн руб. <span class="text-danger">*</span>
@@ -413,13 +370,11 @@
       <input type="number" step="0.1" name="investment_total" class="form-control form-control-sm"
              value="{{ req.investment_total if req else '' }}" placeholder="0.0">
     </div>
-
     <div class="col-md-3">
       <label class="form-label fw-bold" style="font-size:12px">В т.ч. заёмные, млн руб.</label>
       <input type="number" step="0.1" name="investment_borrowed" class="form-control form-control-sm"
              value="{{ req.investment_borrowed if req else '' }}" placeholder="0.0">
     </div>
-
     <div class="col-md-3">
       <label class="form-label fw-bold" style="font-size:12px">
         Рабочих мест (всего) <span class="text-danger">*</span>
@@ -427,67 +382,55 @@
       <input type="number" name="jobs_total" class="form-control form-control-sm"
              value="{{ req.jobs_total if req else '' }}" placeholder="0">
     </div>
-
     <div class="col-md-3">
       <label class="form-label fw-bold" style="font-size:12px">В т.ч. иностранных граждан</label>
       <input type="number" name="jobs_foreign" class="form-control form-control-sm"
              value="{{ req.jobs_foreign if req else '' }}" placeholder="0">
     </div>
-
     <div class="col-md-3">
       <label class="form-label fw-bold" style="font-size:12px">Управленческий персонал</label>
       <input type="number" name="staff_management" class="form-control form-control-sm"
              value="{{ req.staff_management if req else '' }}" placeholder="0">
     </div>
-
     <div class="col-md-3">
       <label class="form-label fw-bold" style="font-size:12px">Рабочие</label>
       <input type="number" name="staff_workers" class="form-control form-control-sm"
              value="{{ req.staff_workers if req else '' }}" placeholder="0">
     </div>
-
     <div class="col-md-3">
       <label class="form-label fw-bold" style="font-size:12px">ИТ-специалисты</label>
       <input type="number" name="staff_it" class="form-control form-control-sm"
              value="{{ req.staff_it if req else '' }}" placeholder="0">
     </div>
-
     <div class="col-md-3">
       <label class="form-label fw-bold" style="font-size:12px">Прочий персонал</label>
       <input type="number" name="staff_other" class="form-control form-control-sm"
              value="{{ req.staff_other if req else '' }}" placeholder="0">
     </div>
-
     <div class="col-md-4">
       <label class="form-label fw-bold" style="font-size:12px">Этапы строительства</label>
       <input type="text" name="construction_stages" class="form-control form-control-sm"
-             value="{{ req.construction_stages if req else '' }}"
-             placeholder="Количество этапов">
+             value="{{ req.construction_stages if req else '' }}" placeholder="Количество этапов">
     </div>
-
     <div class="col-md-4">
       <label class="form-label fw-bold" style="font-size:12px">Начало строительства</label>
       <input type="date" name="construction_start" class="form-control form-control-sm"
              value="{{ req.construction_start if req else '' }}">
     </div>
-
     <div class="col-md-4">
       <label class="form-label fw-bold" style="font-size:12px">Начало эксплуатации</label>
       <input type="date" name="operation_start" class="form-control form-control-sm"
              value="{{ req.operation_start if req else '' }}">
     </div>
-
     <div class="col-12">
       <label class="form-label fw-bold" style="font-size:12px">Сырьё и материалы</label>
       <textarea name="raw_materials" class="form-control form-control-sm" rows="2"
                 placeholder="Перечень основного сырья и материалов">{{ req.raw_materials if req else '' }}</textarea>
     </div>
-
     <div class="col-12">
       <label class="form-label fw-bold" style="font-size:12px">Доп. сведения по сырью</label>
       <textarea name="raw_extra" class="form-control form-control-sm" rows="1">{{ req.raw_extra if req else '' }}</textarea>
     </div>
-
   </div>
 </div>
 
@@ -503,24 +446,17 @@
       <div class="d-flex gap-3 mt-1">
         <div class="form-check">
           <input class="form-check-input" type="checkbox" name="site_type_free"
-                 value="1" id="chk_free"
-                 {{ 'checked' if req and req.site_type_free }}>
-          <label class="form-check-label" for="chk_free" style="font-size:12px">
-            Свободная площадка
-          </label>
+                 value="1" id="chk_free" {{ 'checked' if req and req.site_type_free }}>
+          <label class="form-check-label" for="chk_free" style="font-size:12px">Свободная площадка</label>
         </div>
         <div class="form-check">
           <input class="form-check-input" type="checkbox" name="site_type_existing"
-                 value="1" id="chk_existing"
-                 {{ 'checked' if req and req.site_type_existing }}>
-          <label class="form-check-label" for="chk_existing" style="font-size:12px">
-            Существующее здание
-          </label>
+                 value="1" id="chk_existing" {{ 'checked' if req and req.site_type_existing }}>
+          <label class="form-check-label" for="chk_existing" style="font-size:12px">Существующее здание</label>
         </div>
       </div>
     </div>
 
-    {# Bugfix #2: были name="site_area_ha_min/max" — исправлено на одиночные поля site_area_ha и site_build_area_m2 #}
     <div class="col-md-4">
       <label class="form-label fw-bold" style="font-size:12px">Площадь участка, га</label>
       <input type="number" step="0.01" name="site_area_ha" class="form-control form-control-sm"
@@ -549,14 +485,20 @@
       </select>
     </div>
 
-    <div class="col-md-2">
+    {# ── #47: Право пользования — множественный выбор ── #}
+    <div class="col-md-3">
       <label class="form-label fw-bold" style="font-size:12px">Право пользования</label>
-      <select name="site_right" class="form-select form-select-sm">
-        <option value="">— не указано —</option>
+      <div class="border rounded p-2" style="background:#fff">
         {% for v in ['Собственность','Аренда','Безвозмездное пользование','Иное'] %}
-        <option value="{{ v }}" {{ 'selected' if req and req.site_right==v }}>{{ v }}</option>
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox"
+                 name="site_right" value="{{ v }}" id="sr_{{ loop.index }}"
+                 {% if req and req.site_right and v in req.site_right.split(', ') %}checked{% endif %}>
+          <label class="form-check-label" for="sr_{{ loop.index }}" style="font-size:12px">{{ v }}</label>
+        </div>
         {% endfor %}
-      </select>
+      </div>
+      <div class="form-text">Можно выбрать несколько</div>
     </div>
 
     <div class="col-md-2">
@@ -585,8 +527,7 @@
       <label class="form-label fw-bold" style="font-size:12px">
         <div class="form-check d-inline">
           <input class="form-check-input" type="checkbox" name="site_area_expansion"
-                 value="1" id="chk_expand"
-                 {{ 'checked' if req and req.site_area_expansion }}>
+                 value="1" id="chk_expand" {{ 'checked' if req and req.site_area_expansion }}>
           <label class="form-check-label" for="chk_expand">Возможность расширения площади</label>
         </div>
       </label>
@@ -613,12 +554,12 @@
     </p>
     <div class="row g-2 mb-3">
       <div class="col-md-3">
-        <label class="form-label" style="font-size:12px">Хоз-питьевое водоснабжение, м³/сут</label>
+        <label class="form-label" style="font-size:12px">Хоз-питьевое, м³/сут</label>
         <input type="number" step="0.1" name="water_household" class="form-control form-control-sm"
                value="{{ req.water_household if req else '' }}" placeholder="0">
       </div>
       <div class="col-md-3">
-        <label class="form-label" style="font-size:12px">Производственное водоснабжение, м³/сут</label>
+        <label class="form-label" style="font-size:12px">Производственное, м³/сут</label>
         <input type="number" step="0.1" name="water_production" class="form-control form-control-sm"
                value="{{ req.water_production if req else '' }}" placeholder="0">
       </div>
@@ -640,31 +581,43 @@
     <div class="row g-2 mb-3">
       <div class="col-md-3">
         <label class="form-label" style="font-size:12px">Общая мощность, кВт</label>
-        <input type="number" step="0.1" name="electricity_total" class="form-control form-control-sm"
-               value="{{ req.electricity_total if req else '' }}" placeholder="0">
+        <input type="number" step="0.1" name="electricity_total"
+               id="electricity_total"
+               class="form-control form-control-sm bg-light"
+               value="{{ req.electricity_total if req else '' }}"
+               placeholder="авто" readonly
+               title="Вычисляется автоматически как сумма категорий I+II+III">
+        <div class="form-text" style="font-size:11px">Сумма категорий I+II+III</div>
       </div>
       <div class="col-md-3">
         <label class="form-label" style="font-size:12px">Категория I, кВт</label>
-        <input type="number" step="0.1" name="electricity_cat1" class="form-control form-control-sm"
-               value="{{ req.electricity_cat1 if req else '' }}" placeholder="0">
+        <input type="number" step="0.1" name="electricity_cat1" id="electricity_cat1"
+               class="form-control form-control-sm"
+               value="{{ req.electricity_cat1 if req else '' }}" placeholder="0"
+               oninput="calcElectricityTotal()">
       </div>
       <div class="col-md-3">
         <label class="form-label" style="font-size:12px">Категория II, кВт</label>
-        <input type="number" step="0.1" name="electricity_cat2" class="form-control form-control-sm"
-               value="{{ req.electricity_cat2 if req else '' }}" placeholder="0">
+        <input type="number" step="0.1" name="electricity_cat2" id="electricity_cat2"
+               class="form-control form-control-sm"
+               value="{{ req.electricity_cat2 if req else '' }}" placeholder="0"
+               oninput="calcElectricityTotal()">
       </div>
       <div class="col-md-3">
         <label class="form-label" style="font-size:12px">Категория III, кВт</label>
-        <input type="number" step="0.1" name="electricity_cat3" class="form-control form-control-sm"
-               value="{{ req.electricity_cat3 if req else '' }}" placeholder="0">
+        <input type="number" step="0.1" name="electricity_cat3" id="electricity_cat3"
+               class="form-control form-control-sm"
+               value="{{ req.electricity_cat3 if req else '' }}" placeholder="0"
+               oninput="calcElectricityTotal()">
       </div>
     </div>
 
+    {# #51: Теплоснабжение — отдельный блок #}
     <p class="text-muted mb-2" style="font-size:11px">
-      <i class="bi bi-fire me-1"></i><strong>Теплоснабжение и газоснабжение</strong>
+      <i class="bi bi-thermometer-half me-1"></i><strong>Теплоснабжение</strong>
     </p>
     <div class="row g-2 mb-3">
-      <div class="col-md-3">
+      <div class="col-md-4">
         <label class="form-label" style="font-size:12px">Источник тепла</label>
         <select name="heat_source" class="form-select form-select-sm">
           <option value="">— не указан —</option>
@@ -673,11 +626,23 @@
           {% endfor %}
         </select>
       </div>
-      <div class="col-md-3">
+      <div class="col-md-4">
         <label class="form-label" style="font-size:12px">Теплопотребление, Гкал/ч</label>
         <input type="number" step="0.01" name="heat_gcal" class="form-control form-control-sm"
                value="{{ req.heat_gcal if req else '' }}" placeholder="0.00">
       </div>
+      <div class="col-md-4">
+        <label class="form-label" style="font-size:12px">Отапливаемая площадь, м²</label>
+        <input type="number" step="1" name="heated_area" class="form-control form-control-sm"
+               value="{{ req.heated_area if req else '' }}" placeholder="0">
+      </div>
+    </div>
+
+    {# #51: Газоснабжение — отдельный блок #}
+    <p class="text-muted mb-2" style="font-size:11px">
+      <i class="bi bi-fire me-1"></i><strong>Газоснабжение</strong>
+    </p>
+    <div class="row g-2 mb-3">
       <div class="col-md-3">
         <label class="form-label" style="font-size:12px">Газ, м³/ч</label>
         <input type="number" step="0.1" name="gas_m3h" class="form-control form-control-sm"
@@ -688,16 +653,11 @@
         <input type="number" step="1" name="gas_m3y" class="form-control form-control-sm"
                value="{{ req.gas_m3y if req else '' }}" placeholder="0">
       </div>
-      <div class="col-md-3">
+      <div class="col-md-6">
         <label class="form-label" style="font-size:12px">Цель газоснабжения</label>
         <input type="text" name="gas_purpose" class="form-control form-control-sm"
                value="{{ req.gas_purpose if req else '' }}"
                placeholder="Отопление, технология...">
-      </div>
-      <div class="col-md-3">
-        <label class="form-label" style="font-size:12px">Отапливаемая площадь, м²</label>
-        <input type="number" step="1" name="heated_area" class="form-control form-control-sm"
-               value="{{ req.heated_area if req else '' }}" placeholder="0">
       </div>
     </div>
 
@@ -737,10 +697,7 @@
     <i class="bi bi-truck me-1"></i>7. Транспортная доступность
   </div>
   <div class="card-body row g-3">
-
-    <p class="text-muted mb-0 col-12" style="font-size:11px">
-      <strong>Расстояние до автодороги, км</strong>
-    </p>
+    <p class="text-muted mb-0 col-12" style="font-size:11px"><strong>Расстояние до автодороги, км</strong></p>
     <div class="col-md-3">
       <label class="form-label" style="font-size:12px">Федеральная</label>
       <input type="number" step="0.1" name="road_federal_dist" class="form-control form-control-sm"
@@ -761,18 +718,15 @@
       <input type="number" step="0.1" name="road_private_dist" class="form-control form-control-sm"
              value="{{ req.road_private_dist if req else '' }}" placeholder="км">
     </div>
-
     <div class="col-12">
       <label class="form-label" style="font-size:12px">Доп. требования по автодороге</label>
       <textarea name="road_extra" class="form-control form-control-sm" rows="1">{{ req.road_extra if req else '' }}</textarea>
     </div>
-
     <div class="col-md-3">
       <label class="form-label" style="font-size:12px">Железная дорога необходима</label>
       <div class="form-check mt-1">
         <input class="form-check-input" type="checkbox" name="railway_needed"
-               value="1" id="chk_railway"
-               {{ 'checked' if req and req.railway_needed }}>
+               value="1" id="chk_railway" {{ 'checked' if req and req.railway_needed }}>
         <label class="form-check-label" for="chk_railway" style="font-size:12px">Да</label>
       </div>
     </div>
@@ -786,17 +740,14 @@
       <input type="number" step="1" name="railway_cargo" class="form-control form-control-sm"
              value="{{ req.railway_cargo if req else '' }}" placeholder="т/год">
     </div>
-
     <div class="col-12">
       <label class="form-label" style="font-size:12px">Доп. требования по ж/д</label>
       <textarea name="railway_extra" class="form-control form-control-sm" rows="1">{{ req.railway_extra if req else '' }}</textarea>
     </div>
-
     <div class="col-12">
       <label class="form-label" style="font-size:12px">Прочие транспортные требования</label>
       <textarea name="transport_extra" class="form-control form-control-sm" rows="1">{{ req.transport_extra if req else '' }}</textarea>
     </div>
-
   </div>
 </div>
 
@@ -806,29 +757,32 @@
     <i class="bi bi-geo-alt me-1"></i>8. Предпочтительное расположение
   </div>
   <div class="card-body row g-3">
-
     <div class="col-md-3">
       <label class="form-label" style="font-size:12px">Важно расстояние до НН</label>
       <div class="form-check mt-1">
         <input class="form-check-input" type="checkbox" name="distance_nn_matters"
-               value="1" id="chk_nn"
-               {{ 'checked' if req and req.distance_nn_matters }}>
+               value="1" id="chk_nn" {{ 'checked' if req and req.distance_nn_matters }}>
         <label class="form-check-label" for="chk_nn" style="font-size:12px">Да</label>
       </div>
     </div>
-
     <div class="col-md-3">
       <label class="form-label" style="font-size:12px">Макс. расстояние до НН, км</label>
       <input type="number" step="1" name="distance_nn_max" class="form-control form-control-sm"
              value="{{ req.distance_nn_max if req else '' }}" placeholder="км">
     </div>
 
+    {# #52: Предпочтительные районы с поиском/фильтрацией #}
     <div class="col-12">
       <label class="form-label fw-bold" style="font-size:12px">Предпочтительные районы</label>
-      <div class="border rounded p-2" style="max-height:160px;overflow-y:auto;background:#fff">
-        <div class="row row-cols-2 row-cols-md-4 g-1">
+      <input type="text" id="districtSearch"
+             class="form-control form-control-sm mb-1"
+             placeholder="🔍 Поиск района..." autocomplete="off"
+             oninput="filterDistricts()">
+      <div class="border rounded p-2" id="districtList"
+           style="max-height:160px;overflow-y:auto;background:#fff">
+        <div class="row row-cols-2 row-cols-md-4 g-1" id="districtCheckboxes">
           {% for d in districts %}
-          <div class="col">
+          <div class="col district-item" data-name="{{ d | lower }}">
             <div class="form-check">
               <input class="form-check-input" type="checkbox"
                      name="preferred_districts" value="{{ d }}"
@@ -841,14 +795,17 @@
           {% endfor %}
         </div>
       </div>
-      <div class="form-text">Можно выбрать несколько районов</div>
+      <div class="d-flex justify-content-between mt-1">
+        <div class="form-text">Можно выбрать несколько районов</div>
+        <button type="button" class="btn btn-link btn-sm p-0"
+                style="font-size:11px" onclick="clearDistricts()">Снять все</button>
+      </div>
     </div>
 
     <div class="col-12">
       <label class="form-label" style="font-size:12px">Дополнительно о расположении</label>
       <textarea name="location_extra" class="form-control form-control-sm" rows="2">{{ req.location_extra if req else '' }}</textarea>
     </div>
-
   </div>
 </div>
 
@@ -873,14 +830,11 @@
     <i class="bi bi-reply me-1"></i>10. Ответ на обращение
   </div>
   <div class="card-body row g-3">
-
     <div class="col-md-3">
       <label class="form-label" style="font-size:12px">Дата ответа</label>
       <input type="date" name="answer_date" class="form-control form-control-sm"
              value="{{ req.answer_date if req else '' }}">
     </div>
-
-    {# ── МинЭК: Дата получения обратной связи ── #}
     <div class="col-md-3">
       <label class="form-label" style="font-size:12px">
         Дата обратной связи
@@ -890,41 +844,37 @@
              value="{{ req.feedback_date if req else '' }}">
       <div class="form-text" style="font-size:11px">Дата получения ответа от заявителя</div>
     </div>
-
     <div class="col-md-4">
       <label class="form-label" style="font-size:12px">Способ направления ответа</label>
       <select name="answer_method" class="form-select form-select-sm" id="answer_method_sel">
         <option value="">— не указан —</option>
         {% for v in ['СЭДО','Directum','Электронная почта','Почта России','Лично','Иное'] %}
-        <option value="{{ v }}"
-          {{ 'selected' if req and req.answer_method==v }}>{{ v }}</option>
+        <option value="{{ v }}" {{ 'selected' if req and req.answer_method==v }}>{{ v }}</option>
         {% endfor %}
       </select>
-      <div id="answerSystemNumBlock" style="display:none; margin-top:6px">
+      <div id="answerSystemNumBlock" style="display:none;margin-top:6px">
         <label class="form-label" style="font-size:12px">№ ответа в системе</label>
         <input type="text" name="answer_system_number" class="form-control form-control-sm"
                placeholder="Например: ИСХ-2026-0099"
                value="{{ req.answer_system_number or '' if req else '' }}">
       </div>
     </div>
-
     <div class="col-md-5" id="answer_method_other_wrap"
          style="{{ '' if req and req.answer_method=='Иное' else 'display:none' }}">
       <label class="form-label" style="font-size:12px">Уточните способ</label>
       <input type="text" name="answer_method_other" class="form-control form-control-sm"
              value="{{ req.answer_method_other if req else '' }}">
     </div>
-
     <div class="col-12">
       <label class="form-label" style="font-size:12px">Примечания к ответу</label>
       <textarea name="answer_notes" class="form-control form-control-sm" rows="2">{{ req.answer_notes if req else '' }}</textarea>
     </div>
-
     <div class="col-md-6">
       <label class="form-label" style="font-size:12px">
         Файл ответа
         {% if req.answer_file %}
-        <a href="{{ url_for('requests.uploaded_file', filename=req.answer_file) }}" target="_blank" class="ms-2 badge bg-success text-decoration-none">
+        <a href="{{ url_for('requests.uploaded_file', filename=req.answer_file) }}" target="_blank"
+           class="ms-2 badge bg-success text-decoration-none">
           <i class="bi bi-paperclip"></i> {{ req.answer_file }}
         </a>
         {% endif %}
@@ -932,8 +882,6 @@
       <input type="file" name="answer_file" class="form-control form-control-sm"
              accept=".pdf,.doc,.docx,.xlsx,.zip">
     </div>
-
-    {# ── МинЭК: Итоги работы по обращению ── #}
     <div class="col-md-6">
       <label class="form-label" style="font-size:12px">
         Итоги работы по обращению
@@ -942,54 +890,38 @@
       <select name="result_type_id" class="form-select form-select-sm" id="result_type_sel">
         <option value="">— не определены —</option>
         {% for r in results %}
-        <option value="{{ r.id }}"
-                data-color="{{ r.color_hex or '' }}"
-                {{ 'selected' if req and req.result_type_id == r.id }}>
-          {{ r.name }}
-        </option>
+        <option value="{{ r.id }}" data-color="{{ r.color_hex or '' }}"
+                {{ 'selected' if req and req.result_type_id == r.id }}>{{ r.name }}</option>
         {% endfor %}
       </select>
-      {# Цветовая индикация выбранного итога #}
-      <div id="result_color_preview" class="mt-1 rounded px-2 py-1"
-           style="font-size:11px; display:none">
-      </div>
+      <div id="result_color_preview" class="mt-1 rounded px-2 py-1" style="font-size:11px;display:none"></div>
       {% if not results %}
-      <div class="form-text text-warning" style="font-size:11px">
-        Справочник пуст — добавьте значения в разделе Справочники
-      </div>
+      <div class="form-text text-warning" style="font-size:11px">Справочник пуст — добавьте значения в разделе Справочники</div>
       {% endif %}
     </div>
-
   </div>
 </div>
 {% endif %}
 
 {# ===== КНОПКИ ===== #}
 <div class="d-flex gap-2 mb-4">
-
   {% if req is not none and req.id is defined %}
     <button type="button" class="btn btn-primary px-4" onclick="showSaveModal()">
       <i class="bi bi-save me-1"></i>Сохранить изменения
     </button>
-
   {% else %}
-    <button type="submit"
-            class="btn btn-outline-secondary px-4"
+    <button type="submit" class="btn btn-outline-secondary px-4"
             name="action" value="ocr" id="btnOcr">
       <i class="bi bi-magic me-1"></i>Заполнить из анкеты (OCR)
     </button>
-
-    <button type="submit"
-            class="btn btn-primary px-4"
+    <button type="submit" class="btn btn-primary px-4"
             name="action" value="save" id="btnSave">
       <i class="bi bi-save me-1"></i>Создать обращение
     </button>
   {% endif %}
-
   <a href="{{ url_for('requests.index') }}" class="btn btn-outline-secondary">
     <i class="bi bi-x-lg me-1"></i>Отмена
   </a>
-
   {% if req is not none and req.id is defined %}
     <a href="{{ url_for('requests.view_request', rid=req.id) }}" class="btn btn-outline-primary ms-auto">
       <i class="bi bi-eye me-1"></i>Просмотр карточки
@@ -997,7 +929,6 @@
   {% endif %}
 </div>
 
-<!-- Модал причины правки -->
 {% if req %}
 <div class="modal fade" id="saveModal" tabindex="-1">
   <div class="modal-dialog modal-sm"><div class="modal-content">
@@ -1006,8 +937,7 @@
       <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
     </div>
     <div class="modal-body">
-      <textarea id="editReasonInput" class="form-control" rows="3"
-                placeholder="Необязательно"></textarea>
+      <textarea id="editReasonInput" class="form-control" rows="3" placeholder="Необязательно"></textarea>
     </div>
     <div class="modal-footer">
       <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Отмена</button>
@@ -1026,16 +956,13 @@
     <div class="modal-content">
       <div class="modal-header py-2" style="background:#dc3545">
         <h6 class="modal-title text-white mb-0">
-          <i class="bi bi-exclamation-triangle-fill me-1"></i>
-          Заполните обязательные поля
+          <i class="bi bi-exclamation-triangle-fill me-1"></i>Заполните обязательные поля
         </h6>
-        <button type="button" class="btn-close btn-close-white"
-                data-bs-dismiss="modal"></button>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body py-3" id="validModalBody"></div>
       <div class="modal-footer py-2">
-        <button type="button" class="btn btn-sm btn-danger"
-                data-bs-dismiss="modal">
+        <button type="button" class="btn btn-sm btn-danger" data-bs-dismiss="modal">
           <i class="bi bi-pencil me-1"></i>Вернуться к заполнению
         </button>
       </div>
@@ -1047,77 +974,51 @@
 
 {% block scripts %}
 <script>
-// ===== ВАЛИДАЦИЯ ОБЯЗАТЕЛЬНЫХ ПОЛЕЙ =====
+// ===== ВАЛИДАЦИЯ =====
 (function(){
   var REQUIRED = {{ required_fields | tojson }};
-
   document.getElementById('mainForm').addEventListener('submit', function(e){
     var submitter = e.submitter || document.activeElement;
     var action = (submitter && submitter.name === 'action') ? submitter.value : 'save';
     if (action === 'ocr') return;
-
-    document.querySelectorAll('.field-required-error').forEach(function(el){
-      el.classList.remove('field-required-error');
-    });
-
+    document.querySelectorAll('.field-required-error').forEach(function(el){ el.classList.remove('field-required-error'); });
     var missing = [];
-
     for(var field in REQUIRED){
       if(field === 'source_type'){
         var checked = document.querySelectorAll('input[name="source_type"]:checked');
-        if(checked.length === 0){
-          missing.push(REQUIRED[field]);
-          var wrap = document.getElementById('source_type_wrap');
-          if(wrap) wrap.style.border = '1.5px solid #dc3545';
-        } else {
-          var wrapOk = document.getElementById('source_type_wrap');
-          if(wrapOk) wrapOk.style.border = '';
-        }
+        if(checked.length === 0){ missing.push(REQUIRED[field]); var wrap = document.getElementById('source_type_wrap'); if(wrap) wrap.style.border = '1.5px solid #dc3545'; }
+        else { var wrapOk = document.getElementById('source_type_wrap'); if(wrapOk) wrapOk.style.border = ''; }
         continue;
       }
       if(field === 'preferred_districts') continue;
       var el = document.querySelector('[name="' + field + '"]');
       if(!el) continue;
       var val = (el.value || '').trim();
-      if(!val){
-        missing.push(REQUIRED[field]);
-        el.classList.add('field-required-error');
-        if(missing.length === 1) el.scrollIntoView({behavior:'smooth', block:'center'});
-      }
+      if(!val){ missing.push(REQUIRED[field]); el.classList.add('field-required-error'); if(missing.length === 1) el.scrollIntoView({behavior:'smooth',block:'center'}); }
     }
-
     if(missing.length > 0){
       e.preventDefault();
       document.getElementById('validModalBody').innerHTML =
         '<p class="text-muted mb-2" style="font-size:13px">Следующие поля обязательны для заполнения:</p>' +
-        '<ul class="mb-0">' +
-        missing.map(function(f){
-          return '<li style="font-size:13px"><i class="bi bi-dot"></i> ' + f + '</li>';
-        }).join('') +
-        '</ul>';
+        '<ul class="mb-0">' + missing.map(function(f){ return '<li style="font-size:13px"><i class="bi bi-dot"></i> ' + f + '</li>'; }).join('') + '</ul>';
       new bootstrap.Modal(document.getElementById('validModal')).show();
     }
   });
-
   document.querySelectorAll('input,select,textarea').forEach(function(el){
     el.addEventListener('input',  function(){ el.classList.remove('field-required-error'); });
     el.addEventListener('change', function(){ el.classList.remove('field-required-error'); });
   });
-
   document.querySelectorAll('input[name="source_type"]').forEach(function(cb){
-    cb.addEventListener('change', function(){
-      var wrap = document.getElementById('source_type_wrap');
-      if(wrap) wrap.style.border = '';
-    });
+    cb.addEventListener('change', function(){ var wrap = document.getElementById('source_type_wrap'); if(wrap) wrap.style.border = ''; });
   });
 })();
 
-// ===== ВАЛИДАЦИЯ ИНН =====
+// ===== ИНН =====
 (function(){
   var innInput = document.querySelector('input[name="applicant_inn"]');
-  var help     = document.getElementById('inn_help');
+  var help = document.getElementById('inn_help');
   if(!innInput || !help) return;
-  function resetClasses() { help.classList.remove('text-danger','text-warning','text-muted'); }
+  function resetClasses(){ help.classList.remove('text-danger','text-warning','text-muted'); }
   innInput.addEventListener('input', function(){
     var v = (innInput.value || '').trim();
     if(!v){ resetClasses(); help.textContent='Необязательно, только цифры'; help.classList.add('text-muted'); return; }
@@ -1149,77 +1050,35 @@
   var wrap = document.getElementById('answer_method_other_wrap');
   var numB = document.getElementById('answerSystemNumBlock');
   if(!sel) return;
-  function update(){
-    if(wrap) wrap.style.display = sel.value==='Иное' ? '' : 'none';
-    if(numB) numB.style.display = (sel.value==='СЭДО'||sel.value==='Directum') ? '' : 'none';
-  }
+  function update(){ if(wrap) wrap.style.display=sel.value==='Иное'?'':'none'; if(numB) numB.style.display=(sel.value==='СЭДО'||sel.value==='Directum')?'':'none'; }
   sel.addEventListener('change', update);
   update();
 })();
 
-// ===== ЦВЕТОВАЯ ИНДИКАЦИЯ ИТОГОВ РАБОТЫ =====
+// ===== ЦВЕТОВАЯ ИНДИКАЦИЯ ИТОГОВ =====
 (function(){
-  var sel     = document.getElementById('result_type_sel');
-  var preview = document.getElementById('result_color_preview');
-  if(!sel || !preview) return;
-  function update(){
-    var opt = sel.options[sel.selectedIndex];
-    var color = opt ? opt.dataset.color : '';
-    if(color && sel.value){
-      preview.style.display  = '';
-      preview.style.background = '#' + color;
-      preview.style.color = (color === 'FFFFFF') ? '#333' : '#fff';
-      preview.textContent = opt.text;
-    } else {
-      preview.style.display = 'none';
-      preview.textContent   = '';
-    }
-  }
+  var sel=document.getElementById('result_type_sel');
+  var preview=document.getElementById('result_color_preview');
+  if(!sel||!preview) return;
+  function update(){ var opt=sel.options[sel.selectedIndex]; var color=opt?opt.dataset.color:''; if(color&&sel.value){ preview.style.display=''; preview.style.background='#'+color; preview.style.color=(color==='FFFFFF')?'#333':'#fff'; preview.textContent=opt.text; } else { preview.style.display='none'; preview.textContent=''; } }
   sel.addEventListener('change', update);
   update();
 })();
 
 // ===== ПРИЧИНА ПРАВКИ =====
-function showSaveModal() { new bootstrap.Modal(document.getElementById('saveModal')).show(); }
-function doSave() {
-  document.getElementById('editReasonHidden').value = document.getElementById('editReasonInput').value;
-  bootstrap.Modal.getInstance(document.getElementById('saveModal')).hide();
-  document.querySelector('form').submit();
-}
+function showSaveModal(){ new bootstrap.Modal(document.getElementById('saveModal')).show(); }
+function doSave(){ document.getElementById('editReasonHidden').value=document.getElementById('editReasonInput').value; bootstrap.Modal.getInstance(document.getElementById('saveModal')).hide(); document.querySelector('form').submit(); }
 
 // ===== АВТОДОПОЛНЕНИЕ ОКВЭД =====
 (function(){
-  var input     = document.getElementById('okved_main_input');
-  var box       = document.getElementById('okved_suggestions');
-  var nameField = document.getElementById('okved_main_name');
+  var input=document.getElementById('okved_main_input');
+  var box=document.getElementById('okved_suggestions');
+  var nameField=document.getElementById('okved_main_name');
   if(!input||!box) return;
   var timer=null;
   function hideBox(){ box.style.display='none'; box.innerHTML=''; }
-  function fetchOkved(q){
-    if(!q||q.length<2){ hideBox(); return; }
-    fetch('/api/okved/search?q='+encodeURIComponent(q)+'&limit=10',{headers:{'X-Requested-With':'XMLHttpRequest'}})
-      .then(function(r){ return r.json(); })
-      .then(function(data){
-        if(!Array.isArray(data)||data.length===0){ hideBox(); return; }
-        box.innerHTML='';
-        data.forEach(function(item){
-          var el=document.createElement('button');
-          el.type='button';
-          el.className='list-group-item list-group-item-action py-1 px-2';
-          el.textContent=item.code+' — '+item.name;
-          el.dataset.code=item.code; el.dataset.name=item.name;
-          el.addEventListener('click',function(){ input.value=this.dataset.code; if(nameField) nameField.value=this.dataset.name; hideBox(); });
-          box.appendChild(el);
-        });
-        box.style.display='block';
-      }).catch(function(){ hideBox(); });
-  }
-  input.addEventListener('input',function(){
-    var q=input.value.trim();
-    if(nameField&&q.length<2) nameField.value='';
-    if(timer) clearTimeout(timer);
-    timer=setTimeout(function(){ fetchOkved(q); },250);
-  });
+  function fetchOkved(q){ if(!q||q.length<2){ hideBox(); return; } fetch('/api/okved/search?q='+encodeURIComponent(q)+'&limit=10',{headers:{'X-Requested-With':'XMLHttpRequest'}}).then(function(r){ return r.json(); }).then(function(data){ if(!Array.isArray(data)||data.length===0){ hideBox(); return; } box.innerHTML=''; data.forEach(function(item){ var el=document.createElement('button'); el.type='button'; el.className='list-group-item list-group-item-action py-1 px-2'; el.textContent=item.code+' — '+item.name; el.dataset.code=item.code; el.dataset.name=item.name; el.addEventListener('click',function(){ input.value=this.dataset.code; if(nameField) nameField.value=this.dataset.name; hideBox(); }); box.appendChild(el); }); box.style.display='block'; }).catch(function(){ hideBox(); }); }
+  input.addEventListener('input',function(){ var q=input.value.trim(); if(nameField&&q.length<2) nameField.value=''; if(timer) clearTimeout(timer); timer=setTimeout(function(){ fetchOkved(q); },250); });
   document.addEventListener('click',function(e){ if(!box.contains(e.target)&&e.target!==input) hideBox(); });
   input.addEventListener('keydown',function(e){ if(e.key==='Escape') hideBox(); });
 })();
@@ -1240,90 +1099,59 @@ function previewFiles(input){
   if(!preview) return;
   preview.innerHTML='';
   var icons={pdf:'<i class="bi bi-file-earmark-pdf text-danger" style="font-size:2rem"></i>',doc:'<i class="bi bi-file-earmark-word text-primary" style="font-size:2rem"></i>',docx:'<i class="bi bi-file-earmark-word text-primary" style="font-size:2rem"></i>',xls:'<i class="bi bi-file-earmark-excel text-success" style="font-size:2rem"></i>',xlsx:'<i class="bi bi-file-earmark-excel text-success" style="font-size:2rem"></i>',ppt:'<i class="bi bi-file-earmark-slides text-warning" style="font-size:2rem"></i>',pptx:'<i class="bi bi-file-earmark-slides text-warning" style="font-size:2rem"></i>',jpg:'<i class="bi bi-file-earmark-image text-info" style="font-size:2rem"></i>',jpeg:'<i class="bi bi-file-earmark-image text-info" style="font-size:2rem"></i>',png:'<i class="bi bi-file-earmark-image text-info" style="font-size:2rem"></i>',zip:'<i class="bi bi-file-earmark-zip text-secondary" style="font-size:2rem"></i>'};
-  Array.from(input.files).forEach(function(f){
-    var ext=f.name.split('.').pop().toLowerCase();
-    var icon=icons[ext]||'<i class="bi bi-file-earmark" style="font-size:2rem"></i>';
-    var name=f.name.length>14?f.name.substring(0,14)+'…':f.name;
-    var div=document.createElement('div');
-    div.className='d-flex flex-column align-items-center border rounded p-2';
-    div.style.cssText='width:80px;font-size:0.72rem;word-break:break-all';
-    div.innerHTML=icon+'<span class="mt-1 text-center">'+name+'</span>';
-    preview.appendChild(div);
-  });
+  Array.from(input.files).forEach(function(f){ var ext=f.name.split('.').pop().toLowerCase(); var icon=icons[ext]||'<i class="bi bi-file-earmark" style="font-size:2rem"></i>'; var name=f.name.length>14?f.name.substring(0,14)+'…':f.name; var div=document.createElement('div'); div.className='d-flex flex-column align-items-center border rounded p-2'; div.style.cssText='width:80px;font-size:0.72rem;word-break:break-all'; div.innerHTML=icon+'<span class="mt-1 text-center">'+name+'</span>'; preview.appendChild(div); });
 }
 
-// ===== АВТОЗАПОЛНЕНИЕ ПО ИНН (ЕГРЮЛ) =====
-function egrulLookup() {
-  var innEl  = document.getElementById('applicant_inn');
-  var status = document.getElementById('egrul_status');
-  var btn    = document.getElementById('btn_egrul_lookup');
-  var icon   = document.getElementById('egrul_btn_icon');
-  if (!innEl || !status || !btn) return;
-
-  var inn = (innEl.value || '').trim();
-  if (!inn) {
-    status.textContent = 'Введите ИНН';
-    status.className   = 'text-danger';
-    return;
-  }
-
-  // Спиннер
-  btn.disabled   = true;
-  icon.className = 'spinner-border spinner-border-sm';
-  icon.setAttribute('role', 'status');
-  status.textContent = 'Запрос к ЕГРЮЛ…';
-  status.className   = 'text-muted';
-
-  fetch('/api/egrul/lookup?inn=' + encodeURIComponent(inn), {
-    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+// ===== ЕГРЮЛ =====
+function egrulLookup(){
+  var innEl=document.getElementById('applicant_inn');
+  var status=document.getElementById('egrul_status');
+  var btn=document.getElementById('btn_egrul_lookup');
+  var icon=document.getElementById('egrul_btn_icon');
+  if(!innEl||!status||!btn) return;
+  var inn=(innEl.value||'').trim();
+  if(!inn){ status.textContent='Введите ИНН'; status.className='text-danger'; return; }
+  btn.disabled=true; icon.className='spinner-border spinner-border-sm'; icon.setAttribute('role','status');
+  status.textContent='Запрос к ЕГРЮЛ…'; status.className='text-muted';
+  fetch('/api/egrul/lookup?inn='+encodeURIComponent(inn),{headers:{'X-Requested-With':'XMLHttpRequest'}})
+  .then(function(r){ return r.json(); })
+  .then(function(resp){
+    btn.disabled=false; icon.className='bi bi-search'; icon.removeAttribute('role');
+    if(!resp.ok){ status.textContent=resp.error||'Ошибка запроса'; status.className='text-danger'; return; }
+    var d=resp.data;
+    var map={'applicant_full_name':d.applicant_full_name,'applicant_short_name':d.applicant_short_name,'legal_address':d.legal_address,'applicant_okved_main':d.applicant_okved_main};
+    Object.keys(map).forEach(function(name){ if(!map[name]) return; var el=document.querySelector('[name="'+name+'"]'); if(el&&!el.value) el.value=map[name]; });
+    status.textContent='✓ Реквизиты найдены и заполнены'; status.className='text-success';
+    setTimeout(function(){ status.textContent=''; status.className=''; },4000);
   })
-  .then(function(r) { return r.json(); })
-  .then(function(resp) {
-    btn.disabled   = false;
-    icon.className = 'bi bi-search';
-    icon.removeAttribute('role');
+  .catch(function(){ btn.disabled=false; icon.className='bi bi-search'; icon.removeAttribute('role'); status.textContent='Ошибка сети — повторите попытку'; status.className='text-danger'; });
+}
 
-    if (!resp.ok) {
-      status.textContent = resp.error || 'Ошибка запроса';
-      status.className   = 'text-danger';
-      return;
-    }
+// ===== #50: АВТОСУММА ЭЛЕКТРОСНАБЖЕНИЕ =====
+function calcElectricityTotal(){
+  var c1 = parseFloat(document.getElementById('electricity_cat1').value) || 0;
+  var c2 = parseFloat(document.getElementById('electricity_cat2').value) || 0;
+  var c3 = parseFloat(document.getElementById('electricity_cat3').value) || 0;
+  var total = Math.round((c1 + c2 + c3) * 10) / 10;
+  var el = document.getElementById('electricity_total');
+  if(el) el.value = (total > 0) ? total : '';
+}
 
-    var d = resp.data;
-    var map = {
-      'applicant_full_name':  d.applicant_full_name,
-      'applicant_short_name': d.applicant_short_name,
-      'legal_address':        d.legal_address,
-      'applicant_okved_main': d.applicant_okved_main
-    };
-
-    Object.keys(map).forEach(function(name) {
-      if (!map[name]) return;
-      var el = document.querySelector('[name="' + name + '"]');
-      if (el && !el.value) el.value = map[name];
-    });
-
-    status.textContent = '✓ Реквизиты найдены и заполнены';
-    status.className   = 'text-success';
-
-    // Сбросить статус через 4 сек
-    setTimeout(function() {
-      status.textContent = '';
-      status.className   = '';
-    }, 4000);
-  })
-  .catch(function() {
-    btn.disabled   = false;
-    icon.className = 'bi bi-search';
-    icon.removeAttribute('role');
-    status.textContent = 'Ошибка сети — повторите попытку';
-    status.className   = 'text-danger';
+// ===== #52: ПОИСК ПО РАЙОНАМ =====
+function filterDistricts(){
+  var q = document.getElementById('districtSearch').value.toLowerCase().trim();
+  document.querySelectorAll('.district-item').forEach(function(item){
+    item.style.display = (!q || item.dataset.name.includes(q)) ? '' : 'none';
   });
+}
+function clearDistricts(){
+  document.querySelectorAll('input[name="preferred_districts"]').forEach(function(cb){ cb.checked = false; });
 }
 
 // ===== ИНИЦИАЛИЗАЦИЯ =====
 document.addEventListener('DOMContentLoaded', function(){
   toggleIncomingNumber();
+  calcElectricityTotal();
 });
 </script>
 {% endblock %}

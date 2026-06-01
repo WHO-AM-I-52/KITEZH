@@ -2,7 +2,7 @@
 # ║                      form_utils.py                           ║
 # ║  Работа с формой обращения: поля, приведение типов,          ║
 # ║  классификаторы                                              ║
-# ║  v2.2: +поля логики статусов (#53)                          ║
+# ║  v2.3: #47 site_right → getlist()                           ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from validators import _int, _flt
@@ -44,17 +44,17 @@ ALL_FIELDS = [
     # ─ Входящий номер (Directum / СЭДО) ────────────────────────────
     "incoming_number",
     # ─ Issue #53: новая логика статусов ───────────────────────────────
-    "review_days",               # Срок рассмотрения (календарные дни, по умолчанию 7)
-    "responsible_id",            # Ответственный за подбор площадок (FK → users)
-    "responsible_not_in_system", # Галочка: не зарегистрирован в системе
-    "responsible_name_external", # ФИО если не в системе
-    "reviewer_id",               # Проверяющий площадки (FK → users)
-    "reviewer_not_in_system",    # Галочка: не зарегистрирован в системе
-    "reviewer_name_external",    # ФИО если не в системе
-    "sent_to_applicant_at",      # Дата отправки документов заявителю
-    "send_method",               # Способ отправки
-    "applicant_feedback",        # Обратная связь от заявителя
-    "applicant_feedback_at",     # Дата получения ОС от заявителя
+    "review_days",
+    "responsible_id",
+    "responsible_not_in_system",
+    "responsible_name_external",
+    "reviewer_id",
+    "reviewer_not_in_system",
+    "reviewer_name_external",
+    "sent_to_applicant_at",
+    "send_method",
+    "applicant_feedback",
+    "applicant_feedback_at",
 ]
 
 # Наборы полей по типу
@@ -68,7 +68,7 @@ INT_F = {
     "jobs_total", "jobs_foreign", "phones_qty", "staff_management",
     "staff_workers", "staff_other", "staff_it", "staff_admin", "assigned_to",
     "subject_type_id", "result_type_id",
-    "review_days", "responsible_id", "reviewer_id",  # #53
+    "review_days", "responsible_id", "reviewer_id",
 }
 
 FLOAT_F = {
@@ -98,10 +98,10 @@ def get_classifiers(conn):
     - список правовых форм,
     - список районов,
     - список источников обращений,
-    - список сотрудников (для назначения ответственных),
+    - список сотрудников,
     - справочник предметов обращений (subject_types),
     - справочник итогов работы (result_types),
-    - список пользователей для выбора ответственного/проверяющего (#53).
+    - список пользователей (#53).
     """
     lf  = [r['value'] for r in conn.execute(
         "SELECT value FROM classifiers WHERE category='legal_form' "
@@ -126,7 +126,6 @@ def get_classifiers(conn):
     results = conn.execute(
         "SELECT id, name, color_hex FROM result_types ORDER BY id"
     ).fetchall()
-    # #53: все пользователи для выбора ответственного и проверяющего
     all_users = conn.execute(
         "SELECT id, full_name, role FROM users WHERE is_active=1 ORDER BY full_name"
     ).fetchall()
@@ -147,6 +146,11 @@ def build_values(form):
             continue
         if f == 'preferred_districts':
             selected = form.getlist('preferred_districts')
+            vals.append(', '.join(selected) if selected else None)
+            continue
+        # #47: множественный выбор права пользования
+        if f == 'site_right':
+            selected = form.getlist('site_right')
             vals.append(', '.join(selected) if selected else None)
             continue
         v = form.get(f, '')
