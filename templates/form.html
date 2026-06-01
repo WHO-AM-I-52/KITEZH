@@ -544,36 +544,19 @@
 
 {# ===== РАЗДЕЛ 5: ИНЖЕНЕРНАЯ ИНФРАСТРУКТУРА ===== #}
 {#
-  Issue #48: единицы измерения
-  Каждое инфраструктурное числовое поле снабжается <select> с единицами.
-  При редактировании select инициализируется из req.<field>_unit.
-  JS-функция unitChanged() обновляет placeholder/hint без пересчёта
-  значения (значение в БД всегда в базовых единицах; form_utils.py
-  нормализует при сохранении).
+  Issue #48: единицы измерения инфраструктурных полей
+  Логика:
+  - *_unit-поля хранятся рядом с числовыми значениями в БД
+  - Числа хранятся в БАЗОВЫХ единицах (кВт / Гкал/ч / м³/ч / м³/год / м³/сут)
+  - При смене единицы JS пересчитывает отображаемое значение (денормализация)
+  - При сохранении build_values() нормализует обратно в базовую единицу
+  - Итоговые поля (electricity_total, water_total) пересчитываются в текущих единицах
 #}
-
-{# Макрос: числовое поле + select единиц рядом #}
-{% macro infra_field(label, fname, unit_name, units_list, step='0.1',
-                     id_suffix='', extra_class='', oninput='', readonly=false) %}
-  {% set cur_unit = req[unit_name] if req and req[unit_name] else units_list[0] %}
-  <label class="form-label" style="font-size:12px">{{ label }}</label>
-  <div class="input-group input-group-sm">
-    <input type="number" step="{{ step }}" name="{{ fname }}"
-           id="{{ id_suffix or fname }}"
-           class="form-control form-control-sm{{ ' ' + extra_class if extra_class }}"
-           value="{{ req[fname] if req and req[fname] is not none else '' }}"
-           placeholder="0"
-           {% if readonly %}readonly{% endif %}
-           {% if oninput %}oninput="{{ oninput }}"{% endif %}>
-    <select name="{{ unit_name }}" class="form-select form-select-sm"
-            style="max-width:110px"
-            onchange="onUnitChange('{{ id_suffix or fname }}', this)">
-      {% for u in units_list %}
-      <option value="{{ u }}" {{ 'selected' if cur_unit == u }}>{{ u }}</option>
-      {% endfor %}
-    </select>
-  </div>
-{% endmacro %}
+{%- set cur_elec_unit  = (req.elec_unit  if req and req.elec_unit)  or 'кВт' -%}
+{%- set cur_heat_unit  = (req.heat_unit  if req and req.heat_unit)  or 'Гкал/ч' -%}
+{%- set cur_gas_unit_h = (req.gas_unit_h if req and req.gas_unit_h) or 'м³/ч' -%}
+{%- set cur_gas_unit_y = (req.gas_unit_y if req and req.gas_unit_y) or 'м³/год' -%}
+{%- set cur_water_unit = (req.water_unit if req and req.water_unit) or 'м³/сут' -%}
 
 <div class="card mb-3">
   <div class="card-header py-2" style="background:#1B5E7B;color:#fff;font-size:13px;font-weight:600">
@@ -585,28 +568,67 @@
     <p class="text-muted mb-2" style="font-size:11px">
       <i class="bi bi-droplet me-1"></i><strong>Водоснабжение и водоотведение</strong>
     </p>
+
+    {# Выбор единицы воды — один на все 4 поля #}
     <div class="row g-2 mb-1">
-      <div class="col-md-3">
-        {{ infra_field('Хоз-питьевое', 'water_household', 'water_unit',
-                       ['м³/сут','м³/ч'], id_suffix='water_household',
-                       oninput='calcWaterTotal()') }}
-      </div>
-      <div class="col-md-3">
-        {{ infra_field('Производственное', 'water_production', 'water_unit',
-                       ['м³/сут','м³/ч'], id_suffix='water_production',
-                       oninput='calcWaterTotal()') }}
-      </div>
-      <div class="col-md-3">
-        {{ infra_field('Водоотведение', 'sewage', 'water_unit',
-                       ['м³/сут','м³/ч'], id_suffix='water_sewage',
-                       oninput='calcWaterTotal()') }}
-      </div>
-      <div class="col-md-3">
-        {{ infra_field('Пожаротушение', 'firefighting', 'water_unit',
-                       ['м³/сут','м³/ч'], id_suffix='water_firefighting',
-                       oninput='calcWaterTotal()') }}
+      <div class="col-12">
+        <div class="d-flex align-items-center gap-2 mb-1">
+          <span style="font-size:12px;color:#555">Единица измерения:</span>
+          <select name="water_unit" id="water_unit_sel"
+                  class="form-select form-select-sm" style="max-width:110px"
+                  onchange="onWaterUnitChange(this.value)">
+            {% for u in ['м³/сут','м³/ч'] %}
+            <option value="{{ u }}" {{ 'selected' if cur_water_unit==u }}>{{ u }}</option>
+            {% endfor %}
+          </select>
+          <span class="text-muted" style="font-size:11px">Значения хранятся в м³/сут</span>
+        </div>
       </div>
     </div>
+
+    <div class="row g-2 mb-1">
+      <div class="col-md-3">
+        <label class="form-label" style="font-size:12px">Хоз-питьевое</label>
+        <div class="input-group input-group-sm">
+          <input type="number" step="0.1" name="water_household" id="water_household"
+                 class="form-control form-control-sm"
+                 value="" placeholder="0"
+                 oninput="calcWaterTotal()">
+          <span class="input-group-text unit-label-water" style="font-size:11px">{{ cur_water_unit }}</span>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" style="font-size:12px">Производственное</label>
+        <div class="input-group input-group-sm">
+          <input type="number" step="0.1" name="water_production" id="water_production"
+                 class="form-control form-control-sm"
+                 value="" placeholder="0"
+                 oninput="calcWaterTotal()">
+          <span class="input-group-text unit-label-water" style="font-size:11px">{{ cur_water_unit }}</span>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" style="font-size:12px">Водоотведение</label>
+        <div class="input-group input-group-sm">
+          <input type="number" step="0.1" name="sewage" id="water_sewage"
+                 class="form-control form-control-sm"
+                 value="" placeholder="0"
+                 oninput="calcWaterTotal()">
+          <span class="input-group-text unit-label-water" style="font-size:11px">{{ cur_water_unit }}</span>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" style="font-size:12px">Пожаротушение</label>
+        <div class="input-group input-group-sm">
+          <input type="number" step="0.1" name="firefighting" id="water_firefighting"
+                 class="form-control form-control-sm"
+                 value="" placeholder="0"
+                 oninput="calcWaterTotal()">
+          <span class="input-group-text unit-label-water" style="font-size:11px">{{ cur_water_unit }}</span>
+        </div>
+      </div>
+    </div>
+
     <div class="row g-2 mb-3">
       <div class="col-md-3">
         <label class="form-label" style="font-size:12px">Итого</label>
@@ -615,9 +637,7 @@
                  class="form-control form-control-sm bg-light"
                  placeholder="авто" readonly
                  title="Сумма: хоз-питьевое + производственное + водоотведение + пожаротушение">
-          <span class="input-group-text" id="water_total_unit" style="font-size:11px;min-width:70px">
-            {{ req.water_unit if req and req.water_unit else 'м³/сут' }}
-          </span>
+          <span class="input-group-text unit-label-water" style="font-size:11px">{{ cur_water_unit }}</span>
         </div>
         <div class="form-text" style="font-size:11px">Сумма всех категорий</div>
       </div>
@@ -627,27 +647,66 @@
     <p class="text-muted mb-2" style="font-size:11px">
       <i class="bi bi-plug me-1"></i><strong>Электроснабжение</strong>
     </p>
+
+    {# Выбор единицы электро — один на все поля #}
+    <div class="row g-2 mb-1">
+      <div class="col-12">
+        <div class="d-flex align-items-center gap-2 mb-1">
+          <span style="font-size:12px;color:#555">Единица измерения:</span>
+          <select name="elec_unit" id="elec_unit_sel"
+                  class="form-select form-select-sm" style="max-width:90px"
+                  onchange="onElecUnitChange(this.value)">
+            {% for u in ['кВт','МВт'] %}
+            <option value="{{ u }}" {{ 'selected' if cur_elec_unit==u }}>{{ u }}</option>
+            {% endfor %}
+          </select>
+          <span class="text-muted" style="font-size:11px">Значения хранятся в кВт</span>
+        </div>
+      </div>
+    </div>
+
     <div class="row g-2 mb-3">
       <div class="col-md-3">
-        {{ infra_field('Общая мощность', 'electricity_total', 'elec_unit',
-                       ['кВт','МВт'], id_suffix='electricity_total',
-                       extra_class='bg-light', readonly=true) }}
+        <label class="form-label" style="font-size:12px">Общая мощность</label>
+        <div class="input-group input-group-sm">
+          <input type="number" step="0.1" name="electricity_total"
+                 id="electricity_total"
+                 class="form-control form-control-sm bg-light"
+                 value="" placeholder="авто" readonly
+                 title="Вычисляется автоматически как сумма категорий I+II+III">
+          <span class="input-group-text unit-label-elec" style="font-size:11px">{{ cur_elec_unit }}</span>
+        </div>
         <div class="form-text" style="font-size:11px">Сумма категорий I+II+III</div>
       </div>
       <div class="col-md-3">
-        {{ infra_field('Категория I', 'electricity_cat1', 'elec_unit',
-                       ['кВт','МВт'], id_suffix='electricity_cat1',
-                       oninput='calcElectricityTotal()') }}
+        <label class="form-label" style="font-size:12px">Категория I</label>
+        <div class="input-group input-group-sm">
+          <input type="number" step="0.1" name="electricity_cat1" id="electricity_cat1"
+                 class="form-control form-control-sm"
+                 value="" placeholder="0"
+                 oninput="calcElectricityTotal()">
+          <span class="input-group-text unit-label-elec" style="font-size:11px">{{ cur_elec_unit }}</span>
+        </div>
       </div>
       <div class="col-md-3">
-        {{ infra_field('Категория II', 'electricity_cat2', 'elec_unit',
-                       ['кВт','МВт'], id_suffix='electricity_cat2',
-                       oninput='calcElectricityTotal()') }}
+        <label class="form-label" style="font-size:12px">Категория II</label>
+        <div class="input-group input-group-sm">
+          <input type="number" step="0.1" name="electricity_cat2" id="electricity_cat2"
+                 class="form-control form-control-sm"
+                 value="" placeholder="0"
+                 oninput="calcElectricityTotal()">
+          <span class="input-group-text unit-label-elec" style="font-size:11px">{{ cur_elec_unit }}</span>
+        </div>
       </div>
       <div class="col-md-3">
-        {{ infra_field('Категория III', 'electricity_cat3', 'elec_unit',
-                       ['кВт','МВт'], id_suffix='electricity_cat3',
-                       oninput='calcElectricityTotal()') }}
+        <label class="form-label" style="font-size:12px">Категория III</label>
+        <div class="input-group input-group-sm">
+          <input type="number" step="0.1" name="electricity_cat3" id="electricity_cat3"
+                 class="form-control form-control-sm"
+                 value="" placeholder="0"
+                 oninput="calcElectricityTotal()">
+          <span class="input-group-text unit-label-elec" style="font-size:11px">{{ cur_elec_unit }}</span>
+        </div>
       </div>
     </div>
 
@@ -666,8 +725,20 @@
         </select>
       </div>
       <div class="col-md-4">
-        {{ infra_field('Теплопотребление', 'heat_gcal', 'heat_unit',
-                       ['Гкал/ч','МВт','кДж/ч'], step='0.01') }}
+        <label class="form-label" style="font-size:12px">Теплопотребление</label>
+        <div class="input-group input-group-sm">
+          <input type="number" step="0.01" name="heat_gcal" id="heat_gcal"
+                 class="form-control form-control-sm"
+                 value="" placeholder="0.00">
+          <select name="heat_unit" id="heat_unit_sel"
+                  class="form-select form-select-sm" style="max-width:90px"
+                  onchange="onHeatUnitChange(this.value)">
+            {% for u in ['Гкал/ч','МВт','кДж/ч'] %}
+            <option value="{{ u }}" {{ 'selected' if cur_heat_unit==u }}>{{ u }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-text" style="font-size:11px">Хранится в Гкал/ч</div>
       </div>
       <div class="col-md-4">
         <label class="form-label" style="font-size:12px">Отапливаемая площадь, м²</label>
@@ -682,12 +753,36 @@
     </p>
     <div class="row g-2 mb-3">
       <div class="col-md-3">
-        {{ infra_field('Расход газа (часовой)', 'gas_m3h', 'gas_unit_h',
-                       ['м³/ч','тыс.м³/ч']) }}
+        <label class="form-label" style="font-size:12px">Расход газа (часовой)</label>
+        <div class="input-group input-group-sm">
+          <input type="number" step="0.1" name="gas_m3h" id="gas_m3h"
+                 class="form-control form-control-sm"
+                 value="" placeholder="0">
+          <select name="gas_unit_h" id="gas_unit_h_sel"
+                  class="form-select form-select-sm" style="max-width:110px"
+                  onchange="onGasHUnitChange(this.value)">
+            {% for u in ['м³/ч','тыс.м³/ч'] %}
+            <option value="{{ u }}" {{ 'selected' if cur_gas_unit_h==u }}>{{ u }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-text" style="font-size:11px">Хранится в м³/ч</div>
       </div>
       <div class="col-md-3">
-        {{ infra_field('Расход газа (годовой)', 'gas_m3y', 'gas_unit_y',
-                       ['м³/год','тыс.м³/год'], step='1') }}
+        <label class="form-label" style="font-size:12px">Расход газа (годовой)</label>
+        <div class="input-group input-group-sm">
+          <input type="number" step="1" name="gas_m3y" id="gas_m3y"
+                 class="form-control form-control-sm"
+                 value="" placeholder="0">
+          <select name="gas_unit_y" id="gas_unit_y_sel"
+                  class="form-select form-select-sm" style="max-width:115px"
+                  onchange="onGasYUnitChange(this.value)">
+            {% for u in ['м³/год','тыс.м³/год'] %}
+            <option value="{{ u }}" {{ 'selected' if cur_gas_unit_y==u }}>{{ u }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-text" style="font-size:11px">Хранится в м³/год</div>
       </div>
       <div class="col-md-6">
         <label class="form-label" style="font-size:12px">Цель газоснабжения</label>
@@ -1011,6 +1106,97 @@
 
 {% block scripts %}
 <script>
+// ===== Issue #48: BASE VALUES (кВт / Гкал/ч / м³/ч / м³/год / м³/сут) =====
+// При загрузке страницы инициализируем поля с денормализованными значениями.
+// BASE_* — значения из БД в базовых единицах (null если пусто).
+var BASE_WATER_HOUSEHOLD   = {{ (req.water_household   if req and req.water_household   is not none else 'null') }};
+var BASE_WATER_PRODUCTION  = {{ (req.water_production  if req and req.water_production  is not none else 'null') }};
+var BASE_WATER_SEWAGE      = {{ (req.sewage            if req and req.sewage            is not none else 'null') }};
+var BASE_WATER_FIREFIGHTING= {{ (req.firefighting      if req and req.firefighting      is not none else 'null') }};
+var BASE_ELEC_CAT1         = {{ (req.electricity_cat1  if req and req.electricity_cat1  is not none else 'null') }};
+var BASE_ELEC_CAT2         = {{ (req.electricity_cat2  if req and req.electricity_cat2  is not none else 'null') }};
+var BASE_ELEC_CAT3         = {{ (req.electricity_cat3  if req and req.electricity_cat3  is not none else 'null') }};
+var BASE_HEAT_GCAL         = {{ (req.heat_gcal         if req and req.heat_gcal         is not none else 'null') }};
+var BASE_GAS_M3H           = {{ (req.gas_m3h           if req and req.gas_m3h           is not none else 'null') }};
+var BASE_GAS_M3Y           = {{ (req.gas_m3y           if req and req.gas_m3y           is not none else 'null') }};
+
+// Коэффициенты (должны совпадать с form_utils.py UNIT_FACTORS)
+var UNIT_FACTORS = {
+  elec:  { 'кВт': 1.0, 'МВт': 1000.0 },
+  heat:  { 'Гкал/ч': 1.0, 'МВт': 1.163, 'кДж/ч': 1/4186.8 },
+  gas_h: { 'м³/ч': 1.0, 'тыс.м³/ч': 1000.0 },
+  gas_y: { 'м³/год': 1.0, 'тыс.м³/год': 1000.0 },
+  water: { 'м³/сут': 1.0, 'м³/ч': 24.0 }
+};
+
+function denorm(baseVal, factorKey, unit) {
+  if (baseVal === null || baseVal === undefined) return null;
+  var f = UNIT_FACTORS[factorKey][unit] || 1.0;
+  return Math.round((baseVal / f) * 1e6) / 1e6;
+}
+
+function setFieldVal(id, val) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  el.value = (val !== null && val !== undefined && val !== '') ? val : '';
+}
+
+function initInfraFields() {
+  var wu = document.getElementById('water_unit_sel').value;
+  setFieldVal('water_household',   denorm(BASE_WATER_HOUSEHOLD,    'water', wu));
+  setFieldVal('water_production',  denorm(BASE_WATER_PRODUCTION,   'water', wu));
+  setFieldVal('water_sewage',      denorm(BASE_WATER_SEWAGE,       'water', wu));
+  setFieldVal('water_firefighting',denorm(BASE_WATER_FIREFIGHTING,  'water', wu));
+  calcWaterTotal();
+
+  var eu = document.getElementById('elec_unit_sel').value;
+  setFieldVal('electricity_cat1', denorm(BASE_ELEC_CAT1, 'elec', eu));
+  setFieldVal('electricity_cat2', denorm(BASE_ELEC_CAT2, 'elec', eu));
+  setFieldVal('electricity_cat3', denorm(BASE_ELEC_CAT3, 'elec', eu));
+  calcElectricityTotal();
+
+  var hu = document.getElementById('heat_unit_sel').value;
+  setFieldVal('heat_gcal', denorm(BASE_HEAT_GCAL, 'heat', hu));
+
+  var ghu = document.getElementById('gas_unit_h_sel').value;
+  setFieldVal('gas_m3h', denorm(BASE_GAS_M3H, 'gas_h', ghu));
+
+  var gyu = document.getElementById('gas_unit_y_sel').value;
+  setFieldVal('gas_m3y', denorm(BASE_GAS_M3Y, 'gas_y', gyu));
+}
+
+// ===== Обработчики смены единицы =====
+function onWaterUnitChange(newUnit) {
+  document.querySelectorAll('.unit-label-water').forEach(function(el){ el.textContent = newUnit; });
+  var wu = newUnit;
+  setFieldVal('water_household',    denorm(BASE_WATER_HOUSEHOLD,    'water', wu));
+  setFieldVal('water_production',   denorm(BASE_WATER_PRODUCTION,   'water', wu));
+  setFieldVal('water_sewage',       denorm(BASE_WATER_SEWAGE,       'water', wu));
+  setFieldVal('water_firefighting', denorm(BASE_WATER_FIREFIGHTING,  'water', wu));
+  calcWaterTotal();
+}
+
+function onElecUnitChange(newUnit) {
+  document.querySelectorAll('.unit-label-elec').forEach(function(el){ el.textContent = newUnit; });
+  var eu = newUnit;
+  setFieldVal('electricity_cat1', denorm(BASE_ELEC_CAT1, 'elec', eu));
+  setFieldVal('electricity_cat2', denorm(BASE_ELEC_CAT2, 'elec', eu));
+  setFieldVal('electricity_cat3', denorm(BASE_ELEC_CAT3, 'elec', eu));
+  calcElectricityTotal();
+}
+
+function onHeatUnitChange(newUnit) {
+  setFieldVal('heat_gcal', denorm(BASE_HEAT_GCAL, 'heat', newUnit));
+}
+
+function onGasHUnitChange(newUnit) {
+  setFieldVal('gas_m3h', denorm(BASE_GAS_M3H, 'gas_h', newUnit));
+}
+
+function onGasYUnitChange(newUnit) {
+  setFieldVal('gas_m3y', denorm(BASE_GAS_M3Y, 'gas_y', newUnit));
+}
+
 // ===== ВАЛИДАЦИЯ =====
 (function(){
   var REQUIRED = {{ required_fields | tojson }};
@@ -1166,17 +1352,13 @@ function egrulLookup(){
 
 // ===== #49: АВТОСУММА ВОДОСНАБЖЕНИЕ =====
 function calcWaterTotal(){
-  var w1 = parseFloat(document.getElementById('water_household').value)  || 0;
-  var w2 = parseFloat(document.getElementById('water_production').value) || 0;
-  var w3 = parseFloat(document.getElementById('water_sewage').value)     || 0;
-  var w4 = parseFloat(document.getElementById('water_firefighting').value)|| 0;
+  var w1 = parseFloat(document.getElementById('water_household').value)   || 0;
+  var w2 = parseFloat(document.getElementById('water_production').value)  || 0;
+  var w3 = parseFloat(document.getElementById('water_sewage').value)      || 0;
+  var w4 = parseFloat(document.getElementById('water_firefighting').value) || 0;
   var total = Math.round((w1 + w2 + w3 + w4) * 10) / 10;
   var el = document.getElementById('water_total');
   if(el) el.value = (total > 0) ? total : '';
-  // Обновляем единицу в span «итого»
-  var unitSel = document.querySelector('select[name="water_unit"]');
-  var unitSpan = document.getElementById('water_total_unit');
-  if(unitSel && unitSpan) unitSpan.textContent = unitSel.value;
 }
 
 // ===== #50: АВТОСУММА ЭЛЕКТРОСНАБЖЕНИЕ =====
@@ -1200,31 +1382,10 @@ function clearDistricts(){
   document.querySelectorAll('input[name="preferred_districts"]').forEach(function(cb){ cb.checked = false; });
 }
 
-// ===== #48: СМЕНА ЕДИНИЦЫ — только синхронизация дублирующих select =====
-// water_unit используется для 4 полей — при смене одного синхронизируем остальные
-function onUnitChange(fieldId, selectEl) {
-  var name = selectEl.name;
-  // Для water_unit — синхронизируем все селекты с этим именем
-  if (name === 'water_unit') {
-    document.querySelectorAll('select[name="water_unit"]').forEach(function(s) {
-      s.value = selectEl.value;
-    });
-    calcWaterTotal();
-  }
-  // Для elec_unit — синхронизируем все
-  if (name === 'elec_unit') {
-    document.querySelectorAll('select[name="elec_unit"]').forEach(function(s) {
-      s.value = selectEl.value;
-    });
-    calcElectricityTotal();
-  }
-}
-
 // ===== ИНИЦИАЛИЗАЦИЯ =====
 document.addEventListener('DOMContentLoaded', function(){
   toggleIncomingNumber();
-  calcWaterTotal();
-  calcElectricityTotal();
+  initInfraFields();  // #48: денормализация + автосуммы
 });
 </script>
 {% endblock %}
