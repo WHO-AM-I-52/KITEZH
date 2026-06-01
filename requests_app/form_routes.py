@@ -41,12 +41,12 @@ def new_request():
         action = request.form.get('action', 'save')
 
         if action == 'ocr':
-            # Берём первый файл из поля request_files (единый инпут)
-            uploaded = request.files.getlist('request_files')
-            ocr_file = next((f for f in uploaded if f and f.filename), None)
+            # OCR читает первый файл из раздела «Прикреплённые файлы»
+            uploaded_files = request.files.getlist('request_files')
+            ocr_file = uploaded_files[0] if uploaded_files else None
 
-            if not ocr_file:
-                flash('Прикрепите файл анкеты перед распознаванием.', 'warning')
+            if not ocr_file or not ocr_file.filename:
+                flash('Не выбран файл анкеты для OCR.', 'warning')
                 conn.close()
                 conn2 = get_db()
                 lf2, di2, src2, emp2, subjects2, results2, all_users2 = get_classifiers(conn2)
@@ -65,25 +65,30 @@ def new_request():
             tmp_name = f'_ocr_tmp_anketa{ext}'
             tmp_path = os.path.join(UPLOADS_DIR, tmp_name)
 
-            # Сохраняем остальные файлы из того же инпута
+            # Сохраняем все прикреплённые файлы, чтобы после OCR они не потерялись
             saved_names = []
-            for uf in uploaded:
+            for uf in uploaded_files:
                 if uf and uf.filename and allowed_file(uf.filename):
                     fn2 = secure_filename(uf.filename)
                     uf.save(os.path.join(UPLOADS_DIR, fn2))
                     saved_names.append(fn2)
 
+            # Дополнительно сохраняем временную копию для OCR (ocr_file уже stream-closed)
+            if saved_names:
+                ocr_src = os.path.join(UPLOADS_DIR, saved_names[0])
+            else:
+                # Файл не прошёл allowed_file — сохраняем во временный tmp
+                ocr_file_stream = request.files.getlist('request_files')[0]
+                ocr_file_stream.stream.seek(0)
+                with open(tmp_path, 'wb') as f:
+                    f.write(ocr_file_stream.read())
+                ocr_src = tmp_path
+
             try:
-                # Читаем первый файл повторно из диска (уже сохранён выше)
-                first_saved = saved_names[0] if saved_names else None
-                ocr_path = os.path.join(UPLOADS_DIR, first_saved) if first_saved else None
-                if not ocr_path:
-                    ocr_file.seek(0)
-                    ocr_file.save(tmp_path)
-                    ocr_path = tmp_path
-                fields, msg = extract_anketa_fields(ocr_path)
+                fields, msg = extract_anketa_fields(ocr_src)
             finally:
-                if os.path.exists(tmp_path):
+                # Удаляем временный файл только если это был tmp
+                if ocr_src == tmp_path:
                     try:
                         os.remove(tmp_path)
                     except Exception:
@@ -99,7 +104,7 @@ def new_request():
                 for k, v in fields.items():
                     if k in fake_req:
                         fake_req[k] = v
-                # Сохраняем прикреплённые файлы чтобы не потерять после OCR
+                # Сохраняем список файлов в fake_req, чтобы отобразиться в форме
                 fake_req['request_files'] = ','.join(saved_names) if saved_names else ''
                 flash(
                     'Анкета распознана: часть полей заполнена автоматически. '
@@ -201,13 +206,11 @@ def edit_request(rid):
 
         vals = build_values(request.form)
 
-        # ── Сохраняем поля #53, которых нет в form.html ──────────────────────
         for field in _PRESERVE_FIELDS:
             if field in ALL_FIELDS:
                 idx = ALL_FIELDS.index(field)
                 if vals[idx] is None:
                     vals[idx] = req[field]
-        # ─────────────────────────────────────────────────────────────────────
 
         af   = req['answer_file']
         file = request.files.get('answer_file')
