@@ -1,6 +1,6 @@
 # ╔═════════════════════════════════════════════════════════════════════════════╗
 # ║                       export_routes.py                                       ║
-# ║  v2.8: import_full поддерживает создание новых обращений (пустой ID)         ║
+# ║  v2.9: импорт статуса из Excel, дефолт registered для новых         ║
 # ╚═════════════════════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, request, send_file, jsonify, session
@@ -17,7 +17,7 @@ from activity_log import log_action
 report_bp = Blueprint('report', __name__)
 
 
-# ─── ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ───────────────────────────────────────────────────────────
+# ─── ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ────────────────────────────────────────────────────────
 
 def _short_fio(full_name: str) -> str:
     if not full_name:
@@ -77,7 +77,7 @@ def _contact_cell(person: str, phone: str, email: str) -> str:
     return '\n'.join(parts) if parts else '—'
 
 
-# ─── СТАНДАРТНАЯ ВЫГРУЗКА ───────────────────────────────────────────────────────────────────
+# ─── СТАНДАРТНАЯ ВЫГРУЗКА ─────────────────────────────────────────────────────────────────────
 
 @report_bp.route('/report')
 @login_required
@@ -200,7 +200,7 @@ def report():
                      mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 
-# ─── ЕЖЕНЕДЕЛЬНАЯ ВЫГРУЗКА ДЛЯ МИНЭК ───────────────────────────────────────────────────────
+# ─── ЕЖЕНЕДЕЛЬНАЯ ВЫГРУЗКА ДЛЯ МИНЭК ───────────────────────────────────────────────────────────────────
 
 @report_bp.route('/report/minek')
 @login_required
@@ -388,7 +388,7 @@ def report_minek():
                      mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 
-# ─── ПОЛНАЯ ВЫГРУЗКА БАЗЫ (для дозаполнения и импорта) ───────────────────────────────────────────────
+# ─── ПОЛНАЯ ВЫГРУЗКА БАЗЫ (для дозаполнения и импорта) ───────────────────────────────────────────────────────
 
 @report_bp.route('/export/full')
 @login_required
@@ -408,6 +408,17 @@ def export_full():
         LEFT JOIN result_types  rt  ON r.result_type_id  = rt.id
         ORDER BY r.id
     """).fetchall()
+
+    # Маппинг статусов для выгрузки
+    STATUS_EXPORT_MAP = {
+        'draft':             'Черновик',
+        'registered':        'Зарегистрировано',
+        'in_progress':       'В работе',
+        'under_review':      'На проверке',
+        'ready_to_send':     'Готово к отправке',
+        'sent_to_applicant': 'Документы отправлены',
+        'closed':            'Закрыто',
+    }
 
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -460,11 +471,14 @@ def export_full():
         row_keys = list(r.keys())
         for ci, (field, _) in enumerate(COLS, 1):
             val = r[field] if field in row_keys else None
+            # Статус выводим человекочитаемым названием
+            if field == 'status' and val:
+                val = STATUS_EXPORT_MAP.get(val, val)
             c = ws.cell(row=ri, column=ci, value=val)
             c.border = br
             c.alignment = Alignment(vertical='center', wrap_text=(ci == len(COLS)))
 
-    col_widths = [8, 16, 14, 12, 35, 25, 14, 30, 22, 16, 24, 14, 12, 10, 12, 24, 16, 20, 22, 14, 28, 18, 14, 18, 28, 30]
+    col_widths = [8, 16, 14, 16, 35, 25, 14, 30, 22, 16, 24, 14, 12, 10, 12, 24, 16, 20, 22, 14, 28, 18, 14, 18, 28, 30]
     for ci, w in enumerate(col_widths[:len(COLS)], 1):
         ws.column_dimensions[get_column_letter(ci)].width = w
 
@@ -481,7 +495,19 @@ def export_full():
                      mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 
-# ─── ИМПОРТ ОБНОВЛЁННОГО EXCEL ────────────────────────────────────────────────────────────────────
+# ─── ИМПОРТ ОБНОВЛЁННОГО EXCEL ──────────────────────────────────────────────────────────────────────────────────
+
+# Маппинг названий статусов из Excel → значения БД
+STATUS_IMPORT_MAP = {
+    'Черновик':             'draft',
+    'Зарегистрировано':      'registered',
+    'В работе':              'in_progress',
+    'На проверке':           'under_review',
+    'Готово к отправке':     'ready_to_send',
+    'Документы отправлены':  'sent_to_applicant',
+    'Закрыто':               'closed',
+}
+
 
 @report_bp.route('/import/full', methods=['POST'])
 @login_required
@@ -504,6 +530,7 @@ def import_full():
     headers = [str(c.value).strip() if c.value else '' for c in next(ws.iter_rows(min_row=1, max_row=1))]
 
     COL_MAP = {
+        '№ обращения':      'request_number',
         'Дата обращения':        'request_date',
         'Полное наименование':   'applicant_full_name',
         'Краткое наименование':  'applicant_short_name',
@@ -513,14 +540,14 @@ def import_full():
         'Телефон':               'contact_phone',
         'E-mail':                'contact_email',
         'Инвестиции (млн руб.)': 'investment_total',
-        'Рабочих мест':          'jobs_total',
+        'Рабочих мест':         'jobs_total',
         'Площадь (га)':          'site_area_ha',
-        'Застройка (м²)':        'site_build_area_m2',
+        'Застройка (м²)':         'site_build_area_m2',
         'Районы':               'preferred_districts',
-        'Источник':              'source_type',
+        'Источник':               'source_type',
         'Дата обратной связи':   'feedback_date',
-        'Входящий номер':        'incoming_number',
-        'Дата ответа':           'answer_date',
+        'Входящий номер':       'incoming_number',
+        'Дата ответа':            'answer_date',
         'Способ ответа':          'answer_method',
         'Примечания к ответу':   'answer_notes',
         'Доп. информация':       'additional_info',
@@ -530,11 +557,16 @@ def import_full():
         'Итоги работы':      ('result_type_id',  'result_types'),
         'Ответственный':     ('assigned_to',      'users'),
     }
+    # Колонка Статус обрабатывается отдельно через STATUS_IMPORT_MAP
+    STATUS_COL = 'Статус'
 
     try:
         id_idx = headers.index('ID (не менять)')
     except ValueError:
-        return jsonify({'error': 'Колонка «ID (не менять)» не найдена. Используйте файл из «Скачать базу»'}), 400
+        return jsonify({'error': 'Колонка «ИД (не менять)» не найдена. Используйте файл из «Скачать базу»'}), 400
+
+    # Индекс колонки Статус (может отсутствовать в старых файлах)
+    status_idx = headers.index(STATUS_COL) if STATUS_COL in headers else None
 
     conn = get_db()
 
@@ -556,12 +588,21 @@ def import_full():
     for row in ws.iter_rows(min_row=2, values_only=True):
         raw_id = row[id_idx]
 
-        # ── Новая строка без ID → создаём новое обращение ──────────────────
+        # ── Читаем статус из колонки ───────────────────────────────────────────
+        row_status = None
+        if status_idx is not None:
+            raw_status = row[status_idx]
+            if raw_status and str(raw_status).strip():
+                row_status = STATUS_IMPORT_MAP.get(str(raw_status).strip())
+
+        # ── Новая строка без ID → создаём новое обращение ───────────────────
         if not raw_id:
             new_vals = {}
             for ci, header in enumerate(headers):
                 if ci == id_idx:
                     continue
+                if status_idx is not None and ci == status_idx:
+                    continue  # статус читаем выше, не через COL_MAP
                 cell_val = row[ci]
                 if header in COL_MAP:
                     field = COL_MAP[header]
@@ -578,6 +619,8 @@ def import_full():
                             )
                         else:
                             new_vals[field] = fk_id
+            # Статус: из файла или дефолт registered
+            new_vals['status'] = row_status or 'registered'
             if new_vals:
                 cols_ins = ', '.join(new_vals.keys()) + ', created_by, created_at, updated_at'
                 ph_ins   = ', '.join(['?'] * len(new_vals)) + ', ?, ?, ?'
@@ -592,8 +635,8 @@ def import_full():
             else:
                 skipped += 1
             continue
-        # ───────────────────────────────────────────────────────────────────
 
+        # ── Строка с ID → обновляем существующую ───────────────────────────
         try:
             rid = int(raw_id)
         except (ValueError, TypeError):
@@ -607,9 +650,16 @@ def import_full():
 
         updates = {}
 
+        # Статус обновляем если пришёл из файла
+        if row_status:
+            if overwrite or not existing['status']:
+                updates['status'] = row_status
+
         for ci, header in enumerate(headers):
             if ci == id_idx:
                 continue
+            if status_idx is not None and ci == status_idx:
+                continue  # уже обработано выше
             cell_val = row[ci]
 
             if header in COL_MAP:
@@ -655,7 +705,7 @@ def import_full():
     return jsonify({'updated': updated, 'created': created, 'skipped': skipped, 'errors': errors})
 
 
-# ─── AUTOSAVE / WAL CHECKPOINT ──────────────────────────────────────────────────────────────────────────────────
+# ─── AUTOSAVE / WAL CHECKPOINT ──────────────────────────────────────────────────────────────────────────────────────────
 
 @report_bp.route('/autosave', methods=['POST'])
 @login_required
