@@ -8,29 +8,34 @@
     <span class="text-muted small fw-bold">Период:</span>
     {% for pk,pl in [('today','Сегодня'),('week','Неделя'),('month','Месяц'),
                  ('quarter','Квартал'),('year','Год'),('all','Всё время')] %}
-	<a href="{{ url_for('requests.dashboard', period=pk) }}"
-		class="btn btn-sm {{ 'btn-primary' if dash.period==pk else 'btn-outline-secondary' }}">
-	   {{ pl }}
-</a>
-{% endfor %}
+    <a href="{{ url_for('requests.dashboard', period=pk) }}"
+       class="btn btn-sm {{ 'btn-primary' if dash.period==pk else 'btn-outline-secondary' }}">
+      {{ pl }}
+    </a>
+    {% endfor %}
   </div>
 </div>
 
 {# ===== ROW 1: КАРТОЧКИ СТАТУСОВ ===== #}
+{# Отображаются ВСЕ записи без фильтра периода #}
 <div class="row g-2 mb-3">
-  {% for label,val,color,icon in [
-    ('Всего',dash.total,'#1B5E7B','bi-inbox'),
-    ('Черновик',dash.draft,'#6c757d','bi-pencil-square'),
-    ('На проверке',dash.review,'#fd7e14','bi-hourglass-split'),
-    ('В работе',dash.accepted,'#0d6efd','bi-briefcase'),
-    ('Отвечено',dash.answered,'#198754','bi-check2-circle')] %}
+  {% for label, val, color, icon in [
+    ('Всего',              dash.total,             '#1B5E7B', 'bi-inbox'),
+    ('Черновик',           dash.draft,             '#6c757d', 'bi-pencil-square'),
+    ('Зарегистрировано',  dash.registered,        '#0dcaf0', 'bi-hash'),
+    ('В работе',          dash.in_progress,       '#0d6efd', 'bi-person-workspace'),
+    ('На проверке',       dash.under_review,      '#fd7e14', 'bi-search'),
+    ('Готово к отпр.',  dash.ready_to_send,     '#20c997', 'bi-check2-circle'),
+    ('Отправлено',         dash.sent_to_applicant, '#198754', 'bi-envelope-check'),
+    ('Закрыто',            dash.closed,            '#495057', 'bi-archive'),
+  ] %}
   <div class="col-6 col-sm-4 col-md">
-    <div class="card py-2 px-3" style="border-left:4px solid {{color}}">
+    <div class="card py-2 px-3 h-100" style="border-left:4px solid {{ color }}">
       <div class="d-flex align-items-center gap-2">
-        <i class="bi {{icon}}" style="font-size:1.3rem;color:{{color}}"></i>
+        <i class="bi {{ icon }}" style="font-size:1.3rem;color:{{ color }}"></i>
         <div>
-          <div class="fw-bold fs-4" style="color:{{color}};line-height:1">{{val}}</div>
-          <div class="text-muted" style="font-size:11px">{{label}}</div>
+          <div class="fw-bold fs-4" style="color:{{ color }};line-height:1">{{ val }}</div>
+          <div class="text-muted" style="font-size:11px">{{ label }}</div>
         </div>
       </div>
     </div>
@@ -63,7 +68,7 @@
     <div class="card p-2 text-center h-100" style="border-left:4px solid #fd7e14">
       <div class="text-muted" style="font-size:11px">Активных с просрочкой</div>
       <div class="fw-bold fs-4" style="color:#fd7e14">{{ kpi.overdue_active }}</div>
-      <div style="font-size:11px" class="text-muted">ещё не отвечено</div>
+      <div style="font-size:11px" class="text-muted">ещё не закрыто</div>
     </div>
   </div>
   <div class="col-md-3">
@@ -196,7 +201,6 @@ var buildData   = {{ dash.build_data    | tojson }};
 var siteType    = {{ dash.site_type     | tojson }};
 var sourceData  = {{ dash.source_chart  | tojson }};
 
-// Тренд
 new Chart(document.getElementById('chartTrend'),{
   type:'line',
   data:{labels:trendData.labels,datasets:[{label:'Обращений',data:trendData.values,
@@ -205,7 +209,6 @@ new Chart(document.getElementById('chartTrend'),{
   options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{stepSize:1}}},responsive:true,maintainAspectRatio:true}
 });
 
-// Типы площадок — пончик
 new Chart(document.getElementById('chartSiteType'),{
   type:'doughnut',
   data:{labels:['Только свободная','Только существующее','Оба варианта'],
@@ -214,7 +217,6 @@ new Chart(document.getElementById('chartSiteType'),{
   options:{plugins:{legend:{position:'bottom',labels:{font:{size:11}}}},responsive:true,maintainAspectRatio:true,cutout:'55%'}
 });
 
-// Источники — пончик
 if(document.getElementById('chartSource') && sourceData.labels.length){
   new Chart(document.getElementById('chartSource'),{
     type:'doughnut',
@@ -225,7 +227,6 @@ if(document.getElementById('chartSource') && sourceData.labels.length){
   });
 }
 
-// По сотрудникам
 if(document.getElementById('chartEmp') && empData.labels.length){
   new Chart(document.getElementById('chartEmp'),{
     type:'bar',
@@ -235,7 +236,6 @@ if(document.getElementById('chartEmp') && empData.labels.length){
   });
 }
 
-// По районам
 if(document.getElementById('chartDist') && distData.labels.length){
   new Chart(document.getElementById('chartDist'),{
     type:'bar',
@@ -244,14 +244,12 @@ if(document.getElementById('chartDist') && distData.labels.length){
   });
 }
 
-// Площадь участка
 new Chart(document.getElementById('chartArea'),{
   type:'bar',
   data:{labels:areaData.map(d=>d.label),datasets:[{data:areaData.map(d=>d.count),backgroundColor:'#1B5E7B',borderRadius:4}]},
   options:{plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.raw+' запр.'}}},scales:{y:{beginAtZero:true,ticks:{stepSize:1}}},responsive:true,maintainAspectRatio:true}
 });
 
-// Площадь застройки
 new Chart(document.getElementById('chartBuild'),{
   type:'bar',
   data:{labels:buildData.map(d=>d.label),datasets:[{data:buildData.map(d=>d.count),backgroundColor:'#0d6efd',borderRadius:4}]},
