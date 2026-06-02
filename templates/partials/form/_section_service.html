@@ -75,8 +75,10 @@
       <div class="form-text">Можно выбрать несколько</div>
 
       <div id="incomingNumberBlock" class="mt-2" style="display:none">
-        <label class="form-label fw-bold" style="font-size:12px">№ входящего обращения</label>
-        <input type="text" name="incoming_number" class="form-control form-control-sm"
+        <label class="form-label fw-bold" style="font-size:12px"
+               id="incomingNumberLabel">№ входящего обращения</label>
+        <input type="text" name="incoming_number" id="incoming_number"
+               class="form-control form-control-sm"
                placeholder="Например: ВХ-2026-0042"
                value="{{ req.incoming_number or '' if req else '' }}">
       </div>
