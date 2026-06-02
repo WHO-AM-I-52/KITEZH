@@ -12,6 +12,9 @@
   'closed':           ('bi-archive',          'Закрыто'),
 } -%}
 
+{# ── Флаг права удаления ─────────────────────────────────────────────── #}
+{%- set can_delete = (session.role == 'admin' or session.perm_can_delete) -%}
+
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h5 class="mb-0" style="color:#1B5E7B"><i class="bi bi-list-ul me-1"></i>Обращения на подбор ЗУ</h5>
   <a href="{{ url_for('requests.new_request') }}" class="btn btn-sm" style="background:#1B5E7B;color:#fff">
@@ -198,10 +201,16 @@
 </div>
 
 {# ===== ТАБЛИЦА ===== #}
+<form id="bulk-delete-form" method="post" action="{{ url_for('requests.bulk_delete_requests') }}">
 <div class="table-responsive">
   <table class="table table-hover table-bordered align-middle mb-0" style="font-size:12px">
     <thead>
       <tr>
+        {% if can_delete %}
+        <th style="background:#1B5E7B;color:#fff;width:32px" class="text-center">
+          <input type="checkbox" id="select-all" class="form-check-input mt-0" title="Выбрать все">
+        </th>
+        {% endif %}
         <th style="background:#1B5E7B;color:#fff;width:32px"></th>
         <th style="background:#1B5E7B;color:#fff">№</th>
         <th style="background:#1B5E7B;color:#fff">Дата</th>
@@ -219,7 +228,7 @@
     </thead>
     <tbody id="requests-tbody">
       {% if not requests %}
-      <tr><td colspan="13" class="text-center text-muted py-5">
+      <tr><td colspan="{{ 14 if can_delete else 13 }}" class="text-center text-muted py-5">
         <i class="bi bi-inbox" style="font-size:2rem;display:block;margin-bottom:8px"></i>Обращений не найдено
       </td></tr>
       {% endif %}
@@ -231,6 +240,11 @@
           data-employee="{{ r.assigned_name or r.employee_name or '' }}"
           data-date="{{ r.request_date[:10] if r.request_date else '' }}"
           data-favorite="{{ '1' if r.favorite_flag else '0' }}">
+        {% if can_delete %}
+        <td class="text-center" onclick="event.stopPropagation()">
+          <input type="checkbox" name="ids[]" value="{{ r.id }}" class="form-check-input mt-0 row-checkbox">
+        </td>
+        {% endif %}
         <td class="text-center">
           <form method="post" action="{{ url_for('requests.toggle_favorite', rid=r.id) }}">
             <button type="submit" class="btn btn-link p-0 border-0" title="{{ 'Убрать из избранного' if r.favorite_flag else 'В избранное' }}">
@@ -268,7 +282,7 @@
         <td class="text-nowrap">
           <a href="{{ url_for('requests.view_request', rid=r.id) }}" class="btn btn-sm btn-outline-primary py-0 px-1" title="Просмотр"><i class="bi bi-eye"></i></a>
           <a href="{{ url_for('requests.edit_request', rid=r.id) }}" class="btn btn-sm btn-outline-secondary py-0 px-1" title="Редактировать"><i class="bi bi-pencil"></i></a>
-          {% if session.role=='admin' %}
+          {% if can_delete %}
           <form method="post" action="{{ url_for('requests.delete_request', rid=r.id) }}" class="d-inline" onsubmit="return confirm('Удалить обращение?')">
             <button class="btn btn-sm btn-outline-danger py-0 px-1" title="Удалить"><i class="bi bi-trash"></i></button>
           </form>
@@ -279,6 +293,51 @@
     </tbody>
   </table>
 </div>
+</form>
+
+{# ===== ПАНЕЛЬ МАССОВОГО УДАЛЕНИЯ ===== #}
+{% if can_delete %}
+<div id="bulk-panel" class="d-none position-fixed bottom-0 start-50 translate-middle-x mb-3"
+     style="z-index:1050;min-width:320px">
+  <div class="card shadow border-danger">
+    <div class="card-body py-2 px-3 d-flex align-items-center gap-3">
+      <span class="text-danger fw-bold">
+        <i class="bi bi-check2-square me-1"></i>
+        Выбрано: <span id="bulk-count">0</span>
+      </span>
+      <button type="button" class="btn btn-danger btn-sm ms-auto"
+              data-bs-toggle="modal" data-bs-target="#bulkDeleteModal">
+        <i class="bi bi-trash me-1"></i>Удалить выбранные
+      </button>
+      <button type="button" id="bulk-cancel" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-x"></i>
+      </button>
+    </div>
+  </div>
+</div>
+
+{# ===== МОДАЛКА ПОДТВЕРЖДЕНИЯ ===== #}
+<div class="modal fade" id="bulkDeleteModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-danger text-white">
+        <h6 class="modal-title"><i class="bi bi-exclamation-triangle me-2"></i>Подтверждение удаления</h6>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-1">Вы собираетесь удалить <strong id="modal-count">0</strong> обращений.</p>
+        <p class="text-danger small mb-0"><i class="bi bi-exclamation-circle me-1"></i>Действие необратимо. Восстановление невозможно.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Отмена</button>
+        <button type="button" id="bulk-confirm-btn" class="btn btn-danger btn-sm">
+          <i class="bi bi-trash me-1"></i>Удалить
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
 
 {# ===== ФУТЕР ===== #}
 <div class="mt-2 d-flex align-items-center flex-wrap gap-3">
@@ -377,6 +436,7 @@
 (function () {
   'use strict';
 
+  // ── Импорт Excel ────────────────────────────────────────────────────────
   var importBtn = document.getElementById('importSubmitBtn');
   if (importBtn) {
     importBtn.addEventListener('click', function () {
@@ -417,7 +477,7 @@
     });
   }
 
-  // Превью строк
+  // ── Превью строк ────────────────────────────────────────────────────────
   var STATUS_LABEL = {
     draft:             'Черновик',
     registered:        'Зарегистрировано',
@@ -505,6 +565,65 @@
       destroyPop();
     }
   });
+
+  // ── Массовое удаление ───────────────────────────────────────────────────
+  var selectAll   = document.getElementById('select-all');
+  var bulkPanel   = document.getElementById('bulk-panel');
+  var bulkCount   = document.getElementById('bulk-count');
+  var modalCount  = document.getElementById('modal-count');
+  var bulkCancel  = document.getElementById('bulk-cancel');
+  var confirmBtn  = document.getElementById('bulk-confirm-btn');
+  var bulkForm    = document.getElementById('bulk-delete-form');
+
+  if (selectAll && bulkPanel) {
+
+    function updatePanel() {
+      var checked = document.querySelectorAll('.row-checkbox:checked').length;
+      bulkCount.textContent  = checked;
+      if (modalCount) modalCount.textContent = checked;
+      if (checked > 0) {
+        bulkPanel.classList.remove('d-none');
+      } else {
+        bulkPanel.classList.add('d-none');
+        selectAll.checked       = false;
+        selectAll.indeterminate = false;
+      }
+      var total = document.querySelectorAll('.row-checkbox').length;
+      if (checked === 0) {
+        selectAll.checked = false; selectAll.indeterminate = false;
+      } else if (checked === total) {
+        selectAll.checked = true; selectAll.indeterminate = false;
+      } else {
+        selectAll.checked = false; selectAll.indeterminate = true;
+      }
+    }
+
+    selectAll.addEventListener('change', function() {
+      document.querySelectorAll('.row-checkbox').forEach(function(cb) {
+        cb.checked = selectAll.checked;
+      });
+      updatePanel();
+    });
+
+    document.querySelectorAll('.row-checkbox').forEach(function(cb) {
+      cb.addEventListener('change', updatePanel);
+    });
+
+    if (bulkCancel) {
+      bulkCancel.addEventListener('click', function() {
+        document.querySelectorAll('.row-checkbox').forEach(function(cb) { cb.checked = false; });
+        selectAll.checked = false;
+        selectAll.indeterminate = false;
+        bulkPanel.classList.add('d-none');
+      });
+    }
+
+    if (confirmBtn && bulkForm) {
+      confirmBtn.addEventListener('click', function() {
+        bulkForm.submit();
+      });
+    }
+  }
 
 })();
 </script>
