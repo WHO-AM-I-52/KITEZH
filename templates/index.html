@@ -3,13 +3,13 @@
 
 {# ── Карта кодов статусов #53 ─────────────────────────────────────────── #}
 {%- set STATUS_MAP = {
-  'draft':            ('secondary', 'bi-pencil-square',    'Черновик'),
-  'registered':       ('info',      'bi-hash',             'Зарегистрировано'),
-  'in_progress':      ('primary',   'bi-person-workspace', 'В работе'),
-  'under_review':     ('warning',   'bi-search',           'На проверке'),
-  'ready_to_send':    ('success',   'bi-check2-circle',    'Готово к отправке'),
-  'sent_to_applicant':('teal',      'bi-envelope-check',   'Документы отправлены'),
-  'closed':           ('dark',      'bi-archive',          'Закрыто'),
+  'draft':            ('bi-pencil-square',    'Черновик'),
+  'registered':       ('bi-hash',             'Зарегистрировано'),
+  'in_progress':      ('bi-person-workspace', 'В работе'),
+  'under_review':     ('bi-search',           'На проверке'),
+  'ready_to_send':    ('bi-check2-circle',    'Готово к отправке'),
+  'sent_to_applicant':('bi-envelope-check',   'Документы отправлены'),
+  'closed':           ('bi-archive',          'Закрыто'),
 } -%}
 
 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -224,7 +224,7 @@
       </td></tr>
       {% endif %}
       {% for r in requests %}
-      {%- set st = STATUS_MAP.get(r.status, ('secondary','bi-question-circle', r.status or '?')) -%}
+      {%- set st = STATUS_MAP.get(r.status, ('bi-question-circle', r.status or '?')) -%}
       <tr class="{{ 'table-danger' if r.overdue else '' }}"
           data-preview-id="{{ r.id }}"
           data-status="{{ r.status }}"
@@ -249,8 +249,8 @@
           {% endif %}
         </td>
         <td>
-          <span class="badge bg-{{ st[0] }}" {% if st[0] in ('warning', 'info') %}style="color:#212529"{% endif %}>
-            <i class="bi {{ st[1] }} me-1"></i>{{ st[2] }}
+          <span class="badge status-{{ r.status }}">
+            <i class="bi {{ st[0] }} me-1"></i>{{ st[1] }}
           </span>
           {% if r.overdue %}<i class="bi bi-exclamation-circle text-danger ms-1" title="Просрочено"></i>{% endif %}
         </td>
@@ -414,19 +414,6 @@
   }
 
   // Превью строк
-  var STATUS_COLOR = {
-    draft:             '#6c757d',
-    registered:        '#0dcaf0',
-    in_progress:       '#0d6efd',
-    under_review:      '#fd7e14',
-    ready_to_send:     '#198754',
-    sent_to_applicant: '#6c757d',
-    closed:            '#212529'
-  };
-  var STATUS_TEXT_COLOR = {
-    registered:  '#212529',
-    under_review: '#212529'
-  };
   var STATUS_LABEL = {
     draft:             'Черновик',
     registered:        'Зарегистрировано',
@@ -443,13 +430,11 @@
   var timer      = null;
 
   function buildHtml(d) {
-    var bg = STATUS_COLOR[d.status] || '#333';
-    var fg = STATUS_TEXT_COLOR[d.status] || '#fff';
-    var l  = STATUS_LABEL[d.status] || d.status || '—';
+    var l = STATUS_LABEL[d.status] || d.status || '—';
     return '<table class="table table-sm mb-0" style="font-size:12px;min-width:220px">'
       + '<tr><th class="text-muted fw-normal pe-2">№</th><td class="fw-bold">' + (d.number||'—') + '</td></tr>'
       + '<tr><th class="text-muted fw-normal">Заявитель</th><td>' + (d.applicant||'—') + '</td></tr>'
-      + '<tr><th class="text-muted fw-normal">Статус</th><td><span class="badge" style="background:' + bg + ';color:' + fg + '">' + l + '</span></td></tr>'
+      + '<tr><th class="text-muted fw-normal">Статус</th><td><span class="badge status-' + (d.status||'') + '">' + l + '</span></td></tr>'
       + '<tr><th class="text-muted fw-normal">Контакт</th><td>' + (d.contact||'—') + '</td></tr>'
       + '<tr><th class="text-muted fw-normal">Тел.</th><td>' + (d.phone||'—') + '</td></tr>'
       + '<tr><th class="text-muted fw-normal">Изменено</th><td>' + (d.updated_at||'—') + '</td></tr>'
