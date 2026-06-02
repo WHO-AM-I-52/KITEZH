@@ -47,13 +47,26 @@ function previewFiles(input) {
   });
 }
 
-// ── Источник → поле № входящего ──
+// ── Источник → поле № входящего / № письма СЭДО ──
 function toggleIncomingNumber() {
-  const checked = document.querySelectorAll('input[name="source_type"]:checked');
-  const mailSrc = ['Письмо', 'Почта', 'Входящий документ'];
-  const show = Array.from(checked).some(c => mailSrc.some(s => c.value.includes(s)));
-  const block = document.getElementById('incomingNumberBlock');
-  if (block) block.style.display = show ? '' : 'none';
+  const checked = Array.from(document.querySelectorAll('input[name="source_type"]:checked'));
+  const values  = checked.map(c => c.value);
+  const isSedo  = values.some(v => v === 'СЭДО');
+  const isMail  = values.some(v => ['Письмо', 'Почта', 'Входящий документ'].some(s => v.includes(s)));
+  const show    = isSedo || isMail;
+
+  const block   = document.getElementById('incomingNumberBlock');
+  const label   = document.getElementById('incomingNumberLabel');
+  const input   = document.getElementById('incoming_number');
+
+  if (!block) return;
+  block.style.display = show ? '' : 'none';
+
+  if (label) label.textContent = isSedo ? '№ письма СЭДО *' : '№ входящего обращения';
+  if (input) {
+    input.required    = isSedo;
+    input.placeholder = isSedo ? 'Например: СЭДО-2026-0042' : 'Например: ВХ-2026-0042';
+  }
 }
 toggleIncomingNumber();
 
