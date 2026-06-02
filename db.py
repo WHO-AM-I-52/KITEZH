@@ -232,6 +232,12 @@ def _migrate(conn):
             "ALTER TABLE requests ADD COLUMN applicant_feedback_at TEXT"
         )
 
+    # ─ Проект взят на сопровождение (фиксируется при закрытии обращения)
+    if not _has_column(conn, 'requests', 'taken_under_supervision'):
+        conn.execute(
+            "ALTER TABLE requests ADD COLUMN taken_under_supervision INTEGER NOT NULL DEFAULT 0"
+        )
+
     # ─ Маппинг старых статусов → новые (идемпотентный)
     conn.execute(
         "UPDATE requests SET status='registered'        WHERE status='review'"

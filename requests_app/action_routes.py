@@ -16,7 +16,7 @@ _VALID_STATUSES = (
 # Дополнительные поля, которые могут приходить вместе со сменой статуса
 _STATUS_EXTRA_FIELDS = {
     'sent_to_applicant': ['sent_to_applicant_at', 'send_method'],
-    'closed':            ['applicant_feedback', 'applicant_feedback_at', 'result_type_id'],
+    'closed':            ['applicant_feedback', 'applicant_feedback_at', 'result_type_id', 'taken_under_supervision'],
     'under_review':      ['reviewer_id', 'reviewer_not_in_system', 'reviewer_name_external'],
 }
 
@@ -161,8 +161,18 @@ def change_status(rid):
                     upd_vals.append(int(val) if val else None)
                 except (ValueError, TypeError):
                     upd_vals.append(None)
+            elif field == 'taken_under_supervision':
+                # checkbox: приходит '1' если отмечен, иначе отсутствует в форме
+                upd_vals.append(1 if val == '1' else 0)
             else:
                 upd_vals.append(val or None)
+
+    # При переходе в closed без чекбокса — явно сбрасываем в 0
+    if ns == 'closed' and 'taken_under_supervision' not in [
+        f.split('=')[0] for f in upd_fields
+    ]:
+        upd_fields.append('taken_under_supervision=?')
+        upd_vals.append(0)
 
     # При переходе в registered — фиксируем дату регистрации
     if ns == 'registered':

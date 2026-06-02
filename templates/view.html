@@ -157,6 +157,12 @@
       {{ field('Способ отправки', req.send_method) }}
       {{ field('ОБ от заявителя', req.applicant_feedback) }}
       {{ field('Дата ОБ от заявителя', req.applicant_feedback_at) }}
+      {% if req.taken_under_supervision %}
+      <tr>
+        <td class="text-muted" style="width:45%">Сопровождение</td>
+        <td><span class="badge bg-success"><i class="bi bi-briefcase-fill me-1"></i>Проект взят на сопровождение</span></td>
+      </tr>
+      {% endif %}
       {# Итоги работы — отображается после закрытия #}
       {% if req.result_type_name %}
       <tr>
@@ -218,7 +224,7 @@
   </div>
   <div class="card-body">
     <form method="post"
-          action="{{ url_for('requests.reviewer_decision', rid=req.id) }}">
+          action="{{ url_for('requests.reviewer_decision, rid=req.id) }}">
       <div class="mb-3">
         <label class="form-label">Комментарий</label>
         <textarea name="reviewer_comment" class="form-control" rows="2"
@@ -300,6 +306,17 @@
           <label class="form-label">Обратная связь <span class="text-danger">*</span></label>
           <textarea name="applicant_feedback" class="form-control" rows="2" required
                     placeholder="Что ответил заявитель..."></textarea>
+        </div>
+        <div class="col-12 mt-1">
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox"
+                   name="taken_under_supervision" value="1"
+                   id="taken_under_supervision">
+            <label class="form-check-label fw-semibold" for="taken_under_supervision">
+              <i class="bi bi-briefcase-fill me-1 text-success"></i>
+              Проект взят на сопровождение
+            </label>
+          </div>
         </div>
       </div>
       <button type="submit" class="btn btn-secondary">
