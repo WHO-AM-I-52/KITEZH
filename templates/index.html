@@ -75,6 +75,7 @@
   {% if active_filter_id %}
   <input type="hidden" name="active_filter" value="{{ active_filter_id }}">
   {% endif %}
+  <input type="hidden" name="per_page" value="{{ per_page }}">
   <div class="col-md-2">
     <label class="form-label mb-1" style="font-size:12px">Дата с</label>
     <input type="date" name="date_from" class="form-control form-control-sm" value="{{ filters.get('date_from','') }}">
@@ -345,6 +346,25 @@
     <span class="badge bg-danger me-1"> </span>
     Красные строки — активные обращения старше {{dash.kpi.norm_days}} дней без ответа
   </div>
+
+  {# ── Селектор количества записей #}
+  <div class="d-flex align-items-center gap-2 small text-muted">
+    <i class="bi bi-list-ol"></i>
+    <span>Показывать по:</span>
+    <form method="get" id="per-page-form" class="d-inline">
+      {% for k,v in filters.items() %}{% if v %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endif %}{% endfor %}
+      {% if active_filter_id %}<input type="hidden" name="active_filter" value="{{ active_filter_id }}">{% endif %}
+      <input type="hidden" name="page" value="1">
+      <select name="per_page" class="form-select form-select-sm d-inline-block w-auto"
+              style="font-size:12px;padding:1px 24px 1px 6px"
+              onchange="document.getElementById('per-page-form').submit()">
+        {% for s in valid_page_sizes %}
+        <option value="{{ s }}" {{ 'selected' if per_page == s }}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    </form>
+  </div>
+
   <div class="small text-muted ms-auto">
     Показано <strong>{{ requests|length }}</strong> из <strong>{{ total_filtered }}</strong>
     {% if total_filtered != total_all %}(всего в базе: {{ total_all }}){% endif %}
@@ -354,6 +374,7 @@
   {% set qs_parts = [] %}
   {% for k,v in filters.items() %}{% if v %}{% set _ = qs_parts.append(k ~ '=' ~ v) %}{% endif %}{% endfor %}
   {% if active_filter_id %}{% set _ = qs_parts.append('active_filter=' ~ active_filter_id) %}{% endif %}
+  {% set _ = qs_parts.append('per_page=' ~ per_page) %}
   {% set qs = qs_parts | join('&') %}
   {% if qs %}{% set qs = qs ~ '&' %}{% endif %}
 
@@ -436,7 +457,7 @@
 (function () {
   'use strict';
 
-  // ── Импорт Excel ────────────────────────────────────────────────────────
+  // ── Импорт Excel
   var importBtn = document.getElementById('importSubmitBtn');
   if (importBtn) {
     importBtn.addEventListener('click', function () {
@@ -477,7 +498,7 @@
     });
   }
 
-  // ── Превью строк ────────────────────────────────────────────────────────
+  // ── Превью строк
   var STATUS_LABEL = {
     draft:             'Черновик',
     registered:        'Зарегистрировано',
@@ -566,7 +587,7 @@
     }
   });
 
-  // ── Массовое удаление ───────────────────────────────────────────────────
+  // ── Массовое удаление
   var selectAll   = document.getElementById('select-all');
   var bulkPanel   = document.getElementById('bulk-panel');
   var bulkCount   = document.getElementById('bulk-count');

@@ -9,7 +9,8 @@ from db import get_db
 from auth_utils import login_required
 from . import requests_bp
 
-PAGE_SIZE = 50
+VALID_PAGE_SIZES = (10, 25, 50, 100)
+DEFAULT_PAGE_SIZE = 50
 
 # Все допустимые статусы issue #53
 ALL_STATUSES = (
@@ -83,6 +84,12 @@ def index():
         page = max(1, int(request.args.get('page', 1)))
     except (ValueError, TypeError):
         page = 1
+    try:
+        per_page = int(request.args.get('per_page', DEFAULT_PAGE_SIZE))
+        if per_page not in VALID_PAGE_SIZES:
+            per_page = DEFAULT_PAGE_SIZE
+    except (ValueError, TypeError):
+        per_page = DEFAULT_PAGE_SIZE
 
     conn = get_db()
     dash = build_dash(conn, period)
@@ -114,11 +121,11 @@ def index():
 
     total_filtered = conn.execute(count_q, count_params).fetchone()[0]
 
-    total_pages = max(1, math.ceil(total_filtered / PAGE_SIZE))
+    total_pages = max(1, math.ceil(total_filtered / per_page))
     page        = min(page, total_pages)
-    offset      = (page - 1) * PAGE_SIZE
+    offset      = (page - 1) * per_page
 
-    reqs = conn.execute(q + f" LIMIT {PAGE_SIZE} OFFSET {offset}", params).fetchall()
+    reqs = conn.execute(q + f" LIMIT {per_page} OFFSET {offset}", params).fetchall()
 
     employees = conn.execute(
         "SELECT id,full_name FROM users WHERE role IN ('employee','admin','manager') "
@@ -152,7 +159,8 @@ def index():
         source_types=src_types, dash=dash, today_str=today.isoformat(),
         saved_filter_list=saved_filter_list, active_filter_id=active_filter_id,
         total_all=total_all, total_filtered=total_filtered, active_quick=quick,
-        page=page, total_pages=total_pages,
+        page=page, total_pages=total_pages, per_page=per_page,
+        valid_page_sizes=(10, 25, 50, 100),
         all_statuses=ALL_STATUSES,
     )
 
