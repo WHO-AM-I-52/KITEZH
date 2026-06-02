@@ -1,6 +1,6 @@
 # ╔═════════════════════════════════════════════════════════════════════════════╗
 # ║                       export_routes.py                                       ║
-# ║  v2.7: права can_export_full / can_import_full вместо role==admin            ║
+# ║  v2.8: import_full поддерживает создание новых обращений (пустой ID)         ║
 # ╚═════════════════════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, request, send_file, jsonify, session
@@ -548,14 +548,52 @@ def import_full():
     }
 
     updated = 0
+    created = 0
     skipped = 0
     errors  = []
     now     = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
     for row in ws.iter_rows(min_row=2, values_only=True):
         raw_id = row[id_idx]
+
+        # ── Новая строка без ID → создаём новое обращение ──────────────────
         if not raw_id:
+            new_vals = {}
+            for ci, header in enumerate(headers):
+                if ci == id_idx:
+                    continue
+                cell_val = row[ci]
+                if header in COL_MAP:
+                    field = COL_MAP[header]
+                    if cell_val is not None and str(cell_val).strip():
+                        new_vals[field] = str(cell_val).strip()
+                elif header in FK_MAP:
+                    field, _ = FK_MAP[header]
+                    if cell_val is not None and str(cell_val).strip():
+                        name = str(cell_val).strip()
+                        fk_id = fk_lookup[field].get(name)
+                        if fk_id is None:
+                            errors.append(
+                                f'Новое обращение: «{name}» не найдено в справочнике «{header}»'
+                            )
+                        else:
+                            new_vals[field] = fk_id
+            if new_vals:
+                cols_ins = ', '.join(new_vals.keys()) + ', created_by, created_at, updated_at'
+                ph_ins   = ', '.join(['?'] * len(new_vals)) + ', ?, ?, ?'
+                ins_vals = list(new_vals.values()) + [session['user_id'], now, now]
+                cursor = conn.execute(
+                    f'INSERT INTO requests ({cols_ins}) VALUES ({ph_ins})', ins_vals
+                )
+                new_id = cursor.lastrowid
+                log_action(conn, session['user_id'], 'import_xlsx_create', new_id,
+                           'Импорт Excel: создано новое обращение')
+                created += 1
+            else:
+                skipped += 1
             continue
+        # ───────────────────────────────────────────────────────────────────
+
         try:
             rid = int(raw_id)
         except (ValueError, TypeError):
@@ -614,7 +652,7 @@ def import_full():
     conn.commit()
     conn.close()
 
-    return jsonify({'updated': updated, 'skipped': skipped, 'errors': errors})
+    return jsonify({'updated': updated, 'created': created, 'skipped': skipped, 'errors': errors})
 
 
 # ─── AUTOSAVE / WAL CHECKPOINT ──────────────────────────────────────────────────────────────────────────────────
