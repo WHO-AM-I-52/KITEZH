@@ -1,6 +1,6 @@
 # ╔═════════════════════════════════════════════════════════════════════════════╗
 # ║                       export_routes.py                                       ║
-# ║  v2.9: импорт статуса из Excel, дефолт registered для новых         ║
+# ║  v3.0: дедупликация при импорте (ИНН+проект / ФИО+дата)           ║
 # ╚═════════════════════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, request, send_file, jsonify, session
@@ -388,7 +388,7 @@ def report_minek():
                      mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 
-# ─── ПОЛНАЯ ВЫГРУЗКА БАЗЫ (для дозаполнения и импорта) ───────────────────────────────────────────────────────
+# ─── ПОЛНАЯ ВЫГРУЗКА БАЗЫ ─────────────────────────────────────────────────────────────────────────
 
 @report_bp.route('/export/full')
 @login_required
@@ -409,7 +409,6 @@ def export_full():
         ORDER BY r.id
     """).fetchall()
 
-    # Маппинг статусов для выгрузки
     STATUS_EXPORT_MAP = {
         'draft':             'Черновик',
         'registered':        'Зарегистрировано',
@@ -471,7 +470,6 @@ def export_full():
         row_keys = list(r.keys())
         for ci, (field, _) in enumerate(COLS, 1):
             val = r[field] if field in row_keys else None
-            # Статус выводим человекочитаемым названием
             if field == 'status' and val:
                 val = STATUS_EXPORT_MAP.get(val, val)
             c = ws.cell(row=ri, column=ci, value=val)
@@ -530,16 +528,16 @@ def import_full():
     headers = [str(c.value).strip() if c.value else '' for c in next(ws.iter_rows(min_row=1, max_row=1))]
 
     COL_MAP = {
-        '№ обращения':      'request_number',
+        '№ обращения':          'request_number',
         'Дата обращения':        'request_date',
         'Полное наименование':   'applicant_full_name',
         'Краткое наименование':  'applicant_short_name',
-        'ИНН':                   'applicant_inn',
+        'ИНН':                       'applicant_inn',
         'Название проекта':      'project_name',
         'Контактное лицо':       'contact_person',
         'Телефон':               'contact_phone',
-        'E-mail':                'contact_email',
-        'Инвестиции (млн руб.)': 'investment_total',
+        'E-mail':                    'contact_email',
+        'Инвестиции (млн руб.)':   'investment_total',
         'Рабочих мест':         'jobs_total',
         'Площадь (га)':          'site_area_ha',
         'Застройка (м²)':         'site_build_area_m2',
@@ -555,9 +553,8 @@ def import_full():
     FK_MAP = {
         'Предмет обращения': ('subject_type_id', 'subject_types'),
         'Итоги работы':      ('result_type_id',  'result_types'),
-        'Ответственный':     ('assigned_to',      'users'),
+        'Ответственный':     ('assigned_to',     'users'),
     }
-    # Колонка Статус обрабатывается отдельно через STATUS_IMPORT_MAP
     STATUS_COL = 'Статус'
 
     try:
@@ -565,7 +562,6 @@ def import_full():
     except ValueError:
         return jsonify({'error': 'Колонка «ИД (не менять)» не найдена. Используйте файл из «Скачать базу»'}), 400
 
-    # Индекс колонки Статус (может отсутствовать в старых файлах)
     status_idx = headers.index(STATUS_COL) if STATUS_COL in headers else None
 
     conn = get_db()
@@ -595,14 +591,14 @@ def import_full():
             if raw_status and str(raw_status).strip():
                 row_status = STATUS_IMPORT_MAP.get(str(raw_status).strip())
 
-        # ── Новая строка без ID → создаём новое обращение ───────────────────
+        # ── Новая строка без ID ──────────────────────────────────────────────
         if not raw_id:
             new_vals = {}
             for ci, header in enumerate(headers):
                 if ci == id_idx:
                     continue
                 if status_idx is not None and ci == status_idx:
-                    continue  # статус читаем выше, не через COL_MAP
+                    continue
                 cell_val = row[ci]
                 if header in COL_MAP:
                     field = COL_MAP[header]
@@ -614,29 +610,65 @@ def import_full():
                         name = str(cell_val).strip()
                         fk_id = fk_lookup[field].get(name)
                         if fk_id is None:
-                            errors.append(
-                                f'Новое обращение: «{name}» не найдено в справочнике «{header}»'
-                            )
+                            errors.append(f'Новое: «{name}» не найдено в справочнике «{header}»')
                         else:
                             new_vals[field] = fk_id
-            # Статус: из файла или дефолт registered
+
             new_vals['status'] = row_status or 'registered'
-            if new_vals:
-                cols_ins = ', '.join(new_vals.keys()) + ', created_by, created_at, updated_at'
-                ph_ins   = ', '.join(['?'] * len(new_vals)) + ', ?, ?, ?'
-                ins_vals = list(new_vals.values()) + [session['user_id'], now, now]
-                cursor = conn.execute(
-                    f'INSERT INTO requests ({cols_ins}) VALUES ({ph_ins})', ins_vals
-                )
-                new_id = cursor.lastrowid
-                log_action(conn, session['user_id'], 'import_xlsx_create', new_id,
-                           'Импорт Excel: создано новое обращение')
-                created += 1
+
+            # ── ДЕДУПЛИКАЦИЯ: ИНН + проект или ФИО + дата ──────────────────
+            existing_dup = None
+            inn  = new_vals.get('applicant_inn', '').strip()
+            proj = new_vals.get('project_name', '').strip()
+            name = new_vals.get('applicant_full_name', '').strip()
+            dt   = new_vals.get('request_date', '').strip()
+
+            if inn and proj:
+                existing_dup = conn.execute(
+                    'SELECT id FROM requests WHERE applicant_inn=? AND project_name=?',
+                    (inn, proj)
+                ).fetchone()
+            elif name and dt:
+                existing_dup = conn.execute(
+                    'SELECT id FROM requests WHERE applicant_full_name=? AND request_date=?',
+                    (name, dt)
+                ).fetchone()
+
+            if existing_dup:
+                # Дубликат найден — обновляем вместо INSERT
+                dup_id = existing_dup['id']
+                upd = {k: v for k, v in new_vals.items()
+                       if k != 'status'}  # статус перезаписываем только если overwrite
+                if row_status and overwrite:
+                    upd['status'] = row_status
+                if upd:
+                    set_cl = ', '.join(f'{k}=?' for k in upd)
+                    conn.execute(
+                        f'UPDATE requests SET {set_cl}, updated_at=?, updated_by=? WHERE id=?',
+                        list(upd.values()) + [now, session['user_id'], dup_id]
+                    )
+                    log_action(conn, session['user_id'], 'import_xlsx_dedup', dup_id,
+                               f'Импорт Excel: дедупликация, обновлено (ИНН={inn or name})')
+                    updated += 1
+                else:
+                    skipped += 1
             else:
-                skipped += 1
+                # Дубликат не найден — создаём новое
+                if new_vals:
+                    cols_ins = ', '.join(new_vals.keys()) + ', created_by, created_at, updated_at'
+                    ph_ins   = ', '.join(['?'] * len(new_vals)) + ', ?, ?, ?'
+                    ins_vals = list(new_vals.values()) + [session['user_id'], now, now]
+                    cursor   = conn.execute(
+                        f'INSERT INTO requests ({cols_ins}) VALUES ({ph_ins})', ins_vals
+                    )
+                    log_action(conn, session['user_id'], 'import_xlsx_create', cursor.lastrowid,
+                               'Импорт Excel: создано новое обращение')
+                    created += 1
+                else:
+                    skipped += 1
             continue
 
-        # ── Строка с ID → обновляем существующую ───────────────────────────
+        # ── Строка с ID → обновляем ─────────────────────────────────────────────
         try:
             rid = int(raw_id)
         except (ValueError, TypeError):
@@ -650,7 +682,6 @@ def import_full():
 
         updates = {}
 
-        # Статус обновляем если пришёл из файла
         if row_status:
             if overwrite or not existing['status']:
                 updates['status'] = row_status
@@ -659,7 +690,7 @@ def import_full():
             if ci == id_idx:
                 continue
             if status_idx is not None and ci == status_idx:
-                continue  # уже обработано выше
+                continue
             cell_val = row[ci]
 
             if header in COL_MAP:
