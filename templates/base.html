@@ -2,7 +2,7 @@
 {# ╔══════════════════════════════════════════════════════════════╗ #}
 {# ║                        base.html                            ║ #}
 {# ║  Базовый шаблон приложения "Подбор ЗУ — НО"                 ║ #}
-{# ║  v2.14: ссылка «Инвестплощадки» — admin или can_investmap   ║ #}
+{# ║  v2.15: dark/zone — form-check-input, modal, table fix      ║ #}
 {# ╚══════════════════════════════════════════════════════════════╝ #}
 <html lang="ru">
 <head>
@@ -92,7 +92,6 @@
     body.sb-col .sb-cat { opacity:0; }
     .sb-badge { margin-left:auto; background:#dc3545; color:#fff; font-size:10px; font-weight:700; padding:1px 6px; border-radius:10px; transition:opacity .2s; }
     body.sb-col .sb-badge { opacity:0; }
-    /* ─── Значок обновления в сайдбаре ─────────────────────────────── */
     .sb-update-dot { margin-left:auto; width:8px; height:8px; border-radius:50%; background:#fbbf24; flex-shrink:0; transition:opacity .2s; box-shadow:0 0 0 0 rgba(251,191,36,.6); animation:updDotPulse 2s infinite; }
     @keyframes updDotPulse { 0%{box-shadow:0 0 0 0 rgba(251,191,36,.6);} 70%{box-shadow:0 0 0 5px rgba(251,191,36,0);} 100%{box-shadow:0 0 0 0 rgba(251,191,36,0);} }
     body.sb-col .sb-update-dot { opacity:0; }
@@ -135,7 +134,6 @@
       --table-stripe:#1e2235; --table-hover:#252a40;
       --accent:#60a5fa; --accent2:#3b82f6;
     }
-    /* ─── Тёмная V2 (STALKER/GAMMA) ───────────────────────────────────── */
     body[data-theme="zone"] {
       --bg:#111210; --surface:#181916; --surface2:#1e201c;
       --text:#c8c4a8; --text-muted:#7a7a60; --border:#2e2e20;
@@ -188,6 +186,41 @@
     body[data-theme="dark"] .modal-footer{border-color:var(--border)!important;background:var(--surface)!important}
     body[data-theme="dark"] .modal-body{background:var(--surface)!important}
     body[data-theme="dark"] select option{background:var(--surface)!important;color:var(--text)!important}
+    /* ── чекбоксы и радио (Bootstrap рисует их через background-image на белом) ── */
+    body[data-theme="dark"] .form-check-input{
+      background-color:var(--input-bg)!important;
+      border-color:var(--input-border)!important;
+    }
+    body[data-theme="dark"] .form-check-input:checked{
+      background-color:#3b82f6!important;
+      border-color:#3b82f6!important;
+    }
+    /* ── всплывающие окна: backdrop + диалог ── */
+    body[data-theme="dark"] .modal-dialog .modal-content{
+      background:var(--surface)!important;
+      border-color:var(--border)!important;
+      color:var(--text)!important;
+    }
+    body[data-theme="dark"] .modal-dialog .form-control,
+    body[data-theme="dark"] .modal-dialog .form-select,
+    body[data-theme="dark"] .modal-dialog .form-check-input{
+      background-color:var(--input-bg)!important;
+      color:var(--text)!important;
+      border-color:var(--input-border)!important;
+    }
+    /* ── дашборд: столбец Источник (td с bg-white/bg-light) ── */
+    body[data-theme="dark"] td.bg-white,
+    body[data-theme="dark"] td.bg-light,
+    body[data-theme="dark"] .bg-white:not(.navbar):not(nav),
+    body[data-theme="dark"] .bg-light:not(.navbar):not(nav){
+      background:var(--surface)!important;
+      color:var(--text)!important;
+    }
+    /* ── права доступа: список чекбоксов в .list-group ── */
+    body[data-theme="dark"] .list-group-item.bg-white,
+    body[data-theme="dark"] .list-group-item.bg-light{
+      background:var(--surface)!important;
+    }
 
     /* ─── Тёмная V2 — overrides ─────────────────────────────────────── */
     body[data-theme="zone"] h1,body[data-theme="zone"] h2,body[data-theme="zone"] h3,body[data-theme="zone"] h4,body[data-theme="zone"] h5,body[data-theme="zone"] h6,body[data-theme="zone"] p,body[data-theme="zone"] span:not(.badge),body[data-theme="zone"] label,body[data-theme="zone"] td,body[data-theme="zone"] th,body[data-theme="zone"] li,body[data-theme="zone"] strong,body[data-theme="zone"] small,body[data-theme="zone"] .fw-bold,body[data-theme="zone"] .fw-semibold{color:var(--text)!important}
@@ -212,6 +245,40 @@
     body[data-theme="zone"] .modal-footer{border-color:var(--border)!important;background:var(--surface)!important}
     body[data-theme="zone"] .modal-body{background:var(--surface)!important}
     body[data-theme="zone"] select option{background:var(--surface)!important;color:var(--text)!important}
+    /* ── чекбоксы и радио — zone ── */
+    body[data-theme="zone"] .form-check-input{
+      background-color:var(--input-bg)!important;
+      border-color:var(--input-border)!important;
+    }
+    body[data-theme="zone"] .form-check-input:checked{
+      background-color:#c8a84b!important;
+      border-color:#c8a84b!important;
+    }
+    /* ── всплывающие окна — zone ── */
+    body[data-theme="zone"] .modal-dialog .modal-content{
+      background:var(--surface)!important;
+      border-color:var(--border)!important;
+      color:var(--text)!important;
+    }
+    body[data-theme="zone"] .modal-dialog .form-control,
+    body[data-theme="zone"] .modal-dialog .form-select,
+    body[data-theme="zone"] .modal-dialog .form-check-input{
+      background-color:var(--input-bg)!important;
+      color:var(--text)!important;
+      border-color:var(--input-border)!important;
+    }
+    /* ── дашборд: столбец Источник + bg-white/bg-light — zone ── */
+    body[data-theme="zone"] td.bg-white,
+    body[data-theme="zone"] td.bg-light,
+    body[data-theme="zone"] .bg-white:not(.navbar):not(nav),
+    body[data-theme="zone"] .bg-light:not(.navbar):not(nav){
+      background:var(--surface)!important;
+      color:var(--text)!important;
+    }
+    body[data-theme="zone"] .list-group-item.bg-white,
+    body[data-theme="zone"] .list-group-item.bg-light{
+      background:var(--surface)!important;
+    }
     body[data-theme="zone"]::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");opacity:.55}
     body[data-theme="zone"] .sidebar{background:#151612;border-right:1px solid #2e2e1a}
     body[data-theme="zone"] .sb-link{color:rgba(200,196,168,.75)}
@@ -255,7 +322,6 @@
     .badge.status-ready_to_send    { background:#198754 !important; --bs-badge-color:#fff; }
     .badge.status-sent_to_applicant{ background:#20c997 !important; --bs-badge-color:#212529; }
     .badge.status-closed           { background:#212529 !important; --bs-badge-color:#fff; }
-    /* цвет текста через CSS-переменную Bootstrap 5 */
     .badge.status-draft,
     .badge.status-registered,
     .badge.status-in_progress,
@@ -407,7 +473,6 @@
     </a>
     <div class="sb-sep"></div>
 
-    {# ─── Единая кнопка тем ──────────────────────────────────────────── #}
     <button class="theme-toggle-btn" id="themeToggle" title="Тема оформления">
       <i class="bi bi-circle-half theme-main-icon" id="themeIcon"></i>
       <span class="sb-lbl" id="themeLabel">Тема</span>
@@ -564,7 +629,6 @@
     .then(function(r){ setOffline(!r.ok); })
     .catch(function(){ setOffline(true); });
   }
-  /* Первый пинг через 30 сек, далее каждые 5 минут */
   setTimeout(function(){ ping(); setInterval(ping, 5 * 60 * 1000); }, 30 * 1000);
 })();
 </script>
@@ -605,10 +669,13 @@
   var lastQ = '';
 
   var STATUS_MAP = {
-    'draft':    {text:'Черновик',    cls:'bg-secondary'},
-    'review':   {text:'Рассмотрение',cls:'bg-warning text-dark'},
-    'accepted': {text:'Принято',     cls:'bg-primary'},
-    'answered': {text:'Отвечено',    cls:'bg-success'},
+    'draft':             {text:'Черновик',         cls:'status-draft'},
+    'registered':        {text:'Зарегистрировано', cls:'status-registered'},
+    'in_progress':       {text:'В работе',         cls:'status-in_progress'},
+    'under_review':      {text:'На проверке',      cls:'status-under_review'},
+    'ready_to_send':     {text:'Готово к отпр.',   cls:'status-ready_to_send'},
+    'sent_to_applicant': {text:'Отправлено',       cls:'status-sent_to_applicant'},
+    'closed':            {text:'Закрыто',           cls:'status-closed'},
   };
 
   function showDropdown(html){ dropdown.innerHTML=html; dropdown.classList.add('show'); activeIdx=-1; currentItems=dropdown.querySelectorAll('.gs-item[data-url]'); }
@@ -619,7 +686,7 @@
     if (!data.results.length){ showDropdown('<div class="gs-empty"><i class="bi bi-search me-1"></i>Ничего не найдено</div>'); return; }
     var html='';
     data.results.forEach(function(r){
-      var s=STATUS_MAP[r.status]||{text:r.status,cls:'bg-light text-dark'};
+      var s=STATUS_MAP[r.status]||{text:r.status,cls:'bg-secondary'};
       var meta=[];
       if(r.inn) meta.push('ИНН '+r.inn);
       if(r.project) meta.push(r.project);
@@ -651,17 +718,15 @@
 </script>
 {% endif %}
 
-{# ─── Значок обновления в сайдбаре (admin only) ─────────────────────── #}
 {% if session.get('role') == 'admin' %}
 <script>
 (function(){
   var dot = document.getElementById('sbUpdateDot');
   if (!dot) return;
   var CACHE_KEY = 'sonar_upd_status';
-  var CHECK_INTERVAL = 30 * 60 * 1000; /* 30 минут */
+  var CHECK_INTERVAL = 30 * 60 * 1000;
 
   function doCheck() {
-    /* Всегда живая проверка — без кэша, с force=1 чтобы сбросить серверный кэш */
     fetch('/api/update/check?force=1', {credentials:'same-origin', cache:'no-store'})
       .then(function(r){ return r.ok ? r.json() : null; })
       .then(function(data){
@@ -673,10 +738,7 @@
       .catch(function(){});
   }
 
-  /* При загрузке — всегда живая проверка (не читаем кэш) */
   doCheck();
-
-  /* Фоновая перепроверка каждые 30 минут, только когда вкладка активна */
   setInterval(function(){
     if (document.hidden) return;
     sessionStorage.removeItem(CACHE_KEY);
