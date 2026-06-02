@@ -224,7 +224,7 @@
   </div>
   <div class="card-body">
     <form method="post"
-          action="{{ url_for('requests.reviewer_decision, rid=req.id) }}">
+          action="{{ url_for('requests.reviewer_decision', rid=req.id) }}">
       <div class="mb-3">
         <label class="form-label">Комментарий</label>
         <textarea name="reviewer_comment" class="form-control" rows="2"
