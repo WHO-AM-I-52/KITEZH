@@ -93,29 +93,69 @@ function onGasYUnitChange(u)  { /* конвертация на сервере */
 
 // ── ЕГРЮЛ lookup ──
 function egrulLookup() {
-  const inn = document.getElementById('applicant_inn')?.value.trim();
-  if (!inn) return;
-  const icon = document.getElementById('egrul_btn_icon');
-  const status = document.getElementById('egrul_status');
-  if (icon) icon.className = 'bi bi-hourglass-split';
-  if (status) status.textContent = 'Поиск…';
-  fetch(`/api/egrul?inn=${encodeURIComponent(inn)}`)
-    .then(r => r.json())
-    .then(d => {
-      if (icon) icon.className = 'bi bi-search';
-      if (d.error) { if (status) status.textContent = d.error; return; }
-      const fill = (name, val) => { const el = document.querySelector(`[name="${name}"]`); if(el && val) el.value = val; };
-      fill('applicant_full_name',  d.full_name);
-      fill('applicant_short_name', d.short_name);
-      fill('applicant_legal_form', d.legal_form);
-      fill('legal_address',        d.address);
-      fill('applicant_okved_main', d.okved);
-      if (status) status.innerHTML = '<span class="text-success">✓ Данные заполнены</span>';
-    })
-    .catch(() => {
-      if (icon) icon.className = 'bi bi-search';
-      if (status) status.textContent = 'Ошибка запроса';
+  var innEl  = document.getElementById('applicant_inn');
+  var status = document.getElementById('egrul_status');
+  var btn    = document.getElementById('btn_egrul_lookup');
+  var icon   = document.getElementById('egrul_btn_icon');
+  if (!innEl || !status || !btn) return;
+
+  var inn = (innEl.value || '').trim();
+  if (!inn) {
+    status.textContent = 'Введите ИНН';
+    status.className   = 'text-danger';
+    return;
+  }
+
+  btn.disabled   = true;
+  icon.className = 'spinner-border spinner-border-sm';
+  icon.setAttribute('role', 'status');
+  status.textContent = 'Запрос к ЕГРЮЛ…';
+  status.className   = 'text-muted';
+
+  fetch('/api/egrul/lookup?inn=' + encodeURIComponent(inn), {
+    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(resp) {
+    btn.disabled   = false;
+    icon.className = 'bi bi-search';
+    icon.removeAttribute('role');
+
+    if (!resp.ok) {
+      status.textContent = resp.error || 'Ошибка запроса';
+      status.className   = 'text-danger';
+      return;
+    }
+
+    var d   = resp.data;
+    var map = {
+      'applicant_full_name':  d.applicant_full_name,
+      'applicant_short_name': d.applicant_short_name,
+      'legal_address':        d.legal_address,
+      'applicant_okved_main': d.applicant_okved_main
+    };
+
+    Object.keys(map).forEach(function(name) {
+      if (!map[name]) return;
+      var el = document.querySelector('[name="' + name + '"]');
+      if (el && !el.value) el.value = map[name];
     });
+
+    status.textContent = '✓ Реквизиты найдены и заполнены';
+    status.className   = 'text-success';
+
+    setTimeout(function() {
+      status.textContent = '';
+      status.className   = '';
+    }, 4000);
+  })
+  .catch(function() {
+    btn.disabled   = false;
+    icon.className = 'bi bi-search';
+    icon.removeAttribute('role');
+    status.textContent = 'Ошибка сети — повторите попытку';
+    status.className   = 'text-danger';
+  });
 }
 
 // ── ОКВЭД autocomplete ──
