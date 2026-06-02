@@ -21,6 +21,17 @@
   <p class="text-muted mb-2" style="font-size:13px">
     Найдено: <strong>{{ total }}</strong>{% if total > limit %} (показаны первые {{ limit }}){% endif %}
   </p>
+
+{%- set STATUS_LABEL = {
+  'draft':            'Черновик',
+  'registered':       'Зарегистрировано',
+  'in_progress':      'В работе',
+  'under_review':     'На проверке',
+  'ready_to_send':    'Готово к отправке',
+  'sent_to_applicant':'Документы отправлены',
+  'closed':           'Закрыто',
+} -%}
+
   <div class="card">
     <div class="table-responsive">
       <table class="table table-hover table-striped mb-0" style="font-size:13px">
@@ -30,7 +41,7 @@
             <th>Заявитель</th>
             <th style="width:120px">ИНН</th>
             <th>Проект</th>
-            <th style="width:90px">Статус</th>
+            <th style="width:140px">Статус</th>
             <th style="width:100px">Дата</th>
             <th style="width:150px">Ответственный</th>
           </tr>
@@ -43,12 +54,9 @@
             <td class="text-muted">{{ r.applicant_inn or '' }}</td>
             <td>{{ r.project_name or '' }}</td>
             <td>
-              {% set s = r.status %}
-              {% if s == 'draft' %}<span class="badge bg-secondary">Черновик</span>
-              {% elif s == 'review' %}<span class="badge bg-warning text-dark">На рассмотрении</span>
-              {% elif s == 'accepted' %}<span class="badge bg-primary">Принято</span>
-              {% elif s == 'answered' %}<span class="badge bg-success">Отвечено</span>
-              {% else %}<span class="badge bg-light text-dark">{{ s }}</span>{% endif %}
+              <span class="badge status-{{ r.status or 'draft' }}">
+                {{ STATUS_LABEL.get(r.status, r.status or '—') }}
+              </span>
             </td>
             <td class="text-muted">{{ r.request_date or '' }}</td>
             <td class="text-muted">{{ r.employee_name or '—' }}</td>
