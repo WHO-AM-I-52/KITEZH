@@ -10,6 +10,7 @@
 {# ║  - Журнал входов                                            ║ #}
 {# ║  - Журнал действий пользователей (v2.0) с фильтрами (v2.0.1)║ #}
 {# ║  v2.4: +can_view_investmap                                   ║ #}
+{# ║  v2.5: dark-theme — убраны инлайн bg:#f8f9fa → CSS-класс    ║ #}
 {# ╚══════════════════════════════════════════════════════════════╝ #}
 
 <style>
@@ -33,6 +34,12 @@
     font-weight: 600 !important;
     border-bottom: 2px solid #fff !important;
     background: rgba(255,255,255,.1) !important;
+  }
+
+  /* ── Блок прав доступа + фильтр журнала — тема-адаптивный фон ── */
+  .perm-block {
+    background: var(--surface2, #f8f9fa);
+    border-radius: 6px;
   }
 </style>
 
@@ -109,7 +116,7 @@
             </select>
           </div>
 
-          <div class="border rounded p-2 mb-3" style="background:#f8f9fa">
+          <div class="border rounded p-2 mb-3 perm-block">
             <div class="fw-bold mb-2"
                  style="font-size:11px;color:#1B5E7B;text-transform:uppercase;letter-spacing:.5px">
               <i class="bi bi-shield-check me-1"></i>Права доступа
@@ -360,8 +367,7 @@
         <div class="tab-pane fade" id="pane-activity">
 
           <form method="get" action="{{ url_for('admin.manage_users') }}"
-                class="p-2 border-bottom d-flex flex-wrap gap-2 align-items-end"
-                style="background:#f8f9fa">
+                class="p-2 border-bottom d-flex flex-wrap gap-2 align-items-end perm-block">
             <div>
               <label class="form-label mb-0" style="font-size:11px">Пользователь</label>
               <select name="af_user" class="form-select form-select-sm" style="min-width:150px">
