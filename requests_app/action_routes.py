@@ -16,7 +16,7 @@ _VALID_STATUSES = (
 # Дополнительные поля, которые могут приходить вместе со сменой статуса
 _STATUS_EXTRA_FIELDS = {
     'sent_to_applicant': ['sent_to_applicant_at', 'send_method'],
-    'closed':            ['applicant_feedback', 'applicant_feedback_at'],
+    'closed':            ['applicant_feedback', 'applicant_feedback_at', 'result_type_id'],
     'under_review':      ['reviewer_id', 'reviewer_not_in_system', 'reviewer_name_external'],
 }
 
@@ -87,7 +87,7 @@ def confirm_request(rid):
         flash('Возвращено на доработку', 'warning')
 
     conn.close()
-    return redirect(url_for('requests.view_request', rid=rid))
+    return redirect(url_for('requests.confirm_request', rid=rid))
 
 
 @requests_bp.route('/request/<int:rid>/answer', methods=['POST'])
@@ -151,7 +151,14 @@ def change_status(rid):
         val = request.form.get(field)
         if val is not None:          # None = не пришло в форме, не трогаем
             upd_fields.append(f'{field}=?')
-            upd_vals.append(val or None)
+            # result_type_id — целое число или NULL
+            if field == 'result_type_id':
+                try:
+                    upd_vals.append(int(val) if val else None)
+                except (ValueError, TypeError):
+                    upd_vals.append(None)
+            else:
+                upd_vals.append(val or None)
 
     # При переходе в registered — фиксируем дату регистрации
     if ns == 'registered':
@@ -193,13 +200,6 @@ def reviewer_decision(rid):
     conn.commit()
     conn.close()
     flash('Решение зафиксировано', 'success')
-    return redirect(url_for('requests.view_request', rid=rid))
-
-
-@requests_bp.route('/request/<int:rid>/status', methods=['POST'])
-@login_required
-def change_status_duplicate(rid):
-    """Заглушка — реальный обработчик выше."""
     return redirect(url_for('requests.view_request', rid=rid))
 
 
