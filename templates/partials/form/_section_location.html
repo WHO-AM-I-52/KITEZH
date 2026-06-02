@@ -1,0 +1,54 @@
+{# ===== РАЗДЕЛ 8: ПРЕДПОЧТИТЕЛЬНОЕ РАСПОЛОЖЕНИЕ ===== #}
+<div class="card mb-3">
+  <div class="card-header py-2" style="background:#1B5E7B;color:#fff;font-size:13px;font-weight:600">
+    <i class="bi bi-geo-alt me-1"></i>8. Предпочтительное расположение
+  </div>
+  <div class="card-body row g-3">
+    <div class="col-md-3">
+      <label class="form-label" style="font-size:12px">Важно расстояние до НН</label>
+      <div class="form-check mt-1">
+        <input class="form-check-input" type="checkbox" name="distance_nn_matters"
+               value="1" id="chk_nn" {{ 'checked' if req and req.distance_nn_matters }}>
+        <label class="form-check-label" for="chk_nn" style="font-size:12px">Да</label>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label" style="font-size:12px">Макс. расстояние до НН, км</label>
+      <input type="number" step="1" name="distance_nn_max" class="form-control form-control-sm"
+             value="{{ req.distance_nn_max if req else '' }}" placeholder="км">
+    </div>
+    <div class="col-12">
+      <label class="form-label fw-bold" style="font-size:12px">Предпочтительные районы</label>
+      <input type="text" id="districtSearch"
+             class="form-control form-control-sm mb-1"
+             placeholder="🔍 Поиск района..." autocomplete="off"
+             oninput="filterDistricts()">
+      <div class="border rounded p-2" id="districtList"
+           style="max-height:160px;overflow-y:auto;background:#fff">
+        <div class="row row-cols-2 row-cols-md-4 g-1" id="districtCheckboxes">
+          {% for d in districts %}
+          <div class="col district-item" data-name="{{ d | lower }}">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox"
+                     name="preferred_districts" value="{{ d }}"
+                     id="dist_{{ loop.index }}"
+                     {% if req and req.preferred_districts and d in req.preferred_districts.split(', ') %}checked{% endif %}>
+              <label class="form-check-label" for="dist_{{ loop.index }}"
+                     style="font-size:11px">{{ d }}</label>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="d-flex justify-content-between mt-1">
+        <div class="form-text">Можно выбрать несколько районов</div>
+        <button type="button" class="btn btn-link btn-sm p-0"
+                style="font-size:11px" onclick="clearDistricts()">Снять все</button>
+      </div>
+    </div>
+    <div class="col-12">
+      <label class="form-label" style="font-size:12px">Дополнительно о расположении</label>
+      <textarea name="location_extra" class="form-control form-control-sm" rows="2">{{ req.location_extra if req else '' }}</textarea>
+    </div>
+  </div>
+</div>

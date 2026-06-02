@@ -1,0 +1,59 @@
+{# ===== РАЗДЕЛ 7: ТРАНСПОРТНАЯ ДОСТУПНОСТЬ ===== #}
+<div class="card mb-3">
+  <div class="card-header py-2" style="background:#1B5E7B;color:#fff;font-size:13px;font-weight:600">
+    <i class="bi bi-truck me-1"></i>7. Транспортная доступность
+  </div>
+  <div class="card-body row g-3">
+    <p class="text-muted mb-0 col-12" style="font-size:11px"><strong>Расстояние до автодороги, км</strong></p>
+    <div class="col-md-3">
+      <label class="form-label" style="font-size:12px">Федеральная</label>
+      <input type="number" step="0.1" name="road_federal_dist" class="form-control form-control-sm"
+             value="{{ req.road_federal_dist if req else '' }}" placeholder="км">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label" style="font-size:12px">Региональная</label>
+      <input type="number" step="0.1" name="road_regional_dist" class="form-control form-control-sm"
+             value="{{ req.road_regional_dist if req else '' }}" placeholder="км">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label" style="font-size:12px">Местная</label>
+      <input type="number" step="0.1" name="road_local_dist" class="form-control form-control-sm"
+             value="{{ req.road_local_dist if req else '' }}" placeholder="км">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label" style="font-size:12px">Частная</label>
+      <input type="number" step="0.1" name="road_private_dist" class="form-control form-control-sm"
+             value="{{ req.road_private_dist if req else '' }}" placeholder="км">
+    </div>
+    <div class="col-12">
+      <label class="form-label" style="font-size:12px">Доп. требования по автодороге</label>
+      <textarea name="road_extra" class="form-control form-control-sm" rows="1">{{ req.road_extra if req else '' }}</textarea>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label" style="font-size:12px">Железная дорога необходима</label>
+      <div class="form-check mt-1">
+        <input class="form-check-input" type="checkbox" name="railway_needed"
+               value="1" id="chk_railway" {{ 'checked' if req and req.railway_needed }}>
+        <label class="form-check-label" for="chk_railway" style="font-size:12px">Да</label>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label" style="font-size:12px">Расстояние до ж/д, км</label>
+      <input type="number" step="0.1" name="railway_dist" class="form-control form-control-sm"
+             value="{{ req.railway_dist if req else '' }}" placeholder="км">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label" style="font-size:12px">Грузооборот ж/д, т/год</label>
+      <input type="number" step="1" name="railway_cargo" class="form-control form-control-sm"
+             value="{{ req.railway_cargo if req else '' }}" placeholder="т/год">
+    </div>
+    <div class="col-12">
+      <label class="form-label" style="font-size:12px">Доп. требования по ж/д</label>
+      <textarea name="railway_extra" class="form-control form-control-sm" rows="1">{{ req.railway_extra if req else '' }}</textarea>
+    </div>
+    <div class="col-12">
+      <label class="form-label" style="font-size:12px">Прочие транспортные требования</label>
+      <textarea name="transport_extra" class="form-control form-control-sm" rows="1">{{ req.transport_extra if req else '' }}</textarea>
+    </div>
+  </div>
+</div>

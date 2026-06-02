@@ -1,0 +1,106 @@
+{# ===== РАЗДЕЛ 5: ТРЕБОВАНИЯ К ПЛОЩАДКЕ ===== #}
+<div class="card mb-3">
+  <div class="card-header py-2" style="background:#1B5E7B;color:#fff;font-size:13px;font-weight:600">
+    <i class="bi bi-map me-1"></i>5. Требования к площадке
+  </div>
+  <div class="card-body row g-3">
+
+    <div class="col-md-4">
+      <label class="form-label fw-bold" style="font-size:12px">Тип площадки</label>
+      <div class="d-flex gap-3 mt-1">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="site_type_free"
+                 value="1" id="chk_free" {{ 'checked' if req and req.site_type_free }}>
+          <label class="form-check-label" for="chk_free" style="font-size:12px">Свободная площадка</label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="site_type_existing"
+                 value="1" id="chk_existing" {{ 'checked' if req and req.site_type_existing }}>
+          <label class="form-check-label" for="chk_existing" style="font-size:12px">Существующее здание</label>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-4">
+      <label class="form-label fw-bold" style="font-size:12px">Площадь участка, га</label>
+      <input type="number" step="0.01" name="site_area_ha" class="form-control form-control-sm"
+             value="{{ req.site_area_ha if req else '' }}" placeholder="0.00">
+    </div>
+
+    <div class="col-md-4">
+      <label class="form-label fw-bold" style="font-size:12px">Площадь застройки, м²</label>
+      <input type="number" step="1" name="site_build_area_m2" class="form-control form-control-sm"
+             value="{{ req.site_build_area_m2 if req else '' }}" placeholder="0">
+    </div>
+
+    <div class="col-md-2">
+      <label class="form-label fw-bold" style="font-size:12px">Санитарная зона, м</label>
+      <input type="number" step="1" name="sanitary_zone_m" class="form-control form-control-sm"
+             value="{{ req.sanitary_zone_m if req else '' }}" placeholder="0">
+    </div>
+
+    <div class="col-md-2">
+      <label class="form-label fw-bold" style="font-size:12px">Класс опасности</label>
+      <select name="hazard_class" class="form-select form-select-sm">
+        <option value="">— не указан —</option>
+        {% for v in ['I','II','III','IV','V'] %}
+        <option value="{{ v }}" {{ 'selected' if req and req.hazard_class==v }}>{{ v }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="col-md-3">
+      <label class="form-label fw-bold" style="font-size:12px">Право пользования</label>
+      <div class="border rounded p-2" style="background:#fff">
+        {% for v in ['Собственность','Аренда','Безвозмездное пользование','Иное'] %}
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox"
+                 name="site_right" value="{{ v }}" id="sr_{{ loop.index }}"
+                 {% if req and req.site_right and v in req.site_right.split(', ') %}checked{% endif %}>
+          <label class="form-check-label" for="sr_{{ loop.index }}" style="font-size:12px">{{ v }}</label>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="form-text">Можно выбрать несколько</div>
+    </div>
+
+    <div class="col-md-2">
+      <label class="form-label fw-bold" style="font-size:12px">Форма участка</label>
+      <select name="site_shape" class="form-select form-select-sm">
+        <option value="">— любая —</option>
+        {% for v in ['Прямоугольная','Квадратная','Произвольная'] %}
+        <option value="{{ v }}" {{ 'selected' if req and req.site_shape==v }}>{{ v }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="col-md-2">
+      <label class="form-label fw-bold" style="font-size:12px">Мин. длина, м</label>
+      <input type="number" step="1" name="site_length_min" class="form-control form-control-sm"
+             value="{{ req.site_length_min if req else '' }}" placeholder="0">
+    </div>
+
+    <div class="col-md-2">
+      <label class="form-label fw-bold" style="font-size:12px">Мин. ширина, м</label>
+      <input type="number" step="1" name="site_width_min" class="form-control form-control-sm"
+             value="{{ req.site_width_min if req else '' }}" placeholder="0">
+    </div>
+
+    <div class="col-md-4">
+      <label class="form-label fw-bold" style="font-size:12px">
+        <div class="form-check d-inline">
+          <input class="form-check-input" type="checkbox" name="site_area_expansion"
+                 value="1" id="chk_expand" {{ 'checked' if req and req.site_area_expansion }}>
+          <label class="form-check-label" for="chk_expand">Возможность расширения площади</label>
+        </div>
+      </label>
+    </div>
+
+    <div class="col-12">
+      <label class="form-label fw-bold" style="font-size:12px">Прочие требования к площадке</label>
+      <textarea name="site_other" class="form-control form-control-sm"
+                rows="2">{{ req.site_other if req else '' }}</textarea>
+    </div>
+
+  </div>
+</div>

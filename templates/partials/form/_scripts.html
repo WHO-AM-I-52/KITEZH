@@ -1,0 +1,159 @@
+<script>
+// ── OCR ──
+document.getElementById('requestFilesInput')?.addEventListener('change', function() {
+  const btn = document.getElementById('btnOcr');
+  const hint = document.getElementById('ocrHint');
+  if (!btn) return;
+  if (this.files && this.files.length > 0) {
+    btn.disabled = false;
+    if (hint) hint.textContent = 'Файл выбран. Нажмите для распознавания.';
+  } else {
+    btn.disabled = true;
+    if (hint) hint.textContent = 'Прикрепите файл анкеты, чтобы активировать распознавание';
+  }
+});
+
+function submitOcr() {
+  document.getElementById('ocrActionInput').value = 'ocr';
+  document.getElementById('mainForm').submit();
+}
+
+// ── Предпросмотр файлов ──
+function previewFiles(input) {
+  const container = document.getElementById('filesPreview');
+  container.innerHTML = '';
+  const iconMap = {
+    pdf:  '<i class="bi bi-file-earmark-pdf text-danger" style="font-size:1.6rem"></i>',
+    doc:  '<i class="bi bi-file-earmark-word text-primary" style="font-size:1.6rem"></i>',
+    docx: '<i class="bi bi-file-earmark-word text-primary" style="font-size:1.6rem"></i>',
+    xls:  '<i class="bi bi-file-earmark-excel text-success" style="font-size:1.6rem"></i>',
+    xlsx: '<i class="bi bi-file-earmark-excel text-success" style="font-size:1.6rem"></i>',
+    ppt:  '<i class="bi bi-file-earmark-slides text-warning" style="font-size:1.6rem"></i>',
+    pptx: '<i class="bi bi-file-earmark-slides text-warning" style="font-size:1.6rem"></i>',
+    jpg:  '<i class="bi bi-file-earmark-image text-info" style="font-size:1.6rem"></i>',
+    jpeg: '<i class="bi bi-file-earmark-image text-info" style="font-size:1.6rem"></i>',
+    png:  '<i class="bi bi-file-earmark-image text-info" style="font-size:1.6rem"></i>',
+    zip:  '<i class="bi bi-file-earmark-zip text-secondary" style="font-size:1.6rem"></i>',
+  };
+  Array.from(input.files).forEach(file => {
+    const ext = file.name.split('.').pop().toLowerCase();
+    const icon = iconMap[ext] || '<i class="bi bi-file-earmark" style="font-size:1.6rem"></i>';
+    const name = file.name.length > 14 ? file.name.slice(0,12) + '…' : file.name;
+    const div = document.createElement('div');
+    div.className = 'd-flex flex-column align-items-center border rounded p-2';
+    div.style.cssText = 'width:80px;font-size:0.72rem;word-break:break-all';
+    div.innerHTML = icon + `<span class="mt-1 text-center">${name}</span>`;
+    container.appendChild(div);
+  });
+}
+
+// ── Источник → поле № входящего ──
+function toggleIncomingNumber() {
+  const checked = document.querySelectorAll('input[name="source_type"]:checked');
+  const mailSrc = ['Письмо', 'Почта', 'Входящий документ'];
+  const show = Array.from(checked).some(c => mailSrc.some(s => c.value.includes(s)));
+  const block = document.getElementById('incomingNumberBlock');
+  if (block) block.style.display = show ? '' : 'none';
+}
+toggleIncomingNumber();
+
+// ── Фильтрация районов ──
+function filterDistricts() {
+  const q = document.getElementById('districtSearch').value.toLowerCase();
+  document.querySelectorAll('.district-item').forEach(el => {
+    el.style.display = el.dataset.name.includes(q) ? '' : 'none';
+  });
+}
+function clearDistricts() {
+  document.querySelectorAll('input[name="preferred_districts"]').forEach(cb => cb.checked = false);
+}
+
+// ── Вода: пересчёт итога ──
+function calcWaterTotal() {
+  const ids = ['water_household','water_production','water_sewage','water_firefighting'];
+  const total = ids.reduce((s,id) => s + (parseFloat(document.getElementById(id)?.value)||0), 0);
+  const el = document.getElementById('water_total');
+  if (el) el.value = total > 0 ? total.toFixed(1) : '';
+}
+
+// ── Электричество: пересчёт итога ──
+function calcElectricityTotal() {
+  const ids = ['electricity_cat1','electricity_cat2','electricity_cat3'];
+  const total = ids.reduce((s,id) => s + (parseFloat(document.getElementById(id)?.value)||0), 0);
+  const el = document.getElementById('electricity_total');
+  if (el) el.value = total > 0 ? total.toFixed(1) : '';
+}
+
+// ── Переключатели единиц ──
+function onWaterUnitChange(u) { document.querySelectorAll('.unit-label-water').forEach(el => el.textContent = u); }
+function onElecUnitChange(u)  { document.querySelectorAll('.unit-label-elec').forEach(el => el.textContent = u); }
+function onHeatUnitChange(u)  { /* конвертация на сервере */ }
+function onGasHUnitChange(u)  { /* конвертация на сервере */ }
+function onGasYUnitChange(u)  { /* конвертация на сервере */ }
+
+// ── ЕГРЮЛ lookup ──
+function egrulLookup() {
+  const inn = document.getElementById('applicant_inn')?.value.trim();
+  if (!inn) return;
+  const icon = document.getElementById('egrul_btn_icon');
+  const status = document.getElementById('egrul_status');
+  if (icon) icon.className = 'bi bi-hourglass-split';
+  if (status) status.textContent = 'Поиск…';
+  fetch(`/api/egrul?inn=${encodeURIComponent(inn)}`)
+    .then(r => r.json())
+    .then(d => {
+      if (icon) icon.className = 'bi bi-search';
+      if (d.error) { if (status) status.textContent = d.error; return; }
+      const fill = (name, val) => { const el = document.querySelector(`[name="${name}"]`); if(el && val) el.value = val; };
+      fill('applicant_full_name',  d.full_name);
+      fill('applicant_short_name', d.short_name);
+      fill('applicant_legal_form', d.legal_form);
+      fill('legal_address',        d.address);
+      fill('applicant_okved_main', d.okved);
+      if (status) status.innerHTML = '<span class="text-success">✓ Данные заполнены</span>';
+    })
+    .catch(() => {
+      if (icon) icon.className = 'bi bi-search';
+      if (status) status.textContent = 'Ошибка запроса';
+    });
+}
+
+// ── ОКВЭД autocomplete ──
+let okvedTimer;
+document.getElementById('okved_main_input')?.addEventListener('input', function() {
+  clearTimeout(okvedTimer);
+  const q = this.value.trim();
+  const box = document.getElementById('okved_suggestions');
+  if (!q || q.length < 2) { if(box) box.style.display='none'; return; }
+  okvedTimer = setTimeout(() => {
+    fetch(`/api/okved?q=${encodeURIComponent(q)}`)
+      .then(r => r.json())
+      .then(items => {
+        if (!box) return;
+        box.innerHTML = '';
+        if (!items.length) { box.style.display='none'; return; }
+        items.slice(0,10).forEach(item => {
+          const a = document.createElement('a');
+          a.href = '#';
+          a.className = 'list-group-item list-group-item-action py-1 px-2';
+          a.textContent = `${item.code} — ${item.name}`;
+          a.onclick = e => {
+            e.preventDefault();
+            document.getElementById('okved_main_input').value = item.code;
+            const nameEl = document.getElementById('okved_main_name');
+            if (nameEl) nameEl.value = item.name;
+            box.style.display = 'none';
+          };
+          box.appendChild(a);
+        });
+        box.style.display = 'block';
+      });
+  }, 300);
+});
+document.addEventListener('click', e => {
+  const box = document.getElementById('okved_suggestions');
+  if (box && !box.contains(e.target) && e.target.id !== 'okved_main_input') {
+    box.style.display = 'none';
+  }
+});
+</script>

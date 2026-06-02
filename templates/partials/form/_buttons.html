@@ -1,0 +1,31 @@
+{# ===== БЛОК КНОПОК ===== #}
+<div class="card mb-4">
+  <div class="card-body">
+    {% if req %}
+    <div class="row g-2 align-items-center">
+      <div class="col-md-6">
+        <label class="form-label fw-bold" style="font-size:12px">Причина изменения</label>
+        <input type="text" name="edit_reason" class="form-control form-control-sm"
+               placeholder="Кратко опишите что и почему изменено">
+      </div>
+      <div class="col-md-6 d-flex gap-2 justify-content-md-end align-items-end">
+        <button type="submit" class="btn btn-primary btn-sm">
+          <i class="bi bi-floppy me-1"></i>Сохранить изменения
+        </button>
+        <a href="{{ url_for('requests.index') }}" class="btn btn-outline-secondary btn-sm">
+          Отмена
+        </a>
+      </div>
+    </div>
+    {% else %}
+    <div class="d-flex gap-2 justify-content-end">
+      <button type="submit" class="btn btn-success btn-sm" id="btnSave">
+        <i class="bi bi-plus-circle me-1"></i>Создать обращение
+      </button>
+      <a href="{{ url_for('requests.index') }}" class="btn btn-outline-secondary btn-sm">
+        Отмена
+      </a>
+    </div>
+    {% endif %}
+  </div>
+</div>
