@@ -1,6 +1,6 @@
 # ╔═════════════════════════════════════════════════════════════════════════════╗
 # ║                       export_routes.py                                       ║
-# ║  v3.3: расширенная сводка импорта (duplicates, created_ids, status_changed) ║
+# ║  v3.4: 3В-2 валидация обяз. полей + 3В-3 авто-номер ЗУ при импорте          ║
 # ╚═════════════════════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, request, send_file, jsonify, session
@@ -22,6 +22,9 @@ DATE_FIELDS = {'request_date', 'answer_date', 'feedback_date'}
 
 # Числовые поля — нормализуем через _parse_numeric_for_db
 NUMERIC_FIELDS = {'investment_total', 'jobs_total', 'site_area_ha', 'site_build_area_m2'}
+
+# Обязательные поля для создания новой записи при импорте (3В-2)
+REQUIRED_FOR_CREATE = ('applicant_full_name', 'request_date')
 
 
 # ─── ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ────────────────────────────────────────────────────────
@@ -166,6 +169,12 @@ def _apply_cell_value(field: str, cell_val, row_label: str, errors: list) -> tup
             return None, False
         return num, True
     return str(cell_val).strip(), True
+
+
+def _gen_request_number(new_id: int) -> str:
+    """3В-3: авто-генерация номера обращения ЗУ-{ID}-{ГГ}."""
+    yy = datetime.now().strftime('%y')
+    return f'ЗУ-{new_id}-{yy}'
 
 
 # ─── СТАНДАРТНАЯ ВЫГРУЗКА ─────────────────────────────────────────────────────────────────────
@@ -670,11 +679,11 @@ def import_full():
     skipped        = 0
     status_changed = 0
     errors         = []
-    duplicates     = []   # [{existing_id, match_by, inn/name, project}]
-    created_ids    = []   # [id, ...] созданных обращений
+    duplicates     = []
+    created_ids    = []
     now            = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-    for row in ws.iter_rows(min_row=2, values_only=True):
+    for excel_row_num, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
         raw_id = row[id_idx]
 
         # ── читаем статус ──────────────────────────────────────────────────
@@ -697,7 +706,7 @@ def import_full():
                     field = COL_MAP[header]
                     if cell_val is None or str(cell_val).strip() == '':
                         continue
-                    val, ok = _apply_cell_value(field, cell_val, 'Новое', errors)
+                    val, ok = _apply_cell_value(field, cell_val, f'Строка {excel_row_num}', errors)
                     if ok and val is not None:
                         new_vals[field] = val
                 elif header in FK_MAP:
@@ -706,11 +715,21 @@ def import_full():
                         name = str(cell_val).strip()
                         fk_id = fk_lookup[field].get(name)
                         if fk_id is None:
-                            errors.append(f'Новое: «{name}» не найдено в справочнике «{header}»')
+                            errors.append(f'Строка {excel_row_num}: «{name}» не найдено в справочнике «{header}»')
                         else:
                             new_vals[field] = fk_id
 
             new_vals['status'] = row_status or 'registered'
+
+            # 3В-2: валидация обязательных полей ───────────────────────────
+            missing = [f for f in REQUIRED_FOR_CREATE if not new_vals.get(f)]
+            if missing:
+                errors.append(
+                    f'Строка {excel_row_num}: пропущена — не заполнены обязательные поля: '
+                    + ', '.join(f'«{f}»' for f in missing)
+                )
+                skipped += 1
+                continue
 
             # ── дедупликация ───────────────────────────────────────────────
             existing_dup = None
@@ -761,32 +780,38 @@ def import_full():
                     'project':     proj or None,
                 })
             else:
-                if new_vals:
-                    cols_ins = ', '.join(new_vals.keys()) + ', created_by, created_at, updated_at'
-                    ph_ins   = ', '.join(['?'] * len(new_vals)) + ', ?, ?, ?'
-                    ins_vals = list(new_vals.values()) + [session['user_id'], now, now]
-                    cursor   = conn.execute(
-                        f'INSERT INTO requests ({cols_ins}) VALUES ({ph_ins})', ins_vals
+                cols_ins = ', '.join(new_vals.keys()) + ', created_by, created_at, updated_at'
+                ph_ins   = ', '.join(['?'] * len(new_vals)) + ', ?, ?, ?'
+                ins_vals = list(new_vals.values()) + [session['user_id'], now, now]
+                cursor   = conn.execute(
+                    f'INSERT INTO requests ({cols_ins}) VALUES ({ph_ins})', ins_vals
+                )
+                new_id = cursor.lastrowid
+
+                # 3В-3: авто-генерация request_number если не задан ─────────
+                if not new_vals.get('request_number'):
+                    auto_num = _gen_request_number(new_id)
+                    conn.execute(
+                        'UPDATE requests SET request_number=? WHERE id=?',
+                        (auto_num, new_id)
                     )
-                    new_id = cursor.lastrowid
-                    log_action(conn, session['user_id'], 'import_xlsx_create', new_id,
-                               'Импорт Excel: создано новое обращение')
-                    created_ids.append(new_id)
-                    created += 1
-                else:
-                    skipped += 1
+
+                log_action(conn, session['user_id'], 'import_xlsx_create', new_id,
+                           'Импорт Excel: создано новое обращение')
+                created_ids.append(new_id)
+                created += 1
             continue
 
         # ── строка с ID → обновляем ─────────────────────────────────────────────
         try:
             rid = int(raw_id)
         except (ValueError, TypeError):
-            errors.append(f'Невалидный ID: {raw_id}')
+            errors.append(f'Строка {excel_row_num}: невалидный ID: {raw_id}')
             continue
 
         existing = conn.execute('SELECT * FROM requests WHERE id=?', (rid,)).fetchone()
         if not existing:
-            errors.append(f'ID {rid}: обращение не найдено в базе')
+            errors.append(f'Строка {excel_row_num} (ID {rid}): обращение не найдено в базе')
             continue
 
         updates = {}
@@ -800,7 +825,7 @@ def import_full():
                 else:
                     updates['status'] = row_status
 
-        row_label = f'ID {rid}'
+        row_label = f'Строка {excel_row_num} (ID {rid})'
 
         for ci, header in enumerate(headers):
             if ci == id_idx:
@@ -863,7 +888,7 @@ def import_full():
     })
 
 
-# ─── AUTOSAVE / WAL CHECKPOINT ──────────────────────────────────────────────────────────────────────────────────────────
+# ─── AUTOSAVE / WAL CHECKPOINT ─────────────────────────────────────────────────────────────────────────────────
 
 @report_bp.route('/autosave', methods=['POST'])
 @login_required
