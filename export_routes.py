@@ -1,6 +1,6 @@
 # ╔═════════════════════════════════════════════════════════════════════════════╗
 # ║                       export_routes.py                                       ║
-# ║  v3.1: валидация дат при импорте (DD.MM.YYYY, Excel serial, и др.)  ║
+# ║  v3.2: нормализация числовых полей при импорте                      ║
 # ╚═════════════════════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, request, send_file, jsonify, session
@@ -9,6 +9,7 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 import os
+import re
 
 from db import get_db, REPORTS_DIR
 from auth_utils import login_required, get_user_perm
@@ -16,8 +17,11 @@ from activity_log import log_action
 
 report_bp = Blueprint('report', __name__)
 
-# Датовые поля, которые нужно нормализовать через _parse_date_for_db
+# Датовые поля — нормализуем через _parse_date_for_db
 DATE_FIELDS = {'request_date', 'answer_date', 'feedback_date'}
+
+# Числовые поля — нормализуем через _parse_numeric_for_db
+NUMERIC_FIELDS = {'investment_total', 'jobs_total', 'site_area_ha', 'site_build_area_m2'}
 
 
 # ─── ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ────────────────────────────────────────────────────────
@@ -74,18 +78,15 @@ def _parse_date_for_db(val) -> str | None:
     if val is None:
         return None
 
-    # openpyxl уже распарсил date/datetime
     if isinstance(val, datetime):
         return val.strftime('%Y-%m-%d')
     if isinstance(val, date):
         return val.strftime('%Y-%m-%d')
 
-    # Excel serial number
     if isinstance(val, (int, float)):
         serial = int(val)
-        if 1 <= serial <= 2958465:  # 1900-01-01 .. 9999-12-31
+        if 1 <= serial <= 2958465:
             try:
-                # Excel считает от 30.12.1899
                 excel_epoch = datetime(1899, 12, 30)
                 return (excel_epoch + timedelta(days=serial)).strftime('%Y-%m-%d')
             except Exception:
@@ -96,16 +97,15 @@ def _parse_date_for_db(val) -> str | None:
     if not s or s.lower() in ('none', 'null', '—', '-'):
         return None
 
-    # Попытка форматов по порядку предпочтительности
     FMTS = [
-        '%d.%m.%Y %H:%M:%S',   # 3.01.2026 0:00:00
-        '%d.%m.%Y %H:%M',      # 3.01.2026 0:00
-        '%-d.%-m.%Y %H:%M:%S', # непаддерное на Windows, но оставляем
-        '%d.%m.%Y',            # 03.01.2026 / 3.01.2026
-        '%Y-%m-%d',            # 2026-01-03
-        '%m/%d/%Y',            # 01/03/2026
-        '%d/%m/%Y',            # 03/01/2026
-        '%Y.%m.%d',            # 2026.01.03
+        '%d.%m.%Y %H:%M:%S',
+        '%d.%m.%Y %H:%M',
+        '%-d.%-m.%Y %H:%M:%S',
+        '%d.%m.%Y',
+        '%Y-%m-%d',
+        '%m/%d/%Y',
+        '%d/%m/%Y',
+        '%Y.%m.%d',
     ]
     for fmt in FMTS:
         try:
@@ -113,14 +113,66 @@ def _parse_date_for_db(val) -> str | None:
         except ValueError:
             continue
 
-    # Последний шанс: взять первые 10 символов (если YYYY-MM-DD)
     if len(s) >= 10 and s[4] == '-':
         try:
             return datetime.strptime(s[:10], '%Y-%m-%d').strftime('%Y-%m-%d')
         except ValueError:
             pass
 
-    return None  # не удалось распарсить
+    return None
+
+
+def _parse_numeric_for_db(val, field: str) -> tuple[float | int | None, str | None]:
+    """Значение из Excel → число для БД или (None, сообщение об ошибке).
+
+    Возвращает (число, None) при успехе или (None, 'описание ошибки') при неудаче.
+
+    Обрабатывает:
+      - int / float напрямую
+      - строки с пробелами-разделителями тысяч: '1 500 000'
+      - запятую как десятичный разделитель: '1500,5'
+      - смешанный формат: '1 500,50'
+      - суффиксы единиц: '150 га', '300 м²', 'млн', 'тыс.' — отбрасываются
+      - пустую строку / None → None без ошибки
+    """
+    if val is None:
+        return None, None
+
+    if isinstance(val, bool):
+        return None, f'поле «{field}»: булево значение не является числом'
+
+    if isinstance(val, (int, float)):
+        return val, None
+
+    s = str(val).strip()
+    if not s or s.lower() in ('—', '-', 'none', 'null', 'н/д', 'нет'):
+        return None, None
+
+    # Убираем суффиксы единиц измерения (нечисловые части в конце)
+    s = re.sub(r'[^\d\s,.].*$', '', s).strip()
+
+    # Убираем пробелы как разделители тысяч (включая неразрывный пробел \xa0)
+    s = re.sub(r'[\s\xa0]+', '', s)
+
+    # Запятая → точка (десятичный разделитель)
+    s = s.replace(',', '.')
+
+    # Если точек больше одной — оставляем только последнюю (напр. '1.500.000' → '1500000')
+    parts = s.split('.')
+    if len(parts) > 2:
+        s = ''.join(parts[:-1]) + '.' + parts[-1]
+
+    if not s:
+        return None, None
+
+    try:
+        num = float(s)
+        # jobs_total и site_build_area_m2 — целые
+        if field in ('jobs_total', 'site_build_area_m2'):
+            return int(round(num)), None
+        return num, None
+    except ValueError:
+        return None, f'поле «{field}»: не удалось распознать число из значения {val!r}'
 
 
 def _mln_to_mld(val) -> str:
@@ -573,6 +625,29 @@ STATUS_IMPORT_MAP = {
 }
 
 
+def _apply_cell_value(field: str, cell_val, row_label: str, errors: list) -> tuple:
+    """Универсальный конвертер значения ячейки → (значение_для_бд, успех).
+
+    row_label — строка для сообщения об ошибке, например 'Новое' или 'ID 42'.
+    Возвращает (значение, True) при успехе или (None, False) при ошибке.
+    """
+    if field in DATE_FIELDS:
+        parsed = _parse_date_for_db(cell_val)
+        if parsed is None:
+            errors.append(f'{row_label}: не удалось распознать дату в поле «{field}»: {cell_val!r}')
+            return None, False
+        return parsed, True
+
+    if field in NUMERIC_FIELDS:
+        num, err_msg = _parse_numeric_for_db(cell_val, field)
+        if err_msg:
+            errors.append(f'{row_label}: {err_msg}')
+            return None, False
+        return num, True  # num может быть None — это ок (пустое поле)
+
+    return str(cell_val).strip(), True
+
+
 @report_bp.route('/import/full', methods=['POST'])
 @login_required
 def import_full():
@@ -598,21 +673,21 @@ def import_full():
         'Дата обращения':        'request_date',
         'Полное наименование':   'applicant_full_name',
         'Краткое наименование':  'applicant_short_name',
-        'ИНН':                       'applicant_inn',
+        'ИНН':                   'applicant_inn',
         'Название проекта':      'project_name',
         'Контактное лицо':       'contact_person',
         'Телефон':               'contact_phone',
-        'E-mail':                    'contact_email',
-        'Инвестиции (млн руб.)':   'investment_total',
-        'Рабочих мест':         'jobs_total',
+        'E-mail':                'contact_email',
+        'Инвестиции (млн руб.)': 'investment_total',
+        'Рабочих мест':          'jobs_total',
         'Площадь (га)':          'site_area_ha',
-        'Застройка (м²)':         'site_build_area_m2',
-        'Районы':               'preferred_districts',
-        'Источник':               'source_type',
+        'Застройка (м²)':        'site_build_area_m2',
+        'Районы':                'preferred_districts',
+        'Источник':              'source_type',
         'Дата обратной связи':   'feedback_date',
-        'Входящий номер':       'incoming_number',
-        'Дата ответа':            'answer_date',
-        'Способ ответа':          'answer_method',
+        'Входящий номер':        'incoming_number',
+        'Дата ответа':           'answer_date',
+        'Способ ответа':         'answer_method',
         'Примечания к ответу':   'answer_notes',
         'Доп. информация':       'additional_info',
     }
@@ -626,7 +701,7 @@ def import_full():
     try:
         id_idx = headers.index('ID (не менять)')
     except ValueError:
-        return jsonify({'error': 'Колонка «ИД (не менять)» не найдена. Используйте файл из «Скачать базу»'}), 400
+        return jsonify({'error': 'Колонка «ID (не менять)» не найдена. Используйте файл из «Скачать базу»'}), 400
 
     status_idx = headers.index(STATUS_COL) if STATUS_COL in headers else None
 
@@ -668,18 +743,11 @@ def import_full():
                 cell_val = row[ci]
                 if header in COL_MAP:
                     field = COL_MAP[header]
-                    if cell_val is not None and str(cell_val).strip():
-                        # Датовые поля — нормализуем
-                        if field in DATE_FIELDS:
-                            parsed = _parse_date_for_db(cell_val)
-                            if parsed:
-                                new_vals[field] = parsed
-                            else:
-                                errors.append(
-                                    f'Новое: не удалось распознать дату в поле «{header}»: {cell_val!r}'
-                                )
-                        else:
-                            new_vals[field] = str(cell_val).strip()
+                    if cell_val is None or str(cell_val).strip() == '':
+                        continue
+                    val, ok = _apply_cell_value(field, cell_val, 'Новое', errors)
+                    if ok and val is not None:
+                        new_vals[field] = val
                 elif header in FK_MAP:
                     field, _ = FK_MAP[header]
                     if cell_val is not None and str(cell_val).strip():
@@ -694,10 +762,10 @@ def import_full():
 
             # ── дедупликация ───────────────────────────────────────────────
             existing_dup = None
-            inn  = new_vals.get('applicant_inn', '').strip() if new_vals.get('applicant_inn') else ''
-            proj = new_vals.get('project_name', '').strip() if new_vals.get('project_name') else ''
-            aname = new_vals.get('applicant_full_name', '').strip() if new_vals.get('applicant_full_name') else ''
-            rdate = new_vals.get('request_date', '') if new_vals.get('request_date') else ''
+            inn   = new_vals.get('applicant_inn', '') or ''
+            proj  = new_vals.get('project_name', '') or ''
+            aname = new_vals.get('applicant_full_name', '') or ''
+            rdate = new_vals.get('request_date', '') or ''
 
             if inn and proj:
                 existing_dup = conn.execute(
@@ -759,6 +827,8 @@ def import_full():
             if overwrite or not existing['status']:
                 updates['status'] = row_status
 
+        row_label = f'ID {rid}'
+
         for ci, header in enumerate(headers):
             if ci == id_idx:
                 continue
@@ -770,17 +840,11 @@ def import_full():
                 field = COL_MAP[header]
                 if cell_val is None or str(cell_val).strip() == '':
                     continue
-                # Датовые поля — нормализуем
-                if field in DATE_FIELDS:
-                    parsed = _parse_date_for_db(cell_val)
-                    if not parsed:
-                        errors.append(
-                            f'ID {rid}: не удалось распознать дату в поле «{header}»: {cell_val!r}'
-                        )
-                        continue
-                    val = parsed
-                else:
-                    val = str(cell_val).strip()
+                val, ok = _apply_cell_value(field, cell_val, row_label, errors)
+                if not ok:
+                    continue
+                if val is None:
+                    continue
                 if not overwrite and existing[field] not in (None, ''):
                     continue
                 updates[field] = val
@@ -790,10 +854,9 @@ def import_full():
                 if cell_val is None or str(cell_val).strip() == '':
                     continue
                 name = str(cell_val).strip()
-                lookup = fk_lookup[field]
-                fk_id = lookup.get(name)
+                fk_id = fk_lookup[field].get(name)
                 if fk_id is None:
-                    errors.append(f'ID {rid}: «{name}» не найдено в справочнике «{header}»')
+                    errors.append(f'{row_label}: «{name}» не найдено в справочнике «{header}»')
                     continue
                 if not overwrite and existing[field] not in (None, ''):
                     continue
