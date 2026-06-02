@@ -342,14 +342,18 @@
 
 {# ===== ФУТЕР ===== #}
 <div class="mt-2 d-flex align-items-center flex-wrap gap-3">
+
+  {# ── Легенда красных строк #}
   <div class="small text-muted">
     <span class="badge bg-danger me-1"> </span>
     Красные строки — активные обращения старше {{dash.kpi.norm_days}} дней без ответа
   </div>
 
-  {# ── Селектор количества записей #}
-  <div class="d-flex align-items-center gap-2 small text-muted">
-    <i class="bi bi-list-ol"></i>
+  {# ── Счётчик + селектор количества #}
+  <div class="small text-muted ms-auto d-flex align-items-center gap-2">
+    Показано <strong>{{ requests|length }}</strong> из <strong>{{ total_filtered }}</strong>
+    {% if total_filtered != total_all %}(всего в базе: {{ total_all }}){% endif %}
+    <span class="text-muted">|</span>
     <span>Показывать по:</span>
     <form method="get" id="per-page-form" class="d-inline">
       {% for k,v in filters.items() %}{% if v %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endif %}{% endfor %}
@@ -365,11 +369,7 @@
     </form>
   </div>
 
-  <div class="small text-muted ms-auto">
-    Показано <strong>{{ requests|length }}</strong> из <strong>{{ total_filtered }}</strong>
-    {% if total_filtered != total_all %}(всего в базе: {{ total_all }}){% endif %}
-  </div>
-
+  {# ── Пагинация #}
   {% if total_pages > 1 %}
   {% set qs_parts = [] %}
   {% for k,v in filters.items() %}{% if v %}{% set _ = qs_parts.append(k ~ '=' ~ v) %}{% endif %}{% endfor %}
@@ -405,6 +405,7 @@
     </ul>
   </nav>
   {% endif %}
+
 </div>
 
 {# ===== МОДАЛЬНОЕ ОКНО ИМПОРТА ===== #}
