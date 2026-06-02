@@ -341,6 +341,7 @@
           <i class="bi bi-info-circle me-1"></i>
           Используйте только файл, скачанный через <strong>«Скачать базу (Excel)»</strong>.
           Колонка <strong>ID (не менять)</strong> обязательна.
+          Строки с <strong>пустым ID</strong> создадут новые обращения.
         </div>
         <div id="importResult" class="d-none mb-3"></div>
         <form id="importForm" enctype="multipart/form-data">
@@ -397,10 +398,13 @@
               errs = '<details class="mt-2"><summary class="small text-danger" style="cursor:pointer">Ошибки (' + data.errors.length + ')</summary>'
                 + '<ul class="mb-0 mt-1 small">' + data.errors.map(function(e){ return '<li>' + e + '</li>'; }).join('') + '</ul></details>';
             }
+            var createdStr = (data.created && data.created > 0)
+              ? ' <strong>Создано новых:</strong> ' + data.created + '.' : '';
             el.innerHTML = '<div class="alert alert-success py-2 small">'
               + '<i class="bi bi-check-circle me-1"></i>'
-              + '<strong>Обновлено:</strong> ' + data.updated + ' обращений. '
-              + '<strong>Без изменений:</strong> ' + data.skipped + '.'
+              + '<strong>Обновлено:</strong> ' + data.updated + ' обращений.'
+              + createdStr
+              + ' <strong>Без изменений:</strong> ' + data.skipped + '.'
               + errs + '</div>';
           }
           btn.disabled = false;
