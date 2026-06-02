@@ -157,6 +157,18 @@
       {{ field('Способ отправки', req.send_method) }}
       {{ field('ОБ от заявителя', req.applicant_feedback) }}
       {{ field('Дата ОБ от заявителя', req.applicant_feedback_at) }}
+      {# Итоги работы — отображается после закрытия #}
+      {% if req.result_type_name %}
+      <tr>
+        <td class="text-muted" style="width:45%">Итоги работы</td>
+        <td>
+          <span class="badge"
+                style="background:{{ req.result_color or '#6c757d' }};font-size:12px">
+            {{ req.result_type_name }}
+          </span>
+        </td>
+      </tr>
+      {% endif %}
     </table>
   </div>
 </div>
@@ -259,7 +271,7 @@
 </div>
 {% endif %}
 
-{# — ДОКУМЕНТЫ ОТПРАВЛЕНЫ: фиксация ОБ — #}
+{# — ДОКУМЕНТЫ ОТПРАВЛЕНЫ: фиксация ОБ + итоги работы — #}
 {% if req.status == 'sent_to_applicant' and session.role in ('admin','employee','manager') %}
 <div class="card mb-3 border-secondary">
   <div class="card-header fw-bold" style="background:#ECEFF1">
@@ -274,6 +286,15 @@
           <label class="form-label">Дата получения ОБ</label>
           <input type="date" name="applicant_feedback_at" class="form-control form-control-sm"
                  value="{{ today_str }}">
+        </div>
+        <div class="col-md-8">
+          <label class="form-label">Итоги работы <span class="text-danger">*</span></label>
+          <select name="result_type_id" class="form-select form-select-sm" required>
+            <option value="">— выберите —</option>
+            {% for rt in result_types %}
+            <option value="{{ rt.id }}">{{ rt.name }}</option>
+            {% endfor %}
+          </select>
         </div>
         <div class="col-12">
           <label class="form-label">Обратная связь <span class="text-danger">*</span></label>
