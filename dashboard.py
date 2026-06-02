@@ -1,15 +1,23 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║                       dashboard.py                           ║
 # ║  Построение дашборда: KPI, графики, агрегаты по обращениям   ║
+# ║  Актуальные коды статусов:                              ║
+# ║    draft | registered | in_progress | under_review |          ║
+# ║    ready_to_send | sent_to_applicant | closed                  ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from datetime import date, timedelta
+
+# Статусы, которые считаются «активными» (ещё не закрыты)
+ACTIVE_STATUSES = ('draft', 'registered', 'in_progress', 'under_review', 'ready_to_send', 'sent_to_applicant')
+# Статус, по которому считается среднее время ответа
+CLOSED_STATUS = 'closed'
 
 
 def build_dash(conn, period):
     today = date.today()
 
-    # ─── ФИЛЬТР ПО ПЕРИОДУ ───────────────────────────────────────
+    # ─── ФИЛЬТР ПО ПЕРИОДУ ────────────────────────────────────
     def pw():
         if   period == 'today':
             pf = today.isoformat()
@@ -27,9 +35,9 @@ def build_dash(conn, period):
 
     pw_sql, pw_params = pw()
 
-    # ─── ОБЩЕЕ КОЛИЧЕСТВО ПО СТАТУСАМ ────────────────────────────
-    # ВАЖНО: total и статусы считаются БЕЗ фильтра периода,
-    # чтобы счётчики на главной всегда показывали все обращения.
+    # ─── ОБЩЕЕ КОЛИЧЕСТВО ПО СТАТУСАМ ────────────────────
+    # IMPORTANT: total и счётчики считаются БЕЗ фильтра периода,
+    # чтобы карточки на главной всегда показывали все обращения.
     def cnt_all(status=None):
         if status:
             return conn.execute(
@@ -52,45 +60,52 @@ def build_dash(conn, period):
             pw_params
         ).fetchone()[0]
 
-    # ─── ПРОСРОЧЕННЫЕ (всегда без фильтра периода) ──────────────────────
+    # ─── ПРОСРОЧЕННЫЕ (всегда без фильтра периода) ────────────────
+    active_in = ','.join('?' * len(ACTIVE_STATUSES))
     overdue_active_all = conn.execute(
-        "SELECT COUNT(*) FROM requests r "
-        "WHERE r.status IN ('draft','review','accepted') "
-        "AND julianday('now')-julianday(r.request_date)>7"
+        f"SELECT COUNT(*) FROM requests r "
+        f"WHERE r.status IN ({active_in}) "
+        f"AND julianday('now')-julianday(r.request_date)>7",
+        list(ACTIVE_STATUSES)
     ).fetchone()[0]
 
-    # ─── СУММАРНЫЕ ПОКАЗАТЕЛИ ───────────────────────────────────
+    # ─── СУММАРНЫЕ ПОКАЗАТЕЛИ ───────────────────────────
     sums = conn.execute(
         f"SELECT COALESCE(SUM(investment_total),0), COALESCE(SUM(jobs_total),0) "
         f"FROM requests r WHERE 1=1{pw_sql}", pw_params
     ).fetchone()
 
+    # Среднее время ответа — считаем по закрытым
     avg_row = conn.execute(
-        f"SELECT AVG(julianday(answer_date)-julianday(request_date)) "
-        f"FROM requests r WHERE status='answered' AND answer_date IS NOT NULL{pw_sql}",
+        f"SELECT AVG(julianday(sent_to_applicant_at)-julianday(request_date)) "
+        f"FROM requests r WHERE status='{CLOSED_STATUS}' "
+        f"AND sent_to_applicant_at IS NOT NULL{pw_sql}",
         pw_params
     ).fetchone()
 
-    # ─── KPI ПО СРОКАМ ───────────────────────────────────────────────────
+    # ─── KPI ПО СРОКАМ ────────────────────────────────────────────
     norm_total = 7
+    active_kpi_in = ','.join('?' * len(ACTIVE_STATUSES))
     kpi = conn.execute(f"""
         SELECT COUNT(*),
-        SUM(CASE WHEN julianday(answer_date)-julianday(request_date)<={norm_total} THEN 1 ELSE 0 END),
-        SUM(CASE WHEN julianday(answer_date)-julianday(request_date)>{norm_total}  THEN 1 ELSE 0 END),
-        SUM(CASE WHEN status IN ('draft','review','accepted')
+        SUM(CASE WHEN julianday(sent_to_applicant_at)-julianday(request_date)<={norm_total} THEN 1 ELSE 0 END),
+        SUM(CASE WHEN julianday(sent_to_applicant_at)-julianday(request_date)>{norm_total}  THEN 1 ELSE 0 END),
+        SUM(CASE WHEN status IN ({active_kpi_in})
             AND julianday('now')-julianday(request_date)>{norm_total} THEN 1 ELSE 0 END)
-        FROM requests r WHERE 1=1{pw_sql}""", pw_params).fetchone()
+        FROM requests r WHERE status='{CLOSED_STATUS}'{pw_sql}""",
+        list(ACTIVE_STATUSES) + pw_params
+    ).fetchone()
 
     kpi_data = {
         'norm_days':      norm_total,
         'total_answered': kpi[0] or 0,
         'in_time':        kpi[1] or 0,
         'overdue':        kpi[2] or 0,
-        'overdue_active': kpi[3] or 0,
+        'overdue_active': overdue_active_all,
         'pct':            round(kpi[1] / kpi[0] * 100) if kpi[0] else 0,
     }
 
-    # ─── ТРЕНД ПО ВРЕМЕНИ ────────────────────────────────────────────
+    # ─── ТРЕНД ПО ВРЕМЕНИ ───────────────────────────────────
     if period == 'today':
         tr = conn.execute(
             "SELECT strftime('%H:00',request_date),COUNT(*) "
@@ -116,7 +131,7 @@ def build_dash(conn, period):
             " GROUP BY 1 ORDER BY 1", pw_params
         ).fetchall()
 
-    # ─── ТОП СОТРУДНИКОВ И РАЙОНЫ ────────────────────────────
+    # ─── ТОП СОТРУДНИКОВ И РАЙОНЫ ────────────────────
     emp_rows = conn.execute(
         f"SELECT COALESCE(u.full_name,'Не назначен'),COUNT(*) FROM requests r "
         f"LEFT JOIN users u ON r.assigned_to=u.id WHERE 1=1{pw_sql} "
@@ -129,7 +144,7 @@ def build_dash(conn, period):
         f"GROUP BY 1 ORDER BY 2 DESC LIMIT 12", pw_params
     ).fetchall()
 
-    # ─── ТИП ПЛОЩАДКИ ──────────────────────────────────────────────
+    # ─── ТИП ПЛОЩАДКИ ──────────────────────────────────────
     st_free = conn.execute(
         f"SELECT COUNT(*) FROM requests r WHERE site_type_free=1{pw_sql}",
         pw_params
@@ -144,7 +159,7 @@ def build_dash(conn, period):
         pw_params
     ).fetchone()[0]
 
-    # ─── РАСПРЕДЕЛЕНИЕ ПО ПЛОЩАДИ (v1.9.1: используем _min поля) ────────
+    # ─── РАСПРЕДЕЛЕНИЕ ПО ПЛОЩАДИ ────────────────────────
     area_buckets = [
         ('<0.1 га', 0, .1), ('0.1–0.5', .1, .5), ('0.5–1', .5, 1),
         ('1–2', 1, 2), ('2–5', 2, 5), ('5–10', 5, 10), ('>10', 10, 999999)
@@ -173,7 +188,7 @@ def build_dash(conn, period):
         ).fetchone()[0]
     } for lbl, lo, hi in build_buckets]
 
-    # ─── ИСТОЧНИКИ ОБРАЩЕНИЙ ───────────────────────────────────
+    # ─── ИСТОЧНИКИ ОБРАЩЕНИЙ ──────────────────────────
     src_rows = conn.execute(
         f"SELECT source_type,COUNT(*) FROM requests r "
         f"WHERE source_type IS NOT NULL AND source_type!=''{pw_sql} "
@@ -187,24 +202,28 @@ def build_dash(conn, period):
             if s:
                 src_counts[s] = src_counts.get(s, 0) + row[1]
 
-    # ─── ФИНАЛЬНЫЙ НАБОР ДАННЫХ ────────────────────────────────────
+    # ─── ФИНАЛЬНЫЙ НАБОР ДАННЫХ ─────────────────────────────
     return {
-        'period':         period,
+        'period':            period,
         # Счётчики — всегда все записи без фильтра периода
-        'total':          cnt_all(),
-        'draft':          cnt_all('draft'),
-        'review':         cnt_all('review'),
-        'accepted':       cnt_all('accepted'),
-        'answered':       cnt_all('answered'),
-        'overdue_active': overdue_active_all,
+        'total':             cnt_all(),
+        'draft':             cnt_all('draft'),
+        'registered':        cnt_all('registered'),
+        'in_progress':       cnt_all('in_progress'),
+        'under_review':      cnt_all('under_review'),
+        'ready_to_send':     cnt_all('ready_to_send'),
+        'sent_to_applicant': cnt_all('sent_to_applicant'),
+        'closed':            cnt_all('closed'),
+        # Активные с просрочкой — всегда без фильтра периода
+        'overdue_active':    overdue_active_all,
         # Аналитика — за выбранный период
-        'investment_sum': float(sums[0]) if sums else 0,
-        'jobs_sum':       int(sums[1]) if sums else 0,
-        'avg_days':       round(avg_row[0]) if avg_row and avg_row[0] else None,
-        'kpi':            kpi_data,
-        'trend_chart':    {'labels': [r[0] for r in tr],        'values': [r[1] for r in tr]},
-        'emp_chart':      {'labels': [r[0] for r in emp_rows],  'values': [r[1] for r in emp_rows]},
-        'dist_chart':     {'labels': [r[0] for r in dist_rows], 'values': [r[1] for r in dist_rows]},
+        'investment_sum':    float(sums[0]) if sums else 0,
+        'jobs_sum':          int(sums[1]) if sums else 0,
+        'avg_days':          round(avg_row[0]) if avg_row and avg_row[0] else None,
+        'kpi':               kpi_data,
+        'trend_chart':       {'labels': [r[0] for r in tr],        'values': [r[1] for r in tr]},
+        'emp_chart':         {'labels': [r[0] for r in emp_rows],  'values': [r[1] for r in emp_rows]},
+        'dist_chart':        {'labels': [r[0] for r in dist_rows], 'values': [r[1] for r in dist_rows]},
         'site_type': {
             'free':          st_free,
             'existing':      st_ex,
@@ -212,7 +231,7 @@ def build_dash(conn, period):
             'only_free':     st_free - st_both,
             'only_existing': st_ex - st_both,
         },
-        'area_data':      area_data,
-        'build_data':     build_data,
-        'source_chart':   {'labels': list(src_counts.keys()), 'values': list(src_counts.values())},
+        'area_data':         area_data,
+        'build_data':        build_data,
+        'source_chart':      {'labels': list(src_counts.keys()), 'values': list(src_counts.values())},
     }
