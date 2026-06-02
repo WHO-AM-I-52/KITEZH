@@ -249,7 +249,7 @@
           {% endif %}
         </td>
         <td>
-          <span class="badge bg-{{ st[0] }}">
+          <span class="badge bg-{{ st[0] }} {{ 'text-dark' if st[0] in ('warning', 'info') else '' }}">
             <i class="bi {{ st[1] }} me-1"></i>{{ st[2] }}
           </span>
           {% if r.overdue %}<i class="bi bi-exclamation-circle text-danger ms-1" title="Просрочено"></i>{% endif %}
@@ -441,10 +441,11 @@
   function buildHtml(d) {
     var c = STATUS_COLOR[d.status] || '#333';
     var l = STATUS_LABEL[d.status] || d.status || '—';
+    var textClass = (d.status === 'registered' || d.status === 'under_review') ? ' color:#000' : ' color:#fff';
     return '<table class="table table-sm mb-0" style="font-size:12px;min-width:220px">'
       + '<tr><th class="text-muted fw-normal pe-2">№</th><td class="fw-bold">' + (d.number||'—') + '</td></tr>'
       + '<tr><th class="text-muted fw-normal">Заявитель</th><td>' + (d.applicant||'—') + '</td></tr>'
-      + '<tr><th class="text-muted fw-normal">Статус</th><td><span class="badge" style="background:' + c + '">' + l + '</span></td></tr>'
+      + '<tr><th class="text-muted fw-normal">Статус</th><td><span class="badge" style="background:' + c + ';' + textClass + '">' + l + '</span></td></tr>'
       + '<tr><th class="text-muted fw-normal">Контакт</th><td>' + (d.contact||'—') + '</td></tr>'
       + '<tr><th class="text-muted fw-normal">Тел.</th><td>' + (d.phone||'—') + '</td></tr>'
       + '<tr><th class="text-muted fw-normal">Изменено</th><td>' + (d.updated_at||'—') + '</td></tr>'
