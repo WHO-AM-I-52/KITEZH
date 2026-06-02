@@ -1,6 +1,6 @@
 # ╔═════════════════════════════════════════════════════════════════════════════╗
 # ║                       export_routes.py                                       ║
-# ║  v3.0: дедупликация при импорте (ИНН+проект / ФИО+дата)           ║
+# ║  v3.1: валидация дат при импорте (DD.MM.YYYY, Excel serial, и др.)  ║
 # ╚═════════════════════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, request, send_file, jsonify, session
@@ -15,6 +15,9 @@ from auth_utils import login_required, get_user_perm
 from activity_log import log_action
 
 report_bp = Blueprint('report', __name__)
+
+# Датовые поля, которые нужно нормализовать через _parse_date_for_db
+DATE_FIELDS = {'request_date', 'answer_date', 'feedback_date'}
 
 
 # ─── ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ────────────────────────────────────────────────────────
@@ -45,6 +48,7 @@ def _hex_to_argb(hex_color: str) -> str:
 
 
 def _fmt_date(iso) -> str:
+    """ISO-дата или datetime → DD.MM.YYYY для вывода."""
     if not iso:
         return '—'
     if isinstance(iso, (date, datetime)):
@@ -54,6 +58,69 @@ def _fmt_date(iso) -> str:
         return datetime.strptime(s, '%Y-%m-%d').strftime('%d.%m.%Y')
     except Exception:
         return s or '—'
+
+
+def _parse_date_for_db(val) -> str | None:
+    """Любое представление даты из Excel → YYYY-MM-DD или None.
+
+    Обрабатываемые форматы:
+      - datetime / date объект (openpyxl может вернуть сразу)
+      - Excel serial number (int/float, напр. 46025)
+      - 'DD.MM.YYYY'  → '3.01.2026', '03.01.2026'
+      - 'DD.MM.YYYY H:MM:SS'  → '3.01.2026 0:00:00'
+      - 'YYYY-MM-DD'
+      - 'MM/DD/YYYY'
+    """
+    if val is None:
+        return None
+
+    # openpyxl уже распарсил date/datetime
+    if isinstance(val, datetime):
+        return val.strftime('%Y-%m-%d')
+    if isinstance(val, date):
+        return val.strftime('%Y-%m-%d')
+
+    # Excel serial number
+    if isinstance(val, (int, float)):
+        serial = int(val)
+        if 1 <= serial <= 2958465:  # 1900-01-01 .. 9999-12-31
+            try:
+                # Excel считает от 30.12.1899
+                excel_epoch = datetime(1899, 12, 30)
+                return (excel_epoch + timedelta(days=serial)).strftime('%Y-%m-%d')
+            except Exception:
+                return None
+        return None
+
+    s = str(val).strip()
+    if not s or s.lower() in ('none', 'null', '—', '-'):
+        return None
+
+    # Попытка форматов по порядку предпочтительности
+    FMTS = [
+        '%d.%m.%Y %H:%M:%S',   # 3.01.2026 0:00:00
+        '%d.%m.%Y %H:%M',      # 3.01.2026 0:00
+        '%-d.%-m.%Y %H:%M:%S', # непаддерное на Windows, но оставляем
+        '%d.%m.%Y',            # 03.01.2026 / 3.01.2026
+        '%Y-%m-%d',            # 2026-01-03
+        '%m/%d/%Y',            # 01/03/2026
+        '%d/%m/%Y',            # 03/01/2026
+        '%Y.%m.%d',            # 2026.01.03
+    ]
+    for fmt in FMTS:
+        try:
+            return datetime.strptime(s, fmt).strftime('%Y-%m-%d')
+        except ValueError:
+            continue
+
+    # Последний шанс: взять первые 10 символов (если YYYY-MM-DD)
+    if len(s) >= 10 and s[4] == '-':
+        try:
+            return datetime.strptime(s[:10], '%Y-%m-%d').strftime('%Y-%m-%d')
+        except ValueError:
+            pass
+
+    return None  # не удалось распарсить
 
 
 def _mln_to_mld(val) -> str:
@@ -495,7 +562,6 @@ def export_full():
 
 # ─── ИМПОРТ ОБНОВЛЁННОГО EXCEL ──────────────────────────────────────────────────────────────────────────────────
 
-# Маппинг названий статусов из Excel → значения БД
 STATUS_IMPORT_MAP = {
     'Черновик':             'draft',
     'Зарегистрировано':      'registered',
@@ -584,14 +650,14 @@ def import_full():
     for row in ws.iter_rows(min_row=2, values_only=True):
         raw_id = row[id_idx]
 
-        # ── Читаем статус из колонки ───────────────────────────────────────────
+        # ── читаем статус ──────────────────────────────────────────────────
         row_status = None
         if status_idx is not None:
             raw_status = row[status_idx]
             if raw_status and str(raw_status).strip():
                 row_status = STATUS_IMPORT_MAP.get(str(raw_status).strip())
 
-        # ── Новая строка без ID ──────────────────────────────────────────────
+        # ── новая строка без ID ─────────────────────────────────────────────
         if not raw_id:
             new_vals = {}
             for ci, header in enumerate(headers):
@@ -603,7 +669,17 @@ def import_full():
                 if header in COL_MAP:
                     field = COL_MAP[header]
                     if cell_val is not None and str(cell_val).strip():
-                        new_vals[field] = str(cell_val).strip()
+                        # Датовые поля — нормализуем
+                        if field in DATE_FIELDS:
+                            parsed = _parse_date_for_db(cell_val)
+                            if parsed:
+                                new_vals[field] = parsed
+                            else:
+                                errors.append(
+                                    f'Новое: не удалось распознать дату в поле «{header}»: {cell_val!r}'
+                                )
+                        else:
+                            new_vals[field] = str(cell_val).strip()
                 elif header in FK_MAP:
                     field, _ = FK_MAP[header]
                     if cell_val is not None and str(cell_val).strip():
@@ -616,29 +692,27 @@ def import_full():
 
             new_vals['status'] = row_status or 'registered'
 
-            # ── ДЕДУПЛИКАЦИЯ: ИНН + проект или ФИО + дата ──────────────────
+            # ── дедупликация ───────────────────────────────────────────────
             existing_dup = None
-            inn  = new_vals.get('applicant_inn', '').strip()
-            proj = new_vals.get('project_name', '').strip()
-            name = new_vals.get('applicant_full_name', '').strip()
-            dt   = new_vals.get('request_date', '').strip()
+            inn  = new_vals.get('applicant_inn', '').strip() if new_vals.get('applicant_inn') else ''
+            proj = new_vals.get('project_name', '').strip() if new_vals.get('project_name') else ''
+            aname = new_vals.get('applicant_full_name', '').strip() if new_vals.get('applicant_full_name') else ''
+            rdate = new_vals.get('request_date', '') if new_vals.get('request_date') else ''
 
             if inn and proj:
                 existing_dup = conn.execute(
                     'SELECT id FROM requests WHERE applicant_inn=? AND project_name=?',
                     (inn, proj)
                 ).fetchone()
-            elif name and dt:
+            elif aname and rdate:
                 existing_dup = conn.execute(
                     'SELECT id FROM requests WHERE applicant_full_name=? AND request_date=?',
-                    (name, dt)
+                    (aname, rdate)
                 ).fetchone()
 
             if existing_dup:
-                # Дубликат найден — обновляем вместо INSERT
                 dup_id = existing_dup['id']
-                upd = {k: v for k, v in new_vals.items()
-                       if k != 'status'}  # статус перезаписываем только если overwrite
+                upd = {k: v for k, v in new_vals.items() if k != 'status'}
                 if row_status and overwrite:
                     upd['status'] = row_status
                 if upd:
@@ -648,12 +722,11 @@ def import_full():
                         list(upd.values()) + [now, session['user_id'], dup_id]
                     )
                     log_action(conn, session['user_id'], 'import_xlsx_dedup', dup_id,
-                               f'Импорт Excel: дедупликация, обновлено (ИНН={inn or name})')
+                               f'Импорт Excel: дедупликация (ИНН={inn or aname})')
                     updated += 1
                 else:
                     skipped += 1
             else:
-                # Дубликат не найден — создаём новое
                 if new_vals:
                     cols_ins = ', '.join(new_vals.keys()) + ', created_by, created_at, updated_at'
                     ph_ins   = ', '.join(['?'] * len(new_vals)) + ', ?, ?, ?'
@@ -668,7 +741,7 @@ def import_full():
                     skipped += 1
             continue
 
-        # ── Строка с ID → обновляем ─────────────────────────────────────────────
+        # ── строка с ID → обновляем ─────────────────────────────────────────────
         try:
             rid = int(raw_id)
         except (ValueError, TypeError):
@@ -697,7 +770,17 @@ def import_full():
                 field = COL_MAP[header]
                 if cell_val is None or str(cell_val).strip() == '':
                     continue
-                val = str(cell_val).strip()
+                # Датовые поля — нормализуем
+                if field in DATE_FIELDS:
+                    parsed = _parse_date_for_db(cell_val)
+                    if not parsed:
+                        errors.append(
+                            f'ID {rid}: не удалось распознать дату в поле «{header}»: {cell_val!r}'
+                        )
+                        continue
+                    val = parsed
+                else:
+                    val = str(cell_val).strip()
                 if not overwrite and existing[field] not in (None, ''):
                     continue
                 updates[field] = val
