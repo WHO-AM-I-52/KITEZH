@@ -11,6 +11,8 @@
 {# ║  - Журнал действий пользователей (v2.0) с фильтрами (v2.0.1)║ #}
 {# ║  v2.4: +can_view_investmap                                   ║ #}
 {# ║  v2.5: dark-theme — убраны инлайн bg:#f8f9fa → CSS-класс    ║ #}
+{# ║  v2.6: dark/zone — form-switch чекбоксы — повышенная           ║ #}
+{#         специфичность против Bootstrap                     ║ #}
 {# ╚══════════════════════════════════════════════════════════════╝ #}
 
 <style>
@@ -40,6 +42,35 @@
   .perm-block {
     background: var(--surface2, #f8f9fa);
     border-radius: 6px;
+  }
+
+  /* ────────────────────────────────────────────────────────────────────────────────────────── */
+  /* form-switch: Bootstrap 5 рисует трек через background-image c белым SVG-кружком.  */
+  /* Нужно переопределить background-color с более высокой специфичностью.          */
+  body[data-theme="dark"]  .form-check.form-switch .form-check-input,
+  body[data-theme="zone"]  .form-check.form-switch .form-check-input {
+    background-color: var(--input-bg) !important;
+    border-color:     var(--input-border) !important;
+    /* кружок рисуется через background-image: оставляем серого */
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='%23adb5bd'/%3e%3c/svg%3e") !important;
+  }
+  body[data-theme="dark"]  .form-check.form-switch .form-check-input:checked,
+  body[data-theme="zone"]  .form-check.form-switch .form-check-input:checked {
+    background-color: var(--accent) !important;
+    border-color:     var(--accent) !important;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='%23fff'/%3e%3c/svg%3e") !important;
+  }
+
+  /* То же для обычных чекбоксов (type=checkbox без form-switch) */
+  body[data-theme="dark"]  .form-check-input:not(.form-check-input[type="radio"]):not([role="switch"]),
+  body[data-theme="zone"]  .form-check-input:not(.form-check-input[type="radio"]):not([role="switch"]) {
+    background-color: var(--input-bg) !important;
+    border-color:     var(--input-border) !important;
+  }
+  body[data-theme="dark"]  .form-check-input:checked:not([role="switch"]),
+  body[data-theme="zone"]  .form-check-input:checked:not([role="switch"]) {
+    background-color: var(--accent) !important;
+    border-color:     var(--accent) !important;
   }
 </style>
 
@@ -125,6 +156,7 @@
             <div class="form-check form-switch mb-1">
               <input class="form-check-input perm-new" type="checkbox"
                      name="{{ key }}" value="1" id="new_{{ key }}"
+                     role="switch"
                      {% if key in ['can_create','can_export','can_view_all'] %}checked{% endif %}>
               <label class="form-check-label" for="new_{{ key }}" style="font-size:12px">
                 <i class="bi {{ icon }} {{ cls }} me-1"></i>{{ label }}
@@ -242,6 +274,7 @@
                     <input class="form-check-input" type="checkbox"
                            name="{{ key }}" value="1"
                            id="edit_{{ u.id }}_{{ key }}"
+                           role="switch"
                            {{ 'checked' if u[key] }}>
                     <label class="form-check-label"
                            for="edit_{{ u.id }}_{{ key }}" style="font-size:12px">
