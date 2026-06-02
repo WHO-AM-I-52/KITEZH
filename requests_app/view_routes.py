@@ -53,12 +53,15 @@ def view_request(rid):
     req  = conn.execute(
         "SELECT r.*, u.full_name AS employee_name, ass.full_name AS assigned_name, "
         "adm.full_name AS admin_name, upd.full_name AS updated_by_name, "
+        "resp.full_name AS responsible_name, rev.full_name AS reviewer_name, "
         "st.name AS subject_type_name, rt.name AS result_type_name, rt.color_hex AS result_color "
         "FROM requests r "
-        "LEFT JOIN users u   ON r.created_by   = u.id "
-        "LEFT JOIN users ass ON r.assigned_to  = ass.id "
-        "LEFT JOIN users adm ON r.confirmed_by = adm.id "
-        "LEFT JOIN users upd ON r.updated_by   = upd.id "
+        "LEFT JOIN users u    ON r.created_by      = u.id "
+        "LEFT JOIN users ass  ON r.assigned_to     = ass.id "
+        "LEFT JOIN users adm  ON r.confirmed_by    = adm.id "
+        "LEFT JOIN users upd  ON r.updated_by      = upd.id "
+        "LEFT JOIN users resp ON r.responsible_id  = resp.id "
+        "LEFT JOIN users rev  ON r.reviewer_id     = rev.id "
         "LEFT JOIN subject_types st ON r.subject_type_id = st.id "
         "LEFT JOIN result_types  rt ON r.result_type_id  = rt.id "
         "WHERE r.id=?", (rid,)
@@ -81,6 +84,17 @@ def view_request(rid):
         "SELECT id,full_name FROM users WHERE role IN ('employee','admin','manager') "
         "ORDER BY full_name"
     ).fetchall()
+
+    # Справочник итогов работы — нужен для select в блоке «Обратная связь»
+    result_types = conn.execute(
+        "SELECT id, name, color_hex FROM result_types ORDER BY id"
+    ).fetchall()
+
+    # Список всех активных пользователей — нужен для модального окна проверяющего
+    all_users = conn.execute(
+        "SELECT id, full_name, role FROM users WHERE is_active=1 ORDER BY full_name"
+    ).fetchall()
+
     conn.close()
 
     # #48: денормализованные значения инфраструктуры для отображения
@@ -92,6 +106,9 @@ def view_request(rid):
         employees=employees,
         okved_name=okved_name,
         display_vals=display_vals,
+        result_types=result_types,
+        all_users=all_users,
+        today_str=str(__import__('datetime').date.today()),
     )
 
 
