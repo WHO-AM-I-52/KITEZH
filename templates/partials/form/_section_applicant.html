@@ -1,0 +1,125 @@
+{# ===== РАЗДЕЛ 2: СВЕДЕНИЯ О ЗАЯВИТЕЛЕ ===== #}
+<div class="card mb-3">
+  <div class="card-header py-2" style="background:#1B5E7B;color:#fff;font-size:13px;font-weight:600">
+    <i class="bi bi-person-badge me-1"></i>2. Сведения о заявителе
+  </div>
+  <div class="card-body row g-3">
+
+    <div class="col-md-6">
+      <label class="form-label fw-bold" style="font-size:12px">
+        Полное наименование <span class="text-danger">*</span>
+      </label>
+      <input type="text" name="applicant_full_name" class="form-control form-control-sm"
+             value="{{ req.applicant_full_name if req else '' }}"
+             placeholder="ООО «Название организации»">
+    </div>
+
+    <div class="col-md-3">
+      <label class="form-label fw-bold" style="font-size:12px">Краткое наименование</label>
+      <input type="text" name="applicant_short_name" class="form-control form-control-sm"
+             value="{{ req.applicant_short_name if req else '' }}">
+    </div>
+
+    <div class="col-md-3">
+      <label class="form-label fw-bold" style="font-size:12px">Организационно-правовая форма</label>
+      <select name="applicant_legal_form" class="form-select form-select-sm">
+        <option value="">— выберите —</option>
+        {% for lf in legal_forms %}
+        <option value="{{ lf }}" {{ 'selected' if req and req.applicant_legal_form==lf }}>{{ lf }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="col-md-4">
+      <label class="form-label fw-bold" style="font-size:12px">ИНН</label>
+      <div class="input-group input-group-sm">
+        <input type="text" name="applicant_inn" id="applicant_inn"
+               class="form-control form-control-sm"
+               value="{{ req.applicant_inn if req else '' }}"
+               placeholder="10 или 12 цифр">
+        <button type="button" class="btn btn-outline-primary" id="btn_egrul_lookup"
+                onclick="egrulLookup()" title="Заполнить реквизиты по ИНН из ЕГРЮЛ">
+          <i class="bi bi-search" id="egrul_btn_icon"></i>
+        </button>
+      </div>
+      <div id="inn_help" class="form-text" style="font-size:11px;min-height:14px">Необязательно, только цифры</div>
+      <div id="egrul_status" style="font-size:11px;min-height:14px"></div>
+    </div>
+
+    <div class="col-md-4">
+      <label class="form-label fw-bold" style="font-size:12px">Категория МСП</label>
+      <select name="applicant_msp_category" class="form-select form-select-sm">
+        <option value="">— не указано —</option>
+        {% for v, l in [('micro','Микро'),('small','Малое'),('medium','Среднее'),('none','Не МСП')] %}
+        <option value="{{ v }}" {{ 'selected' if req and req.applicant_msp_category==v }}>{{ l }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="col-md-4">
+      <label class="form-label fw-bold" style="font-size:12px">Основной ОКВЭД</label>
+      <div class="position-relative mb-1">
+        <input type="text" name="applicant_okved_main"
+               class="form-control form-control-sm"
+               value="{{ req.applicant_okved_main if req else '' }}"
+               placeholder="например, 10.11" autocomplete="off" id="okved_main_input">
+        <div id="okved_suggestions" class="list-group position-absolute w-100"
+             style="z-index:1050;max-height:220px;overflow-y:auto;display:none;font-size:12px;"></div>
+      </div>
+      <input type="text" class="form-control form-control-sm mb-1" id="okved_main_name"
+             value="{{ req.okved_main_name if req and req.okved_main_name else '' }}"
+             placeholder="Наименование вида деятельности" readonly>
+      <div class="form-text" style="font-size:11px">Начните вводить код или часть названия</div>
+    </div>
+
+    <div class="col-md-6">
+      <label class="form-label fw-bold" style="font-size:12px">Почтовый адрес</label>
+      <input type="text" name="postal_address" class="form-control form-control-sm"
+             value="{{ req.postal_address if req else '' }}">
+    </div>
+
+    <div class="col-md-6">
+      <label class="form-label fw-bold" style="font-size:12px">Юридический адрес</label>
+      <input type="text" name="legal_address" class="form-control form-control-sm"
+             value="{{ req.legal_address if req else '' }}">
+    </div>
+
+    <div class="col-md-4">
+      <label class="form-label fw-bold" style="font-size:12px">Контактное лицо</label>
+      <input type="text" name="contact_person" class="form-control form-control-sm"
+             value="{{ req.contact_person if req else '' }}" placeholder="ФИО">
+    </div>
+
+    <div class="col-md-4">
+      <label class="form-label fw-bold" style="font-size:12px">
+        Телефон <span class="text-danger">*</span>
+      </label>
+      <input type="tel" name="contact_phone" class="form-control form-control-sm"
+             value="{{ req.contact_phone if req else '' }}"
+             placeholder="+7 (___) ___-__-__" id="phone_mask">
+    </div>
+
+    <div class="col-md-4">
+      <label class="form-label fw-bold" style="font-size:12px">E-mail</label>
+      <input type="email" name="contact_email" class="form-control form-control-sm"
+             value="{{ req.contact_email if req else '' }}" placeholder="example@mail.ru">
+    </div>
+
+    <div class="col-md-6">
+      <label class="form-label fw-bold" style="font-size:12px">
+        Предмет обращения
+        <span class="badge bg-secondary ms-1" style="font-size:10px;font-weight:400">МинЭК</span>
+      </label>
+      <select name="subject_type_id" class="form-select form-select-sm">
+        <option value="">— не указан —</option>
+        {% for s in subjects %}
+        <option value="{{ s.id }}" {{ 'selected' if req and req.subject_type_id == s.id }}>{{ s.name }}</option>
+        {% endfor %}
+      </select>
+      {% if not subjects %}
+      <div class="form-text text-warning" style="font-size:11px">Справочник пуст — добавьте значения в разделе Справочники</div>
+      {% endif %}
+    </div>
+
+  </div>
+</div>

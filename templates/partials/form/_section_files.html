@@ -1,0 +1,71 @@
+{# ===== РАЗДЕЛ: ПРИКРЕПЛЁННЫЕ ФАЙЛЫ ===== #}
+<div class="card mb-3">
+  <div class="card-header py-2" style="background:#1B5E7B;color:#fff;font-size:13px;font-weight:600">
+    <i class="bi bi-paperclip me-1"></i>Прикреплённые файлы
+  </div>
+  <div class="card-body">
+    {% if req and req.request_files %}
+    <div class="mb-2">
+      <strong style="font-size:12px">Уже прикреплены:</strong>
+      <div class="d-flex flex-wrap gap-2 mt-1">
+        {% for f in req.request_files.split(',') if f.strip() %}
+        <a href="{{ url_for('requests.uploaded_file', filename=f.strip()) }}"
+           target="_blank"
+           class="d-flex flex-column align-items-center text-decoration-none
+                  text-dark border rounded p-2"
+           style="width:80px;word-break:break-all;font-size:0.72rem">
+          {% set ext = f.strip().rsplit('.',1)[-1].lower() %}
+          {% if ext == 'pdf' %}
+            <i class="bi bi-file-earmark-pdf text-danger" style="font-size:2rem"></i>
+          {% elif ext in ['doc','docx'] %}
+            <i class="bi bi-file-earmark-word text-primary" style="font-size:2rem"></i>
+          {% elif ext in ['xls','xlsx'] %}
+            <i class="bi bi-file-earmark-excel text-success" style="font-size:2rem"></i>
+          {% elif ext in ['ppt','pptx'] %}
+            <i class="bi bi-file-earmark-slides text-warning" style="font-size:2rem"></i>
+          {% elif ext in ['jpg','jpeg','png'] %}
+            <i class="bi bi-file-earmark-image text-info" style="font-size:2rem"></i>
+          {% elif ext == 'zip' %}
+            <i class="bi bi-file-earmark-zip text-secondary" style="font-size:2rem"></i>
+          {% else %}
+            <i class="bi bi-file-earmark" style="font-size:2rem"></i>
+          {% endif %}
+          <span class="mt-1 text-center">
+            {{ f.strip()[:12] }}{% if f.strip()|length > 12 %}…{% endif %}
+          </span>
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <label class="form-label fw-bold" style="font-size:12px">
+      {{ 'Добавить файлы' if req else 'Прикрепить файлы обращения' }}
+    </label>
+    <input type="file" name="request_files" id="requestFilesInput"
+           class="form-control form-control-sm" multiple
+           accept=".pdf,.doc,.docx,.xlsx,.xls,.ppt,.pptx,.jpg,.jpeg,.png,.zip"
+           onchange="previewFiles(this)">
+    <div class="form-text">
+      Можно выбрать несколько файлов: PDF, DOC, XLSX, PPT, изображения, ZIP
+    </div>
+    <div id="filesPreview" class="d-flex flex-wrap gap-2 mt-2"></div>
+
+    {% if not req %}
+    <div class="mt-3 pt-3 border-top">
+      <div class="d-flex align-items-center gap-2 flex-wrap">
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="btnOcr"
+                onclick="submitOcr()" disabled>
+          <i class="bi bi-magic me-1"></i>Распознать анкету (OCR)
+        </button>
+        <span class="text-muted" style="font-size:11px" id="ocrHint">
+          Прикрепите файл анкеты, чтобы активировать распознавание
+        </span>
+      </div>
+      {% if ocr_message %}
+      <div class="form-text mt-1" style="font-size:11px;color:#6c757d">{{ ocr_message }}</div>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+</div>

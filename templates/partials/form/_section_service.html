@@ -1,0 +1,103 @@
+{# ===== РАЗДЕЛ 1: СЛУЖЕБНАЯ ИНФОРМАЦИЯ ===== #}
+<div class="card mb-3">
+  <div class="card-header py-2" style="background:#1B5E7B;color:#fff;font-size:13px;font-weight:600">
+    <i class="bi bi-info-circle me-1"></i>1. Служебная информация
+  </div>
+  <div class="card-body row g-3">
+
+    <div class="col-md-3">
+      <label class="form-label fw-bold" style="font-size:12px">
+        Дата обращения <span class="text-danger">*</span>
+      </label>
+      <input type="date" name="request_date" class="form-control form-control-sm"
+             value="{{ req.request_date if req else today }}" required>
+    </div>
+
+    <div class="col-md-3">
+      <label class="form-label fw-bold" style="font-size:12px">Статус</label>
+      <select name="status" class="form-select form-select-sm">
+        {% for v,l in [('draft','Черновик'),('review','На проверке'),
+                       ('accepted','В работе'),('answered','Отвечено')] %}
+        <option value="{{ v }}" {{ 'selected' if req and req.status==v else ('selected' if not req and v=='draft' else '') }}>
+          {{ l }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    {% if req %}
+    <div class="col-md-3">
+      <label class="form-label fw-bold" style="font-size:12px">Ответственный</label>
+      <select name="assigned_to" class="form-select form-select-sm">
+        <option value="">— не назначен —</option>
+        {% for e in employees %}
+        <option value="{{ e.id }}" {{ 'selected' if req and req.assigned_to==e.id }}>
+          {{ e.full_name }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
+
+    <div class="col-md-3 d-flex align-items-end">
+      <div class="form-check">
+        <input class="form-check-input" type="checkbox" name="consent_disclosure"
+               value="1" id="chk_consent"
+               {{ 'checked' if req and req.consent_disclosure }}>
+        <label class="form-check-label" for="chk_consent" style="font-size:12px">
+          Согласие на раскрытие информации
+        </label>
+      </div>
+    </div>
+
+    {# ИСТОЧНИК ОБРАЩЕНИЯ #}
+    <div class="col-md-6">
+      <label class="form-label fw-bold" style="font-size:12px">
+        Источник обращения <span class="text-danger">*</span>
+      </label>
+      <div class="border rounded p-2" style="background:#fff;max-height:110px;overflow-y:auto"
+           id="source_type_wrap">
+        {% for src in source_types %}
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox"
+                 name="source_type" value="{{ src }}" id="src_{{ loop.index }}"
+                 onchange="toggleIncomingNumber()"
+                 {% if req and req.source_type and src in req.source_type.split(', ') %}checked{% endif %}>
+          <label class="form-check-label" for="src_{{ loop.index }}" style="font-size:13px">
+            {{ src }}
+          </label>
+        </div>
+        {% endfor %}
+        {% if not source_types %}
+        <span class="text-muted small">Справочник пуст — добавьте значения в разделе Справочники</span>
+        {% endif %}
+      </div>
+      <div class="form-text">Можно выбрать несколько</div>
+
+      <div id="incomingNumberBlock" class="mt-2" style="display:none">
+        <label class="form-label fw-bold" style="font-size:12px">№ входящего обращения</label>
+        <input type="text" name="incoming_number" class="form-control form-control-sm"
+               placeholder="Например: ВХ-2026-0042"
+               value="{{ req.incoming_number or '' if req else '' }}">
+      </div>
+    </div>
+
+    {% if req %}
+    <div class="col-md-6">
+      <label class="form-label fw-bold" style="font-size:12px">Служебная информация</label>
+      <div class="border rounded p-2 bg-light" style="font-size:12px">
+        <div><i class="bi bi-person-circle me-1 text-secondary"></i>
+          <strong>Создал:</strong> {{ req.employee_name or '—' }}
+          {% if req.created_at %}<span class="text-muted ms-2">{{ req.created_at }}</span>{% endif %}
+        </div>
+        {% if req.updated_at %}
+        <div class="mt-1"><i class="bi bi-pencil me-1 text-secondary"></i>
+          <strong>Изменено:</strong> <span class="text-muted">{{ req.updated_at }}</span>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+</div>

@@ -1,0 +1,76 @@
+{# ===== РАЗДЕЛ 4: ИНВЕСТИЦИИ И ПЕРСОНАЛ ===== #}
+<div class="card mb-3">
+  <div class="card-header py-2" style="background:#1B5E7B;color:#fff;font-size:13px;font-weight:600">
+    <i class="bi bi-currency-exchange me-1"></i>4. Инвестиции и персонал
+  </div>
+  <div class="card-body row g-3">
+    <div class="col-md-3">
+      <label class="form-label fw-bold" style="font-size:12px">
+        Объём инвестиций, млн руб. <span class="text-danger">*</span>
+      </label>
+      <input type="number" step="0.1" name="investment_total" class="form-control form-control-sm"
+             value="{{ req.investment_total if req else '' }}" placeholder="0.0">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label fw-bold" style="font-size:12px">В т.ч. заёмные, млн руб.</label>
+      <input type="number" step="0.1" name="investment_borrowed" class="form-control form-control-sm"
+             value="{{ req.investment_borrowed if req else '' }}" placeholder="0.0">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label fw-bold" style="font-size:12px">
+        Рабочих мест (всего) <span class="text-danger">*</span>
+      </label>
+      <input type="number" name="jobs_total" class="form-control form-control-sm"
+             value="{{ req.jobs_total if req else '' }}" placeholder="0">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label fw-bold" style="font-size:12px">В т.ч. иностранных граждан</label>
+      <input type="number" name="jobs_foreign" class="form-control form-control-sm"
+             value="{{ req.jobs_foreign if req else '' }}" placeholder="0">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label fw-bold" style="font-size:12px">Управленческий персонал</label>
+      <input type="number" name="staff_management" class="form-control form-control-sm"
+             value="{{ req.staff_management if req else '' }}" placeholder="0">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label fw-bold" style="font-size:12px">Рабочие</label>
+      <input type="number" name="staff_workers" class="form-control form-control-sm"
+             value="{{ req.staff_workers if req else '' }}" placeholder="0">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label fw-bold" style="font-size:12px">ИТ-специалисты</label>
+      <input type="number" name="staff_it" class="form-control form-control-sm"
+             value="{{ req.staff_it if req else '' }}" placeholder="0">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label fw-bold" style="font-size:12px">Прочий персонал</label>
+      <input type="number" name="staff_other" class="form-control form-control-sm"
+             value="{{ req.staff_other if req else '' }}" placeholder="0">
+    </div>
+    <div class="col-md-4">
+      <label class="form-label fw-bold" style="font-size:12px">Этапы строительства</label>
+      <input type="text" name="construction_stages" class="form-control form-control-sm"
+             value="{{ req.construction_stages if req else '' }}" placeholder="Количество этапов">
+    </div>
+    <div class="col-md-4">
+      <label class="form-label fw-bold" style="font-size:12px">Начало строительства</label>
+      <input type="date" name="construction_start" class="form-control form-control-sm"
+             value="{{ req.construction_start if req else '' }}">
+    </div>
+    <div class="col-md-4">
+      <label class="form-label fw-bold" style="font-size:12px">Начало эксплуатации</label>
+      <input type="date" name="operation_start" class="form-control form-control-sm"
+             value="{{ req.operation_start if req else '' }}">
+    </div>
+    <div class="col-12">
+      <label class="form-label fw-bold" style="font-size:12px">Сырьё и материалы</label>
+      <textarea name="raw_materials" class="form-control form-control-sm" rows="2"
+                placeholder="Перечень основного сырья и материалов">{{ req.raw_materials if req else '' }}</textarea>
+    </div>
+    <div class="col-12">
+      <label class="form-label fw-bold" style="font-size:12px">Доп. сведения по сырью</label>
+      <textarea name="raw_extra" class="form-control form-control-sm" rows="1">{{ req.raw_extra if req else '' }}</textarea>
+    </div>
+  </div>
+</div>

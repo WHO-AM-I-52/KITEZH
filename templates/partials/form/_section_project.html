@@ -1,0 +1,31 @@
+{# ===== РАЗДЕЛ 3: СВЕДЕНИЯ О ПРОЕКТЕ ===== #}
+<div class="card mb-3">
+  <div class="card-header py-2" style="background:#1B5E7B;color:#fff;font-size:13px;font-weight:600">
+    <i class="bi bi-briefcase me-1"></i>3. Сведения о проекте
+  </div>
+  <div class="card-body row g-3">
+    <div class="col-md-8">
+      <label class="form-label fw-bold" style="font-size:12px">
+        Название проекта <span class="text-danger">*</span>
+      </label>
+      <input type="text" name="project_name" class="form-control form-control-sm"
+             value="{{ req.project_name if req else '' }}"
+             placeholder="Краткое название инвестиционного проекта">
+    </div>
+    <div class="col-md-4">
+      <label class="form-label fw-bold" style="font-size:12px">Номенклатура продукции</label>
+      <input type="text" name="product_nomenclature" class="form-control form-control-sm"
+             value="{{ req.product_nomenclature if req else '' }}">
+    </div>
+    <div class="col-12">
+      <label class="form-label fw-bold" style="font-size:12px">Описание производства</label>
+      <textarea name="production_description" class="form-control form-control-sm" rows="2"
+                placeholder="Краткое описание технологического процесса">{{ req.production_description if req else '' }}</textarea>
+    </div>
+    <div class="col-12">
+      <label class="form-label fw-bold" style="font-size:12px">Состав объектов</label>
+      <textarea name="object_composition" class="form-control form-control-sm" rows="2"
+                placeholder="Перечень зданий, сооружений">{{ req.object_composition if req else '' }}</textarea>
+    </div>
+  </div>
+</div>
