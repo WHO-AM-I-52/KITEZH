@@ -3,7 +3,7 @@ from datetime import datetime, date
 from flask import request, redirect, url_for, session, flash, abort
 
 from db import get_db
-from auth_utils import login_required, admin_required
+from auth_utils import login_required, permission_required
 from activity_log import log_action
 from . import requests_bp
 
@@ -23,8 +23,12 @@ _STATUS_EXTRA_FIELDS = {
 
 @requests_bp.route('/request/<int:rid>/confirm', methods=['POST'])
 @login_required
-@admin_required
 def confirm_request(rid):
+    from auth_utils import get_user_perm
+    if session.get('role') != 'admin' and not get_user_perm('can_confirm'):
+        flash('Недостаточно прав', 'error')
+        return redirect(url_for('requests.index'))
+
     conn    = get_db()
     req     = conn.execute("SELECT * FROM requests WHERE id=?", (rid,)).fetchone()
     if not req:
@@ -205,7 +209,7 @@ def reviewer_decision(rid):
 
 @requests_bp.route('/request/<int:rid>/delete', methods=['POST'])
 @login_required
-@admin_required
+@permission_required('can_delete')
 def delete_request(rid):
     conn = get_db()
     req  = conn.execute(
@@ -220,6 +224,51 @@ def delete_request(rid):
     conn.commit()
     conn.close()
     flash('Обращение удалено', 'success')
+    return redirect(url_for('requests.index'))
+
+
+@requests_bp.route('/requests/bulk_delete', methods=['POST'])
+@login_required
+@permission_required('can_delete')
+def bulk_delete_requests():
+    raw_ids = request.form.getlist('ids[]')
+
+    # Валидация: только целые числа
+    ids = []
+    for v in raw_ids:
+        try:
+            ids.append(int(v))
+        except (ValueError, TypeError):
+            pass
+
+    if not ids:
+        flash('Не выбрано ни одного обращения', 'warning')
+        return redirect(url_for('requests.index'))
+
+    conn = get_db()
+    placeholders = ','.join('?' * len(ids))
+    rows = conn.execute(
+        f"SELECT id, request_number, applicant_short_name FROM requests WHERE id IN ({placeholders})",
+        ids
+    ).fetchall()
+
+    deleted_labels = []
+    for row in rows:
+        num  = row['request_number'] or f'ID:{row["id"]}'
+        name = row['applicant_short_name'] or '—'
+        log_action(conn, session['user_id'], 'delete', row['id'],
+                   f'Массовое удаление: {num} ({name})')
+        deleted_labels.append(num)
+
+    conn.execute(
+        f"DELETE FROM requests WHERE id IN ({placeholders})",
+        ids
+    )
+    conn.commit()
+    conn.close()
+
+    count = len(deleted_labels)
+    flash(f'Удалено обращений: {count}', 'success')
     return redirect(url_for('requests.index'))
 
 
