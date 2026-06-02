@@ -1,6 +1,6 @@
 # ╔═════════════════════════════════════════════════════════════════════════════╗
 # ║                       export_routes.py                                       ║
-# ║  v3.2: нормализация числовых полей при импорте                      ║
+# ║  v3.3: расширенная сводка импорта (duplicates, created_ids, status_changed) ║
 # ╚═════════════════════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, request, send_file, jsonify, session
@@ -65,114 +65,69 @@ def _fmt_date(iso) -> str:
 
 
 def _parse_date_for_db(val) -> str | None:
-    """Любое представление даты из Excel → YYYY-MM-DD или None.
-
-    Обрабатываемые форматы:
-      - datetime / date объект (openpyxl может вернуть сразу)
-      - Excel serial number (int/float, напр. 46025)
-      - 'DD.MM.YYYY'  → '3.01.2026', '03.01.2026'
-      - 'DD.MM.YYYY H:MM:SS'  → '3.01.2026 0:00:00'
-      - 'YYYY-MM-DD'
-      - 'MM/DD/YYYY'
-    """
+    """Любое представление даты из Excel → YYYY-MM-DD или None."""
     if val is None:
         return None
-
     if isinstance(val, datetime):
         return val.strftime('%Y-%m-%d')
     if isinstance(val, date):
         return val.strftime('%Y-%m-%d')
-
     if isinstance(val, (int, float)):
         serial = int(val)
         if 1 <= serial <= 2958465:
             try:
-                excel_epoch = datetime(1899, 12, 30)
-                return (excel_epoch + timedelta(days=serial)).strftime('%Y-%m-%d')
+                return (datetime(1899, 12, 30) + timedelta(days=serial)).strftime('%Y-%m-%d')
             except Exception:
                 return None
         return None
-
     s = str(val).strip()
     if not s or s.lower() in ('none', 'null', '—', '-'):
         return None
-
     FMTS = [
-        '%d.%m.%Y %H:%M:%S',
-        '%d.%m.%Y %H:%M',
-        '%-d.%-m.%Y %H:%M:%S',
-        '%d.%m.%Y',
-        '%Y-%m-%d',
-        '%m/%d/%Y',
-        '%d/%m/%Y',
-        '%Y.%m.%d',
+        '%d.%m.%Y %H:%M:%S', '%d.%m.%Y %H:%M', '%-d.%-m.%Y %H:%M:%S',
+        '%d.%m.%Y', '%Y-%m-%d', '%m/%d/%Y', '%d/%m/%Y', '%Y.%m.%d',
     ]
     for fmt in FMTS:
         try:
             return datetime.strptime(s, fmt).strftime('%Y-%m-%d')
         except ValueError:
             continue
-
     if len(s) >= 10 and s[4] == '-':
         try:
             return datetime.strptime(s[:10], '%Y-%m-%d').strftime('%Y-%m-%d')
         except ValueError:
             pass
-
     return None
 
 
-def _parse_numeric_for_db(val, field: str) -> tuple[float | int | None, str | None]:
-    """Значение из Excel → число для БД или (None, сообщение об ошибке).
-
-    Возвращает (число, None) при успехе или (None, 'описание ошибки') при неудаче.
-
-    Обрабатывает:
-      - int / float напрямую
-      - строки с пробелами-разделителями тысяч: '1 500 000'
-      - запятую как десятичный разделитель: '1500,5'
-      - смешанный формат: '1 500,50'
-      - суффиксы единиц: '150 га', '300 м²', 'млн', 'тыс.' — отбрасываются
-      - пустую строку / None → None без ошибки
-    """
+def _parse_numeric_for_db(val, field: str) -> tuple:
+    """Значение из Excel → число для БД или (None, сообщение об ошибке)."""
     if val is None:
         return None, None
-
     if isinstance(val, bool):
         return None, f'поле «{field}»: булево значение не является числом'
-
     if isinstance(val, (int, float)):
+        if field in ('jobs_total', 'site_build_area_m2'):
+            return int(round(val)), None
         return val, None
-
     s = str(val).strip()
     if not s or s.lower() in ('—', '-', 'none', 'null', 'н/д', 'нет'):
         return None, None
-
-    # Убираем суффиксы единиц измерения (нечисловые части в конце)
     s = re.sub(r'[^\d\s,.].*$', '', s).strip()
-
-    # Убираем пробелы как разделители тысяч (включая неразрывный пробел \xa0)
     s = re.sub(r'[\s\xa0]+', '', s)
-
-    # Запятая → точка (десятичный разделитель)
     s = s.replace(',', '.')
-
-    # Если точек больше одной — оставляем только последнюю (напр. '1.500.000' → '1500000')
     parts = s.split('.')
     if len(parts) > 2:
         s = ''.join(parts[:-1]) + '.' + parts[-1]
-
     if not s:
         return None, None
-
     try:
         num = float(s)
-        # jobs_total и site_build_area_m2 — целые
         if field in ('jobs_total', 'site_build_area_m2'):
             return int(round(num)), None
         return num, None
     except ValueError:
-        return None, f'поле «{field}»: не удалось распознать число из значения {val!r}'
+        return None, f'поле «{field}»: не удалось распознать число из {val!r}'
 
 
 def _mln_to_mld(val) -> str:
@@ -194,6 +149,23 @@ def _contact_cell(person: str, phone: str, email: str) -> str:
     if email and email.strip():
         parts.append(email.strip())
     return '\n'.join(parts) if parts else '—'
+
+
+def _apply_cell_value(field: str, cell_val, row_label: str, errors: list) -> tuple:
+    """Универсальный конвертер значения ячейки → (значение_для_бд, успех)."""
+    if field in DATE_FIELDS:
+        parsed = _parse_date_for_db(cell_val)
+        if parsed is None:
+            errors.append(f'{row_label}: не удалось распознать дату в поле «{field}»: {cell_val!r}')
+            return None, False
+        return parsed, True
+    if field in NUMERIC_FIELDS:
+        num, err_msg = _parse_numeric_for_db(cell_val, field)
+        if err_msg:
+            errors.append(f'{row_label}: {err_msg}')
+            return None, False
+        return num, True
+    return str(cell_val).strip(), True
 
 
 # ─── СТАНДАРТНАЯ ВЫГРУЗКА ─────────────────────────────────────────────────────────────────────
@@ -625,29 +597,6 @@ STATUS_IMPORT_MAP = {
 }
 
 
-def _apply_cell_value(field: str, cell_val, row_label: str, errors: list) -> tuple:
-    """Универсальный конвертер значения ячейки → (значение_для_бд, успех).
-
-    row_label — строка для сообщения об ошибке, например 'Новое' или 'ID 42'.
-    Возвращает (значение, True) при успехе или (None, False) при ошибке.
-    """
-    if field in DATE_FIELDS:
-        parsed = _parse_date_for_db(cell_val)
-        if parsed is None:
-            errors.append(f'{row_label}: не удалось распознать дату в поле «{field}»: {cell_val!r}')
-            return None, False
-        return parsed, True
-
-    if field in NUMERIC_FIELDS:
-        num, err_msg = _parse_numeric_for_db(cell_val, field)
-        if err_msg:
-            errors.append(f'{row_label}: {err_msg}')
-            return None, False
-        return num, True  # num может быть None — это ок (пустое поле)
-
-    return str(cell_val).strip(), True
-
-
 @report_bp.route('/import/full', methods=['POST'])
 @login_required
 def import_full():
@@ -716,11 +665,14 @@ def import_full():
         'assigned_to':     users_map,
     }
 
-    updated = 0
-    created = 0
-    skipped = 0
-    errors  = []
-    now     = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    updated        = 0
+    created        = 0
+    skipped        = 0
+    status_changed = 0
+    errors         = []
+    duplicates     = []   # [{existing_id, match_by, inn/name, project}]
+    created_ids    = []   # [id, ...] созданных обращений
+    now            = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
     for row in ws.iter_rows(min_row=2, values_only=True):
         raw_id = row[id_idx]
@@ -762,6 +714,7 @@ def import_full():
 
             # ── дедупликация ───────────────────────────────────────────────
             existing_dup = None
+            match_by     = None
             inn   = new_vals.get('applicant_inn', '') or ''
             proj  = new_vals.get('project_name', '') or ''
             aname = new_vals.get('applicant_full_name', '') or ''
@@ -769,20 +722,24 @@ def import_full():
 
             if inn and proj:
                 existing_dup = conn.execute(
-                    'SELECT id FROM requests WHERE applicant_inn=? AND project_name=?',
+                    'SELECT id, status FROM requests WHERE applicant_inn=? AND project_name=?',
                     (inn, proj)
                 ).fetchone()
+                match_by = 'ИНН+проект'
             elif aname and rdate:
                 existing_dup = conn.execute(
-                    'SELECT id FROM requests WHERE applicant_full_name=? AND request_date=?',
+                    'SELECT id, status FROM requests WHERE applicant_full_name=? AND request_date=?',
                     (aname, rdate)
                 ).fetchone()
+                match_by = 'наименование+дата'
 
             if existing_dup:
                 dup_id = existing_dup['id']
                 upd = {k: v for k, v in new_vals.items() if k != 'status'}
-                if row_status and overwrite:
+                status_upd = None
+                if row_status and overwrite and row_status != existing_dup['status']:
                     upd['status'] = row_status
+                    status_upd = row_status
                 if upd:
                     set_cl = ', '.join(f'{k}=?' for k in upd)
                     conn.execute(
@@ -790,10 +747,19 @@ def import_full():
                         list(upd.values()) + [now, session['user_id'], dup_id]
                     )
                     log_action(conn, session['user_id'], 'import_xlsx_dedup', dup_id,
-                               f'Импорт Excel: дедупликация (ИНН={inn or aname})')
+                               f'Импорт Excel: дедупликация по {match_by} (ИНН={inn or aname})')
                     updated += 1
+                    if status_upd:
+                        status_changed += 1
                 else:
                     skipped += 1
+                duplicates.append({
+                    'existing_id': dup_id,
+                    'match_by':    match_by,
+                    'inn':         inn or None,
+                    'name':        aname or None,
+                    'project':     proj or None,
+                })
             else:
                 if new_vals:
                     cols_ins = ', '.join(new_vals.keys()) + ', created_by, created_at, updated_at'
@@ -802,8 +768,10 @@ def import_full():
                     cursor   = conn.execute(
                         f'INSERT INTO requests ({cols_ins}) VALUES ({ph_ins})', ins_vals
                     )
-                    log_action(conn, session['user_id'], 'import_xlsx_create', cursor.lastrowid,
+                    new_id = cursor.lastrowid
+                    log_action(conn, session['user_id'], 'import_xlsx_create', new_id,
                                'Импорт Excel: создано новое обращение')
+                    created_ids.append(new_id)
                     created += 1
                 else:
                     skipped += 1
@@ -822,10 +790,15 @@ def import_full():
             continue
 
         updates = {}
+        status_will_change = False
 
         if row_status:
             if overwrite or not existing['status']:
-                updates['status'] = row_status
+                if row_status != existing['status']:
+                    updates['status'] = row_status
+                    status_will_change = True
+                else:
+                    updates['status'] = row_status
 
         row_label = f'ID {rid}'
 
@@ -841,9 +814,7 @@ def import_full():
                 if cell_val is None or str(cell_val).strip() == '':
                     continue
                 val, ok = _apply_cell_value(field, cell_val, row_label, errors)
-                if not ok:
-                    continue
-                if val is None:
+                if not ok or val is None:
                     continue
                 if not overwrite and existing[field] not in (None, ''):
                     continue
@@ -875,11 +846,21 @@ def import_full():
         log_action(conn, session['user_id'], 'import_xlsx', rid,
                    f'Импорт Excel: обновлены поля: {", ".join(updates.keys())}')
         updated += 1
+        if status_will_change:
+            status_changed += 1
 
     conn.commit()
     conn.close()
 
-    return jsonify({'updated': updated, 'created': created, 'skipped': skipped, 'errors': errors})
+    return jsonify({
+        'updated':        updated,
+        'created':        created,
+        'skipped':        skipped,
+        'status_changed': status_changed,
+        'duplicates':     duplicates,
+        'created_ids':    created_ids,
+        'errors':         errors,
+    })
 
 
 # ─── AUTOSAVE / WAL CHECKPOINT ──────────────────────────────────────────────────────────────────────────────────────────
