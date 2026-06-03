@@ -315,6 +315,46 @@ def _migrate(conn):
         """)
 
     # ════════════════════════════════════════════════════════════════
+    # Инициализация счётчиков reg_number_sequences по существующим
+    # номерам в БД. Идемпотентно: INSERT OR REPLACE берёт MAX(seq)
+    # по каждой паре (prefix, year) — не затирает уже накопленные
+    # значения если счётчик уже больше.
+    # Формат номера: ПРЕФИКС-ГГГГ-NNN  (NNN — любое кол-во цифр)
+    # ════════════════════════════════════════════════════════════════
+    conn.execute("""
+        INSERT OR REPLACE INTO reg_number_sequences (prefix, year, last_seq)
+        SELECT
+            prefix,
+            year,
+            MAX(seq) AS last_seq
+        FROM (
+            SELECT
+                SUBSTR(request_number, 1, INSTR(request_number, '-') - 1)          AS prefix,
+                CAST(SUBSTR(
+                    request_number,
+                    INSTR(request_number, '-') + 1,
+                    4
+                ) AS INTEGER)                                                       AS year,
+                CAST(SUBSTR(
+                    request_number,
+                    INSTR(request_number, '-') + 6
+                ) AS INTEGER)                                                       AS seq
+            FROM requests
+            WHERE request_number IS NOT NULL
+              AND request_number != ''
+              AND INSTR(request_number, '-') > 0
+        )
+        WHERE prefix != ''
+          AND year BETWEEN 2020 AND 2100
+          AND seq > 0
+        GROUP BY prefix, year
+        HAVING MAX(seq) > COALESCE(
+            (SELECT last_seq FROM reg_number_sequences rns
+             WHERE rns.prefix = prefix AND rns.year = year), 0
+        )
+    """)
+
+    # ════════════════════════════════════════════════════════════════
     # Issue #48: единицы измерения инфраструктурных полей
     # ════════════════════════════════════════════════════════════════
     _unit_cols = [
