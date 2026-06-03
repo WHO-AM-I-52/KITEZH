@@ -228,6 +228,9 @@ def edit_request(rid):
                 saved_names.append(fn2)
         if saved_names:
             vals[ALL_FIELDS.index('request_files')] = ','.join(saved_names)
+        else:
+            # Новые файлы не загружались — сохраняем существующее значение из БД
+            vals[ALL_FIELDS.index('request_files')] = req['request_files']
 
         edit_reason = request.form.get('edit_reason', '').strip()
         updated_by  = session.get('user_id')
