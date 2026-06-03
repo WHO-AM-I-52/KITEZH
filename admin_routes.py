@@ -1,6 +1,6 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║                      admin_routes.py                         ║
-# ║  v2.5 fix: db locked + UNIQUE rename guard                  ║
+# ║  v2.6: reg_prefix для subject_types                         ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify
@@ -81,22 +81,30 @@ def subject_types_write():
     action = request.form.get('action')
     try:
         if action == 'add':
-            name = request.form.get('name', '').strip()
+            name   = request.form.get('name', '').strip()
+            prefix = request.form.get('reg_prefix', '').strip().upper()
             if name:
                 try:
-                    conn.execute("INSERT INTO subject_types (name) VALUES (?)", (name,))
+                    conn.execute(
+                        "INSERT INTO subject_types (name, reg_prefix) VALUES (?, ?)",
+                        (name, prefix or None)
+                    )
                     conn.commit()
-                    flash(f'Предмет «{name}» добавлен', 'success')
+                    flash(f'Предмет «{name}» добавлен' + (f', префикс: {prefix}' if prefix else ', префикс не задан (будет БП)'), 'success')
                 except Exception:
                     conn.rollback()
                     flash('Такой предмет уже есть', 'error')
 
         elif action == 'rename':
-            sid  = request.form.get('sid')
-            name = request.form.get('name', '').strip()
+            sid    = request.form.get('sid')
+            name   = request.form.get('name', '').strip()
+            prefix = request.form.get('reg_prefix', '').strip().upper()
             if name:
                 try:
-                    conn.execute("UPDATE subject_types SET name=? WHERE id=?", (name, sid))
+                    conn.execute(
+                        "UPDATE subject_types SET name=?, reg_prefix=? WHERE id=?",
+                        (name, prefix or None, sid)
+                    )
                     conn.commit()
                     flash('Предмет обновлён', 'success')
                 except Exception:
