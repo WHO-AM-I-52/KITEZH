@@ -2,7 +2,7 @@
 {# ╔══════════════════════════════════════════════════════════════╗ #}
 {# ║                        base.html                            ║ #}
 {# ║  Базовый шаблон приложения "Подбор ЗУ — НО"                 ║ #}
-{# ║  v2.20: централизованный flash-модуль (версия + задача)     ║ #}
+{# ║  v2.20.1: fix dot — скрывается после просмотра версий          ║ #}
 {# ╚══════════════════════════════════════════════════════════════╝ #}
 <html lang="ru">
 <head>
@@ -647,14 +647,7 @@
 </script>
 {% endif %}
 
-{# ╔══════════════════════════════════════════════════════════════════╗ #}
-{# ║  ЦЕНТРАЛИЗОВАННЫЙ МОДУЛЬ МИГАНИЯ ВКЛАДКИ                        ║ #}
-{# ║  Экспортирует в window:                                          ║ #}
-{# ║    startVersionFlashing() — мигание "🆕 Новая версия!"           ║ #}
-{# ║    startTaskFlashing()    — мигание "📋 Новая задача!"            ║ #}
-{# ║    stopAllFlashing()      — остановка любого мигания             ║ #}
-{# ║  Триггер остановки: window focus (переключение на вкладку)       ║ #}
-{# ╚══════════════════════════════════════════════════════════════════╝ #}
+{# ── Централизованный модуль мигания вкладки ── #}
 {% if 'user_id' in session %}
 <script>
 (function(){
@@ -667,7 +660,6 @@
     if (taskInterval)    { clearInterval(taskInterval);    taskInterval    = null; }
     document.title = originalTitle;
   }
-
   window.stopAllFlashing = stopAllFlashing;
 
   window.startVersionFlashing = function() {
@@ -688,68 +680,56 @@
     }, 700);
   };
 
-  /* Возврат на вкладку — гасим всё */
   window.addEventListener('focus', stopAllFlashing);
 })();
 </script>
 {% endif %}
 
-{# ── Уведомление о новых задачах (все авторизованные пользователи) ── #}
+{# ── Уведомление о новых задачах ── #}
 {% if 'user_id' in session %}
 <script>
 (function(){
-  var PREV_KEY  = 'sonar_unread_prev_{{ session.get("user_id") }}';
-  var SEEN_KEY  = 'sonar_task_seen_{{ session.get("user_id") }}';
-  var current   = {{ unread_count|int }};
-  var prev      = parseInt(localStorage.getItem(PREV_KEY) || '-1', 10);
-
-  /* Сохраняем текущее значение сразу */
+  var PREV_KEY = 'sonar_unread_prev_{{ session.get("user_id") }}';
+  var current  = {{ unread_count|int }};
+  var prev     = parseInt(localStorage.getItem(PREV_KEY) || '-1', 10);
   localStorage.setItem(PREV_KEY, String(current));
-
-  /* При первом заходе (prev == -1) просто запоминаем базу, не мигаем */
-  if (prev >= 0 && current > prev) {
-    /* Новые уведомления появились — запускаем мигание */
-    if (window.startTaskFlashing) {
-      /* Не мигаем, если уже смотрим на страницу уведомлений */
-      if (window.location.pathname !== '/notifications') {
-        window.startTaskFlashing();
-      }
-    }
+  if (prev >= 0 && current > prev && window.startTaskFlashing) {
+    if (window.location.pathname !== '/notifications') window.startTaskFlashing();
   }
-
-  /* Клик по «Уведомления» → гасим мигание */
   var notifLink = document.getElementById('sbNotifLink');
-  if (notifLink && window.stopAllFlashing) {
-    notifLink.addEventListener('click', window.stopAllFlashing);
-  }
+  if (notifLink && window.stopAllFlashing) notifLink.addEventListener('click', window.stopAllFlashing);
 })();
 </script>
 {% endif %}
 
-{# ── Проверка обновлений (только admin) ── #}
+{# ── Проверка обновлений (admin) ── #}
 {% if session.get('role') == 'admin' %}
 <script>
 (function(){
-  var dot            = document.getElementById('sbUpdateDot');
+  var dot       = document.getElementById('sbUpdateDot');
   if (!dot) return;
-  var CACHE_KEY      = 'sonar_upd_status';
-  var SEEN_KEY       = 'sonar_upd_seen';
-  var CHECK_INTERVAL = 30 * 60 * 1000;
+  var CACHE_KEY = 'sonar_upd_status';
+  var SEEN_KEY  = 'sonar_upd_seen';
+  var INTERVAL  = 30 * 60 * 1000;
 
+  /*
+   * FIX v2.20.1: Точка показывается только если has=true И пользователь ЕЩЄ
+   * не просмотрел страницу версий в текущей сессии.
+   * После клика в sidebar'e по «Версии» — seen становится '1',
+   * и точка перестаёт появляться до следующего рестарта браузера / выхода из сессии.
+  */
   function applyUpdateState(has) {
-    dot.classList.toggle('d-none', !has);
-    if (has) {
-      if (sessionStorage.getItem(SEEN_KEY) !== '1' && window.startVersionFlashing) {
-        window.startVersionFlashing();
-      }
-    }
+    var seen = sessionStorage.getItem(SEEN_KEY) === '1';
+    var show = has && !seen;
+    dot.classList.toggle('d-none', !show);
+    if (show && window.startVersionFlashing) window.startVersionFlashing();
   }
 
-  /* Клик по «Версии» → гасим мигание и ставим флаг seen */
   var clLink = document.getElementById('sbChangelogLink');
   if (clLink) {
     clLink.addEventListener('click', function() {
       sessionStorage.setItem(SEEN_KEY, '1');
+      dot.classList.add('d-none');           /* сразу скрываем точку */
       if (window.stopAllFlashing) window.stopAllFlashing();
     });
   }
@@ -770,12 +750,12 @@
     try {
       var c = JSON.parse(cached);
       applyUpdateState(c.has);
-      if (Date.now() - c.ts > CHECK_INTERVAL) doCheck();
+      if (Date.now() - c.ts > INTERVAL) doCheck();
     } catch(e) { doCheck(); }
   } else {
     setTimeout(doCheck, 5000);
   }
-  setInterval(doCheck, CHECK_INTERVAL);
+  setInterval(doCheck, INTERVAL);
 })();
 </script>
 {% endif %}
