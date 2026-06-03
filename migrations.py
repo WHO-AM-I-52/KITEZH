@@ -10,7 +10,7 @@ from auth_utils import hash_pw
 from spravochnik import LEGAL_FORMS_DEFAULT, DISTRICTS_DEFAULT, SOURCE_TYPES_DEFAULT
 from db import get_db
 
-# ──────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
 # НОВЫЕ КОЛОНКИ requests (#53):
 #   registered_at, review_days, review_deadline
 #   responsible_id, responsible_not_in_system, responsible_name_external
@@ -18,7 +18,7 @@ from db import get_db
 #   reviewer_decision, reviewer_comment, reviewer_decision_at
 #   sent_to_applicant_at, send_method
 #   applicant_feedback, applicant_feedback_at
-# ──────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
 _NEW_REQUEST_COLS = [
     ('registered_at',                'TEXT'),
     ('review_days',                  'INTEGER'),
@@ -47,10 +47,47 @@ def _migrate_request_cols(conn):
             conn.execute(f"ALTER TABLE requests ADD COLUMN {col} {typ}")
 
 
+def _migrate_users_cols(conn):
+    """Единая точка миграции колонок users — используется и init_db, и migrate_db."""
+    user_cols = {r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
+    for col in ['can_create', 'can_edit_others', 'can_confirm', 'can_delete',
+                'can_rollback', 'can_export', 'can_classifiers', 'can_users',
+                'can_view_all']:
+        if col not in user_cols:
+            conn.execute(f"ALTER TABLE users ADD COLUMN {col} INTEGER DEFAULT 0")
+    if 'must_change_password' not in user_cols:
+        conn.execute("ALTER TABLE users ADD COLUMN must_change_password INTEGER DEFAULT 0")
+    for col, definition in [
+        ('email',               'TEXT DEFAULT NULL'),
+        ('theme',               "TEXT DEFAULT 'light'"),
+        ('email_notifications', 'INTEGER DEFAULT 0'),
+        ('is_active',           'INTEGER NOT NULL DEFAULT 1'),
+    ]:
+        if col not in user_cols:
+            conn.execute(f"ALTER TABLE users ADD COLUMN {col} {definition}")
+
+
+def _migrate_classifiers_tables(conn):
+    """Создаёт subject_types/result_types если отсутствуют (для старых БД)."""
+    conn.executescript("""
+CREATE TABLE IF NOT EXISTS subject_types (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT NOT NULL UNIQUE,
+    reg_prefix TEXT
+);
+CREATE TABLE IF NOT EXISTS result_types (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    name      TEXT NOT NULL UNIQUE,
+    color_hex TEXT DEFAULT 'FFFFFF'
+);
+""")
+
+
 def init_db():
     conn = sqlite3.connect(DB_PATH, timeout=15)
     conn.row_factory = sqlite3.Row
-    conn.executescript("""
+    try:
+        conn.executescript("""
 CREATE TABLE IF NOT EXISTS users (
     id                   INTEGER PRIMARY KEY AUTOINCREMENT,
     username             TEXT UNIQUE NOT NULL,
@@ -179,121 +216,98 @@ CREATE INDEX  IF NOT EXISTS idx_okved_name ON okved(name);
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """)
 
-    # ── Миграция requests ───────────────────────────────────────────────────
-    cols = {r[1] for r in conn.execute("PRAGMA table_info(requests)").fetchall()}
-    for col in ['source_type', 'request_files', 'edit_reason', 'updated_by']:
-        if col not in cols:
-            conn.execute(f"ALTER TABLE requests ADD COLUMN {col} TEXT")
-    for col in ['applicant_inn', 'applicant_msp_category', 'applicant_okved_main']:
-        if col not in cols:
-            conn.execute(f"ALTER TABLE requests ADD COLUMN {col} TEXT")
-    for col, typ in {
-        'incoming_number':        'TEXT',
-        'answer_system_number':   'TEXT',
-        'site_area_ha_min':       'REAL',
-        'site_area_ha_max':       'REAL',
-        'site_build_area_m2_min': 'REAL',
-        'site_build_area_m2_max': 'REAL',
-    }.items():
-        if col not in cols:
-            conn.execute(f"ALTER TABLE requests ADD COLUMN {col} {typ}")
-    _migrate_request_cols(conn)  # #53: 16 новых колонок
+        # ── subject_types / result_types ──────────────────────────────────────────
+        _migrate_classifiers_tables(conn)
 
-    # ── Миграция users ─────────────────────────────────────────────────────
-    user_cols = {r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
-    for col in ['can_create', 'can_edit_others', 'can_confirm', 'can_delete',
-                'can_rollback', 'can_export', 'can_classifiers', 'can_users',
-                'can_view_all']:
-        if col not in user_cols:
-            conn.execute(f"ALTER TABLE users ADD COLUMN {col} INTEGER DEFAULT 0")
-    if 'must_change_password' not in user_cols:
-        conn.execute("ALTER TABLE users ADD COLUMN must_change_password INTEGER DEFAULT 0")
-    for col, definition in [
-        ('email',               'TEXT DEFAULT NULL'),
-        ('theme',               "TEXT DEFAULT 'light'"),
-        ('email_notifications', 'INTEGER DEFAULT 0'),
-        ('is_active',           'INTEGER NOT NULL DEFAULT 1'),
-    ]:
-        if col not in user_cols:
-            conn.execute(f"ALTER TABLE users ADD COLUMN {col} {definition}")
+        # ── Миграция requests ──────────────────────────────────────────────────
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(requests)").fetchall()}
+        for col in ['source_type', 'request_files', 'edit_reason', 'updated_by']:
+            if col not in cols:
+                conn.execute(f"ALTER TABLE requests ADD COLUMN {col} TEXT")
+        for col in ['applicant_inn', 'applicant_msp_category', 'applicant_okved_main']:
+            if col not in cols:
+                conn.execute(f"ALTER TABLE requests ADD COLUMN {col} TEXT")
+        for col, typ in {
+            'incoming_number':        'TEXT',
+            'answer_system_number':   'TEXT',
+            'site_area_ha_min':       'REAL',
+            'site_area_ha_max':       'REAL',
+            'site_build_area_m2_min': 'REAL',
+            'site_build_area_m2_max': 'REAL',
+        }.items():
+            if col not in cols:
+                conn.execute(f"ALTER TABLE requests ADD COLUMN {col} {typ}")
+        _migrate_request_cols(conn)  # #53: 16 новых колонок
 
-    # ── admin ─────────────────────────────────────────────────────────────
-    if not conn.execute("SELECT id FROM users WHERE username='admin'").fetchone():
-        conn.execute(
-            "INSERT INTO users (username,password,full_name,role,"
-            "can_create,can_edit_others,can_confirm,can_delete,"
-            "can_rollback,can_export,can_classifiers,can_users,can_view_all,is_active) "
-            "VALUES (?,?,?,?,1,1,1,1,1,1,1,1,1,1)",
-            ('admin', hash_pw('admin123'), 'Администратор', 'admin')
-        )
+        # ── Миграция users ──────────────────────────────────────────────────────
+        _migrate_users_cols(conn)
 
-    # ── Справочники ───────────────────────────────────────────────────────
-    if not conn.execute("SELECT id FROM classifiers LIMIT 1").fetchone():
-        for v in LEGAL_FORMS_DEFAULT:
-            conn.execute("INSERT INTO classifiers (category,value) VALUES ('legal_form',?)", (v,))
-        for v in DISTRICTS_DEFAULT:
-            conn.execute("INSERT INTO classifiers (category,value) VALUES ('district',?)", (v,))
-        for v in SOURCE_TYPES_DEFAULT:
-            conn.execute("INSERT INTO classifiers (category,value) VALUES ('source_type',?)", (v,))
-    else:
-        if not conn.execute(
-            "SELECT id FROM classifiers WHERE category='source_type' LIMIT 1"
-        ).fetchone():
+        # ── admin ────────────────────────────────────────────────────────────────────
+        if not conn.execute("SELECT id FROM users WHERE username='admin'").fetchone():
+            conn.execute(
+                "INSERT INTO users (username,password,full_name,role,"
+                "can_create,can_edit_others,can_confirm,can_delete,"
+                "can_rollback,can_export,can_classifiers,can_users,can_view_all,is_active) "
+                "VALUES (?,?,?,?,1,1,1,1,1,1,1,1,1,1)",
+                ('admin', hash_pw('admin123'), 'Администратор', 'admin')
+            )
+
+        # ── Справочники ──────────────────────────────────────────────────────────
+        if not conn.execute("SELECT id FROM classifiers LIMIT 1").fetchone():
+            for v in LEGAL_FORMS_DEFAULT:
+                conn.execute("INSERT INTO classifiers (category,value) VALUES ('legal_form',?)", (v,))
+            for v in DISTRICTS_DEFAULT:
+                conn.execute("INSERT INTO classifiers (category,value) VALUES ('district',?)", (v,))
             for v in SOURCE_TYPES_DEFAULT:
-                conn.execute(
-                    "INSERT INTO classifiers (category,value) VALUES ('source_type',?)", (v,)
-                )
+                conn.execute("INSERT INTO classifiers (category,value) VALUES ('source_type',?)", (v,))
+        else:
+            if not conn.execute(
+                "SELECT id FROM classifiers WHERE category='source_type' LIMIT 1"
+            ).fetchone():
+                for v in SOURCE_TYPES_DEFAULT:
+                    conn.execute(
+                        "INSERT INTO classifiers (category,value) VALUES ('source_type',?)", (v,)
+                    )
 
-    conn.commit()
-    conn.close()
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def migrate_db():
     conn = sqlite3.connect(DB_PATH, timeout=15)
     conn.row_factory = sqlite3.Row
+    try:
+        # ── subject_types / result_types ──────────────────────────────────────────
+        _migrate_classifiers_tables(conn)
 
-    # ── requests ───────────────────────────────────────────────────────────────
-    cols = {r[1] for r in conn.execute("PRAGMA table_info(requests)").fetchall()}
-    for col in ['request_files', 'source_type', 'edit_reason', 'updated_by']:
-        if col not in cols:
-            conn.execute(f"ALTER TABLE requests ADD COLUMN {col} TEXT")
-    for col, typ in {
-        'incoming_number':        'TEXT',
-        'answer_system_number':   'TEXT',
-        'site_area_ha_min':       'REAL',
-        'site_area_ha_max':       'REAL',
-        'site_build_area_m2_min': 'REAL',
-        'site_build_area_m2_max': 'REAL',
-    }.items():
-        if col not in cols:
-            conn.execute(f"ALTER TABLE requests ADD COLUMN {col} {typ}")
-    _migrate_request_cols(conn)  # #53: 16 новых колонок
+        # ── requests ───────────────────────────────────────────────────────────────────
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(requests)").fetchall()}
+        for col in ['request_files', 'source_type', 'edit_reason', 'updated_by']:
+            if col not in cols:
+                conn.execute(f"ALTER TABLE requests ADD COLUMN {col} TEXT")
+        for col, typ in {
+            'incoming_number':        'TEXT',
+            'answer_system_number':   'TEXT',
+            'site_area_ha_min':       'REAL',
+            'site_area_ha_max':       'REAL',
+            'site_build_area_m2_min': 'REAL',
+            'site_build_area_m2_max': 'REAL',
+        }.items():
+            if col not in cols:
+                conn.execute(f"ALTER TABLE requests ADD COLUMN {col} {typ}")
+        _migrate_request_cols(conn)  # #53: 16 новых колонок
 
-    # ── users ───────────────────────────────────────────────────────────────
-    user_cols = {r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
-    for col in ['can_create', 'can_edit_others', 'can_confirm', 'can_delete',
-                'can_rollback', 'can_export', 'can_classifiers', 'can_users',
-                'can_view_all']:
-        if col not in user_cols:
-            conn.execute(f"ALTER TABLE users ADD COLUMN {col} INTEGER DEFAULT 0")
-    if 'must_change_password' not in user_cols:
-        conn.execute("ALTER TABLE users ADD COLUMN must_change_password INTEGER DEFAULT 0")
-    for col, definition in [
-        ('email',               'TEXT DEFAULT NULL'),
-        ('theme',               "TEXT DEFAULT 'light'"),
-        ('email_notifications', 'INTEGER DEFAULT 0'),
-        ('is_active',           'INTEGER NOT NULL DEFAULT 1'),
-    ]:
-        if col not in user_cols:
-            conn.execute(f"ALTER TABLE users ADD COLUMN {col} {definition}")
+        # ── users ─────────────────────────────────────────────────────────────────────
+        _migrate_users_cols(conn)
 
-    conn.execute("""
-        UPDATE users SET can_create=1, can_export=1, can_view_all=1
-        WHERE role='employee' AND can_create=0
-    """)
+        conn.execute("""
+            UPDATE users SET can_create=1, can_export=1, can_view_all=1
+            WHERE role='employee' AND can_create=0
+        """)
 
-    # ── login_log ───────────────────────────────────────────────────────────
-    conn.executescript("""
+        # ── login_log ──────────────────────────────────────────────────────────────────
+        conn.executescript("""
 CREATE TABLE IF NOT EXISTS login_log (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id    INTEGER,
@@ -306,8 +320,8 @@ CREATE INDEX IF NOT EXISTS idx_ll_user  ON login_log(user_id);
 CREATE INDEX IF NOT EXISTS idx_ll_event ON login_log(event);
 """)
 
-    # ── activity_log ─────────────────────────────────────────────────────
-    conn.executescript("""
+        # ── activity_log ────────────────────────────────────────────────────────────
+        conn.executescript("""
 CREATE TABLE IF NOT EXISTS activity_log (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id    INTEGER,
@@ -321,8 +335,8 @@ CREATE INDEX IF NOT EXISTS idx_al_request ON activity_log(request_id);
 CREATE INDEX IF NOT EXISTS idx_al_action  ON activity_log(action);
 """)
 
-    # ── phonebook ────────────────────────────────────────────────────────
-    conn.executescript("""
+        # ── phonebook ───────────────────────────────────────────────────────────────
+        conn.executescript("""
 CREATE TABLE IF NOT EXISTS phonebook_orgs (
     id      INTEGER PRIMARY KEY AUTOINCREMENT,
     name    TEXT NOT NULL UNIQUE,
@@ -343,14 +357,15 @@ CREATE TABLE IF NOT EXISTS phonebook (
 CREATE INDEX IF NOT EXISTS idx_pb_org  ON phonebook(org_id);
 CREATE INDEX IF NOT EXISTS idx_pb_name ON phonebook(full_name);
 """)
-    pb_cols = {r[1] for r in conn.execute("PRAGMA table_info(phonebook)").fetchall()}
-    if 'source_type' not in pb_cols:
-        conn.execute(
-            "ALTER TABLE phonebook ADD COLUMN source_type TEXT DEFAULT 'general'"
-        )
+        pb_cols = {r[1] for r in conn.execute("PRAGMA table_info(phonebook)").fetchall()}
+        if 'source_type' not in pb_cols:
+            conn.execute(
+                "ALTER TABLE phonebook ADD COLUMN source_type TEXT DEFAULT 'general'"
+            )
 
-    conn.commit()
-    conn.close()
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def migrate_districts():
