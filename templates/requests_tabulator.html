@@ -3,7 +3,7 @@
  ╔══════════════════════════════════════════════════════════════╗
  ║  requests_tabulator.html                                       ║
  ║  Список обращений на Tabulator 6.x + JSON API                ║
- ║  v1.3: fix sort — dataSorted+replaceData, locale fix          ║
+ ║  v1.4: fix links — /view/<id> просмотр, /request/<id> ред.  ║
  ╚══════════════════════════════════════════════════════════════╝
 #}
 
@@ -223,7 +223,6 @@ const state = {
   sort: '', dir: 'desc',
 };
 
-// Флаг — предотвращаем повторный replaceData из dataSorted
 let _sortTriggered = false;
 
 function buildParams(page, size) {
@@ -288,7 +287,7 @@ const table = new Tabulator('#requestsTable', {
       title: '№', field: 'number', width: 100, resizable: false,
       formatter: function(cell){
         const row = cell.getRow().getData();
-        return `<a class="tab-num" href="/request/${row.id}">${cell.getValue()}</a>`;
+        return `<a class="tab-num" href="/view/${row.id}">${cell.getValue()}</a>`;
       }
     },
     {
@@ -340,8 +339,8 @@ const table = new Tabulator('#requestsTable', {
         const id = cell.getValue(), d = cell.getRow().getData();
         const canEdit = IS_ADMIN || d.employee_id == USER_ID;
         return `<div class="tab-actions">
-          <a href="/request/${id}" class="btn-view" title="Просмотр"><i class="bi bi-eye"></i></a>
-          ${canEdit ? `<a href="/request/${id}/edit" class="btn-edit" title="Ред."><i class="bi bi-pencil"></i></a>` : ''}
+          <a href="/view/${id}" class="btn-view" title="Просмотр"><i class="bi bi-eye"></i></a>
+          ${canEdit ? `<a href="/request/${id}" class="btn-edit" title="Редактировать"><i class="bi bi-pencil"></i></a>` : ''}
           ${IS_ADMIN ? `<button class="btn-delete" data-del-id="${id}" title="Удалить"><i class="bi bi-trash3"></i></button>` : ''}
         </div>`;
       },
@@ -371,7 +370,6 @@ const table = new Tabulator('#requestsTable', {
   },
 });
 
-// ─── Ключевое исправление: dataSorted срабатывает ПОСЛЕ клика на заголовок
 table.on('dataSorted', function(sorters) {
   if (_sortTriggered) { _sortTriggered = false; return; }
   if (sorters && sorters.length > 0) {
