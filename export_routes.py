@@ -103,6 +103,14 @@ def _parse_date_for_db(val) -> str | None:
     return None
 
 
+def _is_empty_cell(val) -> bool:
+    """True если ячейка пустая / заполнитель — не нужно писать ошибку."""
+    if val is None:
+        return True
+    s = str(val).strip().lower()
+    return s in ('', 'none', 'null', '—', '-')
+
+
 def _parse_numeric_for_db(val, field: str) -> tuple:
     """Значение из Excel → число для БД или (None, сообщение об ошибке)."""
     if val is None:
@@ -157,6 +165,9 @@ def _contact_cell(person: str, phone: str, email: str) -> str:
 def _apply_cell_value(field: str, cell_val, row_label: str, errors: list) -> tuple:
     """Универсальный конвертер значения ячейки → (значение_для_бд, успех)."""
     if field in DATE_FIELDS:
+        # Пустая ячейка — не ошибка, просто пропускаем
+        if _is_empty_cell(cell_val):
+            return None, True
         parsed = _parse_date_for_db(cell_val)
         if parsed is None:
             errors.append(f'{row_label}: не удалось распознать дату в поле «{field}»: {cell_val!r}')
@@ -187,114 +198,116 @@ def report():
     sf = request.args.get('status', '')
 
     conn = get_db()
-    q = ("SELECT r.*,u.full_name as employee_name,ass.full_name as assigned_name "
-         "FROM requests r "
-         "LEFT JOIN users u   ON r.created_by=u.id "
-         "LEFT JOIN users ass ON r.assigned_to=ass.id "
-         "WHERE 1=1")
-    p = []
-    if df:
-        q += ' AND r.request_date>=?'; p.append(df)
-    if dt:
-        q += ' AND r.request_date<=?'; p.append(dt)
-    if sf:
-        q += ' AND r.status=?'; p.append(sf)
-
-    rows = conn.execute(q + ' ORDER BY r.request_date', p).fetchall()
-
-    sm = {
-        'draft':    'Черновик',
-        'review':   'На проверке',
-        'accepted': 'Принято в работу',
-        'answered': 'Ответ направлен',
-    }
-
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = 'Отчёт'
-
-    hfill = PatternFill("solid", fgColor="1B5E7B")
-    hfont = Font(bold=True, color="FFFFFF", size=10)
-    alt   = PatternFill("solid", fgColor="EAF4FB")
-    br    = _std_border()
-
-    ws.merge_cells('A1:Q1')
-    per = f" за период {_fmt_date(df)}–{_fmt_date(dt)}" if (df or dt) else ""
-    ws['A1'].value     = f"Обращения на подбор земельных участков{per}"
-    ws['A1'].font      = Font(bold=True, size=13, color="1B5E7B")
-    ws['A1'].alignment = Alignment(horizontal='center')
-    ws.row_dimensions[1].height = 26
-
-    ws.merge_cells('A2:Q2')
-    ws['A2'].value = (
-        f"Дата формирования: {datetime.now().strftime('%d.%m.%Y %H:%M')}  "
-        f"Всего: {len(rows)}"
-    )
-    ws['A2'].font      = Font(italic=True, size=9, color="888888")
-    ws['A2'].alignment = Alignment(horizontal='center')
-
-    hdrs = [
-        '№ обращения', 'Дата', 'Статус', 'Источник', 'Заявитель', 'Название проекта',
-        'Контактное лицо', 'Телефон', 'E-mail', 'Инвестиции (млн)',
-        'Рабочих мест', 'Площадь (га)', 'Застройка (м²)', 'Право пользования',
-        'Районы', 'Ответственный', 'Дата ответа',
-    ]
-    for ci, h in enumerate(hdrs, 1):
-        c = ws.cell(row=3, column=ci, value=h)
-        c.fill = hfill; c.font = hfont; c.border = br
-        c.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
-    ws.row_dimensions[3].height = 38
-
-    for ri, r in enumerate(rows, 4):
-        fill = alt if ri % 2 == 0 else PatternFill("solid", fgColor="FFFFFF")
-        vals = [
-            r['request_number'] or '—',
-            _fmt_date(r['request_date']),
-            sm.get(r['status'], r['status']),
-            r['source_type'] or '—',
-            r['applicant_short_name'] or r['applicant_full_name'] or '—',
-            r['project_name'] or '—',
-            r['contact_person'] or '—',
-            r['contact_phone'] or '—',
-            r['contact_email'] or '—',
-            r['investment_total'],
-            r['jobs_total'],
-            r['site_area_ha'],
-            r['site_build_area_m2'],
-            r['site_right'] or '—',
-            r['preferred_districts'] or '—',
-            r['assigned_name'] or r['employee_name'] or '—',
-            _fmt_date(r['answer_date']),
-        ]
-        for ci, val in enumerate(vals, 1):
-            c = ws.cell(row=ri, column=ci, value=val)
-            c.fill = fill; c.border = br
-            c.alignment = Alignment(vertical='center', wrap_text=True)
-        ws.row_dimensions[ri].height = 16
-
-    for ci, w in enumerate(
-        [16, 12, 20, 16, 28, 30, 20, 15, 24, 12, 10, 10, 12, 16, 24, 20, 12], 1
-    ):
-        ws.column_dimensions[get_column_letter(ci)].width = w
-    ws.freeze_panes = 'A4'
-
-    fn = f"report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-    fp = os.path.join(REPORTS_DIR, fn)
-    wb.save(fp)
-
-    log_parts = []
-    if df or dt:
-        log_parts.append(f"период: {_fmt_date(df)} – {_fmt_date(dt)}")
-    if sf:
-        log_parts.append(f"статус: {sm.get(sf, sf)}")
-    log_parts.append(f"всего {len(rows)} обращ.")
     try:
-        log_action(conn, session['user_id'], 'export_report',
-                   detail='; '.join(log_parts))
-        conn.commit()
-    except Exception:
-        pass
-    conn.close()
+        q = ("SELECT r.*,u.full_name as employee_name,ass.full_name as assigned_name "
+             "FROM requests r "
+             "LEFT JOIN users u   ON r.created_by=u.id "
+             "LEFT JOIN users ass ON r.assigned_to=ass.id "
+             "WHERE 1=1")
+        p = []
+        if df:
+            q += ' AND r.request_date>=?'; p.append(df)
+        if dt:
+            q += ' AND r.request_date<=?'; p.append(dt)
+        if sf:
+            q += ' AND r.status=?'; p.append(sf)
+
+        rows = conn.execute(q + ' ORDER BY r.request_date', p).fetchall()
+
+        sm = {
+            'draft':    'Черновик',
+            'review':   'На проверке',
+            'accepted': 'Принято в работу',
+            'answered': 'Ответ направлен',
+        }
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = 'Отчёт'
+
+        hfill = PatternFill("solid", fgColor="1B5E7B")
+        hfont = Font(bold=True, color="FFFFFF", size=10)
+        alt   = PatternFill("solid", fgColor="EAF4FB")
+        br    = _std_border()
+
+        ws.merge_cells('A1:Q1')
+        per = f" за период {_fmt_date(df)}–{_fmt_date(dt)}" if (df or dt) else ""
+        ws['A1'].value     = f"Обращения на подбор земельных участков{per}"
+        ws['A1'].font      = Font(bold=True, size=13, color="1B5E7B")
+        ws['A1'].alignment = Alignment(horizontal='center')
+        ws.row_dimensions[1].height = 26
+
+        ws.merge_cells('A2:Q2')
+        ws['A2'].value = (
+            f"Дата формирования: {datetime.now().strftime('%d.%m.%Y %H:%M')}  "
+            f"Всего: {len(rows)}"
+        )
+        ws['A2'].font      = Font(italic=True, size=9, color="888888")
+        ws['A2'].alignment = Alignment(horizontal='center')
+
+        hdrs = [
+            '№ обращения', 'Дата', 'Статус', 'Источник', 'Заявитель', 'Название проекта',
+            'Контактное лицо', 'Телефон', 'E-mail', 'Инвестиции (млн)',
+            'Рабочих мест', 'Площадь (га)', 'Застройка (м²)', 'Право пользования',
+            'Районы', 'Ответственный', 'Дата ответа',
+        ]
+        for ci, h in enumerate(hdrs, 1):
+            c = ws.cell(row=3, column=ci, value=h)
+            c.fill = hfill; c.font = hfont; c.border = br
+            c.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        ws.row_dimensions[3].height = 38
+
+        for ri, r in enumerate(rows, 4):
+            fill = alt if ri % 2 == 0 else PatternFill("solid", fgColor="FFFFFF")
+            vals = [
+                r['request_number'] or '—',
+                _fmt_date(r['request_date']),
+                sm.get(r['status'], r['status']),
+                r['source_type'] or '—',
+                r['applicant_short_name'] or r['applicant_full_name'] or '—',
+                r['project_name'] or '—',
+                r['contact_person'] or '—',
+                r['contact_phone'] or '—',
+                r['contact_email'] or '—',
+                r['investment_total'],
+                r['jobs_total'],
+                r['site_area_ha'],
+                r['site_build_area_m2'],
+                r['site_right'] or '—',
+                r['preferred_districts'] or '—',
+                r['assigned_name'] or r['employee_name'] or '—',
+                _fmt_date(r['answer_date']),
+            ]
+            for ci, val in enumerate(vals, 1):
+                c = ws.cell(row=ri, column=ci, value=val)
+                c.fill = fill; c.border = br
+                c.alignment = Alignment(vertical='center', wrap_text=True)
+            ws.row_dimensions[ri].height = 16
+
+        for ci, w in enumerate(
+            [16, 12, 20, 16, 28, 30, 20, 15, 24, 12, 10, 10, 12, 16, 24, 20, 12], 1
+        ):
+            ws.column_dimensions[get_column_letter(ci)].width = w
+        ws.freeze_panes = 'A4'
+
+        fn = f"report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        fp = os.path.join(REPORTS_DIR, fn)
+        wb.save(fp)
+
+        log_parts = []
+        if df or dt:
+            log_parts.append(f"период: {_fmt_date(df)} – {_fmt_date(dt)}")
+        if sf:
+            log_parts.append(f"статус: {sm.get(sf, sf)}")
+        log_parts.append(f"всего {len(rows)} обращ.")
+        try:
+            log_action(conn, session['user_id'], 'export_report',
+                       detail='; '.join(log_parts))
+            conn.commit()
+        except Exception:
+            pass
+    finally:
+        conn.close()
 
     return send_file(fp, as_attachment=True, download_name=fn,
                      mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
@@ -314,175 +327,176 @@ def report_minek():
     sf = request.args.get('status', '')
 
     conn = get_db()
+    try:
+        q = """
+            SELECT
+                r.*,
+                u.full_name   AS employee_name,
+                ass.full_name AS assigned_name,
+                st.name       AS subject_type_name,
+                rt.name       AS result_type_name,
+                rt.color_hex  AS result_color
+            FROM requests r
+            LEFT JOIN users         u   ON r.created_by      = u.id
+            LEFT JOIN users         ass ON r.assigned_to     = ass.id
+            LEFT JOIN subject_types st  ON r.subject_type_id = st.id
+            LEFT JOIN result_types  rt  ON r.result_type_id  = rt.id
+            WHERE r.request_date >= ? AND r.request_date <= ?
+        """
+        p = [df, dt]
+        if sf:
+            q += ' AND r.status = ?'; p.append(sf)
+        q += ' ORDER BY r.request_date, r.id'
 
-    q = """
-        SELECT
-            r.*,
-            u.full_name   AS employee_name,
-            ass.full_name AS assigned_name,
-            st.name       AS subject_type_name,
-            rt.name       AS result_type_name,
-            rt.color_hex  AS result_color
-        FROM requests r
-        LEFT JOIN users         u   ON r.created_by      = u.id
-        LEFT JOIN users         ass ON r.assigned_to     = ass.id
-        LEFT JOIN subject_types st  ON r.subject_type_id = st.id
-        LEFT JOIN result_types  rt  ON r.result_type_id  = rt.id
-        WHERE r.request_date >= ? AND r.request_date <= ?
-    """
-    p = [df, dt]
-    if sf:
-        q += ' AND r.status = ?'; p.append(sf)
-    q += ' ORDER BY r.request_date, r.id'
+        rows = conn.execute(q, p).fetchall()
+        result_types = conn.execute(
+            'SELECT id, name, color_hex FROM result_types ORDER BY id'
+        ).fetchall()
 
-    rows = conn.execute(q, p).fetchall()
-    result_types = conn.execute(
-        'SELECT id, name, color_hex FROM result_types ORDER BY id'
-    ).fetchall()
+        HEADER_COLOR = '1B5E7B'
+        hfill = PatternFill('solid', fgColor=HEADER_COLOR)
+        hfont = Font(bold=True, color='FFFFFF', size=10)
+        alt   = PatternFill('solid', fgColor='EAF4FB')
+        br    = _std_border()
 
-    HEADER_COLOR = '1B5E7B'
-    hfill = PatternFill('solid', fgColor=HEADER_COLOR)
-    hfont = Font(bold=True, color='FFFFFF', size=10)
-    alt   = PatternFill('solid', fgColor='EAF4FB')
-    br    = _std_border()
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = 'Заявки'
 
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = 'Заявки'
+        NCOLS = 12
 
-    NCOLS = 12
+        ws.merge_cells(f'A1:{get_column_letter(NCOLS)}1')
+        ws['A1'].value = (
+            f"Еженедельный доклад МинЭК: обращения за период "
+            f"{_fmt_date(df)} – {_fmt_date(dt)}"
+        )
+        ws['A1'].font      = Font(bold=True, size=13, color=HEADER_COLOR)
+        ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
+        ws.row_dimensions[1].height = 28
 
-    ws.merge_cells(f'A1:{get_column_letter(NCOLS)}1')
-    ws['A1'].value = (
-        f"Еженедельный доклад МинЭК: обращения за период "
-        f"{_fmt_date(df)} – {_fmt_date(dt)}"
-    )
-    ws['A1'].font      = Font(bold=True, size=13, color=HEADER_COLOR)
-    ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
-    ws.row_dimensions[1].height = 28
+        ws.merge_cells(f'A2:{get_column_letter(NCOLS)}2')
+        ws['A2'].value = (
+            f"Дата формирования: {datetime.now().strftime('%d.%m.%Y %H:%M')}   "
+            f"Обращений в выборке: {len(rows)}"
+        )
+        ws['A2'].font      = Font(italic=True, size=9, color='888888')
+        ws['A2'].alignment = Alignment(horizontal='center')
 
-    ws.merge_cells(f'A2:{get_column_letter(NCOLS)}2')
-    ws['A2'].value = (
-        f"Дата формирования: {datetime.now().strftime('%d.%m.%Y %H:%M')}   "
-        f"Обращений в выборке: {len(rows)}"
-    )
-    ws['A2'].font      = Font(italic=True, size=9, color='888888')
-    ws['A2'].alignment = Alignment(horizontal='center')
-
-    HEADERS = [
-        '',
-        'Дата обращения',
-        'Наименование компании',
-        'Наименование проекта',
-        'Объем инвестиций,\nмлрд рублей',
-        'Рабочие места',
-        'Предмет обращения',
-        'Дата направления презентации',
-        'Дата получения обратной связи',
-        'Итоги работы по обращению',
-        'Менеджер',
-        'Телефон, контактное лицо',
-    ]
-
-    for ci, h in enumerate(HEADERS, 1):
-        c = ws.cell(row=3, column=ci, value=h)
-        c.fill = hfill; c.font = hfont; c.border = br
-        c.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
-    ws.row_dimensions[3].height = 40
-
-    for ri, r in enumerate(rows, 4):
-        argb = _hex_to_argb(r['result_color']) if r['result_color'] else ''
-        if argb:
-            rfill = PatternFill('solid', fgColor=argb)
-        else:
-            rfill = alt if ri % 2 == 0 else PatternFill('solid', fgColor='FFFFFFFF')
-
-        result_val = r['additional_info'] or r['result_type_name'] or '—'
-
-        vals = [
-            ri - 3,
-            _fmt_date(r['request_date']),
-            r['applicant_short_name'] or r['applicant_full_name'] or '—',
-            r['project_name'] or '—',
-            _mln_to_mld(r['investment_total']),
-            r['jobs_total'] or '—',
-            r['subject_type_name'] or '—',
-            _fmt_date(r['answer_date']),
-            _fmt_date(r['feedback_date']),
-            result_val,
-            _short_fio(r['assigned_name'] or r['employee_name']),
-            _contact_cell(
-                r['contact_person'],
-                r['contact_phone'],
-                r['contact_email'],
-            ),
+        HEADERS = [
+            '',
+            'Дата обращения',
+            'Наименование компании',
+            'Наименование проекта',
+            'Объем инвестиций,\nмлрд рублей',
+            'Рабочие места',
+            'Предмет обращения',
+            'Дата направления презентации',
+            'Дата получения обратной связи',
+            'Итоги работы по обращению',
+            'Менеджер',
+            'Телефон, контактное лицо',
         ]
 
-        for ci, val in enumerate(vals, 1):
-            c = ws.cell(row=ri, column=ci, value=val)
-            c.fill   = rfill
-            c.border = br
-            c.alignment = Alignment(
-                vertical='center',
-                wrap_text=True,
-                horizontal='center' if ci == 1 else 'left',
-            )
-        ws.row_dimensions[ri].height = 30
+        for ci, h in enumerate(HEADERS, 1):
+            c = ws.cell(row=3, column=ci, value=h)
+            c.fill = hfill; c.font = hfont; c.border = br
+            c.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        ws.row_dimensions[3].height = 40
 
-    col_widths = [5, 13, 28, 35, 12, 12, 22, 16, 16, 30, 16, 32]
-    for ci, w in enumerate(col_widths, 1):
-        ws.column_dimensions[get_column_letter(ci)].width = w
+        for ri, r in enumerate(rows, 4):
+            argb = _hex_to_argb(r['result_color']) if r['result_color'] else ''
+            if argb:
+                rfill = PatternFill('solid', fgColor=argb)
+            else:
+                rfill = alt if ri % 2 == 0 else PatternFill('solid', fgColor='FFFFFFFF')
 
-    ws.freeze_panes = 'B4'
+            result_val = r['additional_info'] or r['result_type_name'] or '—'
 
-    wl = wb.create_sheet(title='Справочник')
-    wl.merge_cells('A1:C1')
-    wl['A1'].value     = 'Легенда цветов (итоги работы по обращению)'
-    wl['A1'].font      = Font(bold=True, size=12, color=HEADER_COLOR)
-    wl['A1'].alignment = Alignment(horizontal='center')
-    wl.row_dimensions[1].height = 22
+            vals = [
+                ri - 3,
+                _fmt_date(r['request_date']),
+                r['applicant_short_name'] or r['applicant_full_name'] or '—',
+                r['project_name'] or '—',
+                _mln_to_mld(r['investment_total']),
+                r['jobs_total'] or '—',
+                r['subject_type_name'] or '—',
+                _fmt_date(r['answer_date']),
+                _fmt_date(r['feedback_date']),
+                result_val,
+                _short_fio(r['assigned_name'] or r['employee_name']),
+                _contact_cell(
+                    r['contact_person'],
+                    r['contact_phone'],
+                    r['contact_email'],
+                ),
+            ]
 
-    for ci, h in enumerate(['Цвет', 'Итог', 'Обозначение'], 1):
-        c = wl.cell(row=2, column=ci, value=h)
-        c.fill = PatternFill('solid', fgColor=HEADER_COLOR)
-        c.font = Font(bold=True, color='FFFFFF', size=10)
-        c.border = _std_border()
-        c.alignment = Alignment(horizontal='center', vertical='center')
-    wl.row_dimensions[2].height = 20
+            for ci, val in enumerate(vals, 1):
+                c = ws.cell(row=ri, column=ci, value=val)
+                c.fill   = rfill
+                c.border = br
+                c.alignment = Alignment(
+                    vertical='center',
+                    wrap_text=True,
+                    horizontal='center' if ci == 1 else 'left',
+                )
+            ws.row_dimensions[ri].height = 30
 
-    if result_types:
-        for li, rt in enumerate(result_types, 3):
-            argb = _hex_to_argb(rt['color_hex'] or '')
-            fill = PatternFill('solid', fgColor=argb) if argb else PatternFill('solid', fgColor='FFFFFFFF')
-            ca = wl.cell(row=li, column=1, value='')
-            ca.fill = fill; ca.border = _std_border()
-            cb = wl.cell(row=li, column=2, value=rt['name'])
-            cb.fill = fill
-            cb.font = Font(bold=True, size=10); cb.border = _std_border()
-            cb.alignment = Alignment(vertical='center')
-            cc = wl.cell(row=li, column=3, value=rt['color_hex'])
-            cc.font = Font(italic=True, size=9, color='888888'); cc.border = _std_border()
-            cc.alignment = Alignment(vertical='center')
-            wl.row_dimensions[li].height = 18
-    else:
-        wl.cell(row=3, column=1,
-                value='Справочник итогов пуст. Добавьте значения в разделе «Справочники».')
+        col_widths = [5, 13, 28, 35, 12, 12, 22, 16, 16, 30, 16, 32]
+        for ci, w in enumerate(col_widths, 1):
+            ws.column_dimensions[get_column_letter(ci)].width = w
 
-    wl.column_dimensions['A'].width = 8
-    wl.column_dimensions['B'].width = 36
-    wl.column_dimensions['C'].width = 12
+        ws.freeze_panes = 'B4'
 
-    fn = f"minek_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-    fp = os.path.join(REPORTS_DIR, fn)
-    wb.save(fp)
+        wl = wb.create_sheet(title='Справочник')
+        wl.merge_cells('A1:C1')
+        wl['A1'].value     = 'Легенда цветов (итоги работы по обращению)'
+        wl['A1'].font      = Font(bold=True, size=12, color=HEADER_COLOR)
+        wl['A1'].alignment = Alignment(horizontal='center')
+        wl.row_dimensions[1].height = 22
 
-    detail = f"период: {_fmt_date(df)} – {_fmt_date(dt)}; всего {len(rows)} обращ."
-    try:
-        log_action(conn, session['user_id'], 'export_minek', detail=detail)
-        conn.commit()
-    except Exception:
-        pass
-    conn.close()
+        for ci, h in enumerate(['Цвет', 'Итог', 'Обозначение'], 1):
+            c = wl.cell(row=2, column=ci, value=h)
+            c.fill = PatternFill('solid', fgColor=HEADER_COLOR)
+            c.font = Font(bold=True, color='FFFFFF', size=10)
+            c.border = _std_border()
+            c.alignment = Alignment(horizontal='center', vertical='center')
+        wl.row_dimensions[2].height = 20
+
+        if result_types:
+            for li, rt in enumerate(result_types, 3):
+                argb = _hex_to_argb(rt['color_hex'] or '')
+                fill = PatternFill('solid', fgColor=argb) if argb else PatternFill('solid', fgColor='FFFFFFFF')
+                ca = wl.cell(row=li, column=1, value='')
+                ca.fill = fill; ca.border = _std_border()
+                cb = wl.cell(row=li, column=2, value=rt['name'])
+                cb.fill = fill
+                cb.font = Font(bold=True, size=10); cb.border = _std_border()
+                cb.alignment = Alignment(vertical='center')
+                cc = wl.cell(row=li, column=3, value=rt['color_hex'])
+                cc.font = Font(italic=True, size=9, color='888888'); cc.border = _std_border()
+                cc.alignment = Alignment(vertical='center')
+                wl.row_dimensions[li].height = 18
+        else:
+            wl.cell(row=3, column=1,
+                    value='Справочник итогов пуст. Добавьте значения в разделе «Справочники».')
+
+        wl.column_dimensions['A'].width = 8
+        wl.column_dimensions['B'].width = 36
+        wl.column_dimensions['C'].width = 12
+
+        fn = f"minek_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        fp = os.path.join(REPORTS_DIR, fn)
+        wb.save(fp)
+
+        detail = f"период: {_fmt_date(df)} – {_fmt_date(dt)}; всего {len(rows)} обращ."
+        try:
+            log_action(conn, session['user_id'], 'export_minek', detail=detail)
+            conn.commit()
+        except Exception:
+            pass
+    finally:
+        conn.close()
 
     return send_file(fp, as_attachment=True, download_name=fn,
                      mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
@@ -497,97 +511,99 @@ def export_full():
         return jsonify({'error': 'Недостаточно прав: Скачать полную базу (Excel)'}), 403
 
     conn = get_db()
-    rows = conn.execute("""
-        SELECT r.*,
-               ass.full_name AS assigned_name,
-               st.name       AS subject_type_name,
-               rt.name       AS result_type_name
-        FROM requests r
-        LEFT JOIN users         ass ON r.assigned_to     = ass.id
-        LEFT JOIN subject_types st  ON r.subject_type_id = st.id
-        LEFT JOIN result_types  rt  ON r.result_type_id  = rt.id
-        ORDER BY r.id
-    """).fetchall()
+    try:
+        rows = conn.execute("""
+            SELECT r.*,
+                   ass.full_name AS assigned_name,
+                   st.name       AS subject_type_name,
+                   rt.name       AS result_type_name
+            FROM requests r
+            LEFT JOIN users         ass ON r.assigned_to     = ass.id
+            LEFT JOIN subject_types st  ON r.subject_type_id = st.id
+            LEFT JOIN result_types  rt  ON r.result_type_id  = rt.id
+            ORDER BY r.id
+        """).fetchall()
 
-    STATUS_EXPORT_MAP = {
-        'draft':             'Черновик',
-        'registered':        'Зарегистрировано',
-        'in_progress':       'В работе',
-        'under_review':      'На проверке',
-        'ready_to_send':     'Готово к отправке',
-        'sent_to_applicant': 'Документы отправлены',
-        'closed':            'Закрыто',
-    }
+        STATUS_EXPORT_MAP = {
+            'draft':             'Черновик',
+            'registered':        'Зарегистрировано',
+            'in_progress':       'В работе',
+            'under_review':      'На проверке',
+            'ready_to_send':     'Готово к отправке',
+            'sent_to_applicant': 'Документы отправлены',
+            'closed':            'Закрыто',
+        }
 
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = 'База обращений'
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = 'База обращений'
 
-    hfill   = PatternFill("solid", fgColor="1B5E7B")
-    id_fill = PatternFill("solid", fgColor="2E4057")
-    hfont   = Font(bold=True, color="FFFFFF", size=10)
-    br      = _std_border()
+        hfill   = PatternFill("solid", fgColor="1B5E7B")
+        id_fill = PatternFill("solid", fgColor="2E4057")
+        hfont   = Font(bold=True, color="FFFFFF", size=10)
+        br      = _std_border()
 
-    COLS = [
-        ('id',                   'ID (не менять)'),
-        ('request_number',       '№ обращения'),
-        ('request_date',         'Дата обращения'),
-        ('status',               'Статус'),
-        ('applicant_full_name',  'Полное наименование'),
-        ('applicant_short_name', 'Краткое наименование'),
-        ('applicant_inn',        'ИНН'),
-        ('project_name',         'Название проекта'),
-        ('contact_person',       'Контактное лицо'),
-        ('contact_phone',        'Телефон'),
-        ('contact_email',        'E-mail'),
-        ('investment_total',     'Инвестиции (млн руб.)'),
-        ('jobs_total',           'Рабочих мест'),
-        ('site_area_ha',         'Площадь (га)'),
-        ('site_build_area_m2',   'Застройка (м²)'),
-        ('preferred_districts',  'Районы'),
-        ('source_type',          'Источник'),
-        ('assigned_name',        'Ответственный'),
-        ('subject_type_name',    'Предмет обращения'),
-        ('feedback_date',        'Дата обратной связи'),
-        ('result_type_name',     'Итоги работы'),
-        ('incoming_number',      'Входящий номер'),
-        ('answer_date',          'Дата ответа'),
-        ('answer_method',        'Способ ответа'),
-        ('answer_notes',         'Примечания к ответу'),
-        ('additional_info',      'Доп. информация'),
-    ]
+        COLS = [
+            ('id',                   'ID (не менять)'),
+            ('request_number',       '№ обращения'),
+            ('request_date',         'Дата обращения'),
+            ('status',               'Статус'),
+            ('applicant_full_name',  'Полное наименование'),
+            ('applicant_short_name', 'Краткое наименование'),
+            ('applicant_inn',        'ИНН'),
+            ('project_name',         'Название проекта'),
+            ('contact_person',       'Контактное лицо'),
+            ('contact_phone',        'Телефон'),
+            ('contact_email',        'E-mail'),
+            ('investment_total',     'Инвестиции (млн руб.)'),
+            ('jobs_total',           'Рабочих мест'),
+            ('site_area_ha',         'Площадь (га)'),
+            ('site_build_area_m2',   'Застройка (м²)'),
+            ('preferred_districts',  'Районы'),
+            ('source_type',          'Источник'),
+            ('assigned_name',        'Ответственный'),
+            ('subject_type_name',    'Предмет обращения'),
+            ('feedback_date',        'Дата обратной связи'),
+            ('result_type_name',     'Итоги работы'),
+            ('incoming_number',      'Входящий номер'),
+            ('answer_date',          'Дата ответа'),
+            ('answer_method',        'Способ ответа'),
+            ('answer_notes',         'Примечания к ответу'),
+            ('additional_info',      'Доп. информация'),
+        ]
 
-    for ci, (field, header) in enumerate(COLS, 1):
-        c = ws.cell(row=1, column=ci, value=header)
-        c.fill = id_fill if field == 'id' else hfill
-        c.font = hfont
-        c.border = br
-        c.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
-    ws.row_dimensions[1].height = 36
-    ws.freeze_panes = 'A2'
-
-    for ri, r in enumerate(rows, 2):
-        row_keys = list(r.keys())
-        for ci, (field, _) in enumerate(COLS, 1):
-            val = r[field] if field in row_keys else None
-            if field == 'status' and val:
-                val = STATUS_EXPORT_MAP.get(val, val)
-            c = ws.cell(row=ri, column=ci, value=val)
+        for ci, (field, header) in enumerate(COLS, 1):
+            c = ws.cell(row=1, column=ci, value=header)
+            c.fill = id_fill if field == 'id' else hfill
+            c.font = hfont
             c.border = br
-            c.alignment = Alignment(vertical='center', wrap_text=(ci == len(COLS)))
+            c.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        ws.row_dimensions[1].height = 36
+        ws.freeze_panes = 'A2'
 
-    col_widths = [8, 16, 14, 16, 35, 25, 14, 30, 22, 16, 24, 14, 12, 10, 12, 24, 16, 20, 22, 14, 28, 18, 14, 18, 28, 30]
-    for ci, w in enumerate(col_widths[:len(COLS)], 1):
-        ws.column_dimensions[get_column_letter(ci)].width = w
+        for ri, r in enumerate(rows, 2):
+            row_keys = list(r.keys())
+            for ci, (field, _) in enumerate(COLS, 1):
+                val = r[field] if field in row_keys else None
+                if field == 'status' and val:
+                    val = STATUS_EXPORT_MAP.get(val, val)
+                c = ws.cell(row=ri, column=ci, value=val)
+                c.border = br
+                c.alignment = Alignment(vertical='center', wrap_text=(ci == len(COLS)))
 
-    fn = f"sonar_full_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-    fp = os.path.join(REPORTS_DIR, fn)
-    wb.save(fp)
+        col_widths = [8, 16, 14, 16, 35, 25, 14, 30, 22, 16, 24, 14, 12, 10, 12, 24, 16, 20, 22, 14, 28, 18, 14, 18, 28, 30]
+        for ci, w in enumerate(col_widths[:len(COLS)], 1):
+            ws.column_dimensions[get_column_letter(ci)].width = w
 
-    log_action(conn, session['user_id'], 'export_full',
-               detail=f'Полная выгрузка базы: {len(rows)} обращений')
-    conn.commit()
-    conn.close()
+        fn = f"sonar_full_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        fp = os.path.join(REPORTS_DIR, fn)
+        wb.save(fp)
+
+        log_action(conn, session['user_id'], 'export_full',
+                   detail=f'Полная выгрузка базы: {len(rows)} обращений')
+        conn.commit()
+    finally:
+        conn.close()
 
     return send_file(fp, as_attachment=True, download_name=fn,
                      mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
@@ -665,15 +681,6 @@ def import_full():
 
     conn = get_db()
 
-    subjects  = {r['name']: r['id'] for r in conn.execute('SELECT id,name FROM subject_types').fetchall()}
-    results   = {r['name']: r['id'] for r in conn.execute('SELECT id,name FROM result_types').fetchall()}
-    users_map = {r['full_name']: r['id'] for r in conn.execute('SELECT id,full_name FROM users').fetchall()}
-    fk_lookup = {
-        'subject_type_id': subjects,
-        'result_type_id':  results,
-        'assigned_to':     users_map,
-    }
-
     updated        = 0
     created        = 0
     skipped        = 0
@@ -683,199 +690,207 @@ def import_full():
     created_ids    = []
     now            = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-    for excel_row_num, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
-        raw_id = row[id_idx]
+    try:
+        subjects  = {r['name']: r['id'] for r in conn.execute('SELECT id,name FROM subject_types').fetchall()}
+        results   = {r['name']: r['id'] for r in conn.execute('SELECT id,name FROM result_types').fetchall()}
+        users_map = {r['full_name']: r['id'] for r in conn.execute('SELECT id,full_name FROM users').fetchall()}
+        fk_lookup = {
+            'subject_type_id': subjects,
+            'result_type_id':  results,
+            'assigned_to':     users_map,
+        }
 
-        # ── читаем статус ──────────────────────────────────────────────────
-        row_status = None
-        if status_idx is not None:
-            raw_status = row[status_idx]
-            if raw_status and str(raw_status).strip():
-                row_status = STATUS_IMPORT_MAP.get(str(raw_status).strip())
+        for excel_row_num, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+            raw_id = row[id_idx]
 
-        # ── новая строка без ID ─────────────────────────────────────────────
-        if not raw_id:
-            new_vals = {}
+            # ── читаем статус ──────────────────────────────────────────────────
+            row_status = None
+            if status_idx is not None:
+                raw_status = row[status_idx]
+                if raw_status and str(raw_status).strip():
+                    row_status = STATUS_IMPORT_MAP.get(str(raw_status).strip())
+
+            # ── новая строка без ID ─────────────────────────────────────────────
+            if not raw_id:
+                new_vals = {}
+                for ci, header in enumerate(headers):
+                    if ci == id_idx:
+                        continue
+                    if status_idx is not None and ci == status_idx:
+                        continue
+                    cell_val = row[ci]
+                    if header in COL_MAP:
+                        field = COL_MAP[header]
+                        if cell_val is None or str(cell_val).strip() == '':
+                            continue
+                        val, ok = _apply_cell_value(field, cell_val, f'Строка {excel_row_num}', errors)
+                        if ok and val is not None:
+                            new_vals[field] = val
+                    elif header in FK_MAP:
+                        field, _ = FK_MAP[header]
+                        if cell_val is not None and str(cell_val).strip():
+                            name = str(cell_val).strip()
+                            fk_id = fk_lookup[field].get(name)
+                            if fk_id is None:
+                                errors.append(f'Строка {excel_row_num}: «{name}» не найдено в справочнике «{header}»')
+                            else:
+                                new_vals[field] = fk_id
+
+                new_vals['status'] = row_status or 'registered'
+
+                # 3В-2: валидация обязательных полей ───────────────────────────
+                missing = [f for f in REQUIRED_FOR_CREATE if not new_vals.get(f)]
+                if missing:
+                    errors.append(
+                        f'Строка {excel_row_num}: пропущена — не заполнены обязательные поля: '
+                        + ', '.join(f'«{f}»' for f in missing)
+                    )
+                    skipped += 1
+                    continue
+
+                # ── дедупликация ───────────────────────────────────────────────
+                existing_dup = None
+                match_by     = None
+                inn   = new_vals.get('applicant_inn', '') or ''
+                proj  = new_vals.get('project_name', '') or ''
+                aname = new_vals.get('applicant_full_name', '') or ''
+                rdate = new_vals.get('request_date', '') or ''
+
+                if inn and proj:
+                    existing_dup = conn.execute(
+                        'SELECT id, status FROM requests WHERE applicant_inn=? AND project_name=?',
+                        (inn, proj)
+                    ).fetchone()
+                    match_by = 'ИНН+проект'
+                elif aname and rdate:
+                    existing_dup = conn.execute(
+                        'SELECT id, status FROM requests WHERE applicant_full_name=? AND request_date=?',
+                        (aname, rdate)
+                    ).fetchone()
+                    match_by = 'наименование+дата'
+
+                if existing_dup:
+                    dup_id = existing_dup['id']
+                    upd = {k: v for k, v in new_vals.items() if k != 'status'}
+                    status_upd = None
+                    if row_status and overwrite and row_status != existing_dup['status']:
+                        upd['status'] = row_status
+                        status_upd = row_status
+                    if upd:
+                        set_cl = ', '.join(f'{k}=?' for k in upd)
+                        conn.execute(
+                            f'UPDATE requests SET {set_cl}, updated_at=?, updated_by=? WHERE id=?',
+                            list(upd.values()) + [now, session['user_id'], dup_id]
+                        )
+                        log_action(conn, session['user_id'], 'import_xlsx_dedup', dup_id,
+                                   f'Импорт Excel: дедупликация по {match_by} (ИНН={inn or aname})')
+                        updated += 1
+                        if status_upd:
+                            status_changed += 1
+                    else:
+                        skipped += 1
+                    duplicates.append({
+                        'existing_id': dup_id,
+                        'match_by':    match_by,
+                        'inn':         inn or None,
+                        'name':        aname or None,
+                        'project':     proj or None,
+                    })
+                else:
+                    cols_ins = ', '.join(new_vals.keys()) + ', created_by, created_at, updated_at'
+                    ph_ins   = ', '.join(['?'] * len(new_vals)) + ', ?, ?, ?'
+                    ins_vals = list(new_vals.values()) + [session['user_id'], now, now]
+                    cursor   = conn.execute(
+                        f'INSERT INTO requests ({cols_ins}) VALUES ({ph_ins})', ins_vals
+                    )
+                    new_id = cursor.lastrowid
+
+                    # 3В-3: авто-генерация request_number если не задан ─────────
+                    if not new_vals.get('request_number'):
+                        auto_num = _gen_request_number(new_id)
+                        conn.execute(
+                            'UPDATE requests SET request_number=? WHERE id=?',
+                            (auto_num, new_id)
+                        )
+
+                    log_action(conn, session['user_id'], 'import_xlsx_create', new_id,
+                               'Импорт Excel: создано новое обращение')
+                    created_ids.append(new_id)
+                    created += 1
+                continue
+
+            # ── строка с ID → обновляем ─────────────────────────────────────────────
+            try:
+                rid = int(raw_id)
+            except (ValueError, TypeError):
+                errors.append(f'Строка {excel_row_num}: невалидный ID: {raw_id}')
+                continue
+
+            existing = conn.execute('SELECT * FROM requests WHERE id=?', (rid,)).fetchone()
+            if not existing:
+                errors.append(f'Строка {excel_row_num} (ID {rid}): обращение не найдено в базе')
+                continue
+
+            updates = {}
+            status_will_change = False
+
+            if row_status and row_status != existing['status']:
+                if overwrite or not existing['status']:
+                    updates['status'] = row_status
+                    status_will_change = True
+
+            row_label = f'Строка {excel_row_num} (ID {rid})'
+
             for ci, header in enumerate(headers):
                 if ci == id_idx:
                     continue
                 if status_idx is not None and ci == status_idx:
                     continue
                 cell_val = row[ci]
+
                 if header in COL_MAP:
                     field = COL_MAP[header]
                     if cell_val is None or str(cell_val).strip() == '':
                         continue
-                    val, ok = _apply_cell_value(field, cell_val, f'Строка {excel_row_num}', errors)
-                    if ok and val is not None:
-                        new_vals[field] = val
+                    val, ok = _apply_cell_value(field, cell_val, row_label, errors)
+                    if not ok or val is None:
+                        continue
+                    if not overwrite and existing[field] not in (None, ''):
+                        continue
+                    updates[field] = val
+
                 elif header in FK_MAP:
                     field, _ = FK_MAP[header]
-                    if cell_val is not None and str(cell_val).strip():
-                        name = str(cell_val).strip()
-                        fk_id = fk_lookup[field].get(name)
-                        if fk_id is None:
-                            errors.append(f'Строка {excel_row_num}: «{name}» не найдено в справочнике «{header}»')
-                        else:
-                            new_vals[field] = fk_id
+                    if cell_val is None or str(cell_val).strip() == '':
+                        continue
+                    name = str(cell_val).strip()
+                    fk_id = fk_lookup[field].get(name)
+                    if fk_id is None:
+                        errors.append(f'{row_label}: «{name}» не найдено в справочнике «{header}»')
+                        continue
+                    if not overwrite and existing[field] not in (None, ''):
+                        continue
+                    updates[field] = fk_id
 
-            new_vals['status'] = row_status or 'registered'
-
-            # 3В-2: валидация обязательных полей ───────────────────────────
-            missing = [f for f in REQUIRED_FOR_CREATE if not new_vals.get(f)]
-            if missing:
-                errors.append(
-                    f'Строка {excel_row_num}: пропущена — не заполнены обязательные поля: '
-                    + ', '.join(f'«{f}»' for f in missing)
-                )
+            if not updates:
                 skipped += 1
                 continue
 
-            # ── дедупликация ───────────────────────────────────────────────
-            existing_dup = None
-            match_by     = None
-            inn   = new_vals.get('applicant_inn', '') or ''
-            proj  = new_vals.get('project_name', '') or ''
-            aname = new_vals.get('applicant_full_name', '') or ''
-            rdate = new_vals.get('request_date', '') or ''
+            set_clause = ', '.join(f'{k}=?' for k in updates)
+            vals = list(updates.values()) + [now, session['user_id'], rid]
+            conn.execute(
+                f'UPDATE requests SET {set_clause}, updated_at=?, updated_by=? WHERE id=?',
+                vals
+            )
+            log_action(conn, session['user_id'], 'import_xlsx', rid,
+                       f'Импорт Excel: обновлены поля: {", ".join(updates.keys())}')
+            updated += 1
+            if status_will_change:
+                status_changed += 1
 
-            if inn and proj:
-                existing_dup = conn.execute(
-                    'SELECT id, status FROM requests WHERE applicant_inn=? AND project_name=?',
-                    (inn, proj)
-                ).fetchone()
-                match_by = 'ИНН+проект'
-            elif aname and rdate:
-                existing_dup = conn.execute(
-                    'SELECT id, status FROM requests WHERE applicant_full_name=? AND request_date=?',
-                    (aname, rdate)
-                ).fetchone()
-                match_by = 'наименование+дата'
-
-            if existing_dup:
-                dup_id = existing_dup['id']
-                upd = {k: v for k, v in new_vals.items() if k != 'status'}
-                status_upd = None
-                if row_status and overwrite and row_status != existing_dup['status']:
-                    upd['status'] = row_status
-                    status_upd = row_status
-                if upd:
-                    set_cl = ', '.join(f'{k}=?' for k in upd)
-                    conn.execute(
-                        f'UPDATE requests SET {set_cl}, updated_at=?, updated_by=? WHERE id=?',
-                        list(upd.values()) + [now, session['user_id'], dup_id]
-                    )
-                    log_action(conn, session['user_id'], 'import_xlsx_dedup', dup_id,
-                               f'Импорт Excel: дедупликация по {match_by} (ИНН={inn or aname})')
-                    updated += 1
-                    if status_upd:
-                        status_changed += 1
-                else:
-                    skipped += 1
-                duplicates.append({
-                    'existing_id': dup_id,
-                    'match_by':    match_by,
-                    'inn':         inn or None,
-                    'name':        aname or None,
-                    'project':     proj or None,
-                })
-            else:
-                cols_ins = ', '.join(new_vals.keys()) + ', created_by, created_at, updated_at'
-                ph_ins   = ', '.join(['?'] * len(new_vals)) + ', ?, ?, ?'
-                ins_vals = list(new_vals.values()) + [session['user_id'], now, now]
-                cursor   = conn.execute(
-                    f'INSERT INTO requests ({cols_ins}) VALUES ({ph_ins})', ins_vals
-                )
-                new_id = cursor.lastrowid
-
-                # 3В-3: авто-генерация request_number если не задан ─────────
-                if not new_vals.get('request_number'):
-                    auto_num = _gen_request_number(new_id)
-                    conn.execute(
-                        'UPDATE requests SET request_number=? WHERE id=?',
-                        (auto_num, new_id)
-                    )
-
-                log_action(conn, session['user_id'], 'import_xlsx_create', new_id,
-                           'Импорт Excel: создано новое обращение')
-                created_ids.append(new_id)
-                created += 1
-            continue
-
-        # ── строка с ID → обновляем ─────────────────────────────────────────────
-        try:
-            rid = int(raw_id)
-        except (ValueError, TypeError):
-            errors.append(f'Строка {excel_row_num}: невалидный ID: {raw_id}')
-            continue
-
-        existing = conn.execute('SELECT * FROM requests WHERE id=?', (rid,)).fetchone()
-        if not existing:
-            errors.append(f'Строка {excel_row_num} (ID {rid}): обращение не найдено в базе')
-            continue
-
-        updates = {}
-        status_will_change = False
-
-        if row_status:
-            if overwrite or not existing['status']:
-                if row_status != existing['status']:
-                    updates['status'] = row_status
-                    status_will_change = True
-                else:
-                    updates['status'] = row_status
-
-        row_label = f'Строка {excel_row_num} (ID {rid})'
-
-        for ci, header in enumerate(headers):
-            if ci == id_idx:
-                continue
-            if status_idx is not None and ci == status_idx:
-                continue
-            cell_val = row[ci]
-
-            if header in COL_MAP:
-                field = COL_MAP[header]
-                if cell_val is None or str(cell_val).strip() == '':
-                    continue
-                val, ok = _apply_cell_value(field, cell_val, row_label, errors)
-                if not ok or val is None:
-                    continue
-                if not overwrite and existing[field] not in (None, ''):
-                    continue
-                updates[field] = val
-
-            elif header in FK_MAP:
-                field, _ = FK_MAP[header]
-                if cell_val is None or str(cell_val).strip() == '':
-                    continue
-                name = str(cell_val).strip()
-                fk_id = fk_lookup[field].get(name)
-                if fk_id is None:
-                    errors.append(f'{row_label}: «{name}» не найдено в справочнике «{header}»')
-                    continue
-                if not overwrite and existing[field] not in (None, ''):
-                    continue
-                updates[field] = fk_id
-
-        if not updates:
-            skipped += 1
-            continue
-
-        set_clause = ', '.join(f'{k}=?' for k in updates)
-        vals = list(updates.values()) + [now, session['user_id'], rid]
-        conn.execute(
-            f'UPDATE requests SET {set_clause}, updated_at=?, updated_by=? WHERE id=?',
-            vals
-        )
-        log_action(conn, session['user_id'], 'import_xlsx', rid,
-                   f'Импорт Excel: обновлены поля: {", ".join(updates.keys())}')
-        updated += 1
-        if status_will_change:
-            status_changed += 1
-
-    conn.commit()
-    conn.close()
+        conn.commit()
+    finally:
+        conn.close()
 
     return jsonify({
         'updated':        updated,
