@@ -2,7 +2,7 @@
 {# ╔══════════════════════════════════════════════════════════════╗ #}
 {# ║                        base.html                            ║ #}
 {# ║  Базовый шаблон приложения "Подбор ЗУ — НО"                 ║ #}
-{# ║  v2.17: fix незакрытый {% if role==admin %} в конце файла   ║ #}
+{# ║  v2.18: fix defer у Tabulator → Tabulator is not defined    ║ #}
 {# ╚══════════════════════════════════════════════════════════════╝ #}
 <html lang="ru">
 <head>
@@ -16,7 +16,7 @@
 
   {# ─── Tabulator 6.x ─────────────────────────────────────────────── #}
   <link  rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css">
-  <script src="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/js/tabulator.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
   {# Дополнительная тема (opinionated) — используется только на странице обращений #}
   {% block tabulator_theme %}{% endblock %}
 
