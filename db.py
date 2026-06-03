@@ -85,7 +85,6 @@ def _migrate(conn):
         conn.execute(
             "ALTER TABLE subject_types ADD COLUMN reg_prefix TEXT"
         )
-        # Заполняем дефолтные префиксы для уже существующих записей
         _DEFAULT_PREFIXES = {
             'подбор зу':                                    'ПЗУ',
             'подбор мер поддержки':                         'ПМП',
@@ -190,7 +189,6 @@ def _migrate(conn):
     # Issue #53: новая логика статусов обращений
     # ════════════════════════════════════════════════════════════════
 
-    # ─ Срок рассмотрения
     if not _has_column(conn, 'requests', 'review_days'):
         conn.execute(
             "ALTER TABLE requests ADD COLUMN review_days INTEGER NOT NULL DEFAULT 7"
@@ -204,7 +202,6 @@ def _migrate(conn):
             "ALTER TABLE requests ADD COLUMN registered_at TEXT"
         )
 
-    # ─ Ответственное лицо за подбор (отдельно от assigned_to/исполнителя)
     if not _has_column(conn, 'requests', 'responsible_id'):
         conn.execute(
             "ALTER TABLE requests ADD COLUMN responsible_id INTEGER REFERENCES users(id)"
@@ -218,7 +215,6 @@ def _migrate(conn):
             "ALTER TABLE requests ADD COLUMN responsible_name_external TEXT"
         )
 
-    # ─ Проверяющий площадки
     if not _has_column(conn, 'requests', 'reviewer_id'):
         conn.execute(
             "ALTER TABLE requests ADD COLUMN reviewer_id INTEGER REFERENCES users(id)"
@@ -244,7 +240,6 @@ def _migrate(conn):
             "ALTER TABLE requests ADD COLUMN reviewer_decision_at TEXT"
         )
 
-    # ─ Отправка заявителю
     if not _has_column(conn, 'requests', 'sent_to_applicant_at'):
         conn.execute(
             "ALTER TABLE requests ADD COLUMN sent_to_applicant_at TEXT"
@@ -254,7 +249,6 @@ def _migrate(conn):
             "ALTER TABLE requests ADD COLUMN send_method TEXT"
         )
 
-    # ─ Обратная связь от заявителя
     if not _has_column(conn, 'requests', 'applicant_feedback'):
         conn.execute(
             "ALTER TABLE requests ADD COLUMN applicant_feedback TEXT"
@@ -264,32 +258,20 @@ def _migrate(conn):
             "ALTER TABLE requests ADD COLUMN applicant_feedback_at TEXT"
         )
 
-    # ─ Проект взят на сопровождение (фиксируется при закрытии обращения)
     if not _has_column(conn, 'requests', 'taken_under_supervision'):
         conn.execute(
             "ALTER TABLE requests ADD COLUMN taken_under_supervision INTEGER NOT NULL DEFAULT 0"
         )
 
     # ─ Маппинг старых статусов → новые (идемпотентный)
-    conn.execute(
-        "UPDATE requests SET status='registered'        WHERE status='review'"
-    )
-    conn.execute(
-        "UPDATE requests SET status='in_progress'       WHERE status='accepted'"
-    )
-    conn.execute(
-        "UPDATE requests SET status='sent_to_applicant' WHERE status='answered'"
-    )
+    conn.execute("UPDATE requests SET status='registered'        WHERE status='review'")
+    conn.execute("UPDATE requests SET status='in_progress'       WHERE status='accepted'")
+    conn.execute("UPDATE requests SET status='sent_to_applicant' WHERE status='answered'")
 
     # ════════════════════════════════════════════════════════════════
-    # Миграция старых рег. номеров (ЗУ-NNN-YY → ПРЕФИКС-YYYY-NNN)
-    # ПРАВИЛО: меняем только те записи у которых:
-    #   1. request_number начинается с 'ЗУ-'
-    #   2. subject_type_id заполнен
-    #   3. у предмета есть непустой reg_prefix
-    # Записи без предмета или с пустым prefix — НЕ ТРОГАЕМ.
-    # Формат результата: PREFIX-YYYY-NNN (новый формат с 4-значным годом)
-    # Идемпотентно: при повторном запуске 'ЗУ-' уже не будет → UPDATE = 0 строк.
+    # Миграция старых рег. номеров: меняем префикс только если
+    # subject_type_id заполнен И у предмета есть непустой reg_prefix.
+    # Записи без предмета — НЕ ТРОГАЕМ, сохраняют старый формат.
     # ════════════════════════════════════════════════════════════════
     if _has_column(conn, 'requests', 'subject_type_id') and _has_column(conn, 'subject_types', 'reg_prefix'):
         conn.execute("""
@@ -310,14 +292,12 @@ def _migrate(conn):
                   AND st2.reg_prefix != ''
               )
         """)
-        # ВАЖНО: записи с ЗУ- без предмета или без prefix — не меняем совсем.
-        -- Они сохранят старый формат ЗУ-NNN-YY до момента ручного уточнения предмета.
+        # Записи с ЗУ- без предмета или без prefix — не меняем совсем.
 
     # ════════════════════════════════════════════════════════════════
-    # Инициализация счётчиков reg_number_sequences по номерам
-    # НОВОГО формата: PREFIX-YYYY-NNN (4-значный год, 3+ цифр номер).
-    # Старые ЗУ-NNN-YY при парсинге дадут year < 2020 → фильтруются.
-    # Идемпотентно: берём MAX(seq) и не перезаписываем если уже больше.
+    # Инициализация счётчиков reg_number_sequences только по номерам
+    # нового формата PREFIX-YYYY-NNN. Старые ЗУ-NNN-YY дадут year<2020 →
+    # отсекаются фильтром. Идемпотентно.
     # ════════════════════════════════════════════════════════════════
     conn.execute("""
         INSERT OR REPLACE INTO reg_number_sequences (prefix, year, last_seq)
@@ -367,21 +347,11 @@ def _migrate(conn):
     # ════════════════════════════════════════════════════════════════
     # Индексы — fix #6
     # ════════════════════════════════════════════════════════════════
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_req_status ON requests(status)"
-    )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_req_created_by ON requests(created_by)"
-    )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_req_assigned ON requests(assigned_to)"
-    )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_req_date ON requests(request_date)"
-    )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_notif_user ON notifications(user_id, is_read)"
-    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_req_status    ON requests(status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_req_created_by ON requests(created_by)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_req_assigned   ON requests(assigned_to)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_req_date       ON requests(request_date)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_notif_user     ON notifications(user_id, is_read)")
 
     conn.commit()
 
