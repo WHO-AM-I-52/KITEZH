@@ -151,18 +151,27 @@
           </h6>
           <form method="post" action="{{ url_for('admin.subject_types_write') }}">
             <input type="hidden" name="action" value="add">
-            <div class="input-group">
+            <div class="mb-2">
               <input type="text" name="name" class="form-control form-control-sm"
                      placeholder="например: подбор зу" required>
-              <button class="btn btn-sm btn-primary">
-                <i class="bi bi-plus-lg"></i> Добавить
-              </button>
             </div>
+            <div class="input-group mb-2">
+              <span class="input-group-text" style="font-size:12px">Префикс №</span>
+              <input type="text" name="reg_prefix" class="form-control form-control-sm"
+                     placeholder="напр. ПЗУ" maxlength="20"
+                     title="Префикс регистрационного номера (напр. ПЗУ, ПМП, К)">
+            </div>
+            <button class="btn btn-sm btn-primary w-100">
+              <i class="bi bi-plus-lg"></i> Добавить
+            </button>
           </form>
           <div class="cls-info alert border mt-3 mb-0 p-2" style="font-size:11px">
             <i class="bi bi-info-circle text-muted me-1"></i>
             Значения отображаются в форме обращения (раздел «Предмет»)
-            и в выгрузке МинЭК (колонка E).
+            и в выгрузке МинЭК (колонка E).<br>
+            <i class="bi bi-hash text-muted me-1"></i>
+            Префикс определяет формат рег. номера: <strong>ПРЕФИКС-ГОД-НОМ</strong>
+            (напр. <code>ПЗУ-2026-001</code>). Если не указан — используется <strong>БП</strong>.
           </div>
         </div>
       </div>
@@ -176,7 +185,8 @@
               <thead>
                 <tr>
                   <th class="cls-th">#</th>
-                  <th class="cls-th">Предмет</th>
+                  <th class="cls-th">Предмет обращения</th>
+                  <th class="cls-th" style="width:120px">Префикс №</th>
                   <th class="cls-th text-end">Действия</th>
                 </tr>
               </thead>
@@ -191,10 +201,23 @@
                       <input type="hidden" name="sid" value="{{ st.id }}">
                       <input type="text" name="name" class="form-control form-control-sm py-0"
                              value="{{ st.name }}" style="min-width:0">
+                      <input type="text" name="reg_prefix"
+                             class="form-control form-control-sm py-0"
+                             value="{{ st.reg_prefix or '' }}"
+                             placeholder="БП" maxlength="20"
+                             style="width:80px;flex-shrink:0"
+                             title="Префикс рег. номера">
                       <button class="btn btn-sm btn-outline-secondary py-0 px-2" title="Сохранить">
                         <i class="bi bi-check-lg"></i>
                       </button>
                     </form>
+                  </td>
+                  <td class="text-muted" style="font-size:11px">
+                    {% if st.reg_prefix %}
+                      <code>{{ st.reg_prefix }}-2026-001</code>
+                    {% else %}
+                      <span class="text-warning">БП-2026-001</span>
+                    {% endif %}
                   </td>
                   <td class="text-end">
                     <form method="post" class="d-inline"
@@ -209,7 +232,7 @@
                   </td>
                 </tr>
                 {% else %}
-                <tr><td colspan="3" class="text-center text-muted py-3">Нет значений</td></tr>
+                <tr><td colspan="4" class="text-center text-muted py-3">Нет значений</td></tr>
                 {% endfor %}
               </tbody>
             </table>
