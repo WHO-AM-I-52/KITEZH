@@ -2,7 +2,7 @@
 {# ╔══════════════════════════════════════════════════════════════╗ #}
 {# ║                        base.html                            ║ #}
 {# ║  Базовый шаблон приложения "Подбор ЗУ — НО"                 ║ #}
-{# ║  v2.19: flash-уведомление вкладки при доступном обновлении  ║ #}
+{# ║  v2.20: централизованный flash-модуль (версия + задача)     ║ #}
 {# ╚══════════════════════════════════════════════════════════════╝ #}
 <html lang="ru">
 <head>
@@ -389,7 +389,7 @@
     <a href="/request/new" class="sb-link {{ 'active' if request.path=='/request/new' }}"><i class="bi bi-plus-circle"></i><span class="sb-lbl">Новое обращение</span></a>
     <a href="{{ url_for('phonebook.phonebook') }}" class="sb-link {{ 'active' if request.endpoint and request.endpoint.startswith('phonebook') }}"><i class="bi bi-telephone-fill"></i><span class="sb-lbl">Справочник</span></a>
     <a href="/saved-filters" class="sb-link {{ 'active' if 'saved-filters' in request.path }}"><i class="bi bi-bookmark-star"></i><span class="sb-lbl">Фильтры</span></a>
-    <a href="/notifications" class="sb-link {{ 'active' if request.path=='/notifications' }}">
+    <a href="/notifications" class="sb-link {{ 'active' if request.path=='/notifications' }}" id="sbNotifLink">
       <i class="bi bi-bell"></i><span class="sb-lbl">Уведомления</span>
       {% if unread_count > 0 %}<span class="sb-badge">{{ unread_count }}</span>{% endif %}
     </a>
@@ -647,46 +647,111 @@
 </script>
 {% endif %}
 
-{% if session.get('role') == 'admin' %}
+{# ╔══════════════════════════════════════════════════════════════════╗ #}
+{# ║  ЦЕНТРАЛИЗОВАННЫЙ МОДУЛЬ МИГАНИЯ ВКЛАДКИ                        ║ #}
+{# ║  Экспортирует в window:                                          ║ #}
+{# ║    startVersionFlashing() — мигание "🆕 Новая версия!"           ║ #}
+{# ║    startTaskFlashing()    — мигание "📋 Новая задача!"            ║ #}
+{# ║    stopAllFlashing()      — остановка любого мигания             ║ #}
+{# ║  Триггер остановки: window focus (переключение на вкладку)       ║ #}
+{# ╚══════════════════════════════════════════════════════════════════╝ #}
+{% if 'user_id' in session %}
 <script>
 (function(){
-  var dot = document.getElementById('sbUpdateDot');
-  if (!dot) return;
-  var CACHE_KEY    = 'sonar_upd_status';
-  var SEEN_KEY     = 'sonar_upd_seen';
-  var CHECK_INTERVAL = 30 * 60 * 1000;
+  var originalTitle   = document.title;
+  var versionInterval = null;
+  var taskInterval    = null;
 
-  /* ── Flash-уведомление вкладки ────────────────────────────────── */
-  var flashInterval = null;
-  var originalTitle = document.title;
+  function stopAllFlashing() {
+    if (versionInterval) { clearInterval(versionInterval); versionInterval = null; }
+    if (taskInterval)    { clearInterval(taskInterval);    taskInterval    = null; }
+    document.title = originalTitle;
+  }
 
-  function startFlashing() {
-    if (flashInterval) return;
-    if (sessionStorage.getItem(SEEN_KEY) === '1') return;
+  window.stopAllFlashing = stopAllFlashing;
+
+  window.startVersionFlashing = function() {
+    if (versionInterval) return;
     var state = false;
-    flashInterval = setInterval(function() {
+    versionInterval = setInterval(function() {
       document.title = state ? '🆕 Новая версия!' : originalTitle;
       state = !state;
     }, 700);
+  };
+
+  window.startTaskFlashing = function() {
+    if (taskInterval) return;
+    var state = false;
+    taskInterval = setInterval(function() {
+      document.title = state ? '📋 Новая задача!' : originalTitle;
+      state = !state;
+    }, 700);
+  };
+
+  /* Возврат на вкладку — гасим всё */
+  window.addEventListener('focus', stopAllFlashing);
+})();
+</script>
+{% endif %}
+
+{# ── Уведомление о новых задачах (все авторизованные пользователи) ── #}
+{% if 'user_id' in session %}
+<script>
+(function(){
+  var PREV_KEY  = 'sonar_unread_prev_{{ session.get("user_id") }}';
+  var SEEN_KEY  = 'sonar_task_seen_{{ session.get("user_id") }}';
+  var current   = {{ unread_count|int }};
+  var prev      = parseInt(localStorage.getItem(PREV_KEY) || '-1', 10);
+
+  /* Сохраняем текущее значение сразу */
+  localStorage.setItem(PREV_KEY, String(current));
+
+  /* При первом заходе (prev == -1) просто запоминаем базу, не мигаем */
+  if (prev >= 0 && current > prev) {
+    /* Новые уведомления появились — запускаем мигание */
+    if (window.startTaskFlashing) {
+      /* Не мигаем, если уже смотрим на страницу уведомлений */
+      if (window.location.pathname !== '/notifications') {
+        window.startTaskFlashing();
+      }
+    }
   }
 
-  function stopFlashing() {
-    if (!flashInterval) return;
-    clearInterval(flashInterval);
-    flashInterval = null;
-    document.title = originalTitle;
-    sessionStorage.setItem(SEEN_KEY, '1');
+  /* Клик по «Уведомления» → гасим мигание */
+  var notifLink = document.getElementById('sbNotifLink');
+  if (notifLink && window.stopAllFlashing) {
+    notifLink.addEventListener('click', window.stopAllFlashing);
   }
+})();
+</script>
+{% endif %}
 
-  window.addEventListener('focus', stopFlashing);
-
-  var clLink = document.getElementById('sbChangelogLink');
-  if (clLink) clLink.addEventListener('click', stopFlashing);
-  /* ────────────────────────────────────────────────────────────── */
+{# ── Проверка обновлений (только admin) ── #}
+{% if session.get('role') == 'admin' %}
+<script>
+(function(){
+  var dot            = document.getElementById('sbUpdateDot');
+  if (!dot) return;
+  var CACHE_KEY      = 'sonar_upd_status';
+  var SEEN_KEY       = 'sonar_upd_seen';
+  var CHECK_INTERVAL = 30 * 60 * 1000;
 
   function applyUpdateState(has) {
     dot.classList.toggle('d-none', !has);
-    if (has) { startFlashing(); }
+    if (has) {
+      if (sessionStorage.getItem(SEEN_KEY) !== '1' && window.startVersionFlashing) {
+        window.startVersionFlashing();
+      }
+    }
+  }
+
+  /* Клик по «Версии» → гасим мигание и ставим флаг seen */
+  var clLink = document.getElementById('sbChangelogLink');
+  if (clLink) {
+    clLink.addEventListener('click', function() {
+      sessionStorage.setItem(SEEN_KEY, '1');
+      if (window.stopAllFlashing) window.stopAllFlashing();
+    });
   }
 
   function doCheck() {
