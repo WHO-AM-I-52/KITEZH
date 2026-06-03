@@ -1,6 +1,6 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║                       login_routes.py                        ║
-# ║  v2.2: session.permanent=True (сессия 15 мин бездействия)   ║
+# ║  v2.3: fix url_for requests.index -> requests.requests_list  ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from flask import (
@@ -26,7 +26,7 @@ def _log_login(conn, user_id, username, event, ip):
     conn.commit()
 
 
-# ─── ВХОД ───────────────────────────────────────────────────────────────────
+# ─── ВХОД ─────────────────────────────────────────────────────────────────
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
@@ -54,8 +54,6 @@ def login():
                 conn.commit()
 
             # ─── Сессия: permanent=True + таймаут бездействия 15 мин ───
-            # PERMANENT_SESSION_LIFETIME задан в app.py, SESSION_REFRESH_EACH_REQUEST=True
-            # — при каждом запросе таймер сбрасывается.
             session.permanent = True
 
             session['user_id']              = user['id']
@@ -76,7 +74,7 @@ def login():
                     flash('Необходимо сменить временный пароль перед продолжением', 'warning')
                 return redirect(url_for('auth.change_password'))
 
-            return redirect(url_for('requests.index'))
+            return redirect(url_for('requests.requests_list'))
 
         # Неудачная попытка — логируем без user_id
         conn.execute(
@@ -93,7 +91,7 @@ def login():
     return render_template('login.html')
 
 
-# ─── СМЕНА ПАРОЛЯ ───────────────────────────────────────────────────────────
+# ─── СМЕНА ПАРОЛЯ ───────────────────────────────────────────────────────────────
 
 @auth_bp.route('/change-password', methods=['GET', 'POST'])
 def change_password():
@@ -121,12 +119,12 @@ def change_password():
 
         session['must_change_password'] = False
         flash('Пароль успешно изменён', 'success')
-        return redirect(url_for('requests.index'))
+        return redirect(url_for('requests.requests_list'))
 
     return render_template('change_password.html')
 
 
-# ─── ВЫХОД ──────────────────────────────────────────────────────────────────
+# ─── ВЫХОД ─────────────────────────────────────────────────────────────────
 
 @auth_bp.route('/logout')
 def logout():
