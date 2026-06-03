@@ -220,7 +220,7 @@ def get_requests():
 
     stats_rows = db.execute(f"""
         SELECT
-            COUNT(*)                                                       AS all,
+            COUNT(*)                                                       AS total,
             SUM(CASE WHEN r.status='draft'             THEN 1 ELSE 0 END) AS draft,
             SUM(CASE WHEN r.status='registered'        THEN 1 ELSE 0 END) AS registered,
             SUM(CASE WHEN r.status='in_progress'       THEN 1 ELSE 0 END) AS in_progress,
@@ -235,7 +235,7 @@ def get_requests():
     """, stats_params).fetchone()
 
     stats = {
-        'all':          stats_rows['all']          or 0,
+        'all':          stats_rows['total']        or 0,
         'draft':        stats_rows['draft']        or 0,
         'registered':   stats_rows['registered']   or 0,
         'in_progress':  stats_rows['in_progress']  or 0,
