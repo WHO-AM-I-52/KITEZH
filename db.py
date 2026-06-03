@@ -282,13 +282,16 @@ def _migrate(conn):
     )
 
     # ════════════════════════════════════════════════════════════════
-    # Миграция старых рег. номеров (ЗУ-ГГГГ-ХXXX → ПРЕФИКС-ГГГГ-ХXXX)
-    # Идемпотентно: обрабатываем только те записи, чей номер начинается с 'ЗУ-'
-    # и у которых известен предмет обращения с заполненным reg_prefix.
-    # Записи без предмета или с пустым reg_prefix получают префикс 'БП'.
+    # Миграция старых рег. номеров (ЗУ-NNN-YY → ПРЕФИКС-YYYY-NNN)
+    # ПРАВИЛО: меняем только те записи у которых:
+    #   1. request_number начинается с 'ЗУ-'
+    #   2. subject_type_id заполнен
+    #   3. у предмета есть непустой reg_prefix
+    # Записи без предмета или с пустым prefix — НЕ ТРОГАЕМ.
+    # Формат результата: PREFIX-YYYY-NNN (новый формат с 4-значным годом)
+    # Идемпотентно: при повторном запуске 'ЗУ-' уже не будет → UPDATE = 0 строк.
     # ════════════════════════════════════════════════════════════════
     if _has_column(conn, 'requests', 'subject_type_id') and _has_column(conn, 'subject_types', 'reg_prefix'):
-        # Обращения с известным предметом — меняем префикс
         conn.execute("""
             UPDATE requests
             SET request_number = (
@@ -307,38 +310,25 @@ def _migrate(conn):
                   AND st2.reg_prefix != ''
               )
         """)
-        # Обращения без предмета или с пустым префиксом — ставим БП
-        conn.execute("""
-            UPDATE requests
-            SET request_number = 'БП' || SUBSTR(request_number, INSTR(request_number, '-'))
-            WHERE request_number LIKE 'ЗУ-%'
-        """)
+        # ВАЖНО: записи с ЗУ- без предмета или без prefix — не меняем совсем.
+        -- Они сохранят старый формат ЗУ-NNN-YY до момента ручного уточнения предмета.
 
     # ════════════════════════════════════════════════════════════════
-    # Инициализация счётчиков reg_number_sequences по существующим
-    # номерам в БД. Идемпотентно: INSERT OR REPLACE берёт MAX(seq)
-    # по каждой паре (prefix, year) — не затирает уже накопленные
-    # значения если счётчик уже больше.
-    # Формат номера: ПРЕФИКС-ГГГГ-NNN  (NNN — любое кол-во цифр)
+    # Инициализация счётчиков reg_number_sequences по номерам
+    # НОВОГО формата: PREFIX-YYYY-NNN (4-значный год, 3+ цифр номер).
+    # Старые ЗУ-NNN-YY при парсинге дадут year < 2020 → фильтруются.
+    # Идемпотентно: берём MAX(seq) и не перезаписываем если уже больше.
     # ════════════════════════════════════════════════════════════════
     conn.execute("""
         INSERT OR REPLACE INTO reg_number_sequences (prefix, year, last_seq)
-        SELECT
-            prefix,
-            year,
-            MAX(seq) AS last_seq
+        SELECT prefix, year, MAX(seq) AS last_seq
         FROM (
             SELECT
-                SUBSTR(request_number, 1, INSTR(request_number, '-') - 1)          AS prefix,
-                CAST(SUBSTR(
-                    request_number,
-                    INSTR(request_number, '-') + 1,
-                    4
-                ) AS INTEGER)                                                       AS year,
-                CAST(SUBSTR(
-                    request_number,
-                    INSTR(request_number, '-') + 6
-                ) AS INTEGER)                                                       AS seq
+                SUBSTR(request_number, 1, INSTR(request_number, '-') - 1) AS prefix,
+                CAST(SUBSTR(request_number,
+                     INSTR(request_number, '-') + 1, 4) AS INTEGER)       AS year,
+                CAST(SUBSTR(request_number,
+                     INSTR(request_number, '-') + 6) AS INTEGER)          AS seq
             FROM requests
             WHERE request_number IS NOT NULL
               AND request_number != ''
