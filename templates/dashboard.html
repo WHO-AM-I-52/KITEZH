@@ -8,7 +8,7 @@
     <span class="text-muted small fw-bold">Период:</span>
     {% for pk,pl in [('today','Сегодня'),('week','Неделя'),('month','Месяц'),
                  ('quarter','Квартал'),('year','Год'),('all','Всё время')] %}
-    <a href="{{ url_for('requests.dashboard', period=pk) }}"
+    <a href="{{ url_for('misc.dashboard', period=pk) }}"
        class="btn btn-sm {{ 'btn-primary' if dash.period==pk else 'btn-outline-secondary' }}">
       {{ pl }}
     </a>
