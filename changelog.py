@@ -1,5 +1,66 @@
 CHANGELOG = [
     {
+        "version": "2.3.12",
+        "date": "03.06.2026",
+        "changes": [
+            # ── Глобальный рефакторинг app.py (Этапы 1–3) ──────────────────────
+            "refactor: вынести миграции в migrations.py (Этап 1.1)",
+            "refactor: вынести inject_globals в context_processors.py (Этап 1.2)",
+            "refactor: очистить app.py — импорты вместо встроенного кода (Этап 1.3)",
+            # ── Tabulator — новый список обращений ──────────────────────────────
+            "feat: подключить Tabulator 6.x CDN в base.html — серверная пагинация и сортировка (Этап 3.1)",
+            "feat: создать requests_tabulator.html — список обращений на Tabulator (Этап 3.2)",
+            "feat: API GET /api/requests — stats, нормализация полей, фильтры, пагинация (Этапы 2.1–3.3)",
+            "feat: маршрут /requests/tabulator + POST /api/favorite (Этап 3.4)",
+            "feat: bulk delete UI в requests_tabulator — чекбоксы + кнопка в тулбаре",
+            # ── Динамические регистрационные номера ─────────────────────────────
+            "feat(db): reg_prefix в subject_types + таблица reg_number_sequences + миграция старых ЗУ-номеров",
+            "feat(action_routes): generate_request_number() — динамический номер по предмету обращения, фоллбэк БП",
+            "feat(admin_routes): subject_types_write — сохранение reg_prefix при добавлении/редактировании предмета",
+            "feat(templates): поле reg_prefix в форме предмета обращения (добавление + редактирование)",
+            # ── ИИ-подбор площадок (WIP) ─────────────────────────────────────────
+            "feat(ai): заготовка Blueprint ИИ-подбора площадок (#38) [WIP]",
+            # ── Восстановление функциональности после рефакторинга ──────────────
+            "feat: восстановить /impersonate/<id> и /impersonate/stop (удалены при рефакторинге Этап 1.3)",
+            # ── Уведомления о новой версии / задаче в браузерной вкладке ────────
+            "feat(base): flash-уведомление вкладки при наличии обновления — мигание заголовка 🆕 (Этап 1)",
+            "feat(base): централизованный модуль мигания вкладки — startVersionFlashing / startTaskFlashing / stopAllFlashing (v2.20)",
+            # ── Hotfixes рефакторинга (маршруты, шаблоны) ───────────────────────
+            "fix: url_for('requests.index') → url_for('requests.requests_list') (BuildError after login)",
+            "fix: add / redirect, /dashboard route, fix requests.index in misc_routes",
+            "fix: dashboard.html url_for requests.dashboard → misc.dashboard",
+            "fix: закрыть незакрытый {% if role==admin %} в конце base.html (TemplateSyntaxError)",
+            "fix: исправить ссылки в таблице — просмотр /view/<id>, редактирование /request/<id>",
+            "fix: remove duplicate /api/search из misc_bp (затенял search_bp)",
+            "fix(info_routes): импорт ROADMAP из roadmap, не из changelog",
+            "fix(sync_changelog): ROADMAP пишется в roadmap.py, не в changelog.py",
+            # ── Hotfixes Tabulator (сортировка, инициализация) ───────────────────
+            "fix: убрать defer у Tabulator — исправляет 'Tabulator is not defined'",
+            "fix: COUNT(*) AS all → AS total (all — зарезервированное слово SQLite)",
+            "fix: убрать sorter/sorterParams из колонок (конфликт с sortMode remote)",
+            "fix: сортировка через dataSorting + state.sort/dir (ajaxRequestFunc не получает sorters)",
+            "fix: sort через dataSorted + replaceData, locale:'default', убран sortMode remote",
+            # ── Hotfixes NULL/текстовые поля БД ─────────────────────────────────
+            "fix(db): миграция чистки NULL → '' в текстовых полях таблицы requests",
+            "fix(form_utils): пустая строка вместо NULL для текстовых полей в build_values",
+            "fix(form_routes): _PRESERVE_FIELDS проверка not val вместо is None",
+            "fix(form_routes): сохранять request_files при редактировании без новых файлов",
+            "fix(action_routes): текстовые поля в change_status и reviewer_decision → '' вместо NULL",
+            # ── Hotfixes БД / миграции ───────────────────────────────────────────
+            "fix(db): заменить SQL-комментарий -- на Python # (SyntaxError при запуске)",
+            "fix(db): миграция номеров — убрана авто-замена на БП и неверный парсинг старых ЗУ-NNN-YY номеров",
+            "fix(db): заполнять reg_prefix по реальным названиям БД, убрать авто-переименование",
+            "fix(db): инициализация reg_number_sequences по существующим номерам — исключает дубли после миграции",
+            "fix(migrations): try/finally в init_db/migrate_db; вынос миграции users в _migrate_users_cols",
+            "fix(admin_routes): try/finally в classifiers(), import activity_log в топ файла",
+            "fix(export_routes): try/finally в import_full, report, report_minek, export_full; пустые даты не в errors",
+            "fix(view_routes): try/finally в rollback_request, убран __import__ хак",
+            "fix(action_routes): guard от двойного нажатия в confirm_request — защита нумерации",
+            # ── fix sidebar: точка «новая версия» ────────────────────────────────
+            "fix(base): точка обновления в сайдбаре скрывается после просмотра страницы Версии (v2.20.1)",
+        ],
+    },
+    {
         "version": "2.3.11",
         "date": "02.06.2026",
         "changes": [
