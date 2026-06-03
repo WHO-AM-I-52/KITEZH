@@ -3,7 +3,7 @@
  ╔══════════════════════════════════════════════════════════════╗
  ║  requests_tabulator.html                                       ║
  ║  Список обращений на Tabulator 6.x + JSON API                ║
- ║  v1.0: панель фильтров, чипы статусов/дат/отв., таблица   ║
+ ║  v1.1: fix sortMode remote — убраны sorter у колонок         ║
  ╚══════════════════════════════════════════════════════════════╝
 #}
 
@@ -327,9 +327,9 @@ const state = {
   dateTo:    '',
   applicant: '',
   search:    '',
-  employee:  null,   // id или null
+  employee:  null,
   favorite:  false,
-  dateChip:  '',     // today | week | month
+  dateChip:  '',
 };
 
 // ─── Утилиты ─────────────────────────────────────────────────────────────────
@@ -407,7 +407,6 @@ const table = new Tabulator('#requestsTable', {
       field: 'number',
       width: 100,
       resizable: false,
-      sorter: 'string',
       formatter: function(cell){
         const row = cell.getRow().getData();
         return `<a class="tab-num" href="/request/${row.id}">${cell.getValue()}</a>`;
@@ -417,8 +416,6 @@ const table = new Tabulator('#requestsTable', {
       title: 'Дата',
       field: 'created_at',
       width: 100,
-      sorter: 'date',
-      sorterParams: { format:'YYYY-MM-DD' },
       formatter: function(cell){
         const v = cell.getValue();
         if (!v) return '—';
@@ -431,7 +428,6 @@ const table = new Tabulator('#requestsTable', {
       title: 'Статус',
       field: 'status',
       width: 120,
-      sorter: 'string',
       formatter: function(cell){
         const v = cell.getValue();
         const s = STATUS_MAP[v] || { text: v, cls: 'bg-secondary' };
@@ -451,7 +447,6 @@ const table = new Tabulator('#requestsTable', {
       title: 'Заявитель',
       field: 'applicant',
       minWidth: 160,
-      sorter: 'string',
       formatter: function(cell){
         return cell.getValue() || '<span style="color:var(--text-muted)">—</span>';
       }
@@ -460,7 +455,6 @@ const table = new Tabulator('#requestsTable', {
       title: 'Проект',
       field: 'project',
       minWidth: 220,
-      sorter: 'string',
       formatter: function(cell){
         const v = cell.getValue();
         if (!v) return '<span style="color:var(--text-muted)">—</span>';
@@ -472,7 +466,6 @@ const table = new Tabulator('#requestsTable', {
       field: 'investment_mln',
       width: 80,
       hozAlign: 'right',
-      sorter: 'number',
       formatter: function(cell){ return fmtNum(cell.getValue()); }
     },
     {
@@ -480,7 +473,6 @@ const table = new Tabulator('#requestsTable', {
       field: 'area_ha',
       width: 60,
       hozAlign: 'right',
-      sorter: 'number',
       formatter: function(cell){ return fmtNum(cell.getValue()); }
     },
     {
@@ -488,7 +480,6 @@ const table = new Tabulator('#requestsTable', {
       field: 'area_m2',
       width: 70,
       hozAlign: 'right',
-      sorter: 'number',
       formatter: function(cell){ return fmtNum(cell.getValue()); }
     },
     {
@@ -496,14 +487,12 @@ const table = new Tabulator('#requestsTable', {
       field: 'workplaces',
       width: 72,
       hozAlign: 'right',
-      sorter: 'number',
       formatter: function(cell){ return fmtNum(cell.getValue()); }
     },
     {
       title: 'Ответственный',
       field: 'employee_name',
       width: 140,
-      sorter: 'string',
       formatter: function(cell){
         return cell.getValue() || '<span style="color:var(--text-muted)">—</span>';
       }
@@ -609,7 +598,6 @@ document.getElementById('btnResetAll').addEventListener('click', resetAll);
 });
 document.getElementById('fStatus').addEventListener('change', function(){
   state.status = this.value;
-  // синхронизируем чипы статусов
   document.querySelectorAll('.chip[data-chip-type="status"]').forEach(c => {
     c.classList.toggle('active', c.dataset.chipVal === this.value);
   });
@@ -671,7 +659,6 @@ document.querySelectorAll('.stat-card').forEach(card => {
     document.querySelectorAll('.stat-card').forEach(c => c.classList.remove('active'));
     this.classList.add('active');
     state.status = (val === '__overdue__') ? '' : val;
-    // TODO: добавить filter overdue после расширения API
     document.getElementById('fStatus').value = state.status;
     document.querySelectorAll('.chip[data-chip-type="status"]').forEach(c => {
       c.classList.toggle('active', c.dataset.chipVal === state.status);
