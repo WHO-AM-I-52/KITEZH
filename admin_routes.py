@@ -1,6 +1,6 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║                      admin_routes.py                         ║
-# ║  v2.6: reg_prefix для subject_types                         ║
+# ║  v2.7: восстановить /impersonate (issue рефакторинг 1.3)           ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify
@@ -11,6 +11,65 @@ from auth_utils import login_required, admin_required, hash_pw, ALL_PERMISSIONS
 
 admin_bp = Blueprint('admin', __name__)
 
+
+# ─── Войти как (Имперсонация) ────────────────────────────────────────
+
+@admin_bp.route('/impersonate/<int:uid>')
+@login_required
+@admin_required
+def impersonate(uid):
+    """Admin: войти от имени пользователя uid.
+    Сохраняем текущие данные админа в _orig_* для возврата.
+    """
+    conn = get_db()
+    try:
+        target = conn.execute(
+            'SELECT id, username, full_name, role FROM users WHERE id=?', (uid,)
+        ).fetchone()
+    finally:
+        conn.close()
+
+    if not target:
+        flash('Пользователь не найден', 'error')
+        return redirect(url_for('requests.index'))
+
+    # Сохраняем оригинальные данные админа если ещё не имперсонируем
+    if not session.get('_orig_user_id'):
+        session['_orig_user_id']   = session['user_id']
+        session['_orig_username']  = session.get('username', '')
+        session['_orig_full_name'] = session.get('full_name', '')
+        session['_orig_role']      = session.get('role', '')
+
+    session['user_id']   = target['id']
+    session['username']  = target['username']
+    session['full_name'] = target['full_name']
+    session['role']      = target['role']
+    session.modified = True
+
+    flash(f'Вы вошли как: {target["full_name"]}. Для выхода нажмите «Вернуться в admin».', 'info')
+    return redirect(url_for('requests.index'))
+
+
+@admin_bp.route('/impersonate/stop')
+@login_required
+def impersonate_stop():
+    """Admin: вернуться в свою учётную запись админа."""
+    orig_id = session.pop('_orig_user_id', None)
+    if not orig_id:
+        flash('Имперсонация не активна', 'warning')
+        return redirect(url_for('requests.index'))
+
+    session['user_id']   = orig_id
+    session['username']  = session.pop('_orig_username',  '')
+    session['full_name'] = session.pop('_orig_full_name', '')
+    session['role']      = session.pop('_orig_role',      'admin')
+    session.modified = True
+
+    flash('Вы вернулись в свою учётную запись администратора.', 'success')
+    return redirect(url_for('requests.index'))
+
+
+# ─── Классификаторы ───────────────────────────────────────────────────
 
 @admin_bp.route('/admin/classifiers', methods=['GET', 'POST'])
 @login_required
@@ -345,10 +404,6 @@ def manage_users():
 
 
 def _build_filter_query(p):
-    """
-    Возвращает (q, params, has_like) по словарю параметров фильтра.
-    has_like=True если фильтр содержит LIKE-условия (нельзя батчить через UNION ALL).
-    """
     q = "SELECT COUNT(*) FROM requests r WHERE 1=1"
     params = []
     has_like = False
