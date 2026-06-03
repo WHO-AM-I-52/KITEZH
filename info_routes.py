@@ -3,9 +3,10 @@
 # ║  Сервисные страницы: уведомления, журнал изменений, онлайн   ║
 # ║  v2.2.0: /ping фиксирует присутствие, /api/online — счётчик  ║
 # ║  v2.3.6: /api/update/check и /api/update/apply               ║
-# ║  v2.4.0: /dashboard роут добавлен               ║
-# ║  fix: ?force=1 сбрасывает серверный кэш               ║
-# ║  fix: _restart.flag + sys.exit(42) → run_server.py          ║
+# ║  v2.4.0: /dashboard роут добавлен                            ║
+# ║  fix: ?force=1 сбрасывает серверный кэш                      ║
+# ║  fix: _restart.flag + sys.exit(42) → run_server.py           ║
+# ║  fix: удалён дублирующий /api/search (живёт в search_routes)  ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, render_template, session, jsonify, request as flask_request
@@ -95,43 +96,6 @@ def api_online():
     conn.close()
     count = row['cnt'] if row else 0
     return jsonify({'online': count})
-
-
-@misc_bp.route('/api/search')
-@login_required
-def api_search():
-    """Глобальный поиск по обращениям: номер или имя заявителя."""
-    q = flask_request.args.get('q', '').strip()
-    if not q or len(q) < 2:
-        return jsonify({'results': []})
-    conn = get_db()
-    like = f'%{q}%'
-    rows = conn.execute(
-        """
-        SELECT id, request_number, applicant_short_name, applicant_full_name,
-               status, project_name
-        FROM requests
-        WHERE request_number LIKE ?
-           OR applicant_short_name LIKE ?
-           OR applicant_full_name  LIKE ?
-           OR project_name         LIKE ?
-        ORDER BY id DESC
-        LIMIT 20
-        """,
-        (like, like, like, like)
-    ).fetchall()
-    conn.close()
-    results = [
-        {
-            'id': r['id'],
-            'request_number': r['request_number'],
-            'applicant': r['applicant_short_name'] or r['applicant_full_name'] or '',
-            'status': r['status'],
-            'project_name': r['project_name'] or ''
-        }
-        for r in rows
-    ]
-    return jsonify({'results': results})
 
 
 # ─── Обновления SONAR через GitHub ───────────────────────────────────────────
