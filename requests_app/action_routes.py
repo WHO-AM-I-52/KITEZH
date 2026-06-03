@@ -21,6 +21,41 @@ _STATUS_EXTRA_FIELDS = {
 }
 
 
+def generate_request_number(conn, subject_type_id):
+    """
+    Генерирует уникальный рег. номер по формату: PREFIX-ГОД-NNN
+    Префикс берётся из subject_types.reg_prefix по subject_type_id.
+    Если предмет не задан или reg_prefix пустой — используется 'БП'.
+    Счётчик сбрасывается каждый год пер-prefix.
+    """
+    year = datetime.now().year
+
+    prefix = 'БП'
+    if subject_type_id:
+        row = conn.execute(
+            "SELECT reg_prefix FROM subject_types WHERE id=?",
+            (subject_type_id,)
+        ).fetchone()
+        if row and row['reg_prefix'] and row['reg_prefix'].strip():
+            prefix = row['reg_prefix'].strip()
+
+    # Атомарно получаем следующий порядковый номер для этой пары (prefix, year)
+    conn.execute(
+        """
+        INSERT INTO reg_number_sequences (prefix, year, last_seq)
+        VALUES (?, ?, 1)
+        ON CONFLICT(prefix, year) DO UPDATE SET last_seq = last_seq + 1
+        """,
+        (prefix, year)
+    )
+    seq = conn.execute(
+        "SELECT last_seq FROM reg_number_sequences WHERE prefix=? AND year=?",
+        (prefix, year)
+    ).fetchone()['last_seq']
+
+    return f"{prefix}-{year}-{seq:03d}"
+
+
 @requests_bp.route('/request/<int:rid>/confirm', methods=['POST'])
 @login_required
 def confirm_request(rid):
@@ -41,11 +76,7 @@ def confirm_request(rid):
     now     = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
     if action == 'accept':
-        year     = datetime.now().year
-        count    = conn.execute(
-            "SELECT COUNT(*) FROM requests WHERE status!='draft'"
-        ).fetchone()[0] + 1
-        num      = f"ЗУ-{year}-{count:04d}"
+        num      = generate_request_number(conn, req['subject_type_id'])
         assigned = request.form.get('assigned_to') or req['assigned_to']
         if assigned:
             try:
@@ -146,35 +177,29 @@ def change_status(rid):
     conn = get_db()
     now  = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-    # Базовый UPDATE
     upd_fields = ['status=?', 'updated_at=?']
     upd_vals   = [ns, now]
 
-    # Дополнительные поля в зависимости от нового статуса
     for field in _STATUS_EXTRA_FIELDS.get(ns, []):
         val = request.form.get(field)
-        if val is not None:          # None = не пришло в форме, не трогаем
+        if val is not None:
             upd_fields.append(f'{field}=?')
-            # result_type_id — целое число или NULL
             if field == 'result_type_id':
                 try:
                     upd_vals.append(int(val) if val else None)
                 except (ValueError, TypeError):
                     upd_vals.append(None)
             elif field == 'taken_under_supervision':
-                # checkbox: приходит '1' если отмечен, иначе отсутствует в форме
                 upd_vals.append(1 if val == '1' else 0)
             else:
                 upd_vals.append(val or None)
 
-    # При переходе в closed без чекбокса — явно сбрасываем в 0
     if ns == 'closed' and 'taken_under_supervision' not in [
         f.split('=')[0] for f in upd_fields
     ]:
         upd_fields.append('taken_under_supervision=?')
         upd_vals.append(0)
 
-    # При переходе в registered — фиксируем дату регистрации
     if ns == 'registered':
         upd_fields.append('registered_at=?')
         upd_vals.append(now[:10])
@@ -243,7 +268,6 @@ def delete_request(rid):
 def bulk_delete_requests():
     raw_ids = request.form.getlist('ids[]')
 
-    # Валидация: только целые числа
     ids = []
     for v in raw_ids:
         try:
@@ -294,12 +318,8 @@ def assign_number(rid):
         flash('Номер уже присвоен или обращение не найдено', 'warning')
         return redirect(url_for('requests.view_request', rid=rid))
 
-    year  = datetime.now().year
-    count = conn.execute(
-        "SELECT COUNT(*) FROM requests WHERE request_number IS NOT NULL"
-    ).fetchone()[0] + 1
-    num   = f"ЗУ-{year}-{count:04d}"
-    now   = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    num = generate_request_number(conn, req['subject_type_id'])
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
     conn.execute(
         "UPDATE requests SET request_number=?, status='registered', "
