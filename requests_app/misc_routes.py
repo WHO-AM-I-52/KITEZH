@@ -8,6 +8,13 @@ from activity_log import log_action
 from . import requests_bp
 
 
+# ─── Редирект с корня на /requests ──────────────────────────────────────────
+@requests_bp.route('/')
+@login_required
+def index():
+    return redirect(url_for('requests.requests_list'))
+
+
 @requests_bp.route('/request/<int:rid>/favorite', methods=['POST'])
 @login_required
 def toggle_favorite(rid):
@@ -26,7 +33,7 @@ def toggle_favorite(rid):
         log_action(conn, uid, 'favorite', rid, 'Добавлено в избранное')
     conn.commit()
     conn.close()
-    return redirect(request.referrer or url_for('requests.index'))
+    return redirect(request.referrer or url_for('requests.requests_list'))
 
 
 @requests_bp.route('/uploads/<path:filename>')
