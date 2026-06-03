@@ -6,7 +6,7 @@
 import sqlite3
 import os
 
-# ─── ПУТИ ─────────────────────────────────────────────────────────────────────────────────
+# ─── ПУТИ ───────────────────────────────────────────────────────────────────────────────────
 
 BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
 DB_PATH     = os.path.join(BASE_DIR, 'db', 'database.db')
@@ -18,7 +18,7 @@ os.makedirs(UPLOADS_DIR, exist_ok=True)
 os.makedirs(REPORTS_DIR, exist_ok=True)
 
 
-# ─── МИГРАЦИЯ ───────────────────────────────────────────────────────────────────────
+# ─── МИГРАЦИЯ ──────────────────────────────────────────────────────────────────────────────
 
 # Маппинг названий предметов → префиксы рег. номеров.
 # Сравнение нечувствительно к регистру (LOWER).
@@ -38,7 +38,7 @@ _PREFIX_BY_NAME = {
 
 
 def _has_column(conn, table: str, column: str) -> bool:
-    """Труе если колонка уже есть в таблице."""
+    """True если колонка уже есть в таблице."""
     rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
     return any(r['name'] == column for r in rows)
 
@@ -303,10 +303,39 @@ def _migrate(conn):
     conn.execute("CREATE INDEX IF NOT EXISTS idx_req_date       ON requests(request_date)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_notif_user     ON notifications(user_id, is_read)")
 
+    # ════════════════════════════════════════════════════════════════
+    # Чистка NULL → '' в текстовых полях таблицы requests.
+    # Идемпотентно: трогает только записи с NULL.
+    # Не затрагивает: числа (INT/FLOAT), FK, даты, файлы, единицы.
+    # ════════════════════════════════════════════════════════════════
+    _TEXT_FIELDS_TO_CLEAN = [
+        'status', 'source_type',
+        'applicant_full_name', 'applicant_short_name', 'applicant_legal_form',
+        'applicant_inn', 'applicant_msp_category', 'applicant_okved_main',
+        'postal_address', 'legal_address', 'project_name',
+        'contact_person', 'contact_phone', 'contact_email',
+        'construction_stages',
+        'product_nomenclature', 'production_description', 'object_composition',
+        'site_right', 'hazard_class', 'site_shape', 'site_other',
+        'heat_source', 'gas_purpose',
+        'internet', 'engineering_extra',
+        'road_extra', 'railway_extra', 'transport_extra',
+        'preferred_districts', 'location_extra',
+        'raw_materials', 'raw_extra', 'additional_info',
+        'answer_method', 'answer_method_other', 'answer_notes',
+        'request_files', 'edit_reason',
+        'incoming_number',
+        'responsible_name_external', 'reviewer_name_external',
+        'reviewer_comment', 'reviewer_decision',
+        'send_method', 'applicant_feedback',
+    ]
+    set_parts = ', '.join(f"{col}=COALESCE({col}, '')" for col in _TEXT_FIELDS_TO_CLEAN)
+    conn.execute(f"UPDATE requests SET {set_parts} WHERE 1=1")
+
     conn.commit()
 
 
-# ─── ПОДКЛЮЧЕНИЕ К БД ─────────────────────────────────────────────────────────────────────
+# ─── ПОДКЛЮЧЕНИЕ К БД ──────────────────────────────────────────────────────────────────────────────
 
 def get_db():
     """
