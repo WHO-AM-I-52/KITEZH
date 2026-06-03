@@ -1,7 +1,6 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║ app.py                                                        ║
-# ║ v2.7: рефакторинг — миграции и context_processor вынесены  ║
-# ║ в migrations.py и context_processors.py                     ║
+# ║ v2.7: рефакторинг + JSON API /api/requests для Tabulator  ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 import os
@@ -71,6 +70,7 @@ from settings_routes   import settings_bp
 from preview_routes    import preview_bp
 from phonebook_import  import pb_import_bp
 from investmap_routes  import investmap_bp
+from api.requests_api  import api_bp
 
 for bp in [
     phonebook_bp, search_bp,
@@ -78,6 +78,7 @@ for bp in [
     auth_bp, requests_bp, admin_bp,
     report_bp, misc_bp, settings_bp,
     preview_bp, pb_import_bp, investmap_bp,
+    api_bp,
 ]:
     app.register_blueprint(bp)
 
