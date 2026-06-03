@@ -2,7 +2,7 @@
 {# ╔══════════════════════════════════════════════════════════════╗ #}
 {# ║                        base.html                            ║ #}
 {# ║  Базовый шаблон приложения "Подбор ЗУ — НО"                 ║ #}
-{# ║  v2.15: dark/zone — form-check-input, modal, table fix      ║ #}
+{# ║  v2.16: Tabulator CDN подключён для списка обращений        ║ #}
 {# ╚══════════════════════════════════════════════════════════════╝ #}
 <html lang="ru">
 <head>
@@ -13,6 +13,12 @@
 
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+
+  {# ─── Tabulator 6.x ─────────────────────────────────────────────── #}
+  <link  rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/js/tabulator.min.js" defer></script>
+  {# Дополнительная тема (opinionated) — используется только на странице обращений #}
+  {% block tabulator_theme %}{% endblock %}
 
   <style>
     body { background:#f4f7fa; font-size:14px; }
@@ -359,6 +365,8 @@
     body.offline-mode .page-wrap,body.offline-mode .sidebar{filter:blur(1px) brightness(.7);pointer-events:none}
     body.offline-mode .topbar{filter:brightness(.7);pointer-events:none}
   </style>
+
+  {% block extra_head %}{% endblock %}
 </head>
 <body>
 
@@ -731,130 +739,4 @@
       .then(function(r){ return r.ok ? r.json() : null; })
       .then(function(data){
         if (!data) return;
-        try { sessionStorage.setItem(CACHE_KEY, JSON.stringify(data)); } catch(e){}
-        if (data.has_update) dot.classList.remove('d-none');
-        else dot.classList.add('d-none');
-      })
-      .catch(function(){});
-  }
-
-  doCheck();
-  setInterval(function(){
-    if (document.hidden) return;
-    sessionStorage.removeItem(CACHE_KEY);
-    doCheck();
-  }, CHECK_INTERVAL);
-
-})();
-</script>
-{% endif %}
-
-<div id="droneWidget" style="position:fixed;right:24px;bottom:24px;z-index:9999;opacity:0;transform:scale(0.8);transition:opacity 0.4s,transform 0.4s;pointer-events:none;">
-  <div class="demo">
-    <div class="demo__drone-cont demo__drone-cont--takeoff"><div class="demo__drone-cont demo__drone-cont--shift-x"><div class="demo__drone-cont demo__drone-cont--landing">
-      <svg viewBox="0 0 136 112" class="demo__drone"><g class="demo__drone-leaving"><path class="demo__drone-arm" d="M52,46 c0,0 -15,5 -15,20 l15,10"/><path class="demo__drone-arm demo__drone-arm--2" d="M52,46 c0,0 -15,5 -15,20 l15,10"/><path class="demo__drone-yellow" d="M28,36 l20,0 a20,9 0,0,1 40,0 l20,0 l0,8 l-10,0 c-10,0 -15,0 -23,10 l-14,0 c-10,-10 -15,-10 -23,-10 l-10,0z"/><path class="demo__drone-green" d="M16,12 a10,10 0,0,1 20,0 l-10,50z"/><path class="demo__drone-green" d="M100,12 a10,10 0,0,1 20,0 l-10,50z"/><path class="demo__drone-yellow" d="M9,8 l34,0 a8,8 0,0,1 0,16 l-34,0 a8,8 0,0,1 0,-16z"/><path class="demo__drone-yellow" d="M93,8 l34,0 a8,8 0,0,1 0,16 l-34,0 a8,8 0,0,1 0,-16z"/></g><path class="demo__drone-package demo__drone-green" d="M50,70 l36,0 l-4,45 l-28,0z"/></svg>
-    </div></div></div>
-    <div class="demo__circle"><div class="demo__circle-inner"><svg viewBox="0 0 16 20" class="demo__circle-package"><path d="M0,0 16,0 13,20 3,20z"/></svg><div class="demo__circle-grabbers"></div></div><svg viewBox="0 0 40 40" class="demo__circle-progress"><path class="demo__circle-progress-line" d="M20,0 a20,20 0,0,1 0,40 a20,20 0,0,1 0,-40"/><path class="demo__circle-progress-checkmark" d="M14,19 19,24 29,14"/></svg></div>
-    <div class="demo__text-fields"><div class="demo__text demo__text--step-0">Сохранить</div><div class="demo__text demo__text--step-1">Обработка<span class="demo__text-dots"><span>.</span></span></div><div class="demo__text demo__text--step-2">Сохранение<span class="demo__text-dots"><span>.</span></span></div><div class="demo__text demo__text--step-3">Готово</div><div class="demo__text demo__text--step-4">Сохранено ✓</div></div>
-    <div class="demo__revert-line"></div>
-  </div>
-</div>
-
-<style>
-#droneWidget .demo{position:relative;width:220px;height:52px;padding-left:60px;padding-right:12px;border-radius:10px;background:#61d4f1;transition:background-color 1s;cursor:pointer;box-shadow:0 4px 20px rgba(0,0,0,0.2)}
-#droneWidget .demo:before,#droneWidget .demo:after{content:"";position:absolute;left:5%;bottom:100%;width:14%;height:6px;background:#3dc1da;transform:scaleX(0);transform-origin:0 100%}
-#droneWidget .demo:after{left:19%;width:66%}
-#droneWidget .demo.s--processing{background-color:#53e2c2;transition-delay:4.6s}
-#droneWidget .demo.s--processing:before,#droneWidget .demo.s--processing:after{transform:scaleX(1);background-color:#36d09d}
-#droneWidget .demo.s--processing:before{transition:transform 0.6s 1.4s,background-color 1s 4.6s}
-#droneWidget .demo.s--processing:after{transition:transform 2.417s 2.4s,background-color 1s 4.6s}
-#droneWidget .demo.s--reverting{background-color:#61d4f1;transition:background-color 0.5s 0.96s}
-#droneWidget .demo.s--reverting:before,#droneWidget .demo.s--reverting:after{opacity:0}
-#droneWidget .demo svg{overflow:visible;fill:none;stroke-linejoin:round}
-#droneWidget .demo-transitionend-listener{transition:opacity 6.6s}
-#droneWidget .demo.s--processing .demo-transitionend-listener{opacity:0}
-#droneWidget .demo__revert-line{position:absolute;left:5%;bottom:100%;width:80%;height:6px;background:#53e2c2;transform-origin:0 50%;opacity:0}
-#droneWidget .demo.s--reverting .demo__revert-line{opacity:1;transform:scaleX(0);transition:transform 0.864s}
-#droneWidget .demo__drone-cont{position:absolute;left:0;top:0;width:100%;height:100%}
-#droneWidget .demo__drone-cont--takeoff{z-index:-1;opacity:0}
-#droneWidget .demo.s--processing .demo__drone-cont--takeoff{opacity:1;transform:translateY(-70px);transition:transform 0.8s,opacity 0.2s;transition-delay:1.2s}
-#droneWidget .demo.s--processing .demo__drone-cont--shift-x{transition:transform 2.6s 2.4s;transform:translateX(160px)}
-#droneWidget .demo.s--processing .demo__drone-cont--landing{transform:translateY(24px);transition:transform 0.3s 5s}
-#droneWidget .demo__drone{position:absolute;left:12px;top:-12px;width:56px;height:46px;stroke:#000;stroke-width:2px;fill:none}
-@keyframes droneWidgetTilt{8%,24%{transform:rotate(0)}35%,70%{transform:rotate(8deg)}85%{transform:rotate(-4deg)}95%,100%{transform:rotate(0)}}
-#droneWidget .demo.s--processing .demo__drone{transform-origin:50% 100%;animation:droneWidgetTilt 3.8s 1.2s}
-#droneWidget .demo.s--processing .demo__drone-leaving{transform:translate(150px,-150px) rotate(20deg) scale(0.3);opacity:0;transition:transform 1.1s 5.5s,opacity 0.55s 6.05s}
-#droneWidget .demo__drone-arm{--rotation:0deg;transform-origin:68px 56px;transform:rotate(var(--rotation))}
-#droneWidget .demo__drone-arm--2{transform:scaleX(-1) rotate(var(--rotation))}
-#droneWidget .demo.s--processing .demo__drone-arm{--rotation:25deg;transition:transform 0.3s 5.2s}
-#droneWidget .demo__drone-green{fill:#61d4f1}
-#droneWidget .demo.s--processing .demo__drone-green{fill:#53e2c2;transition:fill 1s 4.6s}
-#droneWidget .demo__drone-yellow{fill:#ecb400}
-#droneWidget .demo__drone-package{stroke-width:4px}
-@keyframes droneWidgetRevert{40%,45%{transform:translate(-320px,0)}75%{transform:translate(-320px,-100px)}100%{transform:translate(-320px,100px)}}
-#droneWidget .demo.s--reverting .demo__drone-package{opacity:0;transition:opacity 0s 2s;animation:droneWidgetRevert 2s}
-#droneWidget .demo__circle{position:absolute;left:24px;top:50%;width:32px;height:32px;margin-top:-16px;border-radius:50%;background:#3dc1da}
-#droneWidget .demo.s--processing .demo__circle{background-color:#53e2c2;transition:background-color 1s 4.6s}
-#droneWidget .demo.s--reverting .demo__circle{background-color:#3dc1da;transition:background-color 0.5s 0.96s}
-#droneWidget .demo__circle-inner{overflow:hidden;position:absolute;left:0;top:0;display:flex;justify-content:center;align-items:center;width:100%;height:100%;border-radius:inherit}
-#droneWidget .demo__circle-package{width:11px;height:14px;stroke:#fff;stroke-width:3px;stroke-linecap:round}
-#droneWidget .demo.s--processing .demo__circle-package{transform:translateY(-70px);transition:transform 0.8s 1.2s}
-#droneWidget .demo.s--reverting .demo__circle-package{transform:translateY(0);transition:transform 0.16s 1.6s}
-#droneWidget .demo__circle-grabbers{--grabY:0px;--grabRotate:0;position:absolute;left:0;top:0;width:100%;height:100%}
-#droneWidget .demo__circle-grabbers:before,#droneWidget .demo__circle-grabbers:after{content:"";position:absolute;right:4px;top:-10px;width:11px;height:7px;border:2px solid #000;border-left:none;border-bottom:none;transform:translateY(var(--grabY)) rotate(var(--grabRotate));transition:transform 0.8s}
-#droneWidget .demo__circle-grabbers:before{right:auto;left:4px;transform:translateY(var(--grabY)) scaleX(-1) rotate(var(--grabRotate))}
-@keyframes droneWidgetGrab{40%,59.999%{--grabY:15px;--grabRotate:55deg}60%,100%{--grabY:-55px;--grabRotate:55deg}}
-#droneWidget .demo.s--processing .demo__circle-grabbers{animation:droneWidgetGrab 2s forwards}
-#droneWidget .demo__circle-progress{position:absolute;left:0;top:0;width:100%;height:100%;stroke:#fff;stroke-width:2px}
-#droneWidget .demo__circle-progress-line{stroke-dasharray:125.68,125.68;stroke-dashoffset:125.68}
-#droneWidget .demo.s--processing .demo__circle-progress-line{stroke-dashoffset:0;transition:all 0.5s 4.9s}
-#droneWidget .demo.s--reverting .demo__circle-progress-line{stroke-dashoffset:125.68;transition:all 0.5s 0.96s}
-#droneWidget .demo__circle-progress-checkmark{stroke-dasharray:21.21,21.21;stroke-dashoffset:21.21}
-#droneWidget .demo.s--processing .demo__circle-progress-checkmark{stroke-dashoffset:0;transition:all 0.5s 4.9s}
-#droneWidget .demo.s--reverting .demo__circle-progress-checkmark{stroke-dashoffset:21.21;transition:all 0.5s 0.96s}
-#droneWidget .demo__text-fields{position:relative;width:100%;height:100%;color:#fff;font-size:15px;letter-spacing:1px}
-#droneWidget .demo__text{position:absolute;left:0;top:0;display:flex;justify-content:center;align-items:center;width:100%;height:100%;opacity:0;transform:translateY(20px);pointer-events:none}
-@keyframes droneWidgetText{20%,80%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-20px)}}
-#droneWidget .demo__text--step-0{opacity:1;transform:translateY(0)}
-#droneWidget .demo.s--processing .demo__text{transition:all 0.4s}
-#droneWidget .demo.s--processing .demo__text--step-0{opacity:0;transform:translateY(-20px)}
-#droneWidget .demo.s--processing .demo__text--step-1{animation:droneWidgetText 2s 0s}
-#droneWidget .demo.s--processing .demo__text--step-2{animation:droneWidgetText 2s 1.6s}
-#droneWidget .demo.s--processing .demo__text--step-3{animation:droneWidgetText 2s 3.2s}
-#droneWidget .demo.s--processing .demo__text--step-4{transition-delay:4.8s;transform:translateY(0);opacity:1}
-#droneWidget .demo.s--reverting .demo__text--step-0{opacity:1;transform:translateY(0);transition:all 0.4s 1s}
-#droneWidget .demo.s--reverting .demo__text--step-4{opacity:0;transform:translateY(20px);transition:all 0.4s 0.8s}
-#droneWidget .demo__text-dots{letter-spacing:-0.5px;font-size:18px}
-@keyframes droneWidgetDot{10%,90%{opacity:0}40%,60%{opacity:1}}
-#droneWidget .demo__text-dots span{opacity:0;animation:droneWidgetDot 1.2s 0.4s infinite}
-#droneWidget .demo__text-dots:before,#droneWidget .demo__text-dots:after{content:".";opacity:0}
-#droneWidget .demo__text-dots:before{animation:droneWidgetDot 1.2s infinite}
-#droneWidget .demo__text-dots:after{animation:droneWidgetDot 1.2s 0.8s infinite}
-</style>
-
-<script>
-(function(){
-  const widget = document.getElementById('droneWidget');
-  const $demo = widget.querySelector('.demo');
-  let processing = false;
-  function triggerAnimation(){
-    if (processing) return;
-    processing = true;
-    widget.style.opacity='1'; widget.style.transform='scale(1)'; widget.style.pointerEvents='auto';
-    fetch('/autosave',{method:'POST',credentials:'same-origin'}).catch(function(e){console.warn('Autosave error:',e);});
-    let reverting=false;
-    const $el=document.createElement('div');
-    $el.classList.add('demo-transitionend-listener');
-    $demo.appendChild($el); $demo.offsetTop; $demo.classList.add('s--processing');
-    $el.addEventListener('transitionend',function(){ if(reverting)return; reverting=true; $demo.classList.add('s--reverting'); });
-    setTimeout(function(){
-      $demo.removeChild($el); $demo.classList.remove('s--processing','s--reverting'); processing=false;
-      setTimeout(function(){ widget.style.opacity='0'; widget.style.transform='scale(0.8)'; widget.style.pointerEvents='none'; },1000);
-    },10000);
-  }
-  setInterval(triggerAnimation,60000);
-})();
-</script>
-
-</body>
-</html>
+        t
