@@ -8,11 +8,12 @@ import json
 
 from db import get_db
 from auth_utils import login_required, admin_required, hash_pw, ALL_PERMISSIONS
+from activity_log import get_activity_log, ACTION_LABELS
 
 admin_bp = Blueprint('admin', __name__)
 
 
-# ─── Войти как (Имперсонация) ────────────────────────────────────────
+# ─── Войти как (Имперсонация) ──────────────────────────────────────────────────
 
 @admin_bp.route('/impersonate/<int:uid>')
 @login_required
@@ -33,7 +34,6 @@ def impersonate(uid):
         flash('Пользователь не найден', 'error')
         return redirect(url_for('requests.index'))
 
-    # Сохраняем оригинальные данные админа если ещё не имперсонируем
     if not session.get('_orig_user_id'):
         session['_orig_user_id']   = session['user_id']
         session['_orig_username']  = session.get('username', '')
@@ -69,60 +69,61 @@ def impersonate_stop():
     return redirect(url_for('requests.index'))
 
 
-# ─── Классификаторы ───────────────────────────────────────────────────
+# ─── Классификаторы ───────────────────────────────────────────────────────────────────
 
 @admin_bp.route('/admin/classifiers', methods=['GET', 'POST'])
 @login_required
 @admin_required
 def classifiers():
     conn = get_db()
+    try:
+        if request.method == 'POST':
+            action = request.form.get('action')
 
-    if request.method == 'POST':
-        action = request.form.get('action')
+            if action == 'add':
+                cat = request.form.get('category', '')
+                val = request.form.get('value', '').strip()
+                if cat and val:
+                    conn.execute(
+                        "INSERT INTO classifiers (category,value) VALUES (?,?)",
+                        (cat, val)
+                    )
+                    conn.commit()
+                    flash('Значение добавлено', 'success')
 
-        if action == 'add':
-            cat = request.form.get('category', '')
-            val = request.form.get('value', '').strip()
-            if cat and val:
-                conn.execute(
-                    "INSERT INTO classifiers (category,value) VALUES (?,?)",
-                    (cat, val)
-                )
+            elif action == 'delete':
+                cid = request.form.get('cid')
+                conn.execute("DELETE FROM classifiers WHERE id=?", (cid,))
                 conn.commit()
-                flash('Значение добавлено', 'success')
+                flash('Значение удалено', 'success')
 
-        elif action == 'delete':
-            cid = request.form.get('cid')
-            conn.execute("DELETE FROM classifiers WHERE id=?", (cid,))
-            conn.commit()
-            flash('Значение удалено', 'success')
+            elif action == 'rename':
+                cid = request.form.get('cid')
+                val = request.form.get('value', '').strip()
+                if val:
+                    conn.execute("UPDATE classifiers SET value=? WHERE id=?", (val, cid))
+                    conn.commit()
+                    flash('Значение обновлено', 'success')
 
-        elif action == 'rename':
-            cid = request.form.get('cid')
-            val = request.form.get('value', '').strip()
-            if val:
-                conn.execute("UPDATE classifiers SET value=? WHERE id=?", (val, cid))
-                conn.commit()
-                flash('Значение обновлено', 'success')
+        lf  = conn.execute(
+            "SELECT * FROM classifiers WHERE category='legal_form'  ORDER BY sort_order,value"
+        ).fetchall()
+        di  = conn.execute(
+            "SELECT * FROM classifiers WHERE category='district'     ORDER BY sort_order,value"
+        ).fetchall()
+        src = conn.execute(
+            "SELECT * FROM classifiers WHERE category='source_type'  ORDER BY sort_order,value"
+        ).fetchall()
 
-    lf  = conn.execute(
-        "SELECT * FROM classifiers WHERE category='legal_form'  ORDER BY sort_order,value"
-    ).fetchall()
-    di  = conn.execute(
-        "SELECT * FROM classifiers WHERE category='district'     ORDER BY sort_order,value"
-    ).fetchall()
-    src = conn.execute(
-        "SELECT * FROM classifiers WHERE category='source_type'  ORDER BY sort_order,value"
-    ).fetchall()
+        okved_total = conn.execute("SELECT COUNT(*) FROM okved").fetchone()[0]
+        row = conn.execute("SELECT value FROM settings WHERE key='okved_last_sync'").fetchone()
+        okved_last_sync = row['value'] if row else '—'
 
-    okved_total = conn.execute("SELECT COUNT(*) FROM okved").fetchone()[0]
-    row = conn.execute("SELECT value FROM settings WHERE key='okved_last_sync'").fetchone()
-    okved_last_sync = row['value'] if row else '—'
+        subject_types = conn.execute("SELECT * FROM subject_types ORDER BY id").fetchall()
+        result_types  = conn.execute("SELECT * FROM result_types ORDER BY id").fetchall()
+    finally:
+        conn.close()
 
-    subject_types = conn.execute("SELECT * FROM subject_types ORDER BY id").fetchall()
-    result_types  = conn.execute("SELECT * FROM result_types ORDER BY id").fetchall()
-
-    conn.close()
     return render_template(
         'classifiers.html',
         legal_forms=lf, districts=di, source_types=src,
@@ -381,7 +382,6 @@ def manage_users():
         af_action = request.args.get('af_action', '')
         af_date   = request.args.get('af_date', '')
 
-        from activity_log import get_activity_log, ACTION_LABELS
         activity = get_activity_log(
             limit=200,
             user_id=int(af_user) if af_user else None,
