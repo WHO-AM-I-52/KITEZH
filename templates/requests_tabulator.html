@@ -4,6 +4,7 @@
  ║  requests_tabulator.html                                       ║
  ║  Список обращений на Tabulator 6.x + JSON API                ║
  ║  v1.4: fix links — /view/<id> просмотр, /request/<id> ред.  ║
+ ║  v1.5: bulk delete — чекбоксы + кнопка «Удалить выбранные»  ║
  ╚══════════════════════════════════════════════════════════════╝
 #}
 
@@ -88,6 +89,16 @@
 .tab-actions .btn-view:hover   { background:#0d6efd; color:#fff; }
 .tab-actions .btn-edit:hover   { background:#856404; color:#fff; }
 .tab-actions .btn-delete:hover { background:#dc3545; color:#fff; }
+
+/* ─── Bulk-delete toolbar ───────────────────────────────────────── */
+#bulkBar {
+  display:none; align-items:center; gap:10px;
+  background:var(--surface); border-radius:8px;
+  padding:8px 14px; margin-bottom:10px;
+  border:1px solid #dc3545; box-shadow:0 2px 8px rgba(220,53,69,.12);
+}
+#bulkBar.show { display:flex; }
+#bulkSelCount { font-size:13px; font-weight:600; color:#dc3545; }
 </style>
 {% endblock %}
 
@@ -195,6 +206,20 @@
   </div>
 </div>
 
+{# ─── Bulk-delete bar (только для админа) ──────────────────────── #}
+{% if session.get('role') == 'admin' %}
+<div id="bulkBar">
+  <i class="bi bi-check2-square text-danger fs-5"></i>
+  <span id="bulkSelCount">0 выбрано</span>
+  <button id="btnBulkDelete" class="btn btn-danger btn-sm ms-2">
+    <i class="bi bi-trash3 me-1"></i>Удалить выбранные
+  </button>
+  <button id="btnBulkClear" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-x-lg me-1"></i>Снять выделение
+  </button>
+</div>
+{% endif %}
+
 <div id="requestsTable"></div>
 {% endblock %}
 
@@ -244,31 +269,29 @@ function fmtNum(v) {
   return (v == null || v === '' || v === 0) ? '<span style="color:var(--text-muted)">—</span>' : v;
 }
 
-const table = new Tabulator('#requestsTable', {
-  height: '70vh',
-  layout: 'fitColumns',
-  responsiveLayout: false,
-  pagination: true,
-  paginationMode: 'remote',
-  filterMode: 'remote',
-  paginationSize: 50,
-  paginationSizeSelector: [25, 50, 100, 200],
-  ajaxURL: '/api/requests',
-  ajaxParams: function(){ return {}; },
-  ajaxRequestFunc: function(url, config, params) {
-    const page = params.page || 1;
-    const size = params.size || 50;
-    return fetch('/api/requests?' + buildParams(page, size), { credentials: 'same-origin' })
-      .then(r => r.json())
-      .then(data => {
-        document.getElementById('totalCount').textContent = data.total;
-        updateStatCards(data.stats);
-        return { data: data.data, last_page: data.pages };
-      });
-  },
-  ajaxResponse: function(url, params, response){ return response; },
+/* ─── Bulk-delete helpers ──────────────────────────────────────── */
+function updateBulkBar() {
+  if (!IS_ADMIN) return;
+  const selected = table.getSelectedRows();
+  const bar = document.getElementById('bulkBar');
+  const cnt = document.getElementById('bulkSelCount');
+  if (selected.length > 0) {
+    bar.classList.add('show');
+    cnt.textContent = selected.length + ' выбрано';
+  } else {
+    bar.classList.remove('show');
+  }
+}
 
-  columns: [
+const tableColumns = [
+    // Чекбокс — только для админа
+    ...(IS_ADMIN ? [{
+      formatter: 'rowSelection',
+      titleFormatter: 'rowSelection',
+      width: 36, resizable: false,
+      hozAlign: 'center', headerSort: false,
+      cellClick: function(e, cell){ cell.getRow().toggleSelect(); }
+    }] : []),
     {
       title: '', field: 'favorite', width: 36, resizable: false,
       hozAlign: 'center', headerSort: false,
@@ -278,9 +301,11 @@ const table = new Tabulator('#requestsTable', {
                   <i class="bi ${v?'bi-star-fill':'bi-star'}"></i></span>`;
       },
       cellClick: function(e, cell){
-        const id = cell.getRow().getData().id;
-        fetch(`/request/${id}/favorite`, {method:'POST', credentials:'same-origin'})
-          .then(r=>r.json()).then(d=>cell.setValue(d.favorite));
+        if (e.target.closest('[data-id]')) {
+          const id = cell.getRow().getData().id;
+          fetch(`/request/${id}/favorite`, {method:'POST', credentials:'same-origin'})
+            .then(r=>r.json()).then(d=>cell.setValue(d.favorite));
+        }
       }
     },
     {
@@ -352,7 +377,33 @@ const table = new Tabulator('#requestsTable', {
           .then(r=>{ if(r.ok) table.replaceData(); });
       }
     },
-  ],
+];
+
+const table = new Tabulator('#requestsTable', {
+  height: '70vh',
+  layout: 'fitColumns',
+  responsiveLayout: false,
+  pagination: true,
+  paginationMode: 'remote',
+  filterMode: 'remote',
+  paginationSize: 50,
+  paginationSizeSelector: [25, 50, 100, 200],
+  ajaxURL: '/api/requests',
+  ajaxParams: function(){ return {}; },
+  ajaxRequestFunc: function(url, config, params) {
+    const page = params.page || 1;
+    const size = params.size || 50;
+    return fetch('/api/requests?' + buildParams(page, size), { credentials: 'same-origin' })
+      .then(r => r.json())
+      .then(data => {
+        document.getElementById('totalCount').textContent = data.total;
+        updateStatCards(data.stats);
+        return { data: data.data, last_page: data.pages };
+      });
+  },
+  ajaxResponse: function(url, params, response){ return response; },
+  selectableRows: IS_ADMIN ? true : false,
+  columns: tableColumns,
 
   locale: 'default',
   langs: {
@@ -369,6 +420,35 @@ const table = new Tabulator('#requestsTable', {
     }
   },
 });
+
+/* ─── Row selection → обновляем bulkBar ─────────────────────────── */
+if (IS_ADMIN) {
+  table.on('rowSelectionChanged', updateBulkBar);
+  table.on('dataLoaded', function() { updateBulkBar(); });
+
+  document.getElementById('btnBulkDelete').addEventListener('click', function() {
+    const rows = table.getSelectedRows();
+    if (!rows.length) return;
+    const nums = rows.map(r => r.getData().number || ('ID:' + r.getData().id)).join(', ');
+    if (!confirm(`Удалить ${rows.length} обращений(е)?\n${nums}`)) return;
+
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '/requests/bulk_delete';
+    rows.forEach(r => {
+      const inp = document.createElement('input');
+      inp.type = 'hidden'; inp.name = 'ids[]'; inp.value = r.getData().id;
+      form.appendChild(inp);
+    });
+    document.body.appendChild(form);
+    form.submit();
+  });
+
+  document.getElementById('btnBulkClear').addEventListener('click', function() {
+    table.deselectRow();
+    updateBulkBar();
+  });
+}
 
 table.on('dataSorted', function(sorters) {
   if (_sortTriggered) { _sortTriggered = false; return; }
