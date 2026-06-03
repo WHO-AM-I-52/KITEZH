@@ -2,7 +2,7 @@
 {# ╔══════════════════════════════════════════════════════════════╗ #}
 {# ║                        base.html                            ║ #}
 {# ║  Базовый шаблон приложения "Подбор ЗУ — НО"                 ║ #}
-{# ║  v2.18: fix defer у Tabulator → Tabulator is not defined    ║ #}
+{# ║  v2.19: flash-уведомление вкладки при доступном обновлении  ║ #}
 {# ╚══════════════════════════════════════════════════════════════╝ #}
 <html lang="ru">
 <head>
@@ -652,8 +652,43 @@
 (function(){
   var dot = document.getElementById('sbUpdateDot');
   if (!dot) return;
-  var CACHE_KEY = 'sonar_upd_status';
+  var CACHE_KEY    = 'sonar_upd_status';
+  var SEEN_KEY     = 'sonar_upd_seen';
   var CHECK_INTERVAL = 30 * 60 * 1000;
+
+  /* ── Flash-уведомление вкладки ────────────────────────────────── */
+  var flashInterval = null;
+  var originalTitle = document.title;
+
+  function startFlashing() {
+    if (flashInterval) return;
+    if (sessionStorage.getItem(SEEN_KEY) === '1') return;
+    var state = false;
+    flashInterval = setInterval(function() {
+      document.title = state ? '🆕 Новая версия!' : originalTitle;
+      state = !state;
+    }, 700);
+  }
+
+  function stopFlashing() {
+    if (!flashInterval) return;
+    clearInterval(flashInterval);
+    flashInterval = null;
+    document.title = originalTitle;
+    sessionStorage.setItem(SEEN_KEY, '1');
+  }
+
+  window.addEventListener('focus', stopFlashing);
+
+  var clLink = document.getElementById('sbChangelogLink');
+  if (clLink) clLink.addEventListener('click', stopFlashing);
+  /* ────────────────────────────────────────────────────────────── */
+
+  function applyUpdateState(has) {
+    dot.classList.toggle('d-none', !has);
+    if (has) { startFlashing(); }
+  }
+
   function doCheck() {
     fetch('/api/update/check?force=1', {credentials:'same-origin', cache:'no-store'})
       .then(function(r){ return r.ok ? r.json() : null; })
@@ -661,14 +696,15 @@
         if (!data) return;
         var has = data.has_update === true;
         localStorage.setItem(CACHE_KEY, JSON.stringify({ts: Date.now(), has: has}));
-        dot.classList.toggle('d-none', !has);
+        applyUpdateState(has);
       }).catch(function(){});
   }
+
   var cached = localStorage.getItem(CACHE_KEY);
   if (cached) {
     try {
       var c = JSON.parse(cached);
-      if (c.has) dot.classList.remove('d-none');
+      applyUpdateState(c.has);
       if (Date.now() - c.ts > CHECK_INTERVAL) doCheck();
     } catch(e) { doCheck(); }
   } else {
