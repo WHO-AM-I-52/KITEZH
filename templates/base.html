@@ -2,7 +2,7 @@
 {# ╔══════════════════════════════════════════════════════════════╗ #}
 {# ║                        base.html                            ║ #}
 {# ║  Базовый шаблон приложения "Подбор ЗУ — НО"                 ║ #}
-{# ║  v2.16: Tabulator CDN подключён для списка обращений        ║ #}
+{# ║  v2.17: fix незакрытый {% if role==admin %} в конце файла   ║ #}
 {# ╚══════════════════════════════════════════════════════════════╝ #}
 <html lang="ru">
 <head>
@@ -171,7 +171,6 @@
     hr, .dropdown-divider { border-color:var(--border) !important; }
     .page-wrap { background:var(--bg); }
 
-    /* ─── Тёмная тема — overrides ───────────────────────────────────── */
     body[data-theme="dark"] h1,body[data-theme="dark"] h2,body[data-theme="dark"] h3,body[data-theme="dark"] h4,body[data-theme="dark"] h5,body[data-theme="dark"] h6,body[data-theme="dark"] p,body[data-theme="dark"] span:not(.badge),body[data-theme="dark"] label,body[data-theme="dark"] td,body[data-theme="dark"] th,body[data-theme="dark"] li,body[data-theme="dark"] strong,body[data-theme="dark"] small,body[data-theme="dark"] .fw-bold,body[data-theme="dark"] .fw-semibold{color:var(--text)!important}
     body[data-theme="dark"] .text-dark,body[data-theme="dark"] .text-black{color:var(--text)!important}
     body[data-theme="dark"] ::placeholder{color:var(--text-muted)!important;opacity:1}
@@ -192,43 +191,13 @@
     body[data-theme="dark"] .modal-footer{border-color:var(--border)!important;background:var(--surface)!important}
     body[data-theme="dark"] .modal-body{background:var(--surface)!important}
     body[data-theme="dark"] select option{background:var(--surface)!important;color:var(--text)!important}
-    /* ── чекбоксы и радио (Bootstrap рисует их через background-image на белом) ── */
-    body[data-theme="dark"] .form-check-input{
-      background-color:var(--input-bg)!important;
-      border-color:var(--input-border)!important;
-    }
-    body[data-theme="dark"] .form-check-input:checked{
-      background-color:#3b82f6!important;
-      border-color:#3b82f6!important;
-    }
-    /* ── всплывающие окна: backdrop + диалог ── */
-    body[data-theme="dark"] .modal-dialog .modal-content{
-      background:var(--surface)!important;
-      border-color:var(--border)!important;
-      color:var(--text)!important;
-    }
-    body[data-theme="dark"] .modal-dialog .form-control,
-    body[data-theme="dark"] .modal-dialog .form-select,
-    body[data-theme="dark"] .modal-dialog .form-check-input{
-      background-color:var(--input-bg)!important;
-      color:var(--text)!important;
-      border-color:var(--input-border)!important;
-    }
-    /* ── дашборд: столбец Источник (td с bg-white/bg-light) ── */
-    body[data-theme="dark"] td.bg-white,
-    body[data-theme="dark"] td.bg-light,
-    body[data-theme="dark"] .bg-white:not(.navbar):not(nav),
-    body[data-theme="dark"] .bg-light:not(.navbar):not(nav){
-      background:var(--surface)!important;
-      color:var(--text)!important;
-    }
-    /* ── права доступа: список чекбоксов в .list-group ── */
-    body[data-theme="dark"] .list-group-item.bg-white,
-    body[data-theme="dark"] .list-group-item.bg-light{
-      background:var(--surface)!important;
-    }
+    body[data-theme="dark"] .form-check-input{background-color:var(--input-bg)!important;border-color:var(--input-border)!important;}
+    body[data-theme="dark"] .form-check-input:checked{background-color:#3b82f6!important;border-color:#3b82f6!important;}
+    body[data-theme="dark"] .modal-dialog .modal-content{background:var(--surface)!important;border-color:var(--border)!important;color:var(--text)!important;}
+    body[data-theme="dark"] .modal-dialog .form-control,body[data-theme="dark"] .modal-dialog .form-select,body[data-theme="dark"] .modal-dialog .form-check-input{background-color:var(--input-bg)!important;color:var(--text)!important;border-color:var(--input-border)!important;}
+    body[data-theme="dark"] td.bg-white,body[data-theme="dark"] td.bg-light,body[data-theme="dark"] .bg-white:not(.navbar):not(nav),body[data-theme="dark"] .bg-light:not(.navbar):not(nav){background:var(--surface)!important;color:var(--text)!important;}
+    body[data-theme="dark"] .list-group-item.bg-white,body[data-theme="dark"] .list-group-item.bg-light{background:var(--surface)!important;}
 
-    /* ─── Тёмная V2 — overrides ─────────────────────────────────────── */
     body[data-theme="zone"] h1,body[data-theme="zone"] h2,body[data-theme="zone"] h3,body[data-theme="zone"] h4,body[data-theme="zone"] h5,body[data-theme="zone"] h6,body[data-theme="zone"] p,body[data-theme="zone"] span:not(.badge),body[data-theme="zone"] label,body[data-theme="zone"] td,body[data-theme="zone"] th,body[data-theme="zone"] li,body[data-theme="zone"] strong,body[data-theme="zone"] small,body[data-theme="zone"] .fw-bold,body[data-theme="zone"] .fw-semibold{color:var(--text)!important}
     body[data-theme="zone"] .text-dark,body[data-theme="zone"] .text-black{color:var(--text)!important}
     body[data-theme="zone"] ::placeholder{color:var(--text-muted)!important;opacity:1}
@@ -251,40 +220,12 @@
     body[data-theme="zone"] .modal-footer{border-color:var(--border)!important;background:var(--surface)!important}
     body[data-theme="zone"] .modal-body{background:var(--surface)!important}
     body[data-theme="zone"] select option{background:var(--surface)!important;color:var(--text)!important}
-    /* ── чекбоксы и радио — zone ── */
-    body[data-theme="zone"] .form-check-input{
-      background-color:var(--input-bg)!important;
-      border-color:var(--input-border)!important;
-    }
-    body[data-theme="zone"] .form-check-input:checked{
-      background-color:#c8a84b!important;
-      border-color:#c8a84b!important;
-    }
-    /* ── всплывающие окна — zone ── */
-    body[data-theme="zone"] .modal-dialog .modal-content{
-      background:var(--surface)!important;
-      border-color:var(--border)!important;
-      color:var(--text)!important;
-    }
-    body[data-theme="zone"] .modal-dialog .form-control,
-    body[data-theme="zone"] .modal-dialog .form-select,
-    body[data-theme="zone"] .modal-dialog .form-check-input{
-      background-color:var(--input-bg)!important;
-      color:var(--text)!important;
-      border-color:var(--input-border)!important;
-    }
-    /* ── дашборд: столбец Источник + bg-white/bg-light — zone ── */
-    body[data-theme="zone"] td.bg-white,
-    body[data-theme="zone"] td.bg-light,
-    body[data-theme="zone"] .bg-white:not(.navbar):not(nav),
-    body[data-theme="zone"] .bg-light:not(.navbar):not(nav){
-      background:var(--surface)!important;
-      color:var(--text)!important;
-    }
-    body[data-theme="zone"] .list-group-item.bg-white,
-    body[data-theme="zone"] .list-group-item.bg-light{
-      background:var(--surface)!important;
-    }
+    body[data-theme="zone"] .form-check-input{background-color:var(--input-bg)!important;border-color:var(--input-border)!important;}
+    body[data-theme="zone"] .form-check-input:checked{background-color:#c8a84b!important;border-color:#c8a84b!important;}
+    body[data-theme="zone"] .modal-dialog .modal-content{background:var(--surface)!important;border-color:var(--border)!important;color:var(--text)!important;}
+    body[data-theme="zone"] .modal-dialog .form-control,body[data-theme="zone"] .modal-dialog .form-select,body[data-theme="zone"] .modal-dialog .form-check-input{background-color:var(--input-bg)!important;color:var(--text)!important;border-color:var(--input-border)!important;}
+    body[data-theme="zone"] td.bg-white,body[data-theme="zone"] td.bg-light,body[data-theme="zone"] .bg-white:not(.navbar):not(nav),body[data-theme="zone"] .bg-light:not(.navbar):not(nav){background:var(--surface)!important;color:var(--text)!important;}
+    body[data-theme="zone"] .list-group-item.bg-white,body[data-theme="zone"] .list-group-item.bg-light{background:var(--surface)!important;}
     body[data-theme="zone"]::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");opacity:.55}
     body[data-theme="zone"] .sidebar{background:#151612;border-right:1px solid #2e2e1a}
     body[data-theme="zone"] .sb-link{color:rgba(200,196,168,.75)}
@@ -299,7 +240,6 @@
     body[data-theme="zone"] .sb-online-num{color:#c8a84b}
     body[data-theme="zone"] .topbar{background:#151612;border-bottom:1px solid #2e2e1a;box-shadow:0 2px 12px rgba(0,0,0,.6)}
 
-    /* ─── Dropdown-меню тем в сайдбаре ─────────────────────────────── */
     .theme-toggle-btn{display:flex;align-items:center;gap:10px;padding:10px 16px;color:rgba(255,255,255,.7);background:none;border:none;width:100%;font-size:13px;cursor:pointer;white-space:nowrap;transition:background .15s;position:relative}
     .theme-toggle-btn:hover{background:rgba(255,255,255,.1);color:#fff}
     .theme-toggle-btn i.theme-main-icon{font-size:16px;width:20px;text-align:center;flex-shrink:0}
@@ -320,7 +260,6 @@
     body[data-theme="zone"] .theme-submenu{background:rgba(0,0,0,.25)}
     body[data-theme="zone"] .theme-submenu-item.active-theme{color:#c8a84b;border-left-color:#c8a84b;background:rgba(200,168,75,.1)}
 
-    /* ─── Бейджи статусов обращений — светлая тема ──────────────────── */
     .badge.status-draft            { background:#6c757d !important; --bs-badge-color:#fff; }
     .badge.status-registered       { background:#0dcaf0 !important; --bs-badge-color:#212529; }
     .badge.status-in_progress      { background:#0d6efd !important; --bs-badge-color:#fff; }
@@ -328,15 +267,8 @@
     .badge.status-ready_to_send    { background:#198754 !important; --bs-badge-color:#fff; }
     .badge.status-sent_to_applicant{ background:#20c997 !important; --bs-badge-color:#212529; }
     .badge.status-closed           { background:#212529 !important; --bs-badge-color:#fff; }
-    .badge.status-draft,
-    .badge.status-registered,
-    .badge.status-in_progress,
-    .badge.status-under_review,
-    .badge.status-ready_to_send,
-    .badge.status-sent_to_applicant,
-    .badge.status-closed { color:var(--bs-badge-color) !important; }
+    .badge.status-draft,.badge.status-registered,.badge.status-in_progress,.badge.status-under_review,.badge.status-ready_to_send,.badge.status-sent_to_applicant,.badge.status-closed { color:var(--bs-badge-color) !important; }
 
-    /* ─── Бейджи статусов — тёмная тема ────────────────────────────── */
     body[data-theme="dark"] .badge.status-draft            { background:#4b5563 !important; --bs-badge-color:#e2e8f0; }
     body[data-theme="dark"] .badge.status-registered       { background:#0891b2 !important; --bs-badge-color:#fff; }
     body[data-theme="dark"] .badge.status-in_progress      { background:#3b82f6 !important; --bs-badge-color:#fff; }
@@ -345,7 +277,6 @@
     body[data-theme="dark"] .badge.status-sent_to_applicant{ background:#0d9488 !important; --bs-badge-color:#fff; }
     body[data-theme="dark"] .badge.status-closed           { background:#374151 !important; --bs-badge-color:#e2e8f0; }
 
-    /* ─── Бейджи статусов — тёмная V2 (zone) ───────────────────────── */
     body[data-theme="zone"] .badge.status-draft            { background:#3a3a2a !important; --bs-badge-color:#c8c4a8; }
     body[data-theme="zone"] .badge.status-registered       { background:#1a4a3a !important; --bs-badge-color:#6ee7b7; }
     body[data-theme="zone"] .badge.status-in_progress      { background:#1a2a4a !important; --bs-badge-color:#93c5fd; }
@@ -566,12 +497,10 @@
     dark:  { icon:'bi bi-moon-stars-fill', label:'Тёмная',    color:'#818cf8' },
     zone:  { icon:'bi bi-moon-stars-fill', label:'Тёмная V2', color:'#c8a84b' }
   };
-
   var saved = localStorage.getItem(KEY) || 'light';
   if (saved === 'dark') document.body.setAttribute('data-theme','dark');
   else if (saved === 'zone') document.body.setAttribute('data-theme','zone');
   else document.body.removeAttribute('data-theme');
-
   function applyTheme(val) {
     if (val === 'dark') document.body.setAttribute('data-theme','dark');
     else if (val === 'zone') document.body.setAttribute('data-theme','zone');
@@ -579,7 +508,6 @@
     localStorage.setItem(KEY, val);
     syncUI();
   }
-
   function syncUI() {
     var cur = document.body.getAttribute('data-theme') || 'light';
     var t = THEMES[cur] || THEMES.light;
@@ -593,7 +521,6 @@
       btn.classList.toggle('active-theme', btn.getAttribute('data-theme-val') === cur);
     });
   }
-
   document.addEventListener('DOMContentLoaded', function(){
     syncUI();
     var toggleBtn = document.getElementById('themeToggle');
@@ -670,12 +597,10 @@
   var input    = document.getElementById('gsInput');
   var dropdown = document.getElementById('gsDropdown');
   if (!input) return;
-
   var timer = null;
   var activeIdx = -1;
   var currentItems = [];
   var lastQ = '';
-
   var STATUS_MAP = {
     'draft':             {text:'Черновик',         cls:'status-draft'},
     'registered':        {text:'Зарегистрировано', cls:'status-registered'},
@@ -685,11 +610,9 @@
     'sent_to_applicant': {text:'Отправлено',       cls:'status-sent_to_applicant'},
     'closed':            {text:'Закрыто',           cls:'status-closed'},
   };
-
   function showDropdown(html){ dropdown.innerHTML=html; dropdown.classList.add('show'); activeIdx=-1; currentItems=dropdown.querySelectorAll('.gs-item[data-url]'); }
   function hideDropdown(){ dropdown.classList.remove('show'); dropdown.innerHTML=''; activeIdx=-1; }
   function goToSearch(q){ window.location.href='/search?q='+encodeURIComponent(q); }
-
   function renderResults(data){
     if (!data.results.length){ showDropdown('<div class="gs-empty"><i class="bi bi-search me-1"></i>Ничего не найдено</div>'); return; }
     var html='';
@@ -705,13 +628,11 @@
     showDropdown(html);
     document.getElementById('gsFooter').addEventListener('click',function(){ goToSearch(lastQ); });
   }
-
   function doSearch(q){
     lastQ=q;
     showDropdown('<div class="gs-loading"><i class="bi bi-hourglass-split me-1"></i>Поиск…</div>');
     fetch('/api/search?q='+encodeURIComponent(q),{credentials:'same-origin'}).then(function(r){return r.json();}).then(renderResults).catch(function(){hideDropdown();});
   }
-
   input.addEventListener('input',function(){ var q=input.value.trim(); clearTimeout(timer); if(q.length<2){hideDropdown();return;} timer=setTimeout(function(){doSearch(q);},280); });
   input.addEventListener('keydown',function(e){
     var items=currentItems;
@@ -733,10 +654,30 @@
   if (!dot) return;
   var CACHE_KEY = 'sonar_upd_status';
   var CHECK_INTERVAL = 30 * 60 * 1000;
-
   function doCheck() {
     fetch('/api/update/check?force=1', {credentials:'same-origin', cache:'no-store'})
       .then(function(r){ return r.ok ? r.json() : null; })
       .then(function(data){
         if (!data) return;
-        t
+        var has = data.has_update === true;
+        localStorage.setItem(CACHE_KEY, JSON.stringify({ts: Date.now(), has: has}));
+        dot.classList.toggle('d-none', !has);
+      }).catch(function(){});
+  }
+  var cached = localStorage.getItem(CACHE_KEY);
+  if (cached) {
+    try {
+      var c = JSON.parse(cached);
+      if (c.has) dot.classList.remove('d-none');
+      if (Date.now() - c.ts > CHECK_INTERVAL) doCheck();
+    } catch(e) { doCheck(); }
+  } else {
+    setTimeout(doCheck, 5000);
+  }
+  setInterval(doCheck, CHECK_INTERVAL);
+})();
+</script>
+{% endif %}
+
+</body>
+</html>
