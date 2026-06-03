@@ -1,15 +1,16 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║ api/requests_api.py                                           ║
-# ║ GET /api/requests  — JSON-эндпоинт для Tabulator.js            ║
+# ║ GET  /api/requests          — JSON для Tabulator.js           ║
+# ║ POST /api/request/<id>/favorite — тоггл избранного         ║
 # ║                                                               ║
-# ║ Параметры запроса:                                         ║
-# ║   page, size         — пагинация                             ║
+# ║ Параметры GET:                                           ║
+# ║   page, size         — пагинация                           ║
 # ║   sort, dir          — сортировка (field, asc|desc)        ║
-# ║   filter[*]          — значение фильтра                    ║
+# ║   filter[*]          — значение фильтра                  ║
 # ║   filter_type[field] — like|starts|ends|=|empty|regex       ║
 # ║                                                               ║
-# ║ Ответ:                                                       ║
-# ║   { data:[], total, page, pages, stats:{} }                  ║
+# ║ Ответ GET: { data:[], total, page, pages, stats:{} }    ║
+# ║ Ответ POST favorite: { favorite: true|false }           ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from datetime import date, timedelta
@@ -20,7 +21,7 @@ from db import get_db
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
 
-# ─── Декоратор: требует авторизации ─────────────────────────────────────────────
+# ─── Декоратор ─────────────────────────────────────────────────────────────────────
 def login_required_api(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -32,18 +33,18 @@ def login_required_api(f):
 
 # ─── Белые поля для сортировки (защита от SQL-инъекции) ──────────────────────
 _ALLOWED_SORT = {
-    'id':               'r.id',
-    'number':           'r.request_number',
-    'created_at':       'r.request_date',
-    'status':           'r.status',
-    'applicant':        'r.applicant_full_name',
-    'project':          'r.project_name',
-    'investment_mln':   'r.investment_total',
-    'area_ha':          'r.site_area_ha_min',
-    'area_m2':          'r.site_build_area_m2_min',
-    'workplaces':       'r.jobs_total',
-    'employee_name':    'u.full_name',
-    'source':           'r.source_type',
+    'id':             'r.id',
+    'number':         'r.request_number',
+    'created_at':     'r.request_date',
+    'status':         'r.status',
+    'applicant':      'r.applicant_full_name',
+    'project':        'r.project_name',
+    'investment_mln': 'r.investment_total',
+    'area_ha':        'r.site_area_ha_min',
+    'area_m2':        'r.site_build_area_m2_min',
+    'workplaces':     'r.jobs_total',
+    'employee_name':  'u.full_name',
+    'source':         'r.source_type',
 }
 
 
@@ -78,6 +79,9 @@ def _date_range(chip):
     return None, None
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# GET /api/requests
+# ─────────────────────────────────────────────────────────────────────────────
 @api_bp.route('/requests')
 @login_required_api
 def get_requests():
@@ -85,7 +89,7 @@ def get_requests():
     uid  = session['user_id']
     role = session.get('role', '')
 
-    # ── Пагинация ────────────────────────────────────────────────────────────────
+    # ── Пагинация
     try:
         page = max(1, int(request.args.get('page', 1)))
         size = min(200, max(1, int(request.args.get('size', 50))))
@@ -93,33 +97,29 @@ def get_requests():
         page, size = 1, 50
     offset = (page - 1) * size
 
-    # ── Сортировка ────────────────────────────────────────────────────────────────
+    # ── Сортировка
     raw_sort = request.args.get('sort', 'created_at')
     sort_col = _ALLOWED_SORT.get(raw_sort, 'r.request_date')
     sort_dir = 'asc' if request.args.get('dir', 'desc').lower() == 'asc' else 'desc'
 
-    # ── Фильтры ──────────────────────────────────────────────────────────────────
+    # ── Фильтры
     where  = []
     params = []
 
-    # Права: не-админы видят только свои
     if role != 'admin' and not session.get('perm_can_view_all'):
         where.append('r.created_by = ?')
         params.append(uid)
 
-    # Статус
     status = request.args.get('filter[status]', '').strip()
     if status:
         where.append('r.status = ?')
         params.append(status)
 
-    # Заявитель
     applicant = request.args.get('filter[applicant]', '').strip()
     if applicant:
         ftype = request.args.get('filter_type[applicant]', 'like')
         _apply_filter(where, params, 'r.applicant_full_name', applicant, ftype)
 
-    # Поиск по тексту
     search = request.args.get('filter[search]', '').strip()
     if search:
         s = '%' + search + '%'
@@ -133,7 +133,6 @@ def get_requests():
         """)
         params.extend([s, s, s, s, s, s])
 
-    # Ответственный
     employee = request.args.get('filter[employee]', '').strip()
     if employee:
         if employee.isdigit():
@@ -143,7 +142,6 @@ def get_requests():
             where.append('u.full_name LIKE ?')
             params.append('%' + employee + '%')
 
-    # Избранные
     if request.args.get('filter[favorite]', '').strip() == '1':
         where.append(
             'EXISTS (SELECT 1 FROM favorites fv '
@@ -151,7 +149,6 @@ def get_requests():
         )
         params.append(uid)
 
-    # Дата
     date_chip = request.args.get('filter[date_chip]', '').strip()
     date_from = request.args.get('filter[date_from]', '').strip()
     date_to   = request.args.get('filter[date_to]',   '').strip()
@@ -164,8 +161,8 @@ def get_requests():
         where.append('r.request_date <= ?')
         params.append(date_to)
 
-    # ── SQL ──────────────────────────────────────────────────────────────────────────
-    where_sql  = ('WHERE ' + ' AND '.join(where)) if where else ''
+    # ── SQL
+    where_sql = ('WHERE ' + ' AND '.join(where)) if where else ''
 
     base_query = f"""
         SELECT
@@ -193,7 +190,7 @@ def get_requests():
                 THEN 1 ELSE 0
             END AS overdue
         FROM requests r
-        LEFT JOIN users    u   ON u.id  = r.assigned_to
+        LEFT JOIN users     u   ON u.id  = r.assigned_to
         LEFT JOIN favorites fav ON fav.request_id = r.id
                                 AND fav.user_id   = ?
         {where_sql}
@@ -206,7 +203,6 @@ def get_requests():
         {where_sql}
     """
 
-    # Исправлено: count не нуждается в uid для LEFT JOIN favorites
     total = db.execute(count_query, params).fetchone()[0]
     pages = max(1, -(-total // size))
 
@@ -215,8 +211,7 @@ def get_requests():
         [uid] + params + [size, offset]
     ).fetchall()
 
-    # ── Статистика (без фильтров — всегда по всем записям) ─────────────────────────
-    # Права учитываются в where (created_by)
+    # ── Статистика (всегда по всем записям, без фильтров)
     stats_where  = ''
     stats_params = []
     if role != 'admin' and not session.get('perm_can_view_all'):
@@ -225,16 +220,16 @@ def get_requests():
 
     stats_rows = db.execute(f"""
         SELECT
-            COUNT(*)                                                  AS all,
-            SUM(CASE WHEN r.status = 'draft'             THEN 1 ELSE 0 END) AS draft,
-            SUM(CASE WHEN r.status = 'registered'        THEN 1 ELSE 0 END) AS registered,
-            SUM(CASE WHEN r.status = 'in_progress'       THEN 1 ELSE 0 END) AS in_progress,
-            SUM(CASE WHEN r.status = 'under_review'      THEN 1 ELSE 0 END) AS under_review,
+            COUNT(*)                                                       AS all,
+            SUM(CASE WHEN r.status='draft'             THEN 1 ELSE 0 END) AS draft,
+            SUM(CASE WHEN r.status='registered'        THEN 1 ELSE 0 END) AS registered,
+            SUM(CASE WHEN r.status='in_progress'       THEN 1 ELSE 0 END) AS in_progress,
+            SUM(CASE WHEN r.status='under_review'      THEN 1 ELSE 0 END) AS under_review,
             SUM(CASE
                     WHEN r.status NOT IN ('closed','draft','sent_to_applicant')
                      AND r.review_deadline IS NOT NULL
                      AND r.review_deadline < date('now')
-                    THEN 1 ELSE 0 END)                                AS overdue
+                    THEN 1 ELSE 0 END)                                     AS overdue
         FROM requests r
         {stats_where}
     """, stats_params).fetchone()
@@ -250,33 +245,65 @@ def get_requests():
 
     db.close()
 
-    # ── Сериализация ──────────────────────────────────────────────────────────────────
     data = [
         {
-            'id':            r['id'],
-            'number':        r['number']         or '',
-            'created_at':    r['created_at']     or '',
-            'status':        r['status']         or '',
-            'source':        r['source']         or '',
-            'applicant':     r['applicant']      or '',
-            'project':       r['project']        or '',
+            'id':             r['id'],
+            'number':         r['number']         or '',
+            'created_at':     r['created_at']     or '',
+            'status':         r['status']         or '',
+            'source':         r['source']         or '',
+            'applicant':      r['applicant']      or '',
+            'project':        r['project']        or '',
             'investment_mln': r['investment_mln'],
-            'area_ha':       r['area_ha'],
-            'area_m2':       r['area_m2'],
-            'workplaces':    r['workplaces'],
-            'employee_name': r['employee_name']  or '',
-            'employee_id':   r['employee_id'],
-            'favorite':      bool(r['favorite']),
-            'overdue':       bool(r['overdue']),
+            'area_ha':        r['area_ha'],
+            'area_m2':        r['area_m2'],
+            'workplaces':     r['workplaces'],
+            'employee_name':  r['employee_name']  or '',
+            'employee_id':    r['employee_id'],
+            'favorite':       bool(r['favorite']),
+            'overdue':        bool(r['overdue']),
         }
         for r in rows
     ]
 
     return jsonify({
-        'data':   data,
-        'total':  total,
-        'page':   page,
-        'size':   size,
-        'pages':  pages,
-        'stats':  stats,
+        'data':  data,
+        'total': total,
+        'page':  page,
+        'size':  size,
+        'pages': pages,
+        'stats': stats,
     })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# POST /api/request/<id>/favorite  — тоггл избранного
+# Ответ: { "favorite": true|false }
+# ─────────────────────────────────────────────────────────────────────────────
+@api_bp.route('/request/<int:request_id>/favorite', methods=['POST'])
+@login_required_api
+def toggle_favorite(request_id):
+    uid = session['user_id']
+    db  = get_db()
+
+    existing = db.execute(
+        'SELECT id FROM favorites WHERE request_id = ? AND user_id = ?',
+        (request_id, uid)
+    ).fetchone()
+
+    if existing:
+        db.execute(
+            'DELETE FROM favorites WHERE request_id = ? AND user_id = ?',
+            (request_id, uid)
+        )
+        is_fav = False
+    else:
+        db.execute(
+            'INSERT INTO favorites (request_id, user_id) VALUES (?, ?)',
+            (request_id, uid)
+        )
+        is_fav = True
+
+    db.commit()
+    db.close()
+    return jsonify({'favorite': is_fav})
