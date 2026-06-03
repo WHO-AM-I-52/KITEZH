@@ -148,7 +148,7 @@ def new_request():
                 fn2 = secure_filename(uf.filename)
                 uf.save(os.path.join(UPLOADS_DIR, fn2))
                 saved_names.append(fn2)
-        vals[ALL_FIELDS.index('request_files')] = ','.join(saved_names) if saved_names else None
+        vals[ALL_FIELDS.index('request_files')] = ','.join(saved_names) if saved_names else ''
 
         cols = ', '.join(ALL_FIELDS) + ', created_by, created_at, updated_at'
         ph   = ','.join(['?'] * len(ALL_FIELDS)) + ',?,?,?'
@@ -209,7 +209,8 @@ def edit_request(rid):
         for field in _PRESERVE_FIELDS:
             if field in ALL_FIELDS:
                 idx = ALL_FIELDS.index(field)
-                if vals[idx] is None:
+                # not val покрывает и None, и '' — после перехода на вариант А
+                if not vals[idx]:
                     vals[idx] = req[field]
 
         af   = req['answer_file']
@@ -230,7 +231,7 @@ def edit_request(rid):
             vals[ALL_FIELDS.index('request_files')] = ','.join(saved_names)
         else:
             # Новые файлы не загружались — сохраняем существующее значение из БД
-            vals[ALL_FIELDS.index('request_files')] = req['request_files']
+            vals[ALL_FIELDS.index('request_files')] = req['request_files'] or ''
 
         edit_reason = request.form.get('edit_reason', '').strip()
         updated_by  = session.get('user_id')
