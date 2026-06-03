@@ -1,0 +1,685 @@
+{% extends 'base.html' %}
+{#
+ ╔══════════════════════════════════════════════════════════════╗
+ ║  requests_tabulator.html                                       ║
+ ║  Список обращений на Tabulator 6.x + JSON API                ║
+ ║  v1.0: панель фильтров, чипы статусов/дат/отв., таблица   ║
+ ╚══════════════════════════════════════════════════════════════╝
+#}
+
+{# ─── Доп. CSS ─────────────────────────────────────────────────────────────── #}
+{% block extra_head %}
+<style>
+/* ─── Карточки статистики ───────────────────────────────────── */
+.stat-cards { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
+.stat-card  { flex:1; min-width:140px; background:var(--surface); border-radius:10px;
+              border-left:4px solid #aaa; padding:10px 14px; cursor:pointer;
+              box-shadow:var(--card-shadow); transition:box-shadow .15s, transform .12s;
+              text-decoration:none; color:inherit; }
+.stat-card:hover  { box-shadow:0 4px 16px rgba(0,0,0,.12); transform:translateY(-1px); }
+.stat-card.active { box-shadow:0 0 0 2px var(--accent); }
+.stat-card .sc-num  { font-size:28px; font-weight:700; line-height:1; }
+.stat-card .sc-lbl  { font-size:11px; color:var(--text-muted); margin-top:2px; }
+.stat-card.sc-all   { border-left-color:#6c757d; }
+.stat-card.sc-draft { border-left-color:#6c757d; }
+.stat-card.sc-reg   { border-left-color:#0dcaf0; }
+.stat-card.sc-work  { border-left-color:#0d6efd; }
+.stat-card.sc-rev   { border-left-color:#ffc107; }
+.stat-card.sc-over  { border-left-color:#dc3545; }
+
+/* ─── Панель фильтров ───────────────────────────────────────────── */
+.filter-panel { background:var(--surface); border-radius:10px; padding:14px 16px 10px;
+               box-shadow:var(--card-shadow); margin-bottom:12px; }
+.filter-row   { display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; }
+.filter-row .form-label { font-size:11px; font-weight:600; margin-bottom:3px; color:var(--text-muted); }
+.filter-row .form-control,
+.filter-row .form-select { font-size:13px; height:34px; padding:4px 10px; }
+.filter-col-date   { min-width:140px; flex:1.2; }
+.filter-col-status { min-width:130px; flex:1; }
+.filter-col-appl   { min-width:160px; flex:2; }
+.filter-col-text   { min-width:200px; flex:3; }
+.filter-col-emp    { min-width:140px; flex:1.5; }
+
+/* ─── Чипы быстрых фильтров ────────────────────────────────────── */
+.chip-bar { display:flex; gap:6px; flex-wrap:wrap; align-items:center;
+            padding:8px 0 4px; border-top:1px solid var(--border); margin-top:10px; }
+.chip-bar-label { font-size:11px; color:var(--text-muted); margin-right:2px; white-space:nowrap; }
+.chip { display:inline-flex; align-items:center; gap:4px; padding:3px 10px;
+        border-radius:20px; font-size:12px; font-weight:500; cursor:pointer;
+        border:1px solid transparent; background:var(--surface2);
+        color:var(--text); transition:background .15s, box-shadow .12s; white-space:nowrap; }
+.chip:hover   { box-shadow:0 2px 8px rgba(0,0,0,.1); }
+.chip.active  { box-shadow:0 0 0 2px var(--accent); font-weight:600; }
+.chip i { font-size:12px; }
+
+/* ─── Чипы ответственных ────────────────────────────────────────── */
+.emp-chips  { display:flex; gap:4px; flex-wrap:wrap; align-items:center; }
+.emp-chip   { padding:2px 10px; border-radius:14px; font-size:12px; cursor:pointer;
+              background:var(--surface2); border:1px solid var(--border); color:var(--text); transition:.15s; }
+.emp-chip:hover  { background:var(--border); }
+.emp-chip.active { background:var(--accent); color:#fff; border-color:var(--accent); font-weight:600; }
+
+/* ─── Тул-бар ───────────────────────────────────────────────────────────── */
+.toolbar { display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+           margin-bottom:10px; }
+.toolbar-right { margin-left:auto; display:flex; align-items:center; gap:8px; }
+.toolbar .total-badge { font-size:12px; color:var(--text-muted); }
+
+/* ─── Tabulator overrides ─────────────────────────────────────────────── */
+.tabulator {
+  border:none !important;
+  border-radius:10px !important;
+  overflow:hidden !important;
+  box-shadow:var(--card-shadow) !important;
+  background:var(--surface) !important;
+  font-size:13px !important;
+}
+.tabulator .tabulator-header {
+  background:var(--surface2) !important;
+  border-bottom:2px solid var(--border) !important;
+}
+.tabulator .tabulator-header .tabulator-col {
+  background:var(--surface2) !important;
+  border-right:1px solid var(--border) !important;
+  color:var(--text) !important;
+  font-size:11px !important;
+  font-weight:700 !important;
+  text-transform:uppercase;
+  letter-spacing:.3px;
+}
+.tabulator .tabulator-row {
+  background:var(--surface) !important;
+  border-bottom:1px solid var(--border) !important;
+  color:var(--text) !important;
+}
+.tabulator .tabulator-row:nth-child(even) {
+  background:var(--table-stripe) !important;
+}
+.tabulator .tabulator-row:hover {
+  background:var(--table-hover) !important;
+}
+.tabulator .tabulator-cell {
+  border-right:1px solid var(--border) !important;
+  color:var(--text) !important;
+  padding:6px 8px !important;
+}
+.tabulator .tabulator-footer {
+  background:var(--surface2) !important;
+  border-top:2px solid var(--border) !important;
+  color:var(--text) !important;
+  font-size:12px !important;
+}
+.tabulator .tabulator-footer .tabulator-page {
+  background:var(--surface) !important;
+  color:var(--text) !important;
+  border:1px solid var(--border) !important;
+  border-radius:4px !important;
+  margin:0 2px !important;
+}
+.tabulator .tabulator-footer .tabulator-page.active {
+  background:var(--accent) !important;
+  color:#fff !important;
+  border-color:var(--accent) !important;
+}
+.tabulator .tabulator-loader-msg {
+  background:var(--surface) !important;
+  color:var(--text-muted) !important;
+  border:none !important;
+  font-size:13px !important;
+}
+/* звёздочка избранного */
+.tab-star { cursor:pointer; color:#ccc; font-size:14px; transition:color .15s; }
+.tab-star.fav { color:#f59e0b; }
+.tab-star:hover { color:#f59e0b; }
+/* номер обращения */
+.tab-num { color:var(--accent); font-weight:700; text-decoration:none; font-size:12px; }
+.tab-num:hover { text-decoration:underline; }
+/* кнопки действий */
+.tab-actions { display:flex; gap:4px; justify-content:center; }
+.tab-actions a, .tab-actions button {
+  width:26px; height:26px; border-radius:5px; border:none;
+  display:inline-flex; align-items:center; justify-content:center;
+  font-size:13px; cursor:pointer; text-decoration:none; transition:.15s;
+}
+.tab-actions .btn-view   { background:#e7f3ff; color:#0d6efd; }
+.tab-actions .btn-edit   { background:#fff3cd; color:#856404; }
+.tab-actions .btn-delete { background:#fde8e8; color:#dc3545; }
+.tab-actions .btn-view:hover   { background:#0d6efd; color:#fff; }
+.tab-actions .btn-edit:hover   { background:#856404; color:#fff; }
+.tab-actions .btn-delete:hover { background:#dc3545; color:#fff; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h5 class="mb-0 fw-bold"><i class="bi bi-list-ul me-2"></i>Обращения на подбор ЗУ</h5>
+  <a href="/request/new" class="btn btn-primary btn-sm">
+    <i class="bi bi-plus-lg me-1"></i>Новое обращение
+  </a>
+</div>
+
+{# ─── Карточки статистики ────────────────────────────────────────────────── #}
+<div class="stat-cards" id="statCards">
+  <div class="stat-card sc-all active" data-filter-status="" title="Все обращения">
+    <div class="sc-num" id="sc-all">—</div>
+    <div class="sc-lbl"><i class="bi bi-inbox"></i> Всего</div>
+  </div>
+  <div class="stat-card sc-draft" data-filter-status="draft" title="Черновик">
+    <div class="sc-num" id="sc-draft">—</div>
+    <div class="sc-lbl"><i class="bi bi-pencil-square"></i> Черновик</div>
+  </div>
+  <div class="stat-card sc-reg" data-filter-status="registered" title="Зарегистрировано">
+    <div class="sc-num" id="sc-registered">—</div>
+    <div class="sc-lbl"><i class="bi bi-hash"></i> Зарегистрировано</div>
+  </div>
+  <div class="stat-card sc-work" data-filter-status="in_progress" title="В работе">
+    <div class="sc-num" id="sc-in_progress">—</div>
+    <div class="sc-lbl"><i class="bi bi-person-workspace"></i> В работе</div>
+  </div>
+  <div class="stat-card sc-rev" data-filter-status="under_review" title="На проверке">
+    <div class="sc-num" id="sc-under_review">—</div>
+    <div class="sc-lbl"><i class="bi bi-search"></i> На проверке</div>
+  </div>
+  <div class="stat-card sc-over" data-filter-status="__overdue__" title="Просрочено">
+    <div class="sc-num" id="sc-overdue">—</div>
+    <div class="sc-lbl"><i class="bi bi-exclamation-triangle"></i> Просрочено</div>
+  </div>
+</div>
+
+{# ─── Панель фильтров ──────────────────────────────────────────────────── #}
+<div class="filter-panel">
+  <div class="filter-row">
+    <div class="filter-col-date">
+      <label class="form-label">Дата с</label>
+      <input type="date" id="fDateFrom" class="form-control">
+    </div>
+    <div class="filter-col-date">
+      <label class="form-label">Дата по</label>
+      <input type="date" id="fDateTo" class="form-control">
+    </div>
+    <div class="filter-col-status">
+      <label class="form-label">Статус</label>
+      <select id="fStatus" class="form-select">
+        <option value="">Все</option>
+        <option value="draft">Черновик</option>
+        <option value="registered">Зарегистрировано</option>
+        <option value="in_progress">В работе</option>
+        <option value="under_review">На проверке</option>
+        <option value="ready_to_send">Готово</option>
+        <option value="sent_to_applicant">Отправлено</option>
+        <option value="closed">Закрыто</option>
+      </select>
+    </div>
+    <div class="filter-col-appl">
+      <label class="form-label">Заявитель</label>
+      <input type="text" id="fApplicant" class="form-control" placeholder="Название организации…">
+    </div>
+    <div class="filter-col-text">
+      <label class="form-label">Поиск по тексту</label>
+      <input type="text" id="fSearch" class="form-control" placeholder="Проект, контакты, район…">
+    </div>
+    <div style="display:flex; align-items:flex-end; gap:6px;">
+      <button id="btnFind" class="btn btn-primary btn-sm" style="height:34px;">
+        <i class="bi bi-search me-1"></i>Найти
+      </button>
+      <button id="btnReset" class="btn btn-outline-secondary btn-sm" style="height:34px;">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    </div>
+  </div>
+
+  {# Чипы статусов #}
+  <div class="chip-bar">
+    <span class="chip-bar-label"><i class="bi bi-circle-half me-1"></i>Статус:</span>
+    <span class="chip" data-chip-type="status" data-chip-val="draft">
+      <i class="bi bi-pencil-square"></i>Черновик
+    </span>
+    <span class="chip" data-chip-type="status" data-chip-val="registered">
+      <i class="bi bi-hash"></i>Зарег.
+    </span>
+    <span class="chip" data-chip-type="status" data-chip-val="in_progress">
+      <i class="bi bi-person-workspace"></i>В работе
+    </span>
+    <span class="chip" data-chip-type="status" data-chip-val="under_review">
+      <i class="bi bi-search"></i>На проверке
+    </span>
+    <span class="chip" data-chip-type="status" data-chip-val="ready_to_send">
+      <i class="bi bi-check2-circle"></i>Готово
+    </span>
+    <span class="chip" data-chip-type="status" data-chip-val="sent_to_applicant">
+      <i class="bi bi-send"></i>Отправлено
+    </span>
+    <span class="chip" data-chip-type="status" data-chip-val="closed">
+      <i class="bi bi-archive"></i>Закрыто
+    </span>
+
+    <span style="width:1px; background:var(--border); height:18px; margin:0 4px;"></span>
+    <span class="chip-bar-label"><i class="bi bi-calendar3 me-1"></i>Дата:</span>
+    <span class="chip" data-chip-type="date" data-chip-val="today">Сегодня</span>
+    <span class="chip" data-chip-type="date" data-chip-val="week">Неделя</span>
+    <span class="chip" data-chip-type="date" data-chip-val="month">Месяц</span>
+  </div>
+
+  {# Чипы ответственных #}
+  <div class="chip-bar" style="border-top:none; padding-top:4px;">
+    <span class="chip-bar-label"><i class="bi bi-person-check me-1"></i>Ответственный:</span>
+    <div class="emp-chips" id="empChips">
+      {% for emp in employees %}
+      <span class="emp-chip" data-emp-id="{{ emp.id }}">{{ emp.short_name or emp.full_name }}</span>
+      {% endfor %}
+    </div>
+    <span class="chip ms-2" data-chip-type="fav" data-chip-val="1" id="favChip">
+      <i class="bi bi-star-fill" style="color:#f59e0b"></i>Избранные
+    </span>
+  </div>
+</div>
+
+{# ─── Тул-бар ────────────────────────────────────────────────────────────── #}
+<div class="toolbar">
+  <a href="/export/excel" class="btn btn-success btn-sm">
+    <i class="bi bi-file-earmark-excel me-1"></i>Выгрузить Excel
+  </a>
+  <a href="/export/excel/base" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-download me-1"></i>Скачать базу (Excel)
+  </a>
+  <a href="/export/excel/upload" class="btn btn-outline-warning btn-sm">
+    <i class="bi bi-upload me-1"></i>Загрузить обновлённый Excel
+  </a>
+  <a href="/dashboard" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-bar-chart-line me-1"></i>Открыть дашборд
+  </a>
+  <div class="toolbar-right">
+    <span class="total-badge" id="totalBadge">Все записи: <strong id="totalCount">—</strong></span>
+    <button class="btn btn-outline-danger btn-sm" id="btnResetAll">
+      <i class="bi bi-x-circle me-1"></i>Сброс
+    </button>
+  </div>
+</div>
+
+{# ─── Контейнер Tabulator ───────────────────────────────────────────── #}
+<div id="requestsTable"></div>
+{% endblock %}
+
+
+{% block scripts %}
+<script>
+(function(){
+'use strict';
+
+// ─── Константы ────────────────────────────────────────────────────────────
+const IS_ADMIN = {{ 'true' if session.get('role')=='admin' else 'false' }};
+const USER_ID  = {{ session.get('user_id', 0) }};
+
+const STATUS_MAP = {
+  draft:             { text:'Черновик',         cls:'status-draft' },
+  registered:        { text:'Зарегистрировано', cls:'status-registered' },
+  in_progress:       { text:'В работе',         cls:'status-in_progress' },
+  under_review:      { text:'На проверке',      cls:'status-under_review' },
+  ready_to_send:     { text:'Готово',           cls:'status-ready_to_send' },
+  sent_to_applicant: { text:'Отправлено',       cls:'status-sent_to_applicant' },
+  closed:            { text:'Закрыто',           cls:'status-closed' },
+};
+
+// ─── Состояние фильтров ─────────────────────────────────────────────────────
+const state = {
+  status:    '',
+  dateFrom:  '',
+  dateTo:    '',
+  applicant: '',
+  search:    '',
+  employee:  null,   // id или null
+  favorite:  false,
+  dateChip:  '',     // today | week | month
+};
+
+// ─── Утилиты ─────────────────────────────────────────────────────────────────
+function buildParams(page, size, sort, dir) {
+  const p = new URLSearchParams();
+  p.set('page', page); p.set('size', size);
+  if (sort) { p.set('sort', sort); p.set('dir', dir); }
+  if (state.status)    p.set('filter[status]',    state.status);
+  if (state.dateFrom)  p.set('filter[date_from]', state.dateFrom);
+  if (state.dateTo)    p.set('filter[date_to]',   state.dateTo);
+  if (state.applicant) p.set('filter[applicant]', state.applicant);
+  if (state.search)    p.set('filter[search]',    state.search);
+  if (state.employee)  p.set('filter[employee]',  state.employee);
+  if (state.favorite)  p.set('filter[favorite]',  '1');
+  if (state.dateChip)  p.set('filter[date_chip]', state.dateChip);
+  return p.toString();
+}
+
+function fmtNum(v) { return (v == null || v === '' || v === 0) ? '<span style="color:var(--text-muted)">—</span>' : v; }
+
+// ─── Tabulator ─────────────────────────────────────────────────────────────────
+const table = new Tabulator('#requestsTable', {
+  height:        '70vh',
+  layout:        'fitColumns',
+  responsiveLayout: false,
+  pagination:    true,
+  paginationMode:'remote',
+  filterMode:    'remote',
+  sortMode:      'remote',
+  paginationSize: 50,
+  paginationSizeSelector: [25, 50, 100, 200],
+  ajaxURL:       '/api/requests',
+  ajaxParams:    function(){ return {}; },
+  ajaxRequestFunc: function(url, config, params) {
+    const page = params.page || 1;
+    const size = params.size || 50;
+    const sort = params.sorters && params.sorters[0] ? params.sorters[0].field : '';
+    const dir  = params.sorters && params.sorters[0] ? params.sorters[0].dir   : 'desc';
+    const qs   = buildParams(page, size, sort, dir);
+    return fetch('/api/requests?' + qs, { credentials: 'same-origin' })
+      .then(r => r.json())
+      .then(data => {
+        document.getElementById('totalCount').textContent = data.total;
+        updateStatCards(data.stats);
+        return { data: data.data, last_page: data.pages };
+      });
+  },
+  ajaxResponse: function(url, params, response){ return response; },
+  columns: [
+    {
+      title: '',
+      field: 'favorite',
+      width: 36,
+      resizable: false,
+      hozAlign: 'center',
+      headerSort: false,
+      formatter: function(cell){
+        const v = cell.getValue();
+        const id = cell.getRow().getData().id;
+        return `<span class="tab-star${v ? ' fav' : ''}" data-id="${id}"
+                      title="${v ? 'Убрать из избранных' : 'Добавить в избранные'}">
+                  <i class="bi ${v ? 'bi-star-fill' : 'bi-star'}"></i>
+                </span>`;
+      },
+      cellClick: function(e, cell) {
+        const id = cell.getRow().getData().id;
+        fetch(`/request/${id}/favorite`, { method:'POST', credentials:'same-origin' })
+          .then(r => r.json()).then(d => {
+            cell.setValue(d.favorite);
+          });
+      }
+    },
+    {
+      title: '№',
+      field: 'number',
+      width: 100,
+      resizable: false,
+      sorter: 'string',
+      formatter: function(cell){
+        const row = cell.getRow().getData();
+        return `<a class="tab-num" href="/request/${row.id}">${cell.getValue()}</a>`;
+      }
+    },
+    {
+      title: 'Дата',
+      field: 'created_at',
+      width: 100,
+      sorter: 'date',
+      sorterParams: { format:'YYYY-MM-DD' },
+      formatter: function(cell){
+        const v = cell.getValue();
+        if (!v) return '—';
+        const d = v.substring(0,10);
+        const parts = d.split('-');
+        return parts.length===3 ? `${parts[2]}.${parts[1]}.${parts[0]}` : d;
+      }
+    },
+    {
+      title: 'Статус',
+      field: 'status',
+      width: 120,
+      sorter: 'string',
+      formatter: function(cell){
+        const v = cell.getValue();
+        const s = STATUS_MAP[v] || { text: v, cls: 'bg-secondary' };
+        return `<span class="badge ${s.cls}">${s.text}</span>`;
+      }
+    },
+    {
+      title: 'Источник',
+      field: 'source',
+      width: 80,
+      headerSort: false,
+      formatter: function(cell){
+        return cell.getValue() || '<span style="color:var(--text-muted)">—</span>';
+      }
+    },
+    {
+      title: 'Заявитель',
+      field: 'applicant',
+      minWidth: 160,
+      sorter: 'string',
+      formatter: function(cell){
+        return cell.getValue() || '<span style="color:var(--text-muted)">—</span>';
+      }
+    },
+    {
+      title: 'Проект',
+      field: 'project',
+      minWidth: 220,
+      sorter: 'string',
+      formatter: function(cell){
+        const v = cell.getValue();
+        if (!v) return '<span style="color:var(--text-muted)">—</span>';
+        return `<span title="${v.replace(/"/g,'&quot;')}">${v}</span>`;
+      }
+    },
+    {
+      title: 'Инв. (млн)',
+      field: 'investment_mln',
+      width: 80,
+      hozAlign: 'right',
+      sorter: 'number',
+      formatter: function(cell){ return fmtNum(cell.getValue()); }
+    },
+    {
+      title: 'Га',
+      field: 'area_ha',
+      width: 60,
+      hozAlign: 'right',
+      sorter: 'number',
+      formatter: function(cell){ return fmtNum(cell.getValue()); }
+    },
+    {
+      title: 'М²',
+      field: 'area_m2',
+      width: 70,
+      hozAlign: 'right',
+      sorter: 'number',
+      formatter: function(cell){ return fmtNum(cell.getValue()); }
+    },
+    {
+      title: 'Раб.мест',
+      field: 'workplaces',
+      width: 72,
+      hozAlign: 'right',
+      sorter: 'number',
+      formatter: function(cell){ return fmtNum(cell.getValue()); }
+    },
+    {
+      title: 'Ответственный',
+      field: 'employee_name',
+      width: 140,
+      sorter: 'string',
+      formatter: function(cell){
+        return cell.getValue() || '<span style="color:var(--text-muted)">—</span>';
+      }
+    },
+    {
+      title: 'Действия',
+      field: 'id',
+      width: 92,
+      resizable: false,
+      headerSort: false,
+      hozAlign: 'center',
+      formatter: function(cell){
+        const id = cell.getValue();
+        const d  = cell.getRow().getData();
+        const canEdit   = IS_ADMIN || d.employee_id == USER_ID;
+        const canDelete = IS_ADMIN;
+        return `<div class="tab-actions">
+          <a href="/request/${id}" class="btn-view"   title="Просмотр"><i class="bi bi-eye"></i></a>
+          ${canEdit   ? `<a href="/request/${id}/edit" class="btn-edit"   title="Редактировать"><i class="bi bi-pencil"></i></a>` : ''}
+          ${canDelete ? `<button class="btn-delete" data-del-id="${id}" title="Удалить"><i class="bi bi-trash3"></i></button>` : ''}
+        </div>`;
+      },
+      cellClick: function(e, cell){
+        const btn = e.target.closest('[data-del-id]');
+        if (!btn) return;
+        const id = btn.dataset.delId;
+        if (!confirm('Удалить обращение №' + cell.getRow().getData().number + '?')) return;
+        fetch(`/request/${id}/delete`, { method:'POST', credentials:'same-origin' })
+          .then(r => { if (r.ok) table.replaceData(); });
+      }
+    },
+  ],
+  locale: true,
+  langs: {
+    'default': {
+      pagination: {
+        first: '«', last: '»', prev: '‹', next: '›',
+        first_title: 'Первая', last_title: 'Последняя',
+        prev_title:  'Назад',  next_title:  'Вперёд',
+        page_size: 'Строк на странице',
+        page_title: 'Страница',
+        all: 'Все',
+      },
+      loading: 'Загрузка…',
+      no_data: 'Ничего не найдено',
+    }
+  },
+});
+
+// ─── Обновление карточек ──────────────────────────────────────────────────────
+function updateStatCards(stats) {
+  if (!stats) return;
+  ['all','draft','registered','in_progress','under_review','overdue'].forEach(k => {
+    const el = document.getElementById('sc-' + k);
+    if (el) el.textContent = stats[k] ?? '—';
+  });
+}
+
+// ─── Сброс и перезагрузка ──────────────────────────────────────────────────
+function applyFilters() { table.replaceData(); }
+
+function resetAll() {
+  Object.assign(state, { status:'', dateFrom:'', dateTo:'', applicant:'',
+                          search:'', employee:null, favorite:false, dateChip:'' });
+  document.getElementById('fDateFrom').value   = '';
+  document.getElementById('fDateTo').value     = '';
+  document.getElementById('fStatus').value     = '';
+  document.getElementById('fApplicant').value  = '';
+  document.getElementById('fSearch').value     = '';
+  document.querySelectorAll('.chip.active').forEach(c => c.classList.remove('active'));
+  document.querySelectorAll('.emp-chip.active').forEach(c => c.classList.remove('active'));
+  document.querySelectorAll('.stat-card').forEach(c => c.classList.remove('active'));
+  document.querySelector('.stat-card.sc-all').classList.add('active');
+  applyFilters();
+}
+
+// ─── Сбор фильтров из формы ─────────────────────────────────────────────────
+function readForm() {
+  state.dateFrom  = document.getElementById('fDateFrom').value;
+  state.dateTo    = document.getElementById('fDateTo').value;
+  state.status    = document.getElementById('fStatus').value;
+  state.applicant = document.getElementById('fApplicant').value.trim();
+  state.search    = document.getElementById('fSearch').value.trim();
+}
+
+// ─── События — кнопки ────────────────────────────────────────────────────────
+document.getElementById('btnFind').addEventListener('click', function(){
+  readForm(); applyFilters();
+});
+document.getElementById('btnReset').addEventListener('click', function(){
+  document.getElementById('fApplicant').value = '';
+  document.getElementById('fSearch').value    = '';
+  state.applicant = ''; state.search = '';
+  applyFilters();
+});
+document.getElementById('btnResetAll').addEventListener('click', resetAll);
+
+// Enter в полях формы
+['fApplicant','fSearch','fDateFrom','fDateTo'].forEach(id => {
+  document.getElementById(id).addEventListener('keydown', function(e){
+    if (e.key === 'Enter') { readForm(); applyFilters(); }
+  });
+});
+document.getElementById('fStatus').addEventListener('change', function(){
+  state.status = this.value;
+  // синхронизируем чипы статусов
+  document.querySelectorAll('.chip[data-chip-type="status"]').forEach(c => {
+    c.classList.toggle('active', c.dataset.chipVal === this.value);
+  });
+  applyFilters();
+});
+
+// ─── Чипы статусов ───────────────────────────────────────────────────────────
+document.querySelectorAll('.chip[data-chip-type="status"]').forEach(chip => {
+  chip.addEventListener('click', function(){
+    const val = this.dataset.chipVal;
+    const isActive = this.classList.contains('active');
+    document.querySelectorAll('.chip[data-chip-type="status"]').forEach(c => c.classList.remove('active'));
+    if (!isActive) {
+      this.classList.add('active');
+      state.status = val;
+    } else {
+      state.status = '';
+    }
+    document.getElementById('fStatus').value = state.status;
+    applyFilters();
+  });
+});
+
+// ─── Чипы дат ────────────────────────────────────────────────────────────────
+document.querySelectorAll('.chip[data-chip-type="date"]').forEach(chip => {
+  chip.addEventListener('click', function(){
+    const val = this.dataset.chipVal;
+    const isActive = this.classList.contains('active');
+    document.querySelectorAll('.chip[data-chip-type="date"]').forEach(c => c.classList.remove('active'));
+    state.dateChip = isActive ? '' : val;
+    if (!isActive) this.classList.add('active');
+    applyFilters();
+  });
+});
+
+// ─── Чип избранных ─────────────────────────────────────────────────────────────
+document.getElementById('favChip').addEventListener('click', function(){
+  state.favorite = !state.favorite;
+  this.classList.toggle('active', state.favorite);
+  applyFilters();
+});
+
+// ─── Чипы ответственных ───────────────────────────────────────────────────────
+document.querySelectorAll('.emp-chip').forEach(chip => {
+  chip.addEventListener('click', function(){
+    const id = this.dataset.empId;
+    const isActive = this.classList.contains('active');
+    document.querySelectorAll('.emp-chip').forEach(c => c.classList.remove('active'));
+    state.employee = isActive ? null : id;
+    if (!isActive) this.classList.add('active');
+    applyFilters();
+  });
+});
+
+// ─── Карточки статистики ──────────────────────────────────────────────────────
+document.querySelectorAll('.stat-card').forEach(card => {
+  card.addEventListener('click', function(){
+    const val = this.dataset.filterStatus;
+    document.querySelectorAll('.stat-card').forEach(c => c.classList.remove('active'));
+    this.classList.add('active');
+    state.status = (val === '__overdue__') ? '' : val;
+    // TODO: добавить filter overdue после расширения API
+    document.getElementById('fStatus').value = state.status;
+    document.querySelectorAll('.chip[data-chip-type="status"]').forEach(c => {
+      c.classList.toggle('active', c.dataset.chipVal === state.status);
+    });
+    applyFilters();
+  });
+});
+
+})();
+</script>
+{% endblock %}
