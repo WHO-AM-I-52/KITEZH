@@ -1,3 +1,4 @@
+from datetime import date
 from flask import render_template, redirect, url_for, session, flash
 
 from db import get_db
@@ -40,8 +41,8 @@ def _build_display_vals(req):
     """
     dv = {}
     for field, unit_field, unit_key in _INFRA_DISPLAY_FIELDS:
-        raw   = req[field]  if req[field]  is not None else None
-        unit  = req[unit_field] if req[unit_field] else _UNIT_DEFAULTS[unit_field]
+        raw  = req[field]
+        unit = req[unit_field] if req[unit_field] else _UNIT_DEFAULTS[unit_field]
         dv[field] = denormalize_from_base(raw, unit_key, unit)
     return dv
 
@@ -85,19 +86,16 @@ def view_request(rid):
         "ORDER BY full_name"
     ).fetchall()
 
-    # Справочник итогов работы — нужен для select в блоке «Обратная связь»
     result_types = conn.execute(
         "SELECT id, name, color_hex FROM result_types ORDER BY id"
     ).fetchall()
 
-    # Список всех активных пользователей — нужен для модального окна проверяющего
     all_users = conn.execute(
         "SELECT id, full_name, role FROM users WHERE is_active=1 ORDER BY full_name"
     ).fetchall()
 
     conn.close()
 
-    # #48: денормализованные значения инфраструктуры для отображения
     display_vals = _build_display_vals(req)
 
     return render_template(
@@ -108,7 +106,7 @@ def view_request(rid):
         display_vals=display_vals,
         result_types=result_types,
         all_users=all_users,
-        today_str=str(__import__('datetime').date.today()),
+        today_str=str(date.today()),
     )
 
 
@@ -131,13 +129,15 @@ def request_history_view(rid):
 @admin_required
 def rollback_request(rid, hid):
     conn = get_db()
-    ok   = rollback_history(hid, rid)
-    if ok:
-        log_action(conn, session['user_id'], 'rollback', rid,
-                   f'Откат к версии history_id={hid}')
-        conn.commit()
-        flash('Обращение откачено к выбранной версии', 'success')
-    else:
-        flash('Не удалось выполнить откат — запись не найдена', 'error')
-    conn.close()
+    try:
+        ok = rollback_history(hid, rid)
+        if ok:
+            log_action(conn, session['user_id'], 'rollback', rid,
+                       f'Откат к версии history_id={hid}')
+            conn.commit()
+            flash('Обращение откачено к выбранной версии', 'success')
+        else:
+            flash('Не удалось выполнить откат — запись не найдена', 'error')
+    finally:
+        conn.close()
     return redirect(url_for('requests.view_request', rid=rid))
