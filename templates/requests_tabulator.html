@@ -3,13 +3,12 @@
  ╔══════════════════════════════════════════════════════════════╗
  ║  requests_tabulator.html                                       ║
  ║  Список обращений на Tabulator 6.x + JSON API                ║
- ║  v1.2: fix sort — dataSorting event + state.sort/dir         ║
+ ║  v1.3: fix sort — dataSorted+replaceData, locale fix          ║
  ╚══════════════════════════════════════════════════════════════╝
 #}
 
 {% block extra_head %}
 <style>
-/* ─── Карточки статистики ───────────────────────────────────── */
 .stat-cards { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
 .stat-card  { flex:1; min-width:140px; background:var(--surface); border-radius:10px;
               border-left:4px solid #aaa; padding:10px 14px; cursor:pointer;
@@ -26,7 +25,6 @@
 .stat-card.sc-rev   { border-left-color:#ffc107; }
 .stat-card.sc-over  { border-left-color:#dc3545; }
 
-/* ─── Панель фильтров ───────────────────────────────────────────── */
 .filter-panel { background:var(--surface); border-radius:10px; padding:14px 16px 10px;
                box-shadow:var(--card-shadow); margin-bottom:12px; }
 .filter-row   { display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; }
@@ -37,9 +35,7 @@
 .filter-col-status { min-width:130px; flex:1; }
 .filter-col-appl   { min-width:160px; flex:2; }
 .filter-col-text   { min-width:200px; flex:3; }
-.filter-col-emp    { min-width:140px; flex:1.5; }
 
-/* ─── Чипы быстрых фильтров ────────────────────────────────────── */
 .chip-bar { display:flex; gap:6px; flex-wrap:wrap; align-items:center;
             padding:8px 0 4px; border-top:1px solid var(--border); margin-top:10px; }
 .chip-bar-label { font-size:11px; color:var(--text-muted); margin-right:2px; white-space:nowrap; }
@@ -51,81 +47,31 @@
 .chip.active  { box-shadow:0 0 0 2px var(--accent); font-weight:600; }
 .chip i { font-size:12px; }
 
-/* ─── Чипы ответственных ────────────────────────────────────────── */
 .emp-chips  { display:flex; gap:4px; flex-wrap:wrap; align-items:center; }
 .emp-chip   { padding:2px 10px; border-radius:14px; font-size:12px; cursor:pointer;
               background:var(--surface2); border:1px solid var(--border); color:var(--text); transition:.15s; }
 .emp-chip:hover  { background:var(--border); }
 .emp-chip.active { background:var(--accent); color:#fff; border-color:var(--accent); font-weight:600; }
 
-/* ─── Тул-бар ───────────────────────────────────────────────────────────── */
-.toolbar { display:flex; align-items:center; gap:8px; flex-wrap:wrap;
-           margin-bottom:10px; }
+.toolbar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
 .toolbar-right { margin-left:auto; display:flex; align-items:center; gap:8px; }
 .toolbar .total-badge { font-size:12px; color:var(--text-muted); }
 
-/* ─── Tabulator overrides ─────────────────────────────────────────────── */
-.tabulator {
-  border:none !important;
-  border-radius:10px !important;
-  overflow:hidden !important;
-  box-shadow:var(--card-shadow) !important;
-  background:var(--surface) !important;
-  font-size:13px !important;
-}
-.tabulator .tabulator-header {
-  background:var(--surface2) !important;
-  border-bottom:2px solid var(--border) !important;
-}
+.tabulator { border:none !important; border-radius:10px !important; overflow:hidden !important;
+  box-shadow:var(--card-shadow) !important; background:var(--surface) !important; font-size:13px !important; }
+.tabulator .tabulator-header { background:var(--surface2) !important; border-bottom:2px solid var(--border) !important; }
 .tabulator .tabulator-header .tabulator-col {
-  background:var(--surface2) !important;
-  border-right:1px solid var(--border) !important;
-  color:var(--text) !important;
-  font-size:11px !important;
-  font-weight:700 !important;
-  text-transform:uppercase;
-  letter-spacing:.3px;
-}
-.tabulator .tabulator-row {
-  background:var(--surface) !important;
-  border-bottom:1px solid var(--border) !important;
-  color:var(--text) !important;
-}
-.tabulator .tabulator-row:nth-child(even) {
-  background:var(--table-stripe) !important;
-}
-.tabulator .tabulator-row:hover {
-  background:var(--table-hover) !important;
-}
-.tabulator .tabulator-cell {
-  border-right:1px solid var(--border) !important;
-  color:var(--text) !important;
-  padding:6px 8px !important;
-}
-.tabulator .tabulator-footer {
-  background:var(--surface2) !important;
-  border-top:2px solid var(--border) !important;
-  color:var(--text) !important;
-  font-size:12px !important;
-}
-.tabulator .tabulator-footer .tabulator-page {
-  background:var(--surface) !important;
-  color:var(--text) !important;
-  border:1px solid var(--border) !important;
-  border-radius:4px !important;
-  margin:0 2px !important;
-}
-.tabulator .tabulator-footer .tabulator-page.active {
-  background:var(--accent) !important;
-  color:#fff !important;
-  border-color:var(--accent) !important;
-}
-.tabulator .tabulator-loader-msg {
-  background:var(--surface) !important;
-  color:var(--text-muted) !important;
-  border:none !important;
-  font-size:13px !important;
-}
+  background:var(--surface2) !important; border-right:1px solid var(--border) !important;
+  color:var(--text) !important; font-size:11px !important; font-weight:700 !important;
+  text-transform:uppercase; letter-spacing:.3px; }
+.tabulator .tabulator-row { background:var(--surface) !important; border-bottom:1px solid var(--border) !important; color:var(--text) !important; }
+.tabulator .tabulator-row:nth-child(even) { background:var(--table-stripe) !important; }
+.tabulator .tabulator-row:hover { background:var(--table-hover) !important; }
+.tabulator .tabulator-cell { border-right:1px solid var(--border) !important; color:var(--text) !important; padding:6px 8px !important; }
+.tabulator .tabulator-footer { background:var(--surface2) !important; border-top:2px solid var(--border) !important; color:var(--text) !important; font-size:12px !important; }
+.tabulator .tabulator-footer .tabulator-page { background:var(--surface) !important; color:var(--text) !important; border:1px solid var(--border) !important; border-radius:4px !important; margin:0 2px !important; }
+.tabulator .tabulator-footer .tabulator-page.active { background:var(--accent) !important; color:#fff !important; border-color:var(--accent) !important; }
+.tabulator .tabulator-loader-msg { background:var(--surface) !important; color:var(--text-muted) !important; border:none !important; font-size:13px !important; }
 .tab-star { cursor:pointer; color:#ccc; font-size:14px; transition:color .15s; }
 .tab-star.fav { color:#f59e0b; }
 .tab-star:hover { color:#f59e0b; }
@@ -135,8 +81,7 @@
 .tab-actions a, .tab-actions button {
   width:26px; height:26px; border-radius:5px; border:none;
   display:inline-flex; align-items:center; justify-content:center;
-  font-size:13px; cursor:pointer; text-decoration:none; transition:.15s;
-}
+  font-size:13px; cursor:pointer; text-decoration:none; transition:.15s; }
 .tab-actions .btn-view   { background:#e7f3ff; color:#0d6efd; }
 .tab-actions .btn-edit   { background:#fff3cd; color:#856404; }
 .tab-actions .btn-delete { background:#fde8e8; color:#dc3545; }
@@ -149,35 +94,27 @@
 {% block content %}
 <div class="d-flex align-items-center justify-content-between mb-3">
   <h5 class="mb-0 fw-bold"><i class="bi bi-list-ul me-2"></i>Обращения на подбор ЗУ</h5>
-  <a href="/request/new" class="btn btn-primary btn-sm">
-    <i class="bi bi-plus-lg me-1"></i>Новое обращение
-  </a>
+  <a href="/request/new" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>Новое обращение</a>
 </div>
 
 <div class="stat-cards" id="statCards">
   <div class="stat-card sc-all active" data-filter-status="" title="Все обращения">
-    <div class="sc-num" id="sc-all">—</div>
-    <div class="sc-lbl"><i class="bi bi-inbox"></i> Всего</div>
+    <div class="sc-num" id="sc-all">—</div><div class="sc-lbl"><i class="bi bi-inbox"></i> Всего</div>
   </div>
-  <div class="stat-card sc-draft" data-filter-status="draft" title="Черновик">
-    <div class="sc-num" id="sc-draft">—</div>
-    <div class="sc-lbl"><i class="bi bi-pencil-square"></i> Черновик</div>
+  <div class="stat-card sc-draft" data-filter-status="draft">
+    <div class="sc-num" id="sc-draft">—</div><div class="sc-lbl"><i class="bi bi-pencil-square"></i> Черновик</div>
   </div>
-  <div class="stat-card sc-reg" data-filter-status="registered" title="Зарегистрировано">
-    <div class="sc-num" id="sc-registered">—</div>
-    <div class="sc-lbl"><i class="bi bi-hash"></i> Зарегистрировано</div>
+  <div class="stat-card sc-reg" data-filter-status="registered">
+    <div class="sc-num" id="sc-registered">—</div><div class="sc-lbl"><i class="bi bi-hash"></i> Зарегистрировано</div>
   </div>
-  <div class="stat-card sc-work" data-filter-status="in_progress" title="В работе">
-    <div class="sc-num" id="sc-in_progress">—</div>
-    <div class="sc-lbl"><i class="bi bi-person-workspace"></i> В работе</div>
+  <div class="stat-card sc-work" data-filter-status="in_progress">
+    <div class="sc-num" id="sc-in_progress">—</div><div class="sc-lbl"><i class="bi bi-person-workspace"></i> В работе</div>
   </div>
-  <div class="stat-card sc-rev" data-filter-status="under_review" title="На проверке">
-    <div class="sc-num" id="sc-under_review">—</div>
-    <div class="sc-lbl"><i class="bi bi-search"></i> На проверке</div>
+  <div class="stat-card sc-rev" data-filter-status="under_review">
+    <div class="sc-num" id="sc-under_review">—</div><div class="sc-lbl"><i class="bi bi-search"></i> На проверке</div>
   </div>
-  <div class="stat-card sc-over" data-filter-status="__overdue__" title="Просрочено">
-    <div class="sc-num" id="sc-overdue">—</div>
-    <div class="sc-lbl"><i class="bi bi-exclamation-triangle"></i> Просрочено</div>
+  <div class="stat-card sc-over" data-filter-status="__overdue__">
+    <div class="sc-num" id="sc-overdue">—</div><div class="sc-lbl"><i class="bi bi-exclamation-triangle"></i> Просрочено</div>
   </div>
 </div>
 
@@ -213,12 +150,8 @@
       <input type="text" id="fSearch" class="form-control" placeholder="Проект, контакты, район…">
     </div>
     <div style="display:flex; align-items:flex-end; gap:6px;">
-      <button id="btnFind" class="btn btn-primary btn-sm" style="height:34px;">
-        <i class="bi bi-search me-1"></i>Найти
-      </button>
-      <button id="btnReset" class="btn btn-outline-secondary btn-sm" style="height:34px;">
-        <i class="bi bi-x-lg"></i>
-      </button>
+      <button id="btnFind" class="btn btn-primary btn-sm" style="height:34px;"><i class="bi bi-search me-1"></i>Найти</button>
+      <button id="btnReset" class="btn btn-outline-secondary btn-sm" style="height:34px;"><i class="bi bi-x-lg"></i></button>
     </div>
   </div>
 
@@ -252,23 +185,13 @@
 </div>
 
 <div class="toolbar">
-  <a href="/export/excel" class="btn btn-success btn-sm">
-    <i class="bi bi-file-earmark-excel me-1"></i>Выгрузить Excel
-  </a>
-  <a href="/export/excel/base" class="btn btn-outline-secondary btn-sm">
-    <i class="bi bi-download me-1"></i>Скачать базу (Excel)
-  </a>
-  <a href="/export/excel/upload" class="btn btn-outline-warning btn-sm">
-    <i class="bi bi-upload me-1"></i>Загрузить обновлённый Excel
-  </a>
-  <a href="/dashboard" class="btn btn-outline-secondary btn-sm">
-    <i class="bi bi-bar-chart-line me-1"></i>Открыть дашборд
-  </a>
+  <a href="/export/excel" class="btn btn-success btn-sm"><i class="bi bi-file-earmark-excel me-1"></i>Выгрузить Excel</a>
+  <a href="/export/excel/base" class="btn btn-outline-secondary btn-sm"><i class="bi bi-download me-1"></i>Скачать базу (Excel)</a>
+  <a href="/export/excel/upload" class="btn btn-outline-warning btn-sm"><i class="bi bi-upload me-1"></i>Загрузить обновлённый Excel</a>
+  <a href="/dashboard" class="btn btn-outline-secondary btn-sm"><i class="bi bi-bar-chart-line me-1"></i>Открыть дашборд</a>
   <div class="toolbar-right">
     <span class="total-badge" id="totalBadge">Все записи: <strong id="totalCount">—</strong></span>
-    <button class="btn btn-outline-danger btn-sm" id="btnResetAll">
-      <i class="bi bi-x-circle me-1"></i>Сброс
-    </button>
+    <button class="btn btn-outline-danger btn-sm" id="btnResetAll"><i class="bi bi-x-circle me-1"></i>Сброс</button>
   </div>
 </div>
 
@@ -294,24 +217,18 @@ const STATUS_MAP = {
   closed:            { text:'Закрыто',          cls:'status-closed' },
 };
 
-// ─── Состояние — добавлены sort и dir ────────────────────────────────────────
 const state = {
-  status:    '',
-  dateFrom:  '',
-  dateTo:    '',
-  applicant: '',
-  search:    '',
-  employee:  null,
-  favorite:  false,
-  dateChip:  '',
-  sort:      '',      // поле сортировки, например 'created_at'
-  dir:       'desc',  // 'asc' | 'desc'
+  status: '', dateFrom: '', dateTo: '', applicant: '',
+  search: '', employee: null, favorite: false, dateChip: '',
+  sort: '', dir: 'desc',
 };
+
+// Флаг — предотвращаем повторный replaceData из dataSorted
+let _sortTriggered = false;
 
 function buildParams(page, size) {
   const p = new URLSearchParams();
-  p.set('page', page);
-  p.set('size', size);
+  p.set('page', page); p.set('size', size);
   if (state.sort) { p.set('sort', state.sort); p.set('dir', state.dir); }
   if (state.status)    p.set('filter[status]',    state.status);
   if (state.dateFrom)  p.set('filter[date_from]', state.dateFrom);
@@ -324,26 +241,25 @@ function buildParams(page, size) {
   return p.toString();
 }
 
-function fmtNum(v) { return (v == null || v === '' || v === 0) ? '<span style="color:var(--text-muted)">—</span>' : v; }
+function fmtNum(v) {
+  return (v == null || v === '' || v === 0) ? '<span style="color:var(--text-muted)">—</span>' : v;
+}
 
-// ─── Tabulator ────────────────────────────────────────────────────────────────
 const table = new Tabulator('#requestsTable', {
-  height:        '70vh',
-  layout:        'fitColumns',
+  height: '70vh',
+  layout: 'fitColumns',
   responsiveLayout: false,
-  pagination:    true,
-  paginationMode:'remote',
-  filterMode:    'remote',
-  sortMode:      'remote',
+  pagination: true,
+  paginationMode: 'remote',
+  filterMode: 'remote',
   paginationSize: 50,
   paginationSizeSelector: [25, 50, 100, 200],
-  ajaxURL:       '/api/requests',
-  ajaxParams:    function(){ return {}; },
+  ajaxURL: '/api/requests',
+  ajaxParams: function(){ return {}; },
   ajaxRequestFunc: function(url, config, params) {
     const page = params.page || 1;
     const size = params.size || 50;
-    const qs   = buildParams(page, size);
-    return fetch('/api/requests?' + qs, { credentials: 'same-origin' })
+    return fetch('/api/requests?' + buildParams(page, size), { credentials: 'same-origin' })
       .then(r => r.json())
       .then(data => {
         document.getElementById('totalCount').textContent = data.total;
@@ -353,176 +269,119 @@ const table = new Tabulator('#requestsTable', {
   },
   ajaxResponse: function(url, params, response){ return response; },
 
-  // ─── Перехват сортировки ────────────────────────────────────────────────────
-  // dataSorting срабатывает ДО запроса — сохраняем в state, затем replaceData
-  dataSorting: function(sorters) {
-    if (sorters && sorters.length > 0) {
-      state.sort = sorters[0].field;
-      state.dir  = sorters[0].dir;
-    } else {
-      state.sort = '';
-      state.dir  = 'desc';
-    }
-  },
-
   columns: [
     {
-      title: '',
-      field: 'favorite',
-      width: 36,
-      resizable: false,
-      hozAlign: 'center',
-      headerSort: false,
+      title: '', field: 'favorite', width: 36, resizable: false,
+      hozAlign: 'center', headerSort: false,
       formatter: function(cell){
-        const v = cell.getValue();
-        const id = cell.getRow().getData().id;
-        return `<span class="tab-star${v ? ' fav' : ''}" data-id="${id}"
-                      title="${v ? 'Убрать из избранных' : 'Добавить в избранные'}">
-                  <i class="bi ${v ? 'bi-star-fill' : 'bi-star'}"></i>
-                </span>`;
+        const v = cell.getValue(), id = cell.getRow().getData().id;
+        return `<span class="tab-star${v?' fav':''}" data-id="${id}" title="${v?'Убрать из избранных':'Добавить в избранные'}">
+                  <i class="bi ${v?'bi-star-fill':'bi-star'}"></i></span>`;
       },
-      cellClick: function(e, cell) {
+      cellClick: function(e, cell){
         const id = cell.getRow().getData().id;
-        fetch(`/request/${id}/favorite`, { method:'POST', credentials:'same-origin' })
-          .then(r => r.json()).then(d => { cell.setValue(d.favorite); });
+        fetch(`/request/${id}/favorite`, {method:'POST', credentials:'same-origin'})
+          .then(r=>r.json()).then(d=>cell.setValue(d.favorite));
       }
     },
     {
-      title: '№',
-      field: 'number',
-      width: 100,
-      resizable: false,
+      title: '№', field: 'number', width: 100, resizable: false,
       formatter: function(cell){
         const row = cell.getRow().getData();
         return `<a class="tab-num" href="/request/${row.id}">${cell.getValue()}</a>`;
       }
     },
     {
-      title: 'Дата',
-      field: 'created_at',
-      width: 100,
+      title: 'Дата', field: 'created_at', width: 100,
       formatter: function(cell){
-        const v = cell.getValue();
-        if (!v) return '—';
-        const parts = v.substring(0,10).split('-');
-        return parts.length===3 ? `${parts[2]}.${parts[1]}.${parts[0]}` : v;
+        const v = cell.getValue(); if (!v) return '—';
+        const p = v.substring(0,10).split('-');
+        return p.length===3 ? `${p[2]}.${p[1]}.${p[0]}` : v;
       }
     },
     {
-      title: 'Статус',
-      field: 'status',
-      width: 120,
+      title: 'Статус', field: 'status', width: 120,
       formatter: function(cell){
-        const s = STATUS_MAP[cell.getValue()] || { text: cell.getValue(), cls: 'bg-secondary' };
+        const s = STATUS_MAP[cell.getValue()] || {text:cell.getValue(), cls:'bg-secondary'};
         return `<span class="badge ${s.cls}">${s.text}</span>`;
       }
     },
     {
-      title: 'Источник',
-      field: 'source',
-      width: 80,
-      headerSort: false,
-      formatter: function(cell){
-        return cell.getValue() || '<span style="color:var(--text-muted)">—</span>';
-      }
+      title: 'Источник', field: 'source', width: 80, headerSort: false,
+      formatter: function(cell){ return cell.getValue()||'<span style="color:var(--text-muted)">—</span>'; }
     },
     {
-      title: 'Заявитель',
-      field: 'applicant',
-      minWidth: 160,
-      formatter: function(cell){
-        return cell.getValue() || '<span style="color:var(--text-muted)">—</span>';
-      }
+      title: 'Заявитель', field: 'applicant', minWidth: 160,
+      formatter: function(cell){ return cell.getValue()||'<span style="color:var(--text-muted)">—</span>'; }
     },
     {
-      title: 'Проект',
-      field: 'project',
-      minWidth: 220,
+      title: 'Проект', field: 'project', minWidth: 220,
       formatter: function(cell){
-        const v = cell.getValue();
-        if (!v) return '<span style="color:var(--text-muted)">—</span>';
+        const v = cell.getValue(); if (!v) return '<span style="color:var(--text-muted)">—</span>';
         return `<span title="${v.replace(/"/g,'&quot;')}">${v}</span>`;
       }
     },
+    { title: 'Инв. (млн)', field: 'investment_mln', width: 80, hozAlign: 'right',
+      formatter: function(cell){ return fmtNum(cell.getValue()); } },
+    { title: 'Га', field: 'area_ha', width: 60, hozAlign: 'right',
+      formatter: function(cell){ return fmtNum(cell.getValue()); } },
+    { title: 'М²', field: 'area_m2', width: 70, hozAlign: 'right',
+      formatter: function(cell){ return fmtNum(cell.getValue()); } },
+    { title: 'Раб.мест', field: 'workplaces', width: 72, hozAlign: 'right',
+      formatter: function(cell){ return fmtNum(cell.getValue()); } },
     {
-      title: 'Инв. (млн)',
-      field: 'investment_mln',
-      width: 80,
-      hozAlign: 'right',
-      formatter: function(cell){ return fmtNum(cell.getValue()); }
+      title: 'Ответственный', field: 'employee_name', width: 140,
+      formatter: function(cell){ return cell.getValue()||'<span style="color:var(--text-muted)">—</span>'; }
     },
     {
-      title: 'Га',
-      field: 'area_ha',
-      width: 60,
-      hozAlign: 'right',
-      formatter: function(cell){ return fmtNum(cell.getValue()); }
-    },
-    {
-      title: 'М²',
-      field: 'area_m2',
-      width: 70,
-      hozAlign: 'right',
-      formatter: function(cell){ return fmtNum(cell.getValue()); }
-    },
-    {
-      title: 'Раб.мест',
-      field: 'workplaces',
-      width: 72,
-      hozAlign: 'right',
-      formatter: function(cell){ return fmtNum(cell.getValue()); }
-    },
-    {
-      title: 'Ответственный',
-      field: 'employee_name',
-      width: 140,
+      title: 'Действия', field: 'id', width: 92, resizable: false,
+      headerSort: false, hozAlign: 'center',
       formatter: function(cell){
-        return cell.getValue() || '<span style="color:var(--text-muted)">—</span>';
-      }
-    },
-    {
-      title: 'Действия',
-      field: 'id',
-      width: 92,
-      resizable: false,
-      headerSort: false,
-      hozAlign: 'center',
-      formatter: function(cell){
-        const id = cell.getValue();
-        const d  = cell.getRow().getData();
-        const canEdit   = IS_ADMIN || d.employee_id == USER_ID;
-        const canDelete = IS_ADMIN;
+        const id = cell.getValue(), d = cell.getRow().getData();
+        const canEdit = IS_ADMIN || d.employee_id == USER_ID;
         return `<div class="tab-actions">
           <a href="/request/${id}" class="btn-view" title="Просмотр"><i class="bi bi-eye"></i></a>
-          ${canEdit   ? `<a href="/request/${id}/edit" class="btn-edit" title="Редактировать"><i class="bi bi-pencil"></i></a>` : ''}
-          ${canDelete ? `<button class="btn-delete" data-del-id="${id}" title="Удалить"><i class="bi bi-trash3"></i></button>` : ''}
+          ${canEdit ? `<a href="/request/${id}/edit" class="btn-edit" title="Ред."><i class="bi bi-pencil"></i></a>` : ''}
+          ${IS_ADMIN ? `<button class="btn-delete" data-del-id="${id}" title="Удалить"><i class="bi bi-trash3"></i></button>` : ''}
         </div>`;
       },
       cellClick: function(e, cell){
-        const btn = e.target.closest('[data-del-id]');
-        if (!btn) return;
+        const btn = e.target.closest('[data-del-id]'); if (!btn) return;
         const id = btn.dataset.delId;
         if (!confirm('Удалить обращение №' + cell.getRow().getData().number + '?')) return;
-        fetch(`/request/${id}/delete`, { method:'POST', credentials:'same-origin' })
-          .then(r => { if (r.ok) table.replaceData(); });
+        fetch(`/request/${id}/delete`, {method:'POST', credentials:'same-origin'})
+          .then(r=>{ if(r.ok) table.replaceData(); });
       }
     },
   ],
-  locale: true,
+
+  locale: 'default',
   langs: {
     'default': {
       pagination: {
         first: '«', last: '»', prev: '‹', next: '›',
         first_title: 'Первая', last_title: 'Последняя',
-        prev_title:  'Назад',  next_title:  'Вперёд',
+        prev_title: 'Назад', next_title: 'Вперёд',
         page_size: 'Строк на странице',
-        page_title: 'Страница',
-        all: 'Все',
+        page_title: 'Страница', all: 'Все',
       },
       loading: 'Загрузка…',
       no_data: 'Ничего не найдено',
     }
   },
+});
+
+// ─── Ключевое исправление: dataSorted срабатывает ПОСЛЕ клика на заголовок
+table.on('dataSorted', function(sorters) {
+  if (_sortTriggered) { _sortTriggered = false; return; }
+  if (sorters && sorters.length > 0) {
+    state.sort = sorters[0].field;
+    state.dir  = sorters[0].dir;
+  } else {
+    state.sort = ''; state.dir = 'desc';
+  }
+  _sortTriggered = true;
+  table.replaceData();
 });
 
 function updateStatCards(stats) {
@@ -537,16 +396,15 @@ function applyFilters() { table.replaceData(); }
 
 function resetAll() {
   Object.assign(state, { status:'', dateFrom:'', dateTo:'', applicant:'',
-                          search:'', employee:null, favorite:false, dateChip:'',
-                          sort:'', dir:'desc' });
-  document.getElementById('fDateFrom').value   = '';
-  document.getElementById('fDateTo').value     = '';
-  document.getElementById('fStatus').value     = '';
-  document.getElementById('fApplicant').value  = '';
-  document.getElementById('fSearch').value     = '';
-  document.querySelectorAll('.chip.active').forEach(c => c.classList.remove('active'));
-  document.querySelectorAll('.emp-chip.active').forEach(c => c.classList.remove('active'));
-  document.querySelectorAll('.stat-card').forEach(c => c.classList.remove('active'));
+    search:'', employee:null, favorite:false, dateChip:'', sort:'', dir:'desc' });
+  document.getElementById('fDateFrom').value  = '';
+  document.getElementById('fDateTo').value    = '';
+  document.getElementById('fStatus').value    = '';
+  document.getElementById('fApplicant').value = '';
+  document.getElementById('fSearch').value    = '';
+  document.querySelectorAll('.chip.active').forEach(c=>c.classList.remove('active'));
+  document.querySelectorAll('.emp-chip.active').forEach(c=>c.classList.remove('active'));
+  document.querySelectorAll('.stat-card').forEach(c=>c.classList.remove('active'));
   document.querySelector('.stat-card.sc-all').classList.add('active');
   table.clearSort();
   applyFilters();
@@ -560,12 +418,10 @@ function readForm() {
   state.search    = document.getElementById('fSearch').value.trim();
 }
 
-document.getElementById('btnFind').addEventListener('click', function(){
-  readForm(); applyFilters();
-});
+document.getElementById('btnFind').addEventListener('click', function(){ readForm(); applyFilters(); });
 document.getElementById('btnReset').addEventListener('click', function(){
   document.getElementById('fApplicant').value = '';
-  document.getElementById('fSearch').value    = '';
+  document.getElementById('fSearch').value = '';
   state.applicant = ''; state.search = '';
   applyFilters();
 });
@@ -573,22 +429,21 @@ document.getElementById('btnResetAll').addEventListener('click', resetAll);
 
 ['fApplicant','fSearch','fDateFrom','fDateTo'].forEach(id => {
   document.getElementById(id).addEventListener('keydown', function(e){
-    if (e.key === 'Enter') { readForm(); applyFilters(); }
+    if (e.key==='Enter') { readForm(); applyFilters(); }
   });
 });
 document.getElementById('fStatus').addEventListener('change', function(){
   state.status = this.value;
-  document.querySelectorAll('.chip[data-chip-type="status"]').forEach(c => {
-    c.classList.toggle('active', c.dataset.chipVal === this.value);
+  document.querySelectorAll('.chip[data-chip-type="status"]').forEach(c=>{
+    c.classList.toggle('active', c.dataset.chipVal===this.value);
   });
   applyFilters();
 });
 
-document.querySelectorAll('.chip[data-chip-type="status"]').forEach(chip => {
+document.querySelectorAll('.chip[data-chip-type="status"]').forEach(chip=>{
   chip.addEventListener('click', function(){
-    const val = this.dataset.chipVal;
-    const isActive = this.classList.contains('active');
-    document.querySelectorAll('.chip[data-chip-type="status"]').forEach(c => c.classList.remove('active'));
+    const val = this.dataset.chipVal, isActive = this.classList.contains('active');
+    document.querySelectorAll('.chip[data-chip-type="status"]').forEach(c=>c.classList.remove('active'));
     state.status = isActive ? '' : val;
     if (!isActive) this.classList.add('active');
     document.getElementById('fStatus').value = state.status;
@@ -596,11 +451,10 @@ document.querySelectorAll('.chip[data-chip-type="status"]').forEach(chip => {
   });
 });
 
-document.querySelectorAll('.chip[data-chip-type="date"]').forEach(chip => {
+document.querySelectorAll('.chip[data-chip-type="date"]').forEach(chip=>{
   chip.addEventListener('click', function(){
-    const val = this.dataset.chipVal;
-    const isActive = this.classList.contains('active');
-    document.querySelectorAll('.chip[data-chip-type="date"]').forEach(c => c.classList.remove('active'));
+    const val = this.dataset.chipVal, isActive = this.classList.contains('active');
+    document.querySelectorAll('.chip[data-chip-type="date"]').forEach(c=>c.classList.remove('active'));
     state.dateChip = isActive ? '' : val;
     if (!isActive) this.classList.add('active');
     applyFilters();
@@ -613,26 +467,25 @@ document.getElementById('favChip').addEventListener('click', function(){
   applyFilters();
 });
 
-document.querySelectorAll('.emp-chip').forEach(chip => {
+document.querySelectorAll('.emp-chip').forEach(chip=>{
   chip.addEventListener('click', function(){
-    const id = this.dataset.empId;
-    const isActive = this.classList.contains('active');
-    document.querySelectorAll('.emp-chip').forEach(c => c.classList.remove('active'));
+    const id = this.dataset.empId, isActive = this.classList.contains('active');
+    document.querySelectorAll('.emp-chip').forEach(c=>c.classList.remove('active'));
     state.employee = isActive ? null : id;
     if (!isActive) this.classList.add('active');
     applyFilters();
   });
 });
 
-document.querySelectorAll('.stat-card').forEach(card => {
+document.querySelectorAll('.stat-card').forEach(card=>{
   card.addEventListener('click', function(){
     const val = this.dataset.filterStatus;
-    document.querySelectorAll('.stat-card').forEach(c => c.classList.remove('active'));
+    document.querySelectorAll('.stat-card').forEach(c=>c.classList.remove('active'));
     this.classList.add('active');
-    state.status = (val === '__overdue__') ? '' : val;
+    state.status = (val==='__overdue__') ? '' : val;
     document.getElementById('fStatus').value = state.status;
-    document.querySelectorAll('.chip[data-chip-type="status"]').forEach(c => {
-      c.classList.toggle('active', c.dataset.chipVal === state.status);
+    document.querySelectorAll('.chip[data-chip-type="status"]').forEach(c=>{
+      c.classList.toggle('active', c.dataset.chipVal===state.status);
     });
     applyFilters();
   });
