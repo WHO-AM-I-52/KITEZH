@@ -20,6 +20,9 @@ _STATUS_EXTRA_FIELDS = {
     'under_review':      ['reviewer_id', 'reviewer_not_in_system', 'reviewer_name_external'],
 }
 
+# Числовые/булевы поля в _STATUS_EXTRA_FIELDS — остальные считаются текстовыми
+_INT_STATUS_FIELDS = {'result_type_id', 'reviewer_id', 'reviewer_not_in_system', 'taken_under_supervision'}
+
 
 def generate_request_number(conn, subject_type_id):
     """
@@ -39,7 +42,6 @@ def generate_request_number(conn, subject_type_id):
         if row and row['reg_prefix'] and row['reg_prefix'].strip():
             prefix = row['reg_prefix'].strip()
 
-    # Атомарно получаем следующий порядковый номер для этой пары (prefix, year)
     conn.execute(
         """
         INSERT INTO reg_number_sequences (prefix, year, last_seq)
@@ -191,8 +193,14 @@ def change_status(rid):
                     upd_vals.append(None)
             elif field == 'taken_under_supervision':
                 upd_vals.append(1 if val == '1' else 0)
+            elif field in _INT_STATUS_FIELDS:
+                try:
+                    upd_vals.append(int(val) if val else None)
+                except (ValueError, TypeError):
+                    upd_vals.append(None)
             else:
-                upd_vals.append(val or None)
+                # Текстовые поля: '' вместо NULL
+                upd_vals.append(val.strip() if val else '')
 
     if ns == 'closed' and 'taken_under_supervision' not in [
         f.split('=')[0] for f in upd_fields
@@ -232,7 +240,7 @@ def reviewer_decision(rid):
     conn.execute(
         "UPDATE requests SET status=?, reviewer_decision=?, "
         "reviewer_comment=?, reviewer_decision_at=?, updated_at=? WHERE id=?",
-        (new_status, decision, comment or None, now, now, rid)
+        (new_status, decision, comment, now, now, rid)
     )
     log_action(conn, session['user_id'], 'review', rid,
                f'Решение проверяющего: {decision}, статус → {new_status}')
