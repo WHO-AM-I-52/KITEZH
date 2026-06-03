@@ -78,6 +78,12 @@ def confirm_request(rid):
     now     = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
     if action == 'accept':
+        # Защита от двойного нажатия: если номер уже есть — не генерируем новый
+        if req['request_number']:
+            conn.close()
+            flash('Номер уже присвоен этому обращению', 'warning')
+            return redirect(url_for('requests.confirm_request', rid=rid))
+
         num      = generate_request_number(conn, req['subject_type_id'])
         assigned = request.form.get('assigned_to') or req['assigned_to']
         if assigned:
