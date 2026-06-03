@@ -80,6 +80,38 @@ def _migrate(conn):
             ]
         )
 
+    # ─ Поле reg_prefix в subject_types (динамические рег. номера)
+    if not _has_column(conn, 'subject_types', 'reg_prefix'):
+        conn.execute(
+            "ALTER TABLE subject_types ADD COLUMN reg_prefix TEXT"
+        )
+        # Заполняем дефолтные префиксы для уже существующих записей
+        _DEFAULT_PREFIXES = {
+            'подбор зу':                                    'ПЗУ',
+            'подбор мер поддержки':                         'ПМП',
+            'подбор зу, помещений':                         'ПЗУ/З/П',
+            'консультация':                                 'К',
+            'подбор здания / помещения':                    'ПЗ',
+            'проблемный вопрос':                            'ПВ',
+            'продление разрешения на строительство':        'ПРС',
+            'подбор индустриального парка':                 'ПИП',
+        }
+        for name, prefix in _DEFAULT_PREFIXES.items():
+            conn.execute(
+                "UPDATE subject_types SET reg_prefix=? WHERE LOWER(name)=LOWER(?)",
+                (prefix, name)
+            )
+
+    # ─ Таблица счётчиков рег. номеров (per-prefix, per-year)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS reg_number_sequences (
+            prefix   TEXT    NOT NULL,
+            year     INTEGER NOT NULL,
+            last_seq INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (prefix, year)
+        )
+    """)
+
     # ─ Справочник «Итоги работы по обращению»
     result_types_exists_before = _table_exists(conn, 'result_types')
     conn.execute("""
@@ -250,14 +282,40 @@ def _migrate(conn):
     )
 
     # ════════════════════════════════════════════════════════════════
+    # Миграция старых рег. номеров (ЗУ-ГГГГ-ХXXX → ПРЕФИКС-ГГГГ-ХXXX)
+    # Идемпотентно: обрабатываем только те записи, чей номер начинается с 'ЗУ-'
+    # и у которых известен предмет обращения с заполненным reg_prefix.
+    # Записи без предмета или с пустым reg_prefix получают префикс 'БП'.
+    # ════════════════════════════════════════════════════════════════
+    if _has_column(conn, 'requests', 'subject_type_id') and _has_column(conn, 'subject_types', 'reg_prefix'):
+        # Обращения с известным предметом — меняем префикс
+        conn.execute("""
+            UPDATE requests
+            SET request_number = (
+                SELECT st.reg_prefix
+                FROM subject_types st
+                WHERE st.id = requests.subject_type_id
+                  AND st.reg_prefix IS NOT NULL
+                  AND st.reg_prefix != ''
+            ) || SUBSTR(request_number, INSTR(request_number, '-'))
+            WHERE request_number LIKE 'ЗУ-%'
+              AND subject_type_id IS NOT NULL
+              AND EXISTS (
+                SELECT 1 FROM subject_types st2
+                WHERE st2.id = requests.subject_type_id
+                  AND st2.reg_prefix IS NOT NULL
+                  AND st2.reg_prefix != ''
+              )
+        """)
+        # Обращения без предмета или с пустым префиксом — ставим БП
+        conn.execute("""
+            UPDATE requests
+            SET request_number = 'БП' || SUBSTR(request_number, INSTR(request_number, '-'))
+            WHERE request_number LIKE 'ЗУ-%'
+        """)
+
+    # ════════════════════════════════════════════════════════════════
     # Issue #48: единицы измерения инфраструктурных полей
-    #
-    # Базовые единицы хранения:
-    #   электро → кВт | тепло → Гкал/ч | газ → м³/ч и м³/год | вода → м³/сут
-    #
-    # *_unit-поля хранят единицу ввода — используются для обратного
-    # отображения в форме редактирования (denormalize_from_base).
-    # В дашборде и выгрузке всегда читаются базовые единицы.
     # ════════════════════════════════════════════════════════════════
     _unit_cols = [
         ('elec_unit',  'кВт'),
@@ -271,7 +329,6 @@ def _migrate(conn):
             conn.execute(
                 f"ALTER TABLE requests ADD COLUMN {col} TEXT NOT NULL DEFAULT '{default}'"
             )
-        # Заполняем базовой единицей старые строки где NULL
         conn.execute(
             f"UPDATE requests SET {col}=? WHERE {col} IS NULL OR {col}=''",
             (default,)
