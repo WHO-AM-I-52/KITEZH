@@ -1,7 +1,7 @@
-# ╔══════════════════════════════════════════════════════════════╗
+# ╔══════════════════════════════════════════════════════════════
 # ║                       login_routes.py                        ║
-# ║  v2.3: fix url_for requests.index -> requests.requests_list  ║
-# ╚══════════════════════════════════════════════════════════════╝
+# ║  v2.4: fix #61 — rate limiting 10 попыток/мин с IP           ║
+# ╚═════════════════════════════════════════════════════════════╗
 
 from flask import (
     Blueprint, render_template, request,
@@ -11,6 +11,7 @@ from datetime import datetime
 
 from db import get_db
 from auth_utils import hash_pw, check_pw, is_legacy_hash, load_permissions_to_session
+from limiter import limiter
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -26,9 +27,10 @@ def _log_login(conn, user_id, username, event, ip):
     conn.commit()
 
 
-# ─── ВХОД ─────────────────────────────────────────────────────────────────
-
+# ─── ВХОД ─────────────────────────────────────────────────────────────────────────
+# fix #61: не более 10 POST-запросов в минуту с одного IP
 @auth_bp.route('/login', methods=['GET', 'POST'])
+@limiter.limit("10 per minute", methods=["POST"])
 def login():
     if request.method == 'POST':
         u  = request.form.get('username', '').strip()
@@ -91,7 +93,7 @@ def login():
     return render_template('login.html')
 
 
-# ─── СМЕНА ПАРОЛЯ ───────────────────────────────────────────────────────────────
+# ─── СМЕНА ПАРОЛЯ ───────────────────────────────────────────────────────────────────────
 
 @auth_bp.route('/change-password', methods=['GET', 'POST'])
 def change_password():
@@ -124,7 +126,7 @@ def change_password():
     return render_template('change_password.html')
 
 
-# ─── ВЫХОД ─────────────────────────────────────────────────────────────────
+# ─── ВЫХОД ─────────────────────────────────────────────────────────────────────────
 
 @auth_bp.route('/logout')
 def logout():

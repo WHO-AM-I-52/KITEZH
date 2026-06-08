@@ -1,8 +1,8 @@
 # ╔═══════════════════════════════════════════════════════════════
 # ║ app.py                                                        ║
-# ║ v2.7: рефакторинг + JSON API /api/requests для Tabulator  ║
-# ║ fix #63: инициализация вынесена из __main__ для WSGI       ║
-# ╚═══════════════════════════════════════════════════════════════
+# ║ v2.8: fix #61 rate-limiting через flask-limiter            ║
+# ║      fix #63: _startup() вынесен из __main__            ║
+# ╚═════════════════════════════════════════════════════════════╗
 
 import os
 from datetime import timedelta, datetime, date
@@ -15,7 +15,8 @@ from context_processors import inject_globals
 
 app = Flask(__name__)
 
-# ─── SECRET_KEY ──────────────────────────────────────────────────────────────────────
+# ─── SECRET_KEY ────────────────────────────────────────────────────────────────────────────────────
+from limiter import limiter
 import secrets as _secrets
 _KEY_FILE = os.path.join(BASE_DIR, '_secret.key')
 _env_key  = os.environ.get('SECRET_KEY')
@@ -33,11 +34,14 @@ else:
             pass
         app.secret_key = _new_key
 
-# ─── Настройки сессий ─────────────────────────────────────────────────────────────────────
+# ─── Настройки сессий ───────────────────────────────────────────────────────────────────────────────────────
 app.config['PERMANENT_SESSION_LIFETIME']   = timedelta(minutes=15)
 app.config['SESSION_REFRESH_EACH_REQUEST'] = True
 
-# ─── JINJA ФИЛЬТРЫ ───────────────────────────────────────────────────────────────────────
+# ─── LIMITER ───────────────────────────────────────────────────────────────────────────────────────────
+limiter.init_app(app)
+
+# ─── JINJA ФИЛЬТРЫ ──────────────────────────────────────────────────────────────────────────────────────────
 @app.template_filter('todatetime')
 def todatetime_filter(value):
     """Преобразует 'YYYY-MM-DD' в datetime.date.
@@ -53,10 +57,10 @@ def todatetime_filter(value):
         return date.today()
 
 
-# ─── CONTEXT PROCESSOR ─────────────────────────────────────────────────────────────────────
+# ─── CONTEXT PROCESSOR ──────────────────────────────────────────────────────────────────────────────────────────
 app.context_processor(inject_globals)
 
-# ─── BLUEPRINTS ───────────────────────────────────────────────────────────────────────
+# ─── BLUEPRINTS ──────────────────────────────────────────────────────────────────────────────────────────
 from phonebook_routes  import phonebook_bp
 from search_routes     import search_bp
 from login_routes      import auth_bp
@@ -85,7 +89,7 @@ for bp in [
     app.register_blueprint(bp)
 
 
-# ─── ИНИЦИАЛИЗАЦИЯ БД И ПЛАНИРОВЩИКА ─────────────────────────────────────────────────
+# ─── ИНИЦИАЛИЗАЦИЯ БД И ПЛАНИРОВЩИКА ──────────────────────────────────────────────────
 # fix #63: вынесено из __main__ — работает и при python app.py, и при gunicorn app:app
 def _startup():
     init_db()
@@ -98,7 +102,7 @@ def _startup():
 _startup()
 
 
-# ─── ТОЧКА ВХОДА ──────────────────────────────────────────────────────────────────────
+# ─── ТОЧКА ВХОДА ─────────────────────────────────────────────────────────────────────────────────────────
 if __name__ == '__main__':
     app_debug  = os.getenv('APP_DEBUG', '0')
     debug_flag = app_debug == '1'
