@@ -42,7 +42,7 @@ def _sha256(path: str) -> str:
     return h.hexdigest()
 
 
-def _save_files_transactional(conn, file_list, request_id=None):
+def _save_files_transactional(file_list):
     """
     1. Сохраняет каждый файл во временную папку uploads/tmp/.
     2. Считывает SHA-256.
@@ -64,19 +64,22 @@ def _save_files_transactional(conn, file_list, request_id=None):
 
 def _commit_files(conn, pending, request_id):
     """
-    Перемещает файлы из tmp/ в uploads/ и записывает хэши в БД.
-    Вызывать только после успешного conn.commit().
+    Порядок: INSERT хэшей → commit() → shutil.move().
+    Таким образом если commit упал — файлы остаются в tmp/ и не проникают в uploads/.
     """
+    if not pending:
+        return
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     for fn, tmp, digest in pending:
-        dst = os.path.join(UPLOADS_DIR, fn)
-        shutil.move(tmp, dst)
         conn.execute(
             "INSERT INTO request_file_hashes (request_id, filename, sha256, created_at) "
             "VALUES (?, ?, ?, ?)",
             (request_id, fn, digest, now)
         )
     conn.commit()
+    for fn, tmp, digest in pending:
+        dst = os.path.join(UPLOADS_DIR, fn)
+        shutil.move(tmp, dst)
 
 
 def _cleanup_tmp(pending):
@@ -99,7 +102,6 @@ def new_request():
         action = request.form.get('action', 'save')
 
         if action == 'ocr':
-            # OCR читает первый файл из раздела «Прикреплённые файлы»
             uploaded_files = request.files.getlist('request_files')
             ocr_file = uploaded_files[0] if uploaded_files else None
 
@@ -116,39 +118,19 @@ def new_request():
                     subjects=subjects2, results=results2, all_users=all_users2
                 )
 
-            orig_name = ocr_file.filename or ''
-            safe_orig = secure_filename(orig_name)
-            _, ext = os.path.splitext(safe_orig)
-            ext = (ext or '').lower()
-            tmp_name = f'_ocr_tmp_anketa{ext}'
-            tmp_path = os.path.join(UPLOADS_DIR, tmp_name)
+            # ─── OCR: файлы через tmp/ (исправлено: раньше сохранялись напрямую в UPLOADS_DIR)
+            pending_ocr = _save_files_transactional(uploaded_files)
+            saved_names = [p[0] for p in pending_ocr]
 
-            # Сохраняем все прикреплённые файлы, чтобы после OCR они не потерялись
-            saved_names = []
-            for uf in uploaded_files:
-                if uf and uf.filename and allowed_file(uf.filename):
-                    fn2 = secure_filename(uf.filename)
-                    uf.save(os.path.join(UPLOADS_DIR, fn2))
-                    saved_names.append(fn2)
-
-            # Дополнительно сохраняем временную копию для OCR (ocr_file уже stream-closed)
-            if saved_names:
-                ocr_src = os.path.join(UPLOADS_DIR, saved_names[0])
-            else:
-                ocr_file_stream = request.files.getlist('request_files')[0]
-                ocr_file_stream.stream.seek(0)
-                with open(tmp_path, 'wb') as f:
-                    f.write(ocr_file_stream.read())
-                ocr_src = tmp_path
+            # Первый файл из tmp/ используем как источник для OCR
+            ocr_src = pending_ocr[0][1] if pending_ocr else None
 
             try:
-                fields, msg = extract_anketa_fields(ocr_src)
+                fields, msg = extract_anketa_fields(ocr_src) if ocr_src else ({}, '')
             finally:
-                if ocr_src == tmp_path:
-                    try:
-                        os.remove(tmp_path)
-                    except Exception:
-                        pass
+                # Временные файлы OCR не перемещаем в uploads/,
+                # они будут сохранены при итоговом save формы
+                pass
 
             conn.close()
             conn2 = get_db()
@@ -173,6 +155,7 @@ def new_request():
                     ocr_message=msg
                 )
             else:
+                _cleanup_tmp(pending_ocr)
                 flash(
                     'Я ещё не слишком умный и не смог сопоставить данные анкеты. '
                     'Заполните поля вручную.', 'warning'
@@ -196,9 +179,9 @@ def new_request():
 
         vals = build_values(request.form)
 
-        # ─── ТРАНЗАКЦИОННОЕ СОХРАНЕНИЕ ФАЙЛОВ ───────────────────────────────
+        # ─── ТРАНЗАКЦИОННОЕ СОХРАНЕНИЕ ФАЙЛОВ ─────────────────────────────────
         uploaded_files = request.files.getlist('request_files')
-        pending = _save_files_transactional(conn, uploaded_files)
+        pending = _save_files_transactional(uploaded_files)
         saved_names = [p[0] for p in pending]
         vals[ALL_FIELDS.index('request_files')] = ','.join(saved_names) if saved_names else ''
 
@@ -218,7 +201,7 @@ def new_request():
             log_action(conn, session['user_id'], 'create', new_id,
                        f'Создано обращение: {applicant}')
             conn.commit()
-            _commit_files(conn, pending, new_id)
+            _commit_files(conn, pending, new_id)  # INSERT → commit → move
         except Exception:
             _cleanup_tmp(pending)
             conn.close()
@@ -278,9 +261,9 @@ def edit_request(rid):
             file.save(os.path.join(UPLOADS_DIR, fn2))
             af = fn2
 
-        # ─── ТРАНЗАКЦИОННОЕ СОХРАНЕНИЕ ФАЙЛОВ ───────────────────────────────
+        # ─── ТРАНЗАКЦИОННОЕ СОХРАНЕНИЕ ФАЙЛОВ ─────────────────────────────────
         uploaded_files = request.files.getlist('request_files')
-        pending = _save_files_transactional(conn, uploaded_files)
+        pending = _save_files_transactional(uploaded_files)
         saved_names = [p[0] for p in pending]
         if saved_names:
             vals[ALL_FIELDS.index('request_files')] = ','.join(saved_names)
@@ -305,7 +288,7 @@ def edit_request(rid):
                        f'Обращение {num}{reason_str}')
             conn.commit()
             if pending:
-                _commit_files(conn, pending, rid)
+                _commit_files(conn, pending, rid)  # INSERT → commit → move
         except Exception:
             _cleanup_tmp(pending)
             conn.close()
