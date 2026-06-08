@@ -1,7 +1,7 @@
-# ╔══════════════════════════════════════════════════════════════╗
+# ╔═══════════════════════════════════════════════════════════════
 # ║ app.py                                                        ║
 # ║ v2.7: рефакторинг + JSON API /api/requests для Tabulator  ║
-# ╚══════════════════════════════════════════════════════════════╝
+# ╚═══════════════════════════════════════════════════════════════
 
 import os
 from datetime import timedelta, datetime, date
@@ -14,7 +14,7 @@ from context_processors import inject_globals
 
 app = Flask(__name__)
 
-# ─── SECRET_KEY ────────────────────────────────────────────────────────────
+# ─── SECRET_KEY ──────────────────────────────────────────────────────────────────────
 import secrets as _secrets
 _KEY_FILE = os.path.join(BASE_DIR, '_secret.key')
 _env_key  = os.environ.get('SECRET_KEY')
@@ -32,11 +32,11 @@ else:
             pass
         app.secret_key = _new_key
 
-# ─── Настройки сессий ─────────────────────────────────────────────────────
+# ─── Настройки сессий ─────────────────────────────────────────────────────────────────────
 app.config['PERMANENT_SESSION_LIFETIME']   = timedelta(minutes=15)
 app.config['SESSION_REFRESH_EACH_REQUEST'] = True
 
-# ─── JINJA ФИЛЬТРЫ ───────────────────────────────────────────────────────────
+# ─── JINJA ФИЛЬТРЫ ───────────────────────────────────────────────────────────────────────
 @app.template_filter('todatetime')
 def todatetime_filter(value):
     """Преобразует 'YYYY-MM-DD' в datetime.date.
@@ -52,10 +52,10 @@ def todatetime_filter(value):
         return date.today()
 
 
-# ─── CONTEXT PROCESSOR ──────────────────────────────────────────────────────
+# ─── CONTEXT PROCESSOR ─────────────────────────────────────────────────────────────────────
 app.context_processor(inject_globals)
 
-# ─── BLUEPRINTS ─────────────────────────────────────────────────────────────
+# ─── BLUEPRINTS ───────────────────────────────────────────────────────────────────────
 from phonebook_routes  import phonebook_bp
 from search_routes     import search_bp
 from login_routes      import auth_bp
@@ -71,6 +71,7 @@ from preview_routes    import preview_bp
 from phonebook_import  import pb_import_bp
 from investmap_routes  import investmap_bp
 from api.requests_api  import api_bp
+import backup_scheduler
 
 for bp in [
     phonebook_bp, search_bp,
@@ -83,11 +84,12 @@ for bp in [
     app.register_blueprint(bp)
 
 
-# ─── ТОЧКА ВХОДА ────────────────────────────────────────────────────────────
+# ─── ТОЧКА ВХОДА ──────────────────────────────────────────────────────────────────────
 if __name__ == '__main__':
     init_db()
     migrate_db()
     migrate_districts()
+    backup_scheduler.start()
 
     app_debug  = os.getenv('APP_DEBUG', '0')
     debug_flag = app_debug == '1'
