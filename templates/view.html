@@ -79,7 +79,7 @@
 {% endif %}
 
 <div class="card mb-3">
-  <div class="card-header fw-bold d-flex justify-content-between align-items-center" style="background:#EEF4F7">
+  <div class="card-header fw-bold d-flex justify-content-between align-items-center" style="background:var(--surface2,#f0f4f8)">
     <span><i class="bi bi-diagram-3 me-1"></i> Статус обращения</span>
     {% if deadline_badge is defined %}
     <span class="badge bg-{{ deadline_badge }}">
@@ -179,12 +179,12 @@
   </div>
 </div>
 
-{# ── БЛОК ДЕЙСТВИЙ ПО СТАТУСУ ──────────────────────────── #}
+{# ── БЛОК ДЕЙСТВИЙ ПО СТАТУСУ ────────────────────────── #}
 
 {# — ЧЕРНОВИК: кнопка «Присвоить номер» — #}
 {% if req.status == 'draft' and not req.request_number and session.role in ('admin','employee','manager') %}
 <div class="card mb-3 border-warning">
-  <div class="card-header fw-bold" style="background:#FFF8E1">
+  <div class="card-header fw-bold" style="background:var(--surface2,#f0f4f8)">
     <i class="bi bi-hash me-1"></i> Регистрация обращения
   </div>
   <div class="card-body">
@@ -203,7 +203,7 @@
 {# — В РАБОТЕ: переход на проверку — #}
 {% if req.status == 'in_progress' and session.user_id in [req.responsible_id, req.assigned_to] or (req.status == 'in_progress' and session.role == 'admin') %}
 <div class="card mb-3 border-info">
-  <div class="card-header fw-bold" style="background:#E3F2FD">
+  <div class="card-header fw-bold" style="background:var(--surface2,#f0f4f8)">
     <i class="bi bi-search me-1"></i> Отправить на проверку
   </div>
   <div class="card-body">
@@ -219,7 +219,7 @@
 {# — НА ПРОВЕРКЕ: кнопки проверяющего — #}
 {% if req.status == 'under_review' and (session.user_id == req.reviewer_id or session.role == 'admin') %}
 <div class="card mb-3 border-primary">
-  <div class="card-header fw-bold" style="background:#E8EAF6">
+  <div class="card-header fw-bold" style="background:var(--surface2,#f0f4f8)">
     <i class="bi bi-clipboard-check me-1"></i> Решение проверяющего
   </div>
   <div class="card-body">
@@ -246,7 +246,7 @@
 {# — ГОТОВО К ОТПРАВКЕ: дата + способ — #}
 {% if req.status == 'ready_to_send' and session.role in ('admin','employee','manager') %}
 <div class="card mb-3 border-success">
-  <div class="card-header fw-bold" style="background:#E8F5E9">
+  <div class="card-header fw-bold" style="background:var(--surface2,#f0f4f8)">
     <i class="bi bi-envelope-arrow-up me-1"></i> Отправить документы заявителю
   </div>
   <div class="card-body">
@@ -280,7 +280,7 @@
 {# — ДОКУМЕНТЫ ОТПРАВЛЕНЫ: фиксация ОБ + итоги работы — #}
 {% if req.status == 'sent_to_applicant' and session.role in ('admin','employee','manager') %}
 <div class="card mb-3 border-secondary">
-  <div class="card-header fw-bold" style="background:#ECEFF1">
+  <div class="card-header fw-bold" style="background:var(--surface2,#f0f4f8)">
     <i class="bi bi-chat-left-text me-1"></i> Обратная связь от заявителя
   </div>
   <div class="card-body">
@@ -341,9 +341,9 @@
 </div>
 {% endif %}
 
-{# ── ОБЩИЕ СВЕДЕНИЯ ─────────────────────────────────── #}
+{# ── ОБЩИЕ СВЕДЕНИЯ ───────────────────────────────────── #}
 <div class="card mb-3">
-  <div class="card-header fw-bold" style="background:#EEF4F7">
+  <div class="card-header fw-bold" style="background:var(--surface2,#f0f4f8)">
     <i class="bi bi-info-circle me-1"></i> Общие сведения
   </div>
   <div class="card-body p-0">
@@ -364,7 +364,7 @@
 
 {# ── СВЕДЕНИЯ О ЗАЯВИТЕЛЕ ───────────────────────────── #}
 <div class="card mb-3">
-  <div class="card-header fw-bold" style="background:#EEF4F7">
+  <div class="card-header fw-bold" style="background:var(--surface2,#f0f4f8)">
     <i class="bi bi-building me-1"></i> Сведения о заявителе
   </div>
   <div class="card-body p-0">
@@ -389,9 +389,9 @@
   </div>
 </div>
 
-{# ── ПРОЕКТ ────────────────────────────────────────────────── #}
+{# ── ПРОЕКТ ─────────────────────────────────────────────────────── #}
 <div class="card mb-3">
-  <div class="card-header fw-bold" style="background:#EEF4F7">
+  <div class="card-header fw-bold" style="background:var(--surface2,#f0f4f8)">
     <i class="bi bi-briefcase me-1"></i> О проекте
   </div>
   <div class="card-body p-0">
@@ -411,9 +411,9 @@
   </div>
 </div>
 
-{# ── ТРЕБОВАНИЯ К ПЛОЩАДКЕ ───────────────────────────────── #}
+{# ── ТРЕБОВАНИЯ К ПЛОЩАДКЕ ─────────────────────────────────── #}
 <div class="card mb-3">
-  <div class="card-header fw-bold" style="background:#EEF4F7">
+  <div class="card-header fw-bold" style="background:var(--surface2,#f0f4f8)">
     <i class="bi bi-geo-alt me-1"></i> Требования к площадке
   </div>
   <div class="card-body p-0">
@@ -476,7 +476,7 @@
 {%- set u_gasy  = req.gas_unit_y or 'м³/год' -%}
 
 <div class="card mb-3">
-  <div class="card-header fw-bold" style="background:#EEF4F7">
+  <div class="card-header fw-bold" style="background:var(--surface2,#f0f4f8)">
     <i class="bi bi-lightning me-1"></i> Инженерная инфраструктура
   </div>
   <div class="card-body p-0">
@@ -502,9 +502,9 @@
   </div>
 </div>
 
-{# ── ТРАНСПОРТНАЯ ДОСТУПНОСТЬ ────────────────────────────── #}
+{# ── ТРАНСПОРТНАЯ ДОСТУПНОСТЬ ─────────────────────────────────── #}
 <div class="card mb-3">
-  <div class="card-header fw-bold" style="background:#EEF4F7">
+  <div class="card-header fw-bold" style="background:var(--surface2,#f0f4f8)">
     <i class="bi bi-truck me-1"></i> Транспортная доступность
   </div>
   <div class="card-body p-0">
@@ -523,9 +523,9 @@
   </div>
 </div>
 
-{# ── МЕСТОПОЛОЖЕНИЕ ──────────────────────────────────────────── #}
+{# ── МЕСТОПОЛОЖЕНИЕ ──────────────────────────────────────────────────── #}
 <div class="card mb-3">
-  <div class="card-header fw-bold" style="background:#EEF4F7">
+  <div class="card-header fw-bold" style="background:var(--surface2,#f0f4f8)">
     <i class="bi bi-pin-map me-1"></i> Местоположение
   </div>
   <div class="card-body p-0">
@@ -538,9 +538,9 @@
   </div>
 </div>
 
-{# ── ПЕРСОНАЛ ──────────────────────────────────────────────────── #}
+{# ── ПЕРСОНАЛ ─────────────────────────────────────────────────────────────── #}
 <div class="card mb-3">
-  <div class="card-header fw-bold" style="background:#EEF4F7">
+  <div class="card-header fw-bold" style="background:var(--surface2,#f0f4f8)">
     <i class="bi bi-people me-1"></i> Персонал
   </div>
   <div class="card-body p-0">
@@ -554,9 +554,9 @@
   </div>
 </div>
 
-{# ── СЫРЬЁ / ДОППАРАМЕТРЫ ───────────────────────────────────────── #}
+{# ── СЫРЬЁ / ДОППАРАМЕТРЫ ─────────────────────────────────────────────── #}
 <div class="card mb-3">
-  <div class="card-header fw-bold" style="background:#EEF4F7">
+  <div class="card-header fw-bold" style="background:var(--surface2,#f0f4f8)">
     <i class="bi bi-box-seam me-1"></i> Сырьё и дополнительные параметры
   </div>
   <div class="card-body p-0">
@@ -568,9 +568,9 @@
   </div>
 </div>
 
-{# ── ОТВЕТ / ФАЙЛЫ ─────────────────────────────────────────────── #}
+{# ── ОТВЕТ / ФАЙЛЫ ───────────────────────────────────────────────────────── #}
 <div class="card mb-3">
-  <div class="card-header fw-bold" style="background:#EEF4F7">
+  <div class="card-header fw-bold" style="background:var(--surface2,#f0f4f8)">
     <i class="bi bi-paperclip me-1"></i> Ответ и файлы
   </div>
   <div class="card-body p-0">
@@ -609,9 +609,9 @@
   </div>
 </div>
 
-{# ── СЛУЖЕБНАЯ ИНФОРМАЦИЯ ─────────────────────────────────── #}
+{# ── СЛУЖЕБНАЯ ИНФОРМАЦИЯ ───────────────────────────────────────────────── #}
 <div class="card mb-4">
-  <div class="card-header fw-bold" style="background:#EEF4F7">
+  <div class="card-header fw-bold" style="background:var(--surface2,#f0f4f8)">
     <i class="bi bi-person-badge me-1"></i> Служебная информация
   </div>
   <div class="card-body p-0">
@@ -630,7 +630,7 @@
 <div class="modal fade" id="reviewerModal" tabindex="-1" aria-labelledby="reviewerModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
-      <div class="modal-header" style="background:#E3F2FD">
+      <div class="modal-header" style="background:var(--surface2,#f0f4f8)">
         <h5 class="modal-title" id="reviewerModalLabel">
           <i class="bi bi-search me-2"></i>Направить на проверку
         </h5>
@@ -679,7 +679,7 @@
   </div>
 </div>
 
-{# ── JS ─────────────────────────────────────────────────────────────────── #}
+{# ── JS ─────────────────────────────────────────────────────────────────────── #}
 <script>
 function toggleReviewer() {
   const cb = document.getElementById('revNotInSystem');
