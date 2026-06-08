@@ -42,6 +42,16 @@ def _sha256(path: str) -> str:
     return h.hexdigest()
 
 
+def _unique_filename(original: str) -> str:
+    """
+    fix #62: добавляет timestamp-префикс чтобы избежать перезаписи
+    одноимённых файлов в uploads/.
+    Пример: contract.pdf → 20260608_173045_contract.pdf
+    """
+    ts = datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:19]  # точность до секунды
+    return f"{ts}_{secure_filename(original)}"
+
+
 def _save_files_transactional(file_list):
     """
     1. Сохраняет каждый файл во временную папку uploads/tmp/.
@@ -54,7 +64,7 @@ def _save_files_transactional(file_list):
     for uf in file_list:
         if not (uf and uf.filename and allowed_file(uf.filename)):
             continue
-        fn  = secure_filename(uf.filename)
+        fn  = _unique_filename(uf.filename)  # fix #62: уникальное имя
         tmp = os.path.join(UPLOADS_TMP, fn)
         uf.save(tmp)
         digest = _sha256(tmp)
@@ -64,8 +74,8 @@ def _save_files_transactional(file_list):
 
 def _commit_files(conn, pending, request_id):
     """
-    Порядок: INSERT хэшей → commit() → shutil.move().
-    Таким образом если commit упал — файлы остаются в tmp/ и не проникают в uploads/.
+    fix #60: все INSERT в одной транзакции — без промежуточного commit.
+    Порядок: INSERT хэшей без commit → shutil.move() — после commit внешнего кода.
     """
     if not pending:
         return
@@ -76,7 +86,7 @@ def _commit_files(conn, pending, request_id):
             "VALUES (?, ?, ?, ?)",
             (request_id, fn, digest, now)
         )
-    conn.commit()
+    # НЕ делаем conn.commit() здесь — commit один раз вызывается внешним кодом
     for fn, tmp, digest in pending:
         dst = os.path.join(UPLOADS_DIR, fn)
         shutil.move(tmp, dst)
@@ -118,18 +128,13 @@ def new_request():
                     subjects=subjects2, results=results2, all_users=all_users2
                 )
 
-            # ─── OCR: файлы через tmp/ (исправлено: раньше сохранялись напрямую в UPLOADS_DIR)
             pending_ocr = _save_files_transactional(uploaded_files)
             saved_names = [p[0] for p in pending_ocr]
-
-            # Первый файл из tmp/ используем как источник для OCR
             ocr_src = pending_ocr[0][1] if pending_ocr else None
 
             try:
                 fields, msg = extract_anketa_fields(ocr_src) if ocr_src else ({}, '')
             finally:
-                # Временные файлы OCR не перемещаем в uploads/,
-                # они будут сохранены при итоговом save формы
                 pass
 
             conn.close()
@@ -179,7 +184,6 @@ def new_request():
 
         vals = build_values(request.form)
 
-        # ─── ТРАНЗАКЦИОННОЕ СОХРАНЕНИЕ ФАЙЛОВ ─────────────────────────────────
         uploaded_files = request.files.getlist('request_files')
         pending = _save_files_transactional(uploaded_files)
         saved_names = [p[0] for p in pending]
@@ -200,8 +204,13 @@ def new_request():
             )
             log_action(conn, session['user_id'], 'create', new_id,
                        f'Создано обращение: {applicant}')
+            # fix #60: сначала INSERT хэшей, потом единый commit, затем move
+            _commit_files(conn, pending, new_id)
             conn.commit()
-            _commit_files(conn, pending, new_id)  # INSERT → commit → move
+            for fn, tmp, _ in pending:
+                dst = os.path.join(UPLOADS_DIR, fn)
+                if os.path.exists(tmp) and not os.path.exists(dst):
+                    shutil.move(tmp, dst)
         except Exception:
             _cleanup_tmp(pending)
             conn.close()
@@ -257,11 +266,10 @@ def edit_request(rid):
         af   = req['answer_file']
         file = request.files.get('answer_file')
         if file and file.filename and allowed_file(file.filename):
-            fn2 = secure_filename(file.filename)
+            fn2 = _unique_filename(file.filename)  # fix #62
             file.save(os.path.join(UPLOADS_DIR, fn2))
             af = fn2
 
-        # ─── ТРАНЗАКЦИОННОЕ СОХРАНЕНИЕ ФАЙЛОВ ─────────────────────────────────
         uploaded_files = request.files.getlist('request_files')
         pending = _save_files_transactional(uploaded_files)
         saved_names = [p[0] for p in pending]
@@ -286,9 +294,15 @@ def edit_request(rid):
             reason_str = f' | Причина: {edit_reason}' if edit_reason else ''
             log_action(conn, session['user_id'], 'edit', rid,
                        f'Обращение {num}{reason_str}')
+            # fix #60: INSERT хэшей без commit, потом единый commit, затем move
+            if pending:
+                _commit_files(conn, pending, rid)
             conn.commit()
             if pending:
-                _commit_files(conn, pending, rid)  # INSERT → commit → move
+                for fn, tmp, _ in pending:
+                    dst = os.path.join(UPLOADS_DIR, fn)
+                    if os.path.exists(tmp) and not os.path.exists(dst):
+                        shutil.move(tmp, dst)
         except Exception:
             _cleanup_tmp(pending)
             conn.close()
