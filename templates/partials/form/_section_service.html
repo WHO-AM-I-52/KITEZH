@@ -87,7 +87,7 @@
     {% if req %}
     <div class="col-md-6">
       <label class="form-label fw-bold" style="font-size:12px">Служебная информация</label>
-      <div class="border rounded p-2 bg-light" style="font-size:12px">
+      <div class="border rounded p-2" style="background:var(--surface2,#f0f4f8);font-size:12px">
         <div><i class="bi bi-person-circle me-1 text-secondary"></i>
           <strong>Создал:</strong> {{ req.employee_name or '—' }}
           {% if req.created_at %}<span class="text-muted ms-2">{{ req.created_at }}</span>{% endif %}

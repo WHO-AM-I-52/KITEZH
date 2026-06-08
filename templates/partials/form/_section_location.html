@@ -24,7 +24,7 @@
              placeholder="🔍 Поиск района..." autocomplete="off"
              oninput="filterDistricts()">
       <div class="border rounded p-2" id="districtList"
-           style="max-height:160px;overflow-y:auto;background:#fff">
+           style="max-height:160px;overflow-y:auto;background:var(--surface,#fff)">
         <div class="row row-cols-2 row-cols-md-4 g-1" id="districtCheckboxes">
           {% for d in districts %}
           <div class="col district-item" data-name="{{ d | lower }}">

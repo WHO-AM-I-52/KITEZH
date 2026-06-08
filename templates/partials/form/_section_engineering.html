@@ -72,7 +72,8 @@
         <label class="form-label" style="font-size:12px">Итого</label>
         <div class="input-group input-group-sm">
           <input type="number" step="0.1" id="water_total"
-                 class="form-control form-control-sm bg-light"
+                 class="form-control form-control-sm"
+                 style="background:var(--surface2,#f0f4f8)"
                  placeholder="авто" readonly
                  title="Сумма: хоз-питьевое + производственное + водоотведение + пожаротушение">
           <span class="input-group-text unit-label-water" style="font-size:11px">{{ cur_water_unit }}</span>
@@ -104,7 +105,8 @@
         <label class="form-label" style="font-size:12px">Общая мощность</label>
         <div class="input-group input-group-sm">
           <input type="number" step="0.1" name="electricity_total" id="electricity_total"
-                 class="form-control form-control-sm bg-light"
+                 class="form-control form-control-sm"
+                 style="background:var(--surface2,#f0f4f8)"
                  value="" placeholder="авто" readonly>
           <span class="input-group-text unit-label-elec" style="font-size:11px">{{ cur_elec_unit }}</span>
         </div>
