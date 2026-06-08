@@ -13,6 +13,17 @@ INTERVAL_SEC  = 3 * 60 * 60  # 3 часа
 _timer: threading.Timer | None = None
 
 
+def _log(action: str, detail: str) -> None:
+    """Системный лог без пользователя — открывает conn самостоятельно."""
+    try:
+        db = get_db()
+        log_action(db, user_id=None, action=action, detail=detail)
+        db.commit()
+        db.close()
+    except Exception:
+        pass
+
+
 def _notify_admins(message: str, link: str = "/notifications") -> None:
     """Пишет уведомление в таблицу notifications для всех пользователей с role='admin'."""
     try:
@@ -30,12 +41,7 @@ def _notify_admins(message: str, link: str = "/notifications") -> None:
         db.commit()
         db.close()
     except Exception as e:
-        log_action(
-            user_id=None,
-            username="system",
-            action="backup_error",
-            details=f"Ошибка записи уведомления: {e}",
-        )
+        _log("backup_error", f"Ошибка записи уведомления: {e}")
 
 
 def _run_backup() -> None:
@@ -52,32 +58,22 @@ def _run_backup() -> None:
         )
         if result.returncode == 0:
             msg = f"✅ Бэкап выполнен успешно — {ts}"
-            log_action(
-                user_id=None,
-                username="system",
-                action="backup_success",
-                details=msg,
-            )
+            _log("backup_success", msg)
             _notify_admins(msg)
         else:
             stderr_clean = (result.stderr or "").strip()[:500]
             stdout_clean = (result.stdout or "").strip()[-300:]
             reason = stderr_clean or stdout_clean or f"code {result.returncode}"
             msg = f"❌ Ошибка бэкапа — {ts}. Причина: {reason}"
-            log_action(
-                user_id=None,
-                username="system",
-                action="backup_error",
-                details=msg,
-            )
+            _log("backup_error", msg)
             _notify_admins(msg)
     except subprocess.TimeoutExpired:
         msg = f"❌ Бэкап превысил временной лимит (300 сек) — {ts}"
-        log_action(user_id=None, username="system", action="backup_error", details=msg)
+        _log("backup_error", msg)
         _notify_admins(msg)
     except Exception as e:
         msg = f"❌ Непредвиденная ошибка бэкапа — {ts}: {e}"
-        log_action(user_id=None, username="system", action="backup_error", details=msg)
+        _log("backup_error", msg)
         _notify_admins(msg)
     finally:
         _schedule_next()
@@ -94,16 +90,11 @@ def start() -> None:
     """Запустить планировщик. Вызывать один раз из app.py при старте приложения."""
     if not os.path.exists(BACKUP_BAT):
         msg = "❌ backup.bat не найден — планировщик бэкапа не запущен"
-        log_action(user_id=None, username="system", action="backup_error", details=msg)
+        _log("backup_error", msg)
         _notify_admins(msg)
         return
     _schedule_next()
-    log_action(
-        user_id=None,
-        username="system",
-        action="backup_scheduler_started",
-        details="Планировщик запущен, интервал: каждые 3 часа",
-    )
+    _log("backup_scheduler_started", "Планировщик запущен, интервал: каждые 3 часа")
 
 
 def stop() -> None:
