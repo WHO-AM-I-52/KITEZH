@@ -2,6 +2,8 @@
 # ║ context_processors.py                                        ║
 # ║ Глобальные переменные для всех Jinja-шаблонов                ║
 # ║ (вынесено из app.py)                                         ║
+# ║ fix #58: can_view_all — правильный ключ сессии               ║
+# ║ fix #59: try/finally гарантирует db.close()                  ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from flask import session
@@ -16,33 +18,37 @@ def inject_globals():
 
     if session.get('user_id'):
         db = get_db()
-
-        unread_count = db.execute(
-            'SELECT COUNT(*) FROM notifications WHERE user_id=? AND is_read=0',
-            (session['user_id'],)
-        ).fetchone()[0]
-
         try:
-            if session.get('role') == 'admin' or session.get('can_view_all'):
-                active_requests_count = db.execute(
-                    "SELECT COUNT(*) FROM requests "
-                    "WHERE status NOT IN ('closed', 'draft')"
-                ).fetchone()[0]
-            else:
-                active_requests_count = db.execute(
-                    "SELECT COUNT(*) FROM requests "
-                    "WHERE status NOT IN ('closed', 'draft') AND created_by=?",
-                    (session['user_id'],)
-                ).fetchone()[0]
-        except Exception:
-            active_requests_count = 0
+            unread_count = db.execute(
+                'SELECT COUNT(*) FROM notifications WHERE user_id=? AND is_read=0',
+                (session['user_id'],)
+            ).fetchone()[0]
 
-        if session.get('role') == 'admin':
-            users_for_impersonate = db.execute(
-                'SELECT id,full_name,role FROM users WHERE id!=? ORDER BY full_name',
-                (session.get('user_id', 0),)
-            ).fetchall()
-        db.close()
+            # fix #58: права хранятся как perm_can_view_all, не can_view_all
+            from auth_utils import get_user_perm
+            try:
+                if session.get('role') == 'admin' or get_user_perm('can_view_all'):
+                    active_requests_count = db.execute(
+                        "SELECT COUNT(*) FROM requests "
+                        "WHERE status NOT IN ('closed', 'draft')"
+                    ).fetchone()[0]
+                else:
+                    active_requests_count = db.execute(
+                        "SELECT COUNT(*) FROM requests "
+                        "WHERE status NOT IN ('closed', 'draft') AND created_by=?",
+                        (session['user_id'],)
+                    ).fetchone()[0]
+            except Exception:
+                active_requests_count = 0
+
+            if session.get('role') == 'admin':
+                users_for_impersonate = db.execute(
+                    'SELECT id,full_name,role FROM users WHERE id!=? ORDER BY full_name',
+                    (session.get('user_id', 0),)
+                ).fetchall()
+        finally:
+            # fix #59: гарантированное закрытие соединения
+            db.close()
 
     from auth_utils import ALL_PERMISSIONS, get_user_perm
     perms = {key: get_user_perm(key) for key in ALL_PERMISSIONS}

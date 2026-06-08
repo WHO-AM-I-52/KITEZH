@@ -1,6 +1,7 @@
 # ╔═══════════════════════════════════════════════════════════════
 # ║ app.py                                                        ║
 # ║ v2.7: рефакторинг + JSON API /api/requests для Tabulator  ║
+# ║ fix #63: инициализация вынесена из __main__ для WSGI       ║
 # ╚═══════════════════════════════════════════════════════════════
 
 import os
@@ -8,7 +9,7 @@ from datetime import timedelta, datetime, date
 
 from flask import Flask
 
-from db import BASE_DIR
+from db import BASE_DIR, run_migrations
 from migrations import init_db, migrate_db, migrate_districts
 from context_processors import inject_globals
 
@@ -84,13 +85,21 @@ for bp in [
     app.register_blueprint(bp)
 
 
-# ─── ТОЧКА ВХОДА ──────────────────────────────────────────────────────────────────────
-if __name__ == '__main__':
+# ─── ИНИЦИАЛИЗАЦИЯ БД И ПЛАНИРОВЩИКА ─────────────────────────────────────────────────
+# fix #63: вынесено из __main__ — работает и при python app.py, и при gunicorn app:app
+def _startup():
     init_db()
     migrate_db()
     migrate_districts()
+    run_migrations()   # fix #57: одна миграция при старте
     backup_scheduler.start()
 
+
+_startup()
+
+
+# ─── ТОЧКА ВХОДА ──────────────────────────────────────────────────────────────────────
+if __name__ == '__main__':
     app_debug  = os.getenv('APP_DEBUG', '0')
     debug_flag = app_debug == '1'
     print(f"Starting Flask with debug={debug_flag}, FLASK_ENV={os.getenv('FLASK_ENV', '')}")

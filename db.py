@@ -38,6 +38,9 @@ _PREFIX_BY_NAME = {
     'подбор индустриального парка':                 'ПИП',
 }
 
+# fix #57: флаг — миграция выполняется ровно один раз за жизнь процесса
+_migrated = False
+
 
 def _has_column(conn, table: str, column: str) -> bool:
     """True если колонка уже есть в таблице."""
@@ -72,6 +75,7 @@ def _migrate(conn):
     Автоматическое добавление новых таблиц и колонок если они отсутствуют.
     ВАЖНО: все изменения должны быть идемпотентны — при повторном запуске
     на уже обновлённой БД ничего не должно ломаться.
+    Вызывается ОДИН РАЗ при старте приложения (fix #57).
     """
 
     # ─ Таблица присутствия онлайн
@@ -307,7 +311,6 @@ def _migrate(conn):
 
     # ════════════════════════════════════════════════════════════════
     # Таблица хэшей файлов обращений (SHA-256)
-    # Идемпотентно: CREATE TABLE IF NOT EXISTS
     # ════════════════════════════════════════════════════════════════
     conn.execute("""
         CREATE TABLE IF NOT EXISTS request_file_hashes (
@@ -324,8 +327,6 @@ def _migrate(conn):
 
     # ════════════════════════════════════════════════════════════════
     # Чистка NULL → '' в текстовых полях таблицы requests.
-    # Идемпотентно: трогает только записи с NULL.
-    # Не затрагивает: числа (INT/FLOAT), FK, даты, файлы, единицы.
     # ════════════════════════════════════════════════════════════════
     _TEXT_FIELDS_TO_CLEAN = [
         'status', 'source_type',
@@ -361,10 +362,28 @@ def get_db():
     Открывает соединение с базой данных SQLite.
     - row_factory = sqlite3.Row — обращение к полям по имени
     - WAL-режим — производительность при параллельных запросах
-    - _migrate() — автоматически добавляет новые таблицы/колонки/индексы
+    - _migrate() — вызывается ОДИН РАЗ при первом подключении (fix #57)
     """
+    global _migrated
     conn = sqlite3.connect(DB_PATH, timeout=15)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
-    _migrate(conn)
+    if not _migrated:
+        _migrate(conn)
+        _migrated = True
     return conn
+
+
+def run_migrations():
+    """
+    Явный вызов миграций — для WSGI-старта (gunicorn) и тестов.
+    Вызывать один раз при инициализации приложения (fix #63).
+    """
+    global _migrated
+    if not _migrated:
+        conn = sqlite3.connect(DB_PATH, timeout=15)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        _migrate(conn)
+        conn.close()
+        _migrated = True
