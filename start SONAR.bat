@@ -99,6 +99,16 @@ if exist "%APP_DIR%db\database.db" (
 "%PYTHON%" -c "import os,glob;files=sorted(glob.glob('db/backups/database_*.db'));[os.remove(f) for f in files[:-5]]"
 echo.
 
+:: Очистка uploads\tmp\ — удаление мусора от прерванных загрузок
+if exist "%APP_DIR%uploads\tmp" (
+  del /f /q "%APP_DIR%uploads\tmp\*" 2>nul
+  echo  uploads\tmp\ очищена.
+) else (
+  mkdir "%APP_DIR%uploads\tmp"
+  echo  uploads\tmp\ создана.
+)
+echo.
+
 :: Проверка целостности
 "%PYTHON%" -m py_compile app.py
 if errorlevel 1 (
