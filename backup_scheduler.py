@@ -4,16 +4,43 @@ import threading
 from datetime import datetime
 
 from activity_log import log_action
+from db import get_db
 
-BASE_DIR       = os.path.dirname(os.path.abspath(__file__))
-BACKUP_BAT     = os.path.join(BASE_DIR, "backup.bat")
-INTERVAL_SEC   = 3 * 60 * 60  # 3 часа
+BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
+BACKUP_BAT    = os.path.join(BASE_DIR, "backup.bat")
+INTERVAL_SEC  = 3 * 60 * 60  # 3 часа
 
 _timer: threading.Timer | None = None
 
 
-def _run_backup():
-    """3апускает backup.bat через subprocess и логирует результат."""
+def _notify_admins(message: str, link: str = "/notifications") -> None:
+    """Пишет уведомление в таблицу notifications для всех пользователей с role='admin'."""
+    try:
+        db = get_db()
+        admins = db.execute(
+            "SELECT id FROM users WHERE role = 'admin'"
+        ).fetchall()
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        for admin in admins:
+            db.execute(
+                "INSERT INTO notifications (user_id, message, link, is_read, created_at) "
+                "VALUES (?, ?, ?, 0, ?)",
+                (admin["id"], message, link, now),
+            )
+        db.commit()
+        db.close()
+    except Exception as e:
+        log_action(
+            user_id=None,
+            username="system",
+            action="backup_error",
+            details=f"Ошибка записи уведомления: {e}",
+        )
+
+
+def _run_backup() -> None:
+    """Запускает backup.bat через subprocess и логирует результат."""
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M")
     try:
         result = subprocess.run(
             ["cmd", "/c", BACKUP_BAT],
@@ -24,58 +51,63 @@ def _run_backup():
             timeout=300,
         )
         if result.returncode == 0:
+            msg = f"✅ Бэкап выполнен успешно — {ts}"
             log_action(
                 user_id=None,
                 username="system",
                 action="backup_success",
-                details=f"Автобэкап выполнен успешно {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+                details=msg,
             )
+            _notify_admins(msg)
         else:
+            stderr_clean = (result.stderr or "").strip()[:500]
+            stdout_clean = (result.stdout or "").strip()[-300:]
+            reason = stderr_clean or stdout_clean or f"code {result.returncode}"
+            msg = f"❌ Ошибка бэкапа — {ts}. Причина: {reason}"
             log_action(
                 user_id=None,
                 username="system",
                 action="backup_error",
-                details=f"Ошибка бэкапа (code {result.returncode}): {result.stderr[:300]}",
+                details=msg,
             )
+            _notify_admins(msg)
+    except subprocess.TimeoutExpired:
+        msg = f"❌ Бэкап превысил временной лимит (300 сек) — {ts}"
+        log_action(user_id=None, username="system", action="backup_error", details=msg)
+        _notify_admins(msg)
     except Exception as e:
-        log_action(
-            user_id=None,
-            username="system",
-            action="backup_error",
-            details=f"Исключение при бэкапе: {e}",
-        )
+        msg = f"❌ Непредвиденная ошибка бэкапа — {ts}: {e}"
+        log_action(user_id=None, username="system", action="backup_error", details=msg)
+        _notify_admins(msg)
     finally:
         _schedule_next()
 
 
-def _schedule_next():
+def _schedule_next() -> None:
     global _timer
     _timer = threading.Timer(INTERVAL_SEC, _run_backup)
     _timer.daemon = True
     _timer.start()
 
 
-def start():
+def start() -> None:
     """Запустить планировщик. Вызывать один раз из app.py при старте приложения."""
     if not os.path.exists(BACKUP_BAT):
-        log_action(
-            user_id=None,
-            username="system",
-            action="backup_error",
-            details="backup.bat не найден — планировщик не запущен",
-        )
+        msg = "❌ backup.bat не найден — планировщик бэкапа не запущен"
+        log_action(user_id=None, username="system", action="backup_error", details=msg)
+        _notify_admins(msg)
         return
     _schedule_next()
     log_action(
         user_id=None,
         username="system",
         action="backup_scheduler_started",
-        details=f"Планировщик запущен, интервал: каждые 3 часа",
+        details="Планировщик запущен, интервал: каждые 3 часа",
     )
 
 
-def stop():
-    """0становить планировщик (необязательно)."""
+def stop() -> None:
+    """Остановить планировщик (необязательно)."""
     global _timer
     if _timer:
         _timer.cancel()
