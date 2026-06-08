@@ -1,24 +1,26 @@
-# ╔══════════════════════════════════════════════════════════════╗
+# ╔═══════════════════════════════════════════════════════════════
 # ║                         db.py                               ║
 # ║  Подключение к базе данных и пути к папкам приложения       ║
-# ╚══════════════════════════════════════════════════════════════╝
+# ╚═══════════════════════════════════════════════════════════════
 
 import sqlite3
 import os
 
-# ─── ПУТИ ───────────────────────────────────────────────────────────────────────────────────
+# ─── ПУТИ ───────────────────────────────────────────────────────────────────────────────────────
 
 BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
 DB_PATH     = os.path.join(BASE_DIR, 'db', 'database.db')
 UPLOADS_DIR = os.path.join(BASE_DIR, 'uploads')
+UPLOADS_TMP = os.path.join(BASE_DIR, 'uploads', 'tmp')
 REPORTS_DIR = os.path.join(BASE_DIR, 'reports')
 ALLOWED_EXT = {'pdf', 'ppt', 'pptx', 'doc', 'docx', 'xlsx', 'zip'}
 
 os.makedirs(UPLOADS_DIR, exist_ok=True)
+os.makedirs(UPLOADS_TMP, exist_ok=True)
 os.makedirs(REPORTS_DIR, exist_ok=True)
 
 
-# ─── МИГРАЦИЯ ──────────────────────────────────────────────────────────────────────────────
+# ─── МИГРАЦИЯ ──────────────────────────────────────────────────────────────────────────────────
 
 # Маппинг названий предметов → префиксы рег. номеров.
 # Сравнение нечувствительно к регистру (LOWER).
@@ -304,6 +306,23 @@ def _migrate(conn):
     conn.execute("CREATE INDEX IF NOT EXISTS idx_notif_user     ON notifications(user_id, is_read)")
 
     # ════════════════════════════════════════════════════════════════
+    # Таблица хэшей файлов обращений (SHA-256)
+    # Идемпотентно: CREATE TABLE IF NOT EXISTS
+    # ════════════════════════════════════════════════════════════════
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS request_file_hashes (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            request_id INTEGER NOT NULL REFERENCES requests(id) ON DELETE CASCADE,
+            filename   TEXT    NOT NULL,
+            sha256     TEXT    NOT NULL,
+            created_at TEXT    NOT NULL
+        )
+    """)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_file_hashes_req ON request_file_hashes(request_id)"
+    )
+
+    # ════════════════════════════════════════════════════════════════
     # Чистка NULL → '' в текстовых полях таблицы requests.
     # Идемпотентно: трогает только записи с NULL.
     # Не затрагивает: числа (INT/FLOAT), FK, даты, файлы, единицы.
@@ -335,7 +354,7 @@ def _migrate(conn):
     conn.commit()
 
 
-# ─── ПОДКЛЮЧЕНИЕ К БД ──────────────────────────────────────────────────────────────────────────────
+# ─── ПОДКЛЮЧЕНИЕ К БД ──────────────────────────────────────────────────────────────────────────────────────
 
 def get_db():
     """
