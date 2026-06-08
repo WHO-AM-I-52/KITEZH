@@ -1,15 +1,15 @@
-# ai_routes.py — Blueprint ИИ-подбора площадок, Issue #38
-# WIP: не подключён к app.py, не активен в системе
-# Для активации: добавить в app.py:
-#   from ai_routes import ai_bp
-#   app.register_blueprint(ai_bp)   # в блок регистрации Blueprint'ов
+# ╔══════════════════════════════════════════════════════════════╗
+# ║ ai_routes.py — ИИ-подбор площадок (через Ollama)        ║
+# ║ fix #64: flask_login → auth_utils; исправлены колонки БД     ║
+# ║           log_action — правильная сигнатура           ║
+# ╚═════════════════════════════════════════════════════════════╝
 
 import json
 import requests as http_requests
-from flask import Blueprint, request, jsonify, render_template
-from flask_login import login_required
+from flask import Blueprint, request, jsonify, render_template, session
 
-import db
+from db import get_db
+from auth_utils import login_required
 from activity_log import log_action
 
 ai_bp = Blueprint("ai", __name__, url_prefix="/ai")
@@ -29,20 +29,28 @@ SYSTEM_PROMPT = (
 
 def _get_site_requests():
     """Возвращает обращения типа 'Подбор з/у' и 'Подбор здания / помещения'."""
-    conn = db.get_db()
-    rows = conn.execute(
-        """
-        SELECT r.id, r.applicant_name, r.request_date, r.description,
-               r.district, r.status, st.name AS subject_name
-        FROM requests r
-        LEFT JOIN subject_types st ON r.subject_type_id = st.id
-        WHERE LOWER(st.name) LIKE '%подбор%'
-          AND r.status NOT IN ('closed', 'rejected')
-        ORDER BY r.request_date DESC
-        LIMIT 30
-        """
-    ).fetchall()
-    return [dict(r) for r in rows]
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            """
+            SELECT r.id,
+                   COALESCE(r.applicant_short_name, r.applicant_full_name) AS applicant_name,
+                   r.request_date,
+                   r.project_name   AS description,
+                   r.preferred_districts AS district,
+                   r.status,
+                   st.name          AS subject_name
+            FROM requests r
+            LEFT JOIN subject_types st ON r.subject_type_id = st.id
+            WHERE LOWER(st.name) LIKE '%подбор%'
+              AND r.status NOT IN ('closed', 'draft')
+            ORDER BY r.request_date DESC
+            LIMIT 30
+            """
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
 
 
 def _ask_ollama(investor_profile: dict, site_requests: list) -> dict:
@@ -92,5 +100,11 @@ def match_result():
     except (http_requests.RequestException, json.JSONDecodeError) as e:
         return jsonify({"error": f"Ошибка ИИ-подбора: {e}"}), 503
 
-    log_action("ai_match", f"ИИ-подбор площадки: {investor.get('industry', '—')}")
+    # fix #64: правильная сигнатура log_action(conn, user_id, action, request_id, detail)
+    conn = get_db()
+    log_action(conn, session['user_id'], 'ai_match', None,
+               f"ИИ-подбор площадки: {investor.get('industry', '—')}")
+    conn.commit()
+    conn.close()
+
     return jsonify(result)

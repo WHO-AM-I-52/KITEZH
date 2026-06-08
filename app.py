@@ -1,8 +1,9 @@
-# ╔═══════════════════════════════════════════════════════════════
+# ╔══════════════════════════════════════════════════════════════╗
 # ║ app.py                                                        ║
-# ║ v2.8: fix #61 rate-limiting через flask-limiter            ║
-# ║      fix #63: _startup() вынесен из __main__            ║
-# ╚═════════════════════════════════════════════════════════════╗
+# ║ v2.9: fix #64 — ai_bp подключён                          ║
+# ║      fix #61 — rate-limiting                                ║
+# ║      fix #63 — _startup() вынесен из __main__           ║
+# ╚═════════════════════════════════════════════════════════════╝
 
 import os
 from datetime import timedelta, datetime, date
@@ -76,6 +77,7 @@ from preview_routes    import preview_bp
 from phonebook_import  import pb_import_bp
 from investmap_routes  import investmap_bp
 from api.requests_api  import api_bp
+from ai_routes         import ai_bp   # fix #64
 import backup_scheduler
 
 for bp in [
@@ -85,17 +87,17 @@ for bp in [
     report_bp, misc_bp, settings_bp,
     preview_bp, pb_import_bp, investmap_bp,
     api_bp,
+    ai_bp,           # fix #64
 ]:
     app.register_blueprint(bp)
 
 
 # ─── ИНИЦИАЛИЗАЦИЯ БД И ПЛАНИРОВЩИКА ──────────────────────────────────────────────────
-# fix #63: вынесено из __main__ — работает и при python app.py, и при gunicorn app:app
 def _startup():
     init_db()
     migrate_db()
     migrate_districts()
-    run_migrations()   # fix #57: одна миграция при старте
+    run_migrations()
     backup_scheduler.start()
 
 

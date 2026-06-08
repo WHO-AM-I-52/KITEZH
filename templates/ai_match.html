@@ -1,0 +1,96 @@
+{% extends 'base.html' %}
+{% block title %}ИИ-подбор площадки{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width:760px">
+  <h4 class="mb-4">
+    <i class="bi bi-robot me-2 text-primary"></i>ИИ-подбор площадки
+  </h4>
+
+  <form id="aiForm" class="card shadow-sm p-4">
+    <div class="mb-3">
+      <label class="form-label fw-semibold">Отрасль / вид деятельности</label>
+      <input type="text" name="industry" class="form-control" placeholder="например, машиностроение" required>
+    </div>
+    <div class="mb-3">
+      <label class="form-label fw-semibold">Необходимая площадь (га / м²)</label>
+      <input type="text" name="area_needed" class="form-control" placeholder="например, 5 га">
+    </div>
+    <div class="mb-3">
+      <label class="form-label fw-semibold">Предпочтительный район</label>
+      <input type="text" name="district" class="form-control" placeholder="например, Кстовский">
+    </div>
+    <div class="mb-3">
+      <label class="form-label fw-semibold">Бюджет инвестиций (млн руб.)</label>
+      <input type="text" name="budget" class="form-control" placeholder="например, 150">
+    </div>
+    <div class="mb-3">
+      <label class="form-label fw-semibold">Дополнительные требования</label>
+      <textarea name="notes" class="form-control" rows="3" placeholder="железнодорожная ветка, охрана зоны, прочее"></textarea>
+    </div>
+    <button type="submit" class="btn btn-primary">
+      <i class="bi bi-search-heart me-1"></i>Подобрать
+    </button>
+  </form>
+
+  <div id="aiResult" class="mt-4" style="display:none">
+    <h6 class="text-muted mb-3">Результаты подбора:</h6>
+    <div id="matchCards"></div>
+  </div>
+
+  <div id="aiError" class="alert alert-danger mt-3" style="display:none"></div>
+  <div id="aiSpinner" class="text-center mt-4" style="display:none">
+    <div class="spinner-border text-primary" role="status"></div>
+    <div class="mt-2 text-muted small">Модель думает… это может занять до 2 минут</div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('aiForm').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  const spinner = document.getElementById('aiSpinner');
+  const result  = document.getElementById('aiResult');
+  const errBox  = document.getElementById('aiError');
+  const cards   = document.getElementById('matchCards');
+
+  result.style.display  = 'none';
+  errBox.style.display  = 'none';
+  spinner.style.display = 'block';
+  cards.innerHTML       = '';
+
+  try {
+    const resp = await fetch('/ai/match', {
+      method: 'POST',
+      body: new FormData(this)
+    });
+    const data = await resp.json();
+
+    if (data.error) {
+      errBox.textContent   = data.error;
+      errBox.style.display = 'block';
+    } else if (data.matches) {
+      data.matches.forEach(m => {
+        cards.innerHTML += `
+          <div class="card mb-3 border-0 shadow-sm">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-start">
+                <h6 class="mb-1">${m.name || 'Обращение #' + m.id}</h6>
+                <span class="badge bg-primary fs-6">${m.score}%</span>
+              </div>
+              <p class="text-muted small mb-0">${m.reason}</p>
+            </div>
+          </div>`;
+      });
+      result.style.display = 'block';
+    }
+  } catch (err) {
+    errBox.textContent   = 'Ошибка сетевого запроса: ' + err.message;
+    errBox.style.display = 'block';
+  } finally {
+    spinner.style.display = 'none';
+  }
+});
+</script>
+{% endblock %}
