@@ -1,10 +1,12 @@
 import os
+import shutil
+import hashlib
 from datetime import datetime, date
 
 from flask import render_template, request, redirect, url_for, session, flash
 from werkzeug.utils import secure_filename
 
-from db import get_db, UPLOADS_DIR
+from db import get_db, UPLOADS_DIR, UPLOADS_TMP
 from auth_utils import login_required
 from form_utils import build_values, get_classifiers, ALL_FIELDS, REQUIRED_FIELDS
 from validators import allowed_file, validate_inn
@@ -29,6 +31,62 @@ _PRESERVE_FIELDS = [
     'applicant_feedback',
     'applicant_feedback_at',
 ]
+
+
+def _sha256(path: str) -> str:
+    """SHA-256 файла чанками по 8 КБ — не нагружает память."""
+    h = hashlib.sha256()
+    with open(path, 'rb') as f:
+        for chunk in iter(lambda: f.read(8192), b''):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _save_files_transactional(conn, file_list, request_id=None):
+    """
+    1. Сохраняет каждый файл во временную папку uploads/tmp/.
+    2. Считывает SHA-256.
+    3. Возвращает список (filename, tmp_path, sha256).
+       Перемещение tmp → UPLOADS_DIR делается вне функции,
+       только после успешного conn.commit().
+    """
+    pending = []
+    for uf in file_list:
+        if not (uf and uf.filename and allowed_file(uf.filename)):
+            continue
+        fn  = secure_filename(uf.filename)
+        tmp = os.path.join(UPLOADS_TMP, fn)
+        uf.save(tmp)
+        digest = _sha256(tmp)
+        pending.append((fn, tmp, digest))
+    return pending
+
+
+def _commit_files(conn, pending, request_id):
+    """
+    Перемещает файлы из tmp/ в uploads/ и записывает хэши в БД.
+    Вызывать только после успешного conn.commit().
+    """
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    for fn, tmp, digest in pending:
+        dst = os.path.join(UPLOADS_DIR, fn)
+        shutil.move(tmp, dst)
+        conn.execute(
+            "INSERT INTO request_file_hashes (request_id, filename, sha256, created_at) "
+            "VALUES (?, ?, ?, ?)",
+            (request_id, fn, digest, now)
+        )
+    conn.commit()
+
+
+def _cleanup_tmp(pending):
+    """Удаляет временные файлы если commit упал."""
+    for fn, tmp, _ in pending:
+        try:
+            if os.path.exists(tmp):
+                os.remove(tmp)
+        except Exception:
+            pass
 
 
 @requests_bp.route('/request/new', methods=['GET', 'POST'])
@@ -77,7 +135,6 @@ def new_request():
             if saved_names:
                 ocr_src = os.path.join(UPLOADS_DIR, saved_names[0])
             else:
-                # Файл не прошёл allowed_file — сохраняем во временный tmp
                 ocr_file_stream = request.files.getlist('request_files')[0]
                 ocr_file_stream.stream.seek(0)
                 with open(tmp_path, 'wb') as f:
@@ -87,7 +144,6 @@ def new_request():
             try:
                 fields, msg = extract_anketa_fields(ocr_src)
             finally:
-                # Удаляем временный файл только если это был tmp
                 if ocr_src == tmp_path:
                     try:
                         os.remove(tmp_path)
@@ -104,7 +160,6 @@ def new_request():
                 for k, v in fields.items():
                     if k in fake_req:
                         fake_req[k] = v
-                # Сохраняем список файлов в fake_req, чтобы отобразиться в форме
                 fake_req['request_files'] = ','.join(saved_names) if saved_names else ''
                 flash(
                     'Анкета распознана: часть полей заполнена автоматически. '
@@ -141,31 +196,35 @@ def new_request():
 
         vals = build_values(request.form)
 
+        # ─── ТРАНЗАКЦИОННОЕ СОХРАНЕНИЕ ФАЙЛОВ ───────────────────────────────
         uploaded_files = request.files.getlist('request_files')
-        saved_names = []
-        for uf in uploaded_files:
-            if uf and uf.filename and allowed_file(uf.filename):
-                fn2 = secure_filename(uf.filename)
-                uf.save(os.path.join(UPLOADS_DIR, fn2))
-                saved_names.append(fn2)
+        pending = _save_files_transactional(conn, uploaded_files)
+        saved_names = [p[0] for p in pending]
         vals[ALL_FIELDS.index('request_files')] = ','.join(saved_names) if saved_names else ''
 
-        cols = ', '.join(ALL_FIELDS) + ', created_by, created_at, updated_at'
-        ph   = ','.join(['?'] * len(ALL_FIELDS)) + ',?,?,?'
-        cursor = conn.execute(
-            f"INSERT INTO requests ({cols}) VALUES ({ph})",
-            vals + [session['user_id'], now, now]
-        )
-        new_id = cursor.lastrowid
+        cols   = ', '.join(ALL_FIELDS) + ', created_by, created_at, updated_at'
+        ph     = ','.join(['?'] * len(ALL_FIELDS)) + ',?,?,?'
+        try:
+            cursor = conn.execute(
+                f"INSERT INTO requests ({cols}) VALUES ({ph})",
+                vals + [session['user_id'], now, now]
+            )
+            new_id = cursor.lastrowid
+            applicant = (
+                request.form.get('applicant_short_name', '') or
+                request.form.get('applicant_full_name', '') or
+                f'ID:{new_id}'
+            )
+            log_action(conn, session['user_id'], 'create', new_id,
+                       f'Создано обращение: {applicant}')
+            conn.commit()
+            _commit_files(conn, pending, new_id)
+        except Exception:
+            _cleanup_tmp(pending)
+            conn.close()
+            flash('Ошибка сохранения обращения. Попробуйте ещё раз.', 'error')
+            return redirect(url_for('requests.new_request'))
 
-        applicant = (
-            request.form.get('applicant_short_name', '') or
-            request.form.get('applicant_full_name', '') or
-            f'ID:{new_id}'
-        )
-        log_action(conn, session['user_id'], 'create', new_id,
-                   f'Создано обращение: {applicant}')
-        conn.commit()
         conn.close()
         flash('Обращение сохранено', 'success')
         return redirect(url_for('requests.index'))
@@ -209,7 +268,6 @@ def edit_request(rid):
         for field in _PRESERVE_FIELDS:
             if field in ALL_FIELDS:
                 idx = ALL_FIELDS.index(field)
-                # not val покрывает и None, и '' — после перехода на вариант А
                 if not vals[idx]:
                     vals[idx] = req[field]
 
@@ -220,37 +278,40 @@ def edit_request(rid):
             file.save(os.path.join(UPLOADS_DIR, fn2))
             af = fn2
 
+        # ─── ТРАНЗАКЦИОННОЕ СОХРАНЕНИЕ ФАЙЛОВ ───────────────────────────────
         uploaded_files = request.files.getlist('request_files')
-        saved_names = []
-        for uf in uploaded_files:
-            if uf and uf.filename and allowed_file(uf.filename):
-                fn2 = secure_filename(uf.filename)
-                uf.save(os.path.join(UPLOADS_DIR, fn2))
-                saved_names.append(fn2)
+        pending = _save_files_transactional(conn, uploaded_files)
+        saved_names = [p[0] for p in pending]
         if saved_names:
             vals[ALL_FIELDS.index('request_files')] = ','.join(saved_names)
         else:
-            # Новые файлы не загружались — сохраняем существующее значение из БД
             vals[ALL_FIELDS.index('request_files')] = req['request_files'] or ''
 
         edit_reason = request.form.get('edit_reason', '').strip()
         updated_by  = session.get('user_id')
 
         set_clause = ', '.join([f"{f}=?" for f in ALL_FIELDS])
-        conn.execute(
-            f"UPDATE requests SET {set_clause}, updated_at=?, updated_by=?, "
-            f"edit_reason=?, answer_file=? WHERE id=?",
-            vals + [now, updated_by, edit_reason, af, rid]
-        )
+        try:
+            conn.execute(
+                f"UPDATE requests SET {set_clause}, updated_at=?, updated_by=?, "
+                f"edit_reason=?, answer_file=? WHERE id=?",
+                vals + [now, updated_by, edit_reason, af, rid]
+            )
+            new_req = conn.execute("SELECT * FROM requests WHERE id=?", (rid,)).fetchone()
+            save_history(conn, rid, session['user_id'], old_req, new_req)
+            num = req['request_number'] or f'ID:{rid}'
+            reason_str = f' | Причина: {edit_reason}' if edit_reason else ''
+            log_action(conn, session['user_id'], 'edit', rid,
+                       f'Обращение {num}{reason_str}')
+            conn.commit()
+            if pending:
+                _commit_files(conn, pending, rid)
+        except Exception:
+            _cleanup_tmp(pending)
+            conn.close()
+            flash('Ошибка обновления обращения. Попробуйте ещё раз.', 'error')
+            return redirect(url_for('requests.edit_request', rid=rid))
 
-        new_req = conn.execute("SELECT * FROM requests WHERE id=?", (rid,)).fetchone()
-        save_history(conn, rid, session['user_id'], old_req, new_req)
-
-        num = req['request_number'] or f'ID:{rid}'
-        reason_str = f' | Причина: {edit_reason}' if edit_reason else ''
-        log_action(conn, session['user_id'], 'edit', rid,
-                   f'Обращение {num}{reason_str}')
-        conn.commit()
         conn.close()
         flash('Обращение обновлено', 'success')
         return redirect(url_for('requests.index'))
