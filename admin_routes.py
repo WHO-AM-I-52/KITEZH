@@ -1,6 +1,6 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║                      admin_routes.py                         ║
-# ║  v2.7: восстановить /impersonate (issue рефакторинг 1.3)           ║
+# ║  v2.8: уведомление пользователю при изменении прав доступа   ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify
@@ -345,6 +345,11 @@ def manage_users():
                 conn.execute(
                     f"UPDATE users SET role=?, {sets} WHERE id=?",
                     [ro] + [perms[k] for k in ALL_PERMISSIONS] + [uid]
+                )
+                conn.commit()
+                conn.execute(
+                    "INSERT INTO notifications (user_id, message) VALUES (?, ?)",
+                    (uid, '🔐 Ваши права доступа были изменены администратором')
                 )
                 conn.commit()
                 flash('Права обновлены', 'success')
