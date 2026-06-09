@@ -1,7 +1,8 @@
 # phonebook_routes.py
-# Blueprint: телефонный справочник (v2.2.0)
+# Blueprint: телефонный справочник (v2.3.0)
 # Маршруты:
 #   GET  /phonebook                — список сотрудников с поиском
+#   GET  /phonebook/search         — AJAX: поиск, возвращает JSON
 #   POST /phonebook/add            — добавить сотрудника (админ)
 #   POST /phonebook/edit           — редактировать сотрудника (админ)
 #   POST /phonebook/delete         — удалить сотрудника (админ)
@@ -38,19 +39,21 @@ def get_all_contacts(search: str = ''):
             WHERE {conditions}
             ORDER BY o.name, p.full_name
         """
-        # Каждый токен должен встречаться хотя бы в одном из полей
         token_clauses = []
         params = []
         for token in tokens:
             like = f'%{token}%'
             token_clauses.append("""(
-                LOWER(p.full_name) LIKE ?
+                LOWER(p.full_name)     LIKE ?
                 OR LOWER(p.position)   LIKE ?
                 OR LOWER(o.name)       LIKE ?
                 OR LOWER(p.phone_work) LIKE ?
+                OR LOWER(p.phone_ext)  LIKE ?
                 OR LOWER(p.email)      LIKE ?
+                OR LOWER(p.room)       LIKE ?
+                OR LOWER(p.notes)      LIKE ?
             )""")
-            params.extend([like, like, like, like, like])
+            params.extend([like, like, like, like, like, like, like, like])
         sql = base_sql.format(conditions=' AND '.join(token_clauses))
         rows = conn.execute(sql, params).fetchall()
     else:
@@ -77,6 +80,32 @@ def phonebook():
     return render_template('phonebook.html',
                            groups=groups, orgs=orgs,
                            search=search, total=len(contacts))
+
+
+@phonebook_bp.route('/phonebook/search')
+@login_required
+def phonebook_search():
+    """AJAX-эндпоинт: возвращает JSON для live-поиска."""
+    search   = request.args.get('q', '').strip()
+    contacts = get_all_contacts(search)
+    groups   = {}
+    for c in contacts:
+        org = c['org_name'] or '—'
+        if org not in groups:
+            groups[org] = {'address': c['org_address'] or '', 'contacts': []}
+        groups[org]['contacts'].append({
+            'id':             c['id'],
+            'full_name':      c['full_name'],
+            'position':       c['position'] or '',
+            'room':           c['room'] or '',
+            'phone_work':     c['phone_work'] or '',
+            'phone_ext':      c['phone_ext'] or '',
+            'phone_personal': c['phone_personal'] or '',
+            'email':          c['email'] or '',
+            'notes':          c['notes'] or '',
+            'org_name':       c['org_name'] or '',
+        })
+    return jsonify({'groups': groups, 'total': len(contacts), 'query': search})
 
 
 @phonebook_bp.route('/phonebook/add', methods=['POST'])
@@ -234,7 +263,7 @@ def phonebook_orgs_delete():
         flash(f'Нельзя удалить: к организации привязано {count} сотрудников', 'error')
     else:
         row  = conn.execute(
-            "SELECT name FROM phonebook_orgs WHERE id=?\", (oid,)"
+            "SELECT name FROM phonebook_orgs WHERE id=?", (oid,)
         ).fetchone()
         name = row['name'] if row else f'ID:{oid}'
         conn.execute("DELETE FROM phonebook_orgs WHERE id=?", (oid,))
