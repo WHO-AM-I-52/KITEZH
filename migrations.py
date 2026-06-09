@@ -1,6 +1,8 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║ migrations.py                                                ║
 # ║ Инициализация и миграция БД (вынесено из app.py)             ║
+# ║ +can_view_phonebook, can_view_investmap,                     ║
+# ║  can_export_full, can_import_full                            ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 import sqlite3
@@ -50,9 +52,12 @@ def _migrate_request_cols(conn):
 def _migrate_users_cols(conn):
     """Единая точка миграции колонок users — используется и init_db, и migrate_db."""
     user_cols = {r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
-    for col in ['can_create', 'can_edit_others', 'can_confirm', 'can_delete',
-                'can_rollback', 'can_export', 'can_classifiers', 'can_users',
-                'can_view_all']:
+    for col in [
+        'can_create', 'can_edit_others', 'can_confirm', 'can_delete',
+        'can_rollback', 'can_export', 'can_export_full', 'can_import_full',
+        'can_classifiers', 'can_users', 'can_view_all',
+        'can_view_investmap', 'can_view_phonebook',
+    ]:
         if col not in user_cols:
             conn.execute(f"ALTER TABLE users ADD COLUMN {col} INTEGER DEFAULT 0")
     if 'must_change_password' not in user_cols:
@@ -102,9 +107,13 @@ CREATE TABLE IF NOT EXISTS users (
     can_delete           INTEGER DEFAULT 0,
     can_rollback         INTEGER DEFAULT 0,
     can_export           INTEGER DEFAULT 0,
+    can_export_full      INTEGER DEFAULT 0,
+    can_import_full      INTEGER DEFAULT 0,
     can_classifiers      INTEGER DEFAULT 0,
     can_users            INTEGER DEFAULT 0,
     can_view_all         INTEGER DEFAULT 0,
+    can_view_investmap   INTEGER DEFAULT 0,
+    can_view_phonebook   INTEGER DEFAULT 0,
     is_active            INTEGER NOT NULL DEFAULT 1
 );
 CREATE TABLE IF NOT EXISTS login_log (
