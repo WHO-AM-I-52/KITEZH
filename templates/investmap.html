@@ -16,7 +16,7 @@
 </p>
 
 <div class="row g-3">
-  {# ─── Загрузка файла ──────────────────────────────────────────── #}
+  {# ─── Загрузка файла ────────────────────────────────────────────── #}
   <div class="col-12 col-lg-5">
     <div class="card h-100">
       <div class="card-body">
@@ -92,7 +92,7 @@
   </div>
 </div>
 
-{# ─── Навигатор площадок (формат 2) ───────────────────────── #}
+{# ─── Навигатор площадок (формат 2) ───────────────────────────── #}
 <div id="plotNav" class="d-none mt-3">
   <div class="card">
     <div class="card-body py-2 px-3 d-flex align-items-center gap-3">
@@ -113,7 +113,26 @@
   </div>
 </div>
 
-{# ─── Блок анализа (скрыт до запуска) ────────────────────────── #}
+{# ─── Сводное уведомление (формат 2, если есть проблемы) ────────────── #}
+<div class="card mt-3 d-none" id="summaryCard" style="border-color:#0d6efd">
+  <div class="card-header py-2 px-3" style="background:rgba(13,110,253,.10);border-color:#0d6efd">
+    <span class="fw-semibold" style="font-size:14px;color:#0d6efd">
+      <i class="bi bi-envelope-paper me-2"></i>Сводное уведомление
+    </span>
+    <small class="text-muted ms-2" style="font-size:11px">Общий текст по всем площадкам с проблемами</small>
+  </div>
+  <div class="card-body">
+    <textarea id="summaryText"
+              class="form-control"
+              style="font-size:13px;min-height:180px;resize:vertical"
+              readonly></textarea>
+    <button class="btn btn-sm btn-outline-primary mt-2" id="copySummaryBtn">
+      <i class="bi bi-clipboard me-1"></i>Скопировать сводную SMS
+    </button>
+  </div>
+</div>
+
+{# ─── Блок анализа (скрыт до запуска) ──────────────────────────────── #}
 <div id="analysisBlock" class="d-none mt-3">
 
   {# Карточка: Итог #}
@@ -188,7 +207,7 @@
     <div class="accordion accordion-flush" id="missingAccordion"></div>
   </div>
 
-  {# Карточка: SMS (только если < 75%) #}
+  {# Карточка: Индивидуальная SMS #}
   <div class="card mb-3 d-none" id="smsCard" style="border-color:#fd7e14">
     <div class="card-header py-2 px-3" style="background:rgba(253,126,20,.12);border-color:#fd7e14">
       <span class="fw-semibold" style="font-size:14px;color:#fd7e14">
@@ -209,7 +228,7 @@
 
 </div>
 
-{# ─── Подсказка по форматам ────────────────────────────────────────── #}
+{# ─── Подсказка по форматам ──────────────────────────────────────────────────── #}
 <div class="card mt-3">
   <div class="card-body py-2 px-3">
     <div class="row g-2" style="font-size:12px;color:var(--text-muted)">
@@ -234,7 +253,7 @@
 <script>
 (function(){
 
-  // ─── Элементы ─────────────────────────────────────────────────────────
+  // ─── Элементы ─────────────────────────────────────────────────────────────────────
   var dropzone      = document.getElementById('dropzone');
   var fileInput     = document.getElementById('fileInput');
   var fileInfo      = document.getElementById('fileInfo');
@@ -253,7 +272,7 @@
   var smsText       = document.getElementById('smsText');
   var copySmsBtn    = document.getElementById('copySmsBtn');
 
-  // ─── Навигатор площадок ─────────────────────────────────────────────
+  // ─── Навигатор площадок ───────────────────────────────────────────────────
   var plotNav     = document.getElementById('plotNav');
   var navPrev     = document.getElementById('navPrev');
   var navNext     = document.getElementById('navNext');
@@ -261,10 +280,15 @@
   var navTotal    = document.getElementById('navTotal');
   var navName     = document.getElementById('navName');
 
+  // ─── Сводная SMS ────────────────────────────────────────────────────────────────
+  var summaryCard    = document.getElementById('summaryCard');
+  var summaryText    = document.getElementById('summaryText');
+  var copySummaryBtn = document.getElementById('copySummaryBtn');
+
   var analysisData = null;
   var currentIdx   = 0;
 
-  function initNav(data){
+  function initNav(data, summary_sms){
     analysisData = data;
     currentIdx   = 0;
     var list = Array.isArray(data) ? data : [data];
@@ -274,6 +298,15 @@
     plotNav.classList.toggle('d-none', list.length <= 1);
     navPrev.disabled = true;
     navNext.disabled = list.length <= 1;
+
+    // Сводная SMS — показываем над навигатором, если есть текст
+    if (summary_sms) {
+      summaryText.value = summary_sms;
+      summaryCard.classList.remove('d-none');
+    } else {
+      summaryCard.classList.add('d-none');
+    }
+
     renderAnalysis(list[0]);
   }
 
@@ -294,7 +327,7 @@
 
   var selectedFile = null;
 
-  // ─── Drag & Drop ──────────────────────────────────────────────────────────
+  // ─── Drag & Drop ─────────────────────────────────────────────────────────────────────
   dropzone.addEventListener('click', function(){ fileInput.click(); });
   dropzone.addEventListener('dragover', function(e){
     e.preventDefault();
@@ -339,10 +372,11 @@
     clearResult();
     analysisBlock.classList.add('d-none');
     plotNav.classList.add('d-none');
+    summaryCard.classList.add('d-none');
     analysisData = null;
   });
 
-  // ─── Конвертация для ИИ ───────────────────────────────────────────────
+  // ─── Конвертация для ИИ ──────────────────────────────────────────────────────────
   convertBtn.addEventListener('click', function(){
     if (!selectedFile) return;
     var fd = new FormData();
@@ -351,6 +385,7 @@
     clearResult();
     analysisBlock.classList.add('d-none');
     plotNav.classList.add('d-none');
+    summaryCard.classList.add('d-none');
 
     fetch('/investmap/convert', { method:'POST', body:fd, credentials:'same-origin' })
     .then(function(r){ return r.json(); })
@@ -370,7 +405,7 @@
     .catch(function(e){ setLoading(false); showError('Сетевая ошибка: ' + e); });
   });
 
-  // ─── Анализ ──────────────────────────────────────────────────────────────
+  // ─── Анализ ────────────────────────────────────────────────────────────────────────
   analyzeBtn.addEventListener('click', function(){
     if (!selectedFile) return;
     var fd = new FormData();
@@ -379,6 +414,7 @@
     clearResult();
     analysisBlock.classList.add('d-none');
     plotNav.classList.add('d-none');
+    summaryCard.classList.add('d-none');
 
     fetch('/investmap/analyze', { method:'POST', body:fd, credentials:'same-origin' })
     .then(function(r){ return r.json(); })
@@ -396,12 +432,12 @@
       resultBadge.textContent = fmtLabels[resp.export.format] || 'Формат ' + resp.export.format;
       copyBtn.classList.remove('d-none');
 
-      if (resp.analysis) initNav(resp.analysis);
+      if (resp.analysis) initNav(resp.analysis, resp.summary_sms || null);
     })
     .catch(function(e){ setLoading(false); showError('Сетевая ошибка: ' + e); });
   });
 
-  // ─── Рендер анализа ───────────────────────────────────────────────────
+  // ─── Рендер анализа ───────────────────────────────────────────────────────────────
   var BLOCK_NAMES = {
     1: 'Сведения об объекте',
     2: 'Свободные площади и коммерция',
@@ -537,6 +573,10 @@
 
   copySmsBtn.addEventListener('click', function(){
     copyToClipboard(smsText.value, copySmsBtn, 'Скопировано!');
+  });
+
+  copySummaryBtn.addEventListener('click', function(){
+    copyToClipboard(summaryText.value, copySummaryBtn, 'Скопировано!');
   });
 
   function copyToClipboard(text, btn, label){
