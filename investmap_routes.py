@@ -1,7 +1,9 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║                  investmap_routes.py                        ║
 # ║  Конвертер + анализатор инвестплощадок              ║
-# ║  Доступ: админ или can_view_investmap                 ║
+# ║  Доступ: can_view_investmap (админ автоматически)     ║
+# ║  Маршруты: /investmap, /investmap/convert,             ║
+# ║             /investmap/analyze                              ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, render_template, request, jsonify
@@ -12,14 +14,14 @@ from tools.investmap_analyzer import analyze
 investmap_bp = Blueprint('investmap', __name__)
 
 
-@investmap_bp.route('/admin/investmap')
+@investmap_bp.route('/investmap')
 @login_required
 @permission_required('can_view_investmap')
 def investmap():
     return render_template('investmap.html')
 
 
-@investmap_bp.route('/admin/investmap/convert', methods=['POST'])
+@investmap_bp.route('/investmap/convert', methods=['POST'])
 @login_required
 @permission_required('can_view_investmap')
 def investmap_convert():
@@ -34,14 +36,14 @@ def investmap_convert():
     return jsonify(result)
 
 
-@investmap_bp.route('/admin/investmap/analyze', methods=['POST'])
+@investmap_bp.route('/investmap/analyze', methods=['POST'])
 @login_required
 @permission_required('can_view_investmap')
 def investmap_analyze():
     """
     Полный анализ карточки инвестплощадки.
 
-    POST /admin/investmap/analyze
+    POST /investmap/analyze
     Content-Type: multipart/form-data
     file: .xlsx
 
