@@ -2,8 +2,8 @@
 {# ╔══════════════════════════════════════════════════════════════╗ #}
 {# ║                        base.html                            ║ #}
 {# ║  Базовый шаблон приложения "Подбор ЗУ — НО"                 ║ #}
-{# ║  v2.21.0: phonebook/investmap — по permission,           ║ #}
-{# ║           не только admin; fix /investmap URL             ║ #}
+{# ║  v2.21.0: sidebar — структура по permission;                ║ #}
+{# ║           phonebook/investmap через can_view_*              ║ #}
 {# ╚══════════════════════════════════════════════════════════════╝ #}
 <html lang="ru">
 <head>
@@ -381,12 +381,12 @@
 <aside class="sidebar">
   <nav class="sb-nav">
 
-    {# ─────────────────────────── ОСНОВНОЕ МЕНЮ ─────────────────────────── #}
-    <div class="sb-cat">Навигация</div>
+    {# ─────────────────────────── ОБРАЩЕНИЯ ─────────────────────────── #}
+    <div class="sb-cat">Обращения</div>
 
     <a href="/" class="sb-link {{ 'active' if request.path=='/' }}">
       <i class="bi bi-list-ul"></i>
-      <span class="sb-lbl">Обращения</span>
+      <span class="sb-lbl">Список обращений</span>
       {% if active_requests_count > 0 %}<span class="sb-badge">{{ active_requests_count }}</span>{% endif %}
     </a>
 
@@ -394,4 +394,408 @@
       <i class="bi bi-bar-chart-line"></i><span class="sb-lbl">Дашборд</span>
     </a>
 
-    <a href="/request/new" class="sb-link
+    <a href="/request/new" class="sb-link {{ 'active' if request.path=='/request/new' }}">
+      <i class="bi bi-plus-circle"></i><span class="sb-lbl">Новое обращение</span>
+    </a>
+
+    <a href="/saved-filters" class="sb-link {{ 'active' if 'saved-filters' in request.path }}">
+      <i class="bi bi-bookmark-star"></i><span class="sb-lbl">Фильтры</span>
+    </a>
+
+    <a href="/notifications" class="sb-link {{ 'active' if request.path=='/notifications' }}" id="sbNotifLink">
+      <i class="bi bi-bell"></i><span class="sb-lbl">Уведомления</span>
+      {% if unread_count > 0 %}<span class="sb-badge">{{ unread_count }}</span>{% endif %}
+    </a>
+
+    {# ─────────────────────────── СЕРВИСЫ ─────────────────────────── #}
+    {% if session.get('can_view_investmap') or session.get('can_view_phonebook') %}
+    <div class="sb-sep"></div>
+    <div class="sb-cat">Сервисы</div>
+
+    {% if session.get('can_view_phonebook') %}
+    <a href="{{ url_for('phonebook.phonebook') }}" class="sb-link {{ 'active' if request.endpoint and request.endpoint.startswith('phonebook') }}">
+      <i class="bi bi-telephone-fill"></i><span class="sb-lbl">Справочник</span>
+    </a>
+    {% endif %}
+
+    {% if session.get('can_view_investmap') %}
+    <a href="/investmap" class="sb-link {{ 'active' if 'investmap' in request.path }}">
+      <i class="bi bi-pin-map-fill"></i><span class="sb-lbl">Инвестплощадки</span>
+    </a>
+    {% endif %}
+    {% endif %}
+
+    {# ─────────────────────────── АДМИНИСТРАТОР ─────────────────────────── #}
+    {% if session.get('role')=='admin' %}
+    <div class="sb-sep"></div>
+    <div class="sb-cat">Администратор</div>
+    <a href="/admin/classifiers" class="sb-link {{ 'active' if 'classifiers' in request.path }}">
+      <i class="bi bi-tags"></i><span class="sb-lbl">Справочники</span>
+    </a>
+    <a href="/admin/users" class="sb-link {{ 'active' if 'users' in request.path }}">
+      <i class="bi bi-people"></i><span class="sb-lbl">Пользователи</span>
+    </a>
+    <a href="{{ url_for('ai.ocr_status') }}" class="sb-link {{ 'active' if request.path=='/ai/ocr-status' }}">
+      <i class="bi bi-cpu-fill"></i><span class="sb-lbl">Статус OCR</span>
+    </a>
+    {% endif %}
+
+    <div class="sb-sep"></div>
+    <a href="{{ url_for('misc.changelog') }}" class="sb-link {{ 'active' if request.path=='/changelog' }}" id="sbChangelogLink">
+      <i class="bi bi-journal-text"></i>
+      <span class="sb-lbl">Версии</span>
+      {% if session.get('role')=='admin' %}
+      <span class="sb-update-dot d-none" id="sbUpdateDot" title="Доступно обновление"></span>
+      {% endif %}
+    </a>
+    <div class="sb-sep"></div>
+
+    <button class="theme-toggle-btn" id="themeToggle" title="Тема оформления">
+      <i class="bi bi-circle-half theme-main-icon" id="themeIcon"></i>
+      <span class="sb-lbl" id="themeLabel">Тема</span>
+      <i class="bi bi-chevron-down theme-caret" id="themeCaret"></i>
+    </button>
+    <div class="theme-submenu" id="themeSubmenu">
+      <button class="theme-submenu-item" data-theme-val="light">
+        <i class="bi bi-sun-fill" style="color:#f59e0b"></i> Светлая
+      </button>
+      <button class="theme-submenu-item" data-theme-val="dark">
+        <i class="bi bi-moon-stars-fill" style="color:#818cf8"></i> Тёмная
+      </button>
+      <button class="theme-submenu-item" data-theme-val="zone">
+        <i class="bi bi-moon-stars-fill" style="color:#c8a84b"></i> Тёмная V2
+      </button>
+    </div>
+
+  </nav>
+  <div class="sb-online" title="Пользователи онлайн за последние 5 минут">
+    <span class="sb-online-dot"></span>
+    <span class="sb-online-text">Онлайн: <span class="sb-online-num" id="onlineCount">…</span></span>
+  </div>
+</aside>
+{% endif %}
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% if messages %}
+<div class="flash-msg">
+  {% for cat, msg in messages %}
+  <div class="alert alert-{{ 'success' if cat=='success' else 'danger' if cat=='error' else 'warning' }} alert-dismissible fade show shadow" role="alert">
+    {% if cat=='success' %}<i class="bi bi-check-circle-fill me-1"></i>
+    {% elif cat=='error' %}<i class="bi bi-x-circle-fill me-1"></i>
+    {% else %}<i class="bi bi-exclamation-triangle-fill me-1"></i>{% endif %}
+    {{ msg }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endwith %}
+
+<div class="page-wrap">
+  <main class="main-content">
+    {% block content %}{% endblock %}
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+{% block scripts %}{% endblock %}
+
+<footer class="mt-4 py-3 text-center border-top" style="font-size:11px;color:#aaa;background:var(--surface)">
+  <span>© 2026 Подбор ЗУ — Нижегородская область &nbsp;|&nbsp; v{{ app_version }}</span>
+  &nbsp;&nbsp;
+  <span>Разработано: <strong style="color:#1B5E7B">Солдатов Антон Алексеевич</strong></span>
+  &nbsp;&nbsp;
+  <a href="https://t.me/whoami52" target="_blank" rel="noopener noreferrer" title="Написать разработчику в Telegram" style="color:#229ED9;text-decoration:none;font-weight:600">
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="#229ED9" style="vertical-align:middle;margin-bottom:2px"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L8.32 13.617l-2.96-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.828.942z"/></svg>
+    Telegram
+  </a>
+  &nbsp;&nbsp;
+  <a href="https://github.com/WHO-AM-I-52/SONAR" target="_blank" rel="noopener noreferrer" title="Исходный код на GitHub" style="color:#1B5E7B;text-decoration:none;font-weight:600">
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="#1B5E7B" style="vertical-align:middle;margin-bottom:2px"><path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/></svg>
+    GitHub
+  </a>
+</footer>
+
+<script>
+(function(){
+  var b = document.body;
+  if (localStorage.getItem('sb_col')==='1') b.classList.add('sb-col');
+  document.getElementById('sbToggle').addEventListener('click', function(){
+    if (window.innerWidth <= 768) { b.classList.toggle('sb-open'); }
+    else { b.classList.toggle('sb-col'); localStorage.setItem('sb_col', b.classList.contains('sb-col') ? '1' : '0'); }
+  });
+})();
+</script>
+
+<script>
+(function(){
+  var KEY = 'app_theme';
+  var THEMES = {
+    light: { icon:'bi bi-sun-fill',        label:'Светлая',   color:'#f59e0b' },
+    dark:  { icon:'bi bi-moon-stars-fill', label:'Тёмная',    color:'#818cf8' },
+    zone:  { icon:'bi bi-moon-stars-fill', label:'Тёмная V2', color:'#c8a84b' }
+  };
+  var saved = localStorage.getItem(KEY) || 'light';
+  if (saved === 'dark') document.body.setAttribute('data-theme','dark');
+  else if (saved === 'zone') document.body.setAttribute('data-theme','zone');
+  else document.body.removeAttribute('data-theme');
+  function applyTheme(val) {
+    if (val === 'dark') document.body.setAttribute('data-theme','dark');
+    else if (val === 'zone') document.body.setAttribute('data-theme','zone');
+    else document.body.removeAttribute('data-theme');
+    localStorage.setItem(KEY, val);
+    syncUI();
+  }
+  function syncUI() {
+    var cur = document.body.getAttribute('data-theme') || 'light';
+    var t = THEMES[cur] || THEMES.light;
+    var icon = document.getElementById('themeIcon');
+    var label = document.getElementById('themeLabel');
+    if (!icon) return;
+    icon.className = t.icon + ' theme-main-icon';
+    icon.style.color = t.color;
+    label.textContent = t.label;
+    document.querySelectorAll('.theme-submenu-item').forEach(function(btn){
+      btn.classList.toggle('active-theme', btn.getAttribute('data-theme-val') === cur);
+    });
+  }
+  document.addEventListener('DOMContentLoaded', function(){
+    syncUI();
+    var toggleBtn = document.getElementById('themeToggle');
+    var submenu   = document.getElementById('themeSubmenu');
+    if (toggleBtn && submenu) {
+      toggleBtn.addEventListener('click', function(e){
+        e.stopPropagation();
+        var isOpen = submenu.classList.contains('open');
+        submenu.classList.toggle('open', !isOpen);
+        toggleBtn.classList.toggle('open', !isOpen);
+      });
+    }
+    document.querySelectorAll('.theme-submenu-item').forEach(function(btn){
+      btn.addEventListener('click', function(e){
+        e.stopPropagation();
+        applyTheme(this.getAttribute('data-theme-val'));
+        submenu.classList.remove('open');
+        toggleBtn.classList.remove('open');
+      });
+    });
+    document.addEventListener('click', function(){
+      if (submenu) { submenu.classList.remove('open'); toggleBtn.classList.remove('open'); }
+    });
+  });
+})();
+</script>
+
+<script>
+(function(){
+  var banner = document.getElementById('offlineBanner');
+  var body = document.body;
+  var offline = false;
+  function setOffline(state){
+    if (state === offline) return;
+    offline = state;
+    if (state){ banner.style.display='block'; body.classList.add('offline-mode'); }
+    else { banner.style.display='none'; body.classList.remove('offline-mode'); }
+  }
+  function ping(){
+    fetch('/ping', {method:'GET', cache:'no-store', credentials:'same-origin'})
+    .then(function(r){ setOffline(!r.ok); })
+    .catch(function(){ setOffline(true); });
+  }
+  setTimeout(function(){ ping(); setInterval(ping, 5 * 60 * 1000); }, 30 * 1000);
+})();
+</script>
+
+<script>
+(function(){
+  var el = document.getElementById('onlineCount');
+  var prevVal = null;
+  if (!el) return;
+  function fetchOnline(){
+    fetch('/api/online', {cache:'no-store', credentials:'same-origin'})
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(data){
+        if (!data) return;
+        var n = data.online;
+        el.textContent = n;
+        if (prevVal !== null && prevVal !== n) {
+          el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump');
+          setTimeout(function(){ el.classList.remove('bump'); }, 400);
+        }
+        prevVal = n;
+      }).catch(function(){});
+  }
+  setTimeout(function(){ fetchOnline(); setInterval(fetchOnline, 60000); }, 2000);
+})();
+</script>
+
+{% if 'user_id' in session %}
+<script>
+(function(){
+  var input    = document.getElementById('gsInput');
+  var dropdown = document.getElementById('gsDropdown');
+  if (!input) return;
+  var timer = null;
+  var activeIdx = -1;
+  var currentItems = [];
+  var lastQ = '';
+  var STATUS_MAP = {
+    'draft':             {text:'Черновик',         cls:'status-draft'},
+    'registered':        {text:'Зарегистрировано', cls:'status-registered'},
+    'in_progress':       {text:'В работе',         cls:'status-in_progress'},
+    'under_review':      {text:'На проверке',      cls:'status-under_review'},
+    'ready_to_send':     {text:'Готово к отпр.',   cls:'status-ready_to_send'},
+    'sent_to_applicant': {text:'Отправлено',       cls:'status-sent_to_applicant'},
+    'closed':            {text:'Закрыто',           cls:'status-closed'},
+  };
+  function showDropdown(html){ dropdown.innerHTML=html; dropdown.classList.add('show'); activeIdx=-1; currentItems=dropdown.querySelectorAll('.gs-item[data-url]'); }
+  function hideDropdown(){ dropdown.classList.remove('show'); dropdown.innerHTML=''; activeIdx=-1; }
+  function goToSearch(q){ window.location.href='/search?q='+encodeURIComponent(q); }
+  function renderResults(data){
+    if (!data.results.length){ showDropdown('<div class="gs-empty"><i class="bi bi-search me-1"></i>Ничего не найдено</div>'); return; }
+    var html='';
+    data.results.forEach(function(r){
+      var s=STATUS_MAP[r.status]||{text:r.status,cls:'bg-secondary'};
+      var meta=[];
+      if(r.inn) meta.push('ИНН '+r.inn);
+      if(r.project) meta.push(r.project);
+      if(r.match_label) meta.push('<span style="color:#1B5E7B">по: '+r.match_label+'</span>');
+      html+='<a class="gs-item" href="'+r.url+'" data-url="'+r.url+'"><div class="gs-item-left"><div class="gs-item-num">'+r.number+'</div><div class="gs-item-name">'+r.name+'</div>'+(meta.length?'<div class="gs-item-meta">'+meta.join(' · ')+'</div>':'')+'</div><span class="badge '+s.cls+' gs-item-badge">'+s.text+'</span></a>';
+    });
+    html+='<div class="gs-footer" id="gsFooter">Показать все результаты</div>';
+    showDropdown(html);
+    document.getElementById('gsFooter').addEventListener('click',function(){ goToSearch(lastQ); });
+  }
+  function doSearch(q){
+    lastQ=q;
+    showDropdown('<div class="gs-loading"><i class="bi bi-hourglass-split me-1"></i>Поиск…</div>');
+    fetch('/api/search?q='+encodeURIComponent(q),{credentials:'same-origin'}).then(function(r){return r.json();}).then(renderResults).catch(function(){hideDropdown();});
+  }
+  input.addEventListener('input',function(){ var q=input.value.trim(); clearTimeout(timer); if(q.length<2){hideDropdown();return;} timer=setTimeout(function(){doSearch(q);},280); });
+  input.addEventListener('keydown',function(e){
+    var items=currentItems;
+    if(e.key==='ArrowDown'){e.preventDefault();activeIdx=Math.min(activeIdx+1,items.length-1);items.forEach(function(el,i){el.classList.toggle('gs-active',i===activeIdx);});}
+    else if(e.key==='ArrowUp'){e.preventDefault();activeIdx=Math.max(activeIdx-1,0);items.forEach(function(el,i){el.classList.toggle('gs-active',i===activeIdx);});}
+    else if(e.key==='Enter'){e.preventDefault();if(activeIdx>=0&&items[activeIdx]){window.location.href=items[activeIdx].getAttribute('data-url');}else if(input.value.trim().length>=2){goToSearch(input.value.trim());}}
+    else if(e.key==='Escape'){hideDropdown();input.blur();}
+  });
+  document.addEventListener('click',function(e){if(!document.getElementById('gsWrap').contains(e.target))hideDropdown();});
+  document.addEventListener('keydown',function(e){if(e.ctrlKey&&e.shiftKey&&e.key==='F'){e.preventDefault();input.focus();input.select();}});
+})();
+</script>
+{% endif %}
+
+{# ── Централизованный модуль мигания вкладки ── #}
+{% if 'user_id' in session %}
+<script>
+(function(){
+  var originalTitle   = document.title;
+  var versionInterval = null;
+  var taskInterval    = null;
+
+  function stopAllFlashing() {
+    if (versionInterval) { clearInterval(versionInterval); versionInterval = null; }
+    if (taskInterval)    { clearInterval(taskInterval);    taskInterval    = null; }
+    document.title = originalTitle;
+  }
+  window.stopAllFlashing = stopAllFlashing;
+
+  window.startVersionFlashing = function() {
+    if (versionInterval) return;
+    var state = false;
+    versionInterval = setInterval(function() {
+      document.title = state ? '🆕 Новая версия!' : originalTitle;
+      state = !state;
+    }, 700);
+  };
+
+  window.startTaskFlashing = function() {
+    if (taskInterval) return;
+    var state = false;
+    taskInterval = setInterval(function() {
+      document.title = state ? '📋 Новая задача!' : originalTitle;
+      state = !state;
+    }, 700);
+  };
+
+  window.addEventListener('focus', stopAllFlashing);
+})();
+</script>
+{% endif %}
+
+{# ── Уведомление о новых задачах ── #}
+{% if 'user_id' in session %}
+<script>
+(function(){
+  var PREV_KEY = 'sonar_unread_prev_{{ session.get("user_id") }}';
+  var current  = {{ unread_count|int }};
+  var prev     = parseInt(localStorage.getItem(PREV_KEY) || '-1', 10);
+  localStorage.setItem(PREV_KEY, String(current));
+  if (prev >= 0 && current > prev && window.startTaskFlashing) {
+    if (window.location.pathname !== '/notifications') window.startTaskFlashing();
+  }
+  var notifLink = document.getElementById('sbNotifLink');
+  if (notifLink && window.stopAllFlashing) notifLink.addEventListener('click', window.stopAllFlashing);
+})();
+</script>
+{% endif %}
+
+{# ── Проверка обновлений (admin) ── #}
+{% if session.get('role') == 'admin' %}
+<script>
+(function(){
+  var dot       = document.getElementById('sbUpdateDot');
+  if (!dot) return;
+  var CACHE_KEY = 'sonar_upd_status';
+  var SEEN_KEY  = 'sonar_upd_seen';
+  var INTERVAL  = 30 * 60 * 1000;
+  /*
+   * FIX v2.20.1: Точка показывается только если has=true И пользователь ЕЩЄ
+   * не просмотрел страницу версий в текущей сессии.
+   * После клика в sidebar'e по «Версии» — seen становится '1',
+   * и точка перестаёт появляться до следующего рестарта браузера / выхода из сессии.
+  */
+  function applyUpdateState(has) {
+    var seen = sessionStorage.getItem(SEEN_KEY) === '1';
+    var show = has && !seen;
+    dot.classList.toggle('d-none', !show);
+    if (show && window.startVersionFlashing) window.startVersionFlashing();
+  }
+
+  var clLink = document.getElementById('sbChangelogLink');
+  if (clLink) {
+    clLink.addEventListener('click', function() {
+      sessionStorage.setItem(SEEN_KEY, '1');
+      dot.classList.add('d-none');
+      if (window.stopAllFlashing) window.stopAllFlashing();
+    });
+  }
+
+  function doCheck() {
+    fetch('/api/update/check?force=1', {credentials:'same-origin', cache:'no-store'})
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(data){
+        if (!data) return;
+        var has = data.has_update === true;
+        localStorage.setItem(CACHE_KEY, JSON.stringify({ts: Date.now(), has: has}));
+        applyUpdateState(has);
+      }).catch(function(){});
+  }
+
+  var cached = localStorage.getItem(CACHE_KEY);
+  if (cached) {
+    try {
+      var c = JSON.parse(cached);
+      applyUpdateState(c.has);
+      if (Date.now() - c.ts > INTERVAL) doCheck();
+    } catch(e) { doCheck(); }
+  } else {
+    setTimeout(doCheck, 5000);
+  }
+  setInterval(doCheck, INTERVAL);
+})();
+</script>
+{% endif %}
+
+</body>
+</html>
