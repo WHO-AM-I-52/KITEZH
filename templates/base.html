@@ -2,8 +2,7 @@
 {# ╔══════════════════════════════════════════════════════════════╗ #}
 {# ║                        base.html                            ║ #}
 {# ║  Базовый шаблон приложения "Подбор ЗУ — НО"                 ║ #}
-{# ║  v2.21.0: sidebar — структура по permission;                ║ #}
-{# ║           phonebook/investmap через can_view_*              ║ #}
+{# ║  v2.21.1: fix sidebar — perms.can_view_* вместо session.*   ║ #}
 {# ╚══════════════════════════════════════════════════════════════╝ #}
 <html lang="ru">
 <head>
@@ -408,17 +407,17 @@
     </a>
 
     {# ─────────────────────────── СЕРВИСЫ ─────────────────────────── #}
-    {% if session.get('can_view_investmap') or session.get('can_view_phonebook') %}
+    {% if perms.can_view_investmap or perms.can_view_phonebook %}
     <div class="sb-sep"></div>
     <div class="sb-cat">Сервисы</div>
 
-    {% if session.get('can_view_phonebook') %}
+    {% if perms.can_view_phonebook %}
     <a href="{{ url_for('phonebook.phonebook') }}" class="sb-link {{ 'active' if request.endpoint and request.endpoint.startswith('phonebook') }}">
       <i class="bi bi-telephone-fill"></i><span class="sb-lbl">Справочник</span>
     </a>
     {% endif %}
 
-    {% if session.get('can_view_investmap') %}
+    {% if perms.can_view_investmap %}
     <a href="/investmap" class="sb-link {{ 'active' if 'investmap' in request.path }}">
       <i class="bi bi-pin-map-fill"></i><span class="sb-lbl">Инвестплощадки</span>
     </a>
