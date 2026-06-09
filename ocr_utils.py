@@ -1,8 +1,8 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║ ocr_utils.py                                                 ║
-# ║ v3.0.2 — fix #66 [1/2]: проверка файла до обработки,        ║
-# ║          try/except в _extract_text_image(),                 ║
-# ║          logger.error в else-блоке                           ║
+# ║ v3.1.0 — fix #65: нормализация телефона/ИНН,                ║
+# ║          fix offset e-mail, парсинг applicant_inn,           ║
+# ║          парсинг preferred_districts из текста               ║
 # ║                                                              ║
 # ║  • PDF: текст без OCR                                       ║
 # ║  • DOCX/DOC: абзацы + ТАБЛИЦЫ (спец-парсер MTS)             ║
@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 from typing import Dict, Tuple
 
@@ -42,6 +43,31 @@ def _get_ocr_reader():
         _OCR_READER = easyocr.Reader(['ru', 'en'], gpu=False)
         logger.info("OCR: модель загружена")
     return _OCR_READER
+
+
+# ─── НОРМАЛИЗАЦИЯ ЗНАЧЕНИЙ ────────────────────────────────────────────────────
+
+def _norm_phone(raw: str) -> str:
+    """
+    Нормализует телефон: оставляет только цифры и '+', убирает мусор.
+    Если цифр меньше 7 — возвращает пустую строку (это не телефон).
+    """
+    cleaned = re.sub(r"[^\d+\-() ]", "", raw).strip()
+    digits_only = re.sub(r"\D", "", cleaned)
+    if len(digits_only) < 7:
+        return ""
+    return cleaned
+
+
+def _norm_inn(raw: str) -> str:
+    """
+    Нормализует ИНН: оставляет только цифры.
+    Допустимая длина ИНН — 10 (юр. лицо) или 12 (физ. лицо).
+    """
+    digits = re.sub(r"\D", "", raw)
+    if len(digits) in (10, 12):
+        return digits
+    return ""
 
 
 # ─── БАЗОВОЕ ИЗВЛЕЧЕНИЕ ТЕКСТА ───────────────────────────────────────────────
@@ -93,11 +119,12 @@ def _parse_docx_tables(path: str) -> Dict[str, str]:
     """
     Читает только таблицы DOCX и вытягивает:
       • applicant_full_name
+      • applicant_inn          ← fix #65: новый паттерн
       • postal_address
       • project_name
       • contact_person
-      • contact_phone
-      • contact_email
+      • contact_phone          ← fix #65: точный regex + _norm_phone()
+      • contact_email          ← fix #65: исправлен offset для «e-mail»
       • jobs_total, jobs_foreign
       • investment_total
       • object_composition
@@ -108,9 +135,6 @@ def _parse_docx_tables(path: str) -> Dict[str, str]:
         doc = Document(path)
         fields: Dict[str, str] = {}
 
-        def clean_value(val: str) -> str:
-            return val.strip(" \t:;–-|")
-
         def clean_fio(val: str) -> str:
             v = val.strip()
             low = v.lower()
@@ -120,6 +144,24 @@ def _parse_docx_tables(path: str) -> Dict[str, str]:
                     v = parts[1].strip()
             return v
 
+        # fix #65: точный поиск метки телефона — только «телефон» или «тел.:»
+        _PHONE_RE = re.compile(
+            r"(?:телефон|тел\.?\s*:)\s*([+\d][\d\s\-().+]{5,})",
+            re.IGNORECASE,
+        )
+
+        # fix #65: regex для e-mail, нет проблемы с offset
+        _EMAIL_RE = re.compile(
+            r"e[\-\s]?mail\s*[:\s]\s*(\S+@\S+)",
+            re.IGNORECASE,
+        )
+
+        # fix #65: поиск ИНН — строго 10 или 12 цифр после метки
+        _INN_RE = re.compile(
+            r"инн\s*[:\s]\s*(\d{10}|\d{12})",
+            re.IGNORECASE,
+        )
+
         for table in doc.tables:
             rows = [[cell.text.strip() for cell in row.cells] for row in table.rows]
 
@@ -127,6 +169,7 @@ def _parse_docx_tables(path: str) -> Dict[str, str]:
             while i < len(rows):
                 row = rows[i]
                 joined = " | ".join(row).lower()
+                joined_raw = " | ".join(row)  # оригинал для regex
 
                 if "заявитель (инвестор" in joined:
                     value_parts = []
@@ -145,6 +188,14 @@ def _parse_docx_tables(path: str) -> Dict[str, str]:
                     if value_parts and "applicant_full_name" not in fields:
                         fields["applicant_full_name"] = " ".join(value_parts)
                     i = j
+                    continue
+
+                # fix #65: извлечение ИНН из таблицы
+                if "инн" in joined:
+                    m = _INN_RE.search(joined_raw)
+                    if m and "applicant_inn" not in fields:
+                        fields["applicant_inn"] = m.group(1).strip()
+                    i += 1
                     continue
 
                 if "почтовый и юридический адрес" in joined:
@@ -181,18 +232,21 @@ def _parse_docx_tables(path: str) -> Dict[str, str]:
                             val = clean_fio(line)
                             if val:
                                 fields["contact_person"] = val
-                        if "тел" in low_line:
-                            idx = low_line.find("тел")
-                            tail = line[idx + len("тел"):].strip(" :\t")
-                            if tail:
-                                fields["contact_phone"] = tail
-                        if "e-mail" in low_line or "email" in low_line:
-                            idx = low_line.find("e-mail")
-                            if idx == -1:
-                                idx = low_line.find("email")
-                            tail = line[idx + len("email"):].strip(" :\t") if idx != -1 else line
-                            if tail:
-                                fields["contact_email"] = tail
+
+                        # fix #65: точный regex вместо жадного find("тел")
+                        if "contact_phone" not in fields:
+                            m_phone = _PHONE_RE.search(line)
+                            if m_phone:
+                                normed = _norm_phone(m_phone.group(1))
+                                if normed:
+                                    fields["contact_phone"] = normed
+
+                        # fix #65: regex для e-mail, нет ошибки с offset
+                        if "contact_email" not in fields:
+                            m_email = _EMAIL_RE.search(line)
+                            if m_email:
+                                fields["contact_email"] = m_email.group(1).strip()
+
                         j += 1
                     i = j
                     continue
@@ -351,6 +405,26 @@ def _parse_anketa_text_blocks(text: str) -> Dict[str, str]:
     )
     if transport_extra:
         fields["transport_extra"] = transport_extra
+
+    # fix #65: извлечение preferred_districts из текстовых блоков PDF/DOCX
+    districts = find_after(
+        [
+            "предпочтительный район размещения:",
+            "предпочтительный район размещения",
+            "предпочтительные районы:",
+            "предпочтительные районы",
+            "2.1. предпочтительный район",
+            "район размещения:",
+        ],
+        max_len=300,
+    )
+    if districts:
+        fields["preferred_districts"] = districts
+
+    # fix #65: ИНН из текста (PDF-анкеты)
+    inn_match = re.search(r"инн\s*[:\s]\s*(\d{10}|\d{12})", low)
+    if inn_match and "applicant_inn" not in fields:
+        fields["applicant_inn"] = inn_match.group(1)
 
     add_info = slice_block(
         "6. дополнительная информация:",
