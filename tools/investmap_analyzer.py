@@ -3,7 +3,7 @@
 # ║  Оценка заполняемости карточки инвестплощадки               ║
 # ║  Методика: Минэкономразвития РФ, 08.08.2023 №28301-МК/Д28и  ║
 # ║  + публичный светофор invest.gov.ru                         ║
-# ║  Версия алгоритма: 1.4.2                                    ║
+# ║  Версия алгоритма: 1.4.3                                    ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from __future__ import annotations
@@ -335,6 +335,41 @@ def _build_sms(площадка_id: str, площадка_name: str, total_porta
         lines.append(f'{i}. {field} — {_instruction_for_field(field)}.')
 
     lines.append('')
+    lines.append('После внесения изменений просим сообщить — проверим обновлённый процент.')
+    return '\n'.join(lines)
+
+
+def build_summary_sms(analysis_list: list[dict]) -> str | None:
+    """Сводная SMS по всем площадкам из формата 2.
+
+    Включает только площадки с незаполненными полями (sms != None).
+    Возвращает None если все площадки полностью заполнены.
+    """
+    items = [a for a in analysis_list if a.get('sms')]
+    if not items:
+        return None
+
+    total = len(analysis_list)
+    problem = len(items)
+
+    lines = ['Добрый день!', '']
+    lines.append(
+        f'Направляем сводный отчёт по заполняемости инвестплощадок на портале invest.gov.ru.'
+    )
+    lines.append(
+        f'Проверено площадок: {total}. '
+        f'Требуют доработки: {problem}.'
+    )
+    lines.append('')
+
+    for a in items:
+        lines.append(f'▸ «{a["id"]}» — {a["total"]}% ({a["category"]})')
+        missing = a.get('missing_portal') or []
+        if missing:
+            for i, field in enumerate(missing, 1):
+                lines.append(f'   {i}. {field} — {_instruction_for_field(field)}.')
+        lines.append('')
+
     lines.append('После внесения изменений просим сообщить — проверим обновлённый процент.')
     return '\n'.join(lines)
 
