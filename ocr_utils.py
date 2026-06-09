@@ -1,5 +1,7 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║ ocr_utils.py                                                 ║
+# ║ v3.2.1 — fix: _is_blank_value() — прочерки/пустые        ║
+# ║          строки считаются незаполненными              ║
 # ║ v3.2.0 — feat #67: extract_anketa_fields() → (fields,msg,   ║
 # ║          raw_text); raw_text нужен для ocr-preview           ║
 # ║                                                              ║
@@ -44,7 +46,26 @@ def _get_ocr_reader():
     return _OCR_READER
 
 
-# ─── НОРМАЛИЗАЦИЯ ЗНАЧЕНИЙ ────────────────────────────────────────────────────
+# ─── НОРМАЛИЗАЦИЯ ЗНАЧЕНИЙ ───────────────────────────────────────────────────
+
+# Паттерн: строка считается пустой/незаполненной если состоит только из:
+#   • пробелов, прочерков _, тире —/–, точек ., запятых ,
+#   • слеш из перечисленных символов
+_BLANK_RE = re.compile(r'^[\s_\-—–.,/|]+$')
+
+
+def _is_blank_value(val: str) -> bool:
+    """
+    True если значение поля является пустым или состоит только
+    из прочерков/тире/спецсимволов (незаполненные строки анкеты).
+    
+    Примеры пустых: "", "___", "---", "__ __", "———", "   "
+    Примеры непустых: "0", "Да", "Весна 2026г."
+    """
+    if not val or not val.strip():
+        return True
+    return bool(_BLANK_RE.match(val.strip()))
+
 
 def _norm_phone(raw: str) -> str:
     """
@@ -99,7 +120,6 @@ def _extract_text_image(path: str) -> str:
     reader = _get_ocr_reader()
     if reader is None:
         return ""
-    # fix #66: защита от падения на повреждённых/неподдерживаемых изображениях
     try:
         result = reader.readtext(path, detail=0, paragraph=True)
         return "\n".join(result)
@@ -112,23 +132,13 @@ def _normalize_text(text: str) -> str:
     return text.replace("\r", "\n").replace("\xa0", " ")
 
 
-# ─── ПАРСИНГ ТАБЛИЦ DOCX (РЕКВИЗИТЫ) ────────────────────────────────────────
+# ─── ПАРСИНГ ТАБЛИЦ DOCX (РЕКВИЗИТЫ) ───────────────────────────────────────────
 
 def _parse_docx_tables(path: str) -> Dict[str, str]:
     """
-    Читает только таблицы DOCX и вытягивает:
-      • applicant_full_name
-      • applicant_inn          ← fix #65: новый паттерн
-      • postal_address
-      • project_name
-      • contact_person
-      • contact_phone          ← fix #65: точный regex + _norm_phone()
-      • contact_email          ← fix #65: исправлен offset для «e-mail»
-      • jobs_total, jobs_foreign
-      • investment_total
-      • object_composition
-      • construction_start, operation_start
-      • product_nomenclature
+    Читает только таблицы DOCX и вытягивает реквизиты.
+    Все значения проходят через _is_blank_value() —
+    прочерки и пустые строки не сохраняются.
     """
     try:
         doc = Document(path)
@@ -143,23 +153,23 @@ def _parse_docx_tables(path: str) -> Dict[str, str]:
                     v = parts[1].strip()
             return v
 
-        # fix #65: точный поиск метки телефона — только «телефон» или «тел.:»
         _PHONE_RE = re.compile(
             r"(?:телефон|тел\.?\s*:)\s*([+\d][\d\s\-().+]{5,})",
             re.IGNORECASE,
         )
-
-        # fix #65: regex для e-mail, нет проблемы с offset
         _EMAIL_RE = re.compile(
             r"e[\-\s]?mail\s*[:\s]\s*(\S+@\S+)",
             re.IGNORECASE,
         )
-
-        # fix #65: поиск ИНН — строго 10 или 12 цифр после метки
         _INN_RE = re.compile(
             r"инн\s*[:\s]\s*(\d{10}|\d{12})",
             re.IGNORECASE,
         )
+
+        def _set_field(key: str, val: str) -> None:
+            """Устанавливает поле только если значение непустое."""
+            if val and not _is_blank_value(val) and key not in fields:
+                fields[key] = val
 
         for table in doc.tables:
             rows = [[cell.text.strip() for cell in row.cells] for row in table.rows]
@@ -168,32 +178,31 @@ def _parse_docx_tables(path: str) -> Dict[str, str]:
             while i < len(rows):
                 row = rows[i]
                 joined = " | ".join(row).lower()
-                joined_raw = " | ".join(row)  # оригинал для regex
+                joined_raw = " | ".join(row)
 
                 if "заявитель (инвестор" in joined:
                     value_parts = []
                     for c in row:
                         if "заявитель (инвестор" not in c.lower():
-                            if c.strip():
+                            if c.strip() and not _is_blank_value(c.strip()):
                                 value_parts.append(c.strip())
                     j = i + 1
                     while j < len(rows) and "заявитель (инвестор" not in " | ".join(rows[j]).lower() \
                             and "почтовый и юридический адрес" not in " | ".join(rows[j]).lower():
                         for c in rows[j]:
                             ct = c.strip()
-                            if ct:
+                            if ct and not _is_blank_value(ct):
                                 value_parts.append(ct)
                         j += 1
-                    if value_parts and "applicant_full_name" not in fields:
-                        fields["applicant_full_name"] = " ".join(value_parts)
+                    if value_parts:
+                        _set_field("applicant_full_name", " ".join(value_parts))
                     i = j
                     continue
 
-                # fix #65: извлечение ИНН из таблицы
                 if "инн" in joined:
                     m = _INN_RE.search(joined_raw)
-                    if m and "applicant_inn" not in fields:
-                        fields["applicant_inn"] = m.group(1).strip()
+                    if m:
+                        _set_field("applicant_inn", m.group(1).strip())
                     i += 1
                     continue
 
@@ -201,10 +210,10 @@ def _parse_docx_tables(path: str) -> Dict[str, str]:
                     value_parts = []
                     for c in row:
                         if "почтовый и юридический адрес" not in c.lower():
-                            if c.strip():
+                            if c.strip() and not _is_blank_value(c.strip()):
                                 value_parts.append(c.strip())
                     if value_parts:
-                        fields["postal_address"] = " ".join(value_parts)
+                        _set_field("postal_address", " ".join(value_parts))
                     i += 1
                     continue
 
@@ -212,10 +221,10 @@ def _parse_docx_tables(path: str) -> Dict[str, str]:
                     value_parts = []
                     for c in row:
                         if "название проекта" not in c.lower():
-                            if c.strip():
+                            if c.strip() and not _is_blank_value(c.strip()):
                                 value_parts.append(c.strip())
                     if value_parts:
-                        fields["project_name"] = " ".join(value_parts)
+                        _set_field("project_name", " ".join(value_parts))
                     i += 1
                     continue
 
@@ -229,23 +238,18 @@ def _parse_docx_tables(path: str) -> Dict[str, str]:
                             break
                         if "ф.и.о" in low_line or "фио" in low_line:
                             val = clean_fio(line)
-                            if val:
-                                fields["contact_person"] = val
-
-                        # fix #65: точный regex вместо жадного find("тел")
+                            if val and not _is_blank_value(val):
+                                _set_field("contact_person", val)
                         if "contact_phone" not in fields:
                             m_phone = _PHONE_RE.search(line)
                             if m_phone:
                                 normed = _norm_phone(m_phone.group(1))
                                 if normed:
                                     fields["contact_phone"] = normed
-
-                        # fix #65: regex для e-mail, нет ошибки с offset
                         if "contact_email" not in fields:
                             m_email = _EMAIL_RE.search(line)
                             if m_email:
-                                fields["contact_email"] = m_email.group(1).strip()
-
+                                _set_field("contact_email", m_email.group(1).strip())
                         j += 1
                     i = j
                     continue
@@ -268,7 +272,7 @@ def _parse_docx_tables(path: str) -> Dict[str, str]:
                     for c in row:
                         if "планируемый объем инвестиций" not in c.lower() \
                                 and "планируемый объём инвестиций" not in c.lower():
-                            if c.strip():
+                            if c.strip() and not _is_blank_value(c.strip()):
                                 inv_lines.append(c.strip())
                     j = i + 1
                     while j < len(rows):
@@ -279,7 +283,8 @@ def _parse_docx_tables(path: str) -> Dict[str, str]:
                             continue
                         if "описание строительства" in low_l or "планируемый срок начала строительства" in low_l:
                             break
-                        inv_lines.append(l)
+                        if not _is_blank_value(l):
+                            inv_lines.append(l)
                         j += 1
                     for l in inv_lines:
                         if any(ch.isdigit() for ch in l):
@@ -292,7 +297,7 @@ def _parse_docx_tables(path: str) -> Dict[str, str]:
                     value_parts = []
                     for c in row:
                         if "описание строительства" not in c.lower():
-                            if c.strip():
+                            if c.strip() and not _is_blank_value(c.strip()):
                                 value_parts.append(c.strip())
                     j = i + 1
                     while j < len(rows):
@@ -304,44 +309,45 @@ def _parse_docx_tables(path: str) -> Dict[str, str]:
                         if "планируемый срок начала строительства" in low_l \
                                 or "планируемый срок ввода предприятия" in low_l:
                             break
-                        value_parts.append(l)
+                        if not _is_blank_value(l):
+                            value_parts.append(l)
                         j += 1
                     if value_parts:
-                        fields["object_composition"] = " ".join(value_parts)
+                        _set_field("object_composition", " ".join(value_parts))
                     i = j
                     continue
 
                 if "планируемый срок начала строительства" in joined:
                     for c in row:
-                        if "планируемый срок начала строительства" not in c.lower() and c.strip():
-                            fields["construction_start"] = c.strip()
+                        if "планируемый срок начала строительства" not in c.lower():
+                            if c.strip() and not _is_blank_value(c.strip()):
+                                _set_field("construction_start", c.strip())
                     i += 1
                     continue
 
                 if "планируемый срок ввода предприятия в эксплуатацию" in joined:
                     val = " ".join([c for c in row if "планируемый срок ввода предприятия" not in c.lower()]).strip()
-                    if val:
-                        fields["operation_start"] = val
+                    if not _is_blank_value(val):
+                        _set_field("operation_start", val)
                     i += 1
                     continue
 
                 if "номенклатура планируемой к выпуску продукции" in joined:
                     val = " ".join([c for c in row if "номенклатура планируемой к выпуску продукции" not in c.lower()]).strip()
-                    if val:
-                        fields["product_nomenclature"] = val
+                    if not _is_blank_value(val):
+                        _set_field("product_nomenclature", val)
                     i += 1
                     continue
 
                 i += 1
 
-        fields = {k: v for k, v in fields.items() if v}
-        return fields
+        return {k: v for k, v in fields.items() if v and not _is_blank_value(v)}
     except Exception as e:
         logger.warning("OCR: не удалось прочитать таблицы DOCX '%s': %s", path, e)
         return {}
 
 
-# ─── ПАРСИНГ ТЕКСТА (РАЗДЕЛЫ 1.1–6, PDF и т.п.) ─────────────────────────────
+# ─── ПАРСИНГ ТЕКСТА (РАЗДЕЛЫ 1.1–6, PDF и т.п.) ───────────────────────────────
 
 def _parse_anketa_text_blocks(text: str) -> Dict[str, str]:
     raw = _normalize_text(text)
@@ -361,7 +367,7 @@ def _parse_anketa_text_blocks(text: str) -> Dict[str, str]:
             i = low.find(stop.lower(), start)
             if i != -1 and i < end:
                 end = i
-        return raw[start:end].strip(" \t:;–-\n")
+        return raw[start:end].strip(" \t:;\u2013\u2014-\n")
 
     def find_after(labels, max_len: int = 120) -> str:
         if isinstance(labels, str):
@@ -374,7 +380,7 @@ def _parse_anketa_text_blocks(text: str) -> Dict[str, str]:
                 start = idx + len(label)
                 tail = raw[start:start+max_len]
                 line = tail.splitlines()[0]
-                return line.strip(" \t:;–-|")
+                return line.strip(" \t:;\u2013\u2014-|")
         return ""
 
     fields: Dict[str, str] = {}
@@ -383,29 +389,28 @@ def _parse_anketa_text_blocks(text: str) -> Dict[str, str]:
         "1.1. краткое описание производства и используемых технологий",
         ["\n1.2.", "\nii.", "\n2.", "\nII "]
     )
-    if prod_desc:
+    if prod_desc and not _is_blank_value(prod_desc):
         fields["production_description"] = prod_desc
 
     if "object_composition" not in fields:
         comp = find_after(["1.2. состав объекта:", "1.2. состав объекта"], max_len=400)
-        if comp:
+        if comp and not _is_blank_value(comp):
             fields["object_composition"] = comp
 
     eng_extra = slice_block(
         "при необходимости укажите дополнительные требования к инженерной инфраструктуре:",
         ["\n2.", "\n2. ", "\n3.", "\n3. "]
     )
-    if eng_extra:
+    if eng_extra and not _is_blank_value(eng_extra):
         fields["engineering_extra"] = eng_extra
 
     transport_extra = slice_block(
         "2.3. при необходимости укажите дополнительные требования к транспортной инфраструктуре",
         ["\n3.", "\n3. "]
     )
-    if transport_extra:
+    if transport_extra and not _is_blank_value(transport_extra):
         fields["transport_extra"] = transport_extra
 
-    # fix #65: извлечение preferred_districts из текстовых блоков PDF/DOCX
     districts = find_after(
         [
             "предпочтительный район размещения:",
@@ -417,10 +422,9 @@ def _parse_anketa_text_blocks(text: str) -> Dict[str, str]:
         ],
         max_len=300,
     )
-    if districts:
+    if districts and not _is_blank_value(districts):
         fields["preferred_districts"] = districts
 
-    # fix #65: ИНН из текста (PDF-анкеты)
     inn_match = re.search(r"инн\s*[:\s]\s*(\d{10}|\d{12})", low)
     if inn_match and "applicant_inn" not in fields:
         fields["applicant_inn"] = inn_match.group(1)
@@ -429,13 +433,13 @@ def _parse_anketa_text_blocks(text: str) -> Dict[str, str]:
         "6. дополнительная информация:",
         []
     )
-    if add_info:
+    if add_info and not _is_blank_value(add_info):
         fields["additional_info"] = add_info
 
-    return {k: v for k, v in fields.items() if v}
+    return {k: v for k, v in fields.items() if v and not _is_blank_value(v)}
 
 
-# ─── ПУБЛИЧНАЯ ФУНКЦИЯ ───────────────────────────────────────────────────────
+# ─── ПУБЛИЧНАЯ ФУНКЦИЯ ───────────────────────────────────────────────────────────────────
 
 def extract_anketa_fields(path: str) -> Tuple[Dict[str, str], str, str]:
     """
@@ -448,7 +452,6 @@ def extract_anketa_fields(path: str) -> Tuple[Dict[str, str], str, str]:
     p: Path = Path(path)
     ext = (p.suffix or "").lower()
 
-    # fix #66: проверка существования и размера файла до любой обработки
     if not p.exists():
         logger.error("OCR: файл не найден '%s'", path)
         return {}, f"Файл не найден: {path}", ""
@@ -484,16 +487,15 @@ def extract_anketa_fields(path: str) -> Tuple[Dict[str, str], str, str]:
         else:
             if not _HAS_EASYOCR:
                 return {}, "Анкета похожа на скан PDF, но OCR (easyocr) на сервере не установлен.", ""
-            return {}, "Сканированный PDF пока не поддерживается (нужна доработка OCR по картинкам).", ""
+            return {}, "Сканированный PDF пока не поддерживается.", ""
 
     elif ext in (".jpg", ".jpeg", ".png"):
         if not _HAS_EASYOCR:
-            return {}, "Для обработки сканов анкеты нужен easyocr, который сейчас не установлен.", ""
+            return {}, "Для обработки сканов анкеты нужен easyocr.", ""
         text = _extract_text_image(path)
         msg = "Файл анкеты обработан как изображение (OCR)."
 
     else:
-        # fix #66: logger.error вместо молчаливого провала в else-блоке
         try:
             if _is_text_pdf(path):
                 text = _extract_text_pdf(path)
