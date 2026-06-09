@@ -1,6 +1,6 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║                      auth_utils.py                           ║
-# ║  v2.4: +can_view_investmap                                   ║
+# ║  v2.5: +can_view_phonebook                                   ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 import hashlib
@@ -9,7 +9,7 @@ from flask import session, redirect, url_for, flash
 from werkzeug.security import generate_password_hash, check_password_hash
 
 
-# ─── ХЕШИРОВАНИЕ ────────────────────────────────────────────────────────────────────
+# ─── ХЕШИРОВАНИЕ ─────────────────────────────────────────────────────────────────────
 
 def hash_pw(p: str) -> str:
     """Хеширует пароль через werkzeug (scrypt или pbkdf2 в зависимости от версии)."""
@@ -35,7 +35,7 @@ def is_legacy_hash(stored: str) -> bool:
     return bool(stored) and not stored.startswith('scrypt:') and not stored.startswith('pbkdf2:')
 
 
-# ─── ПРАВА ────────────────────────────────────────────────────────────────────────────
+# ─── ПРАВА ──────────────────────────────────────────────────────────────────────────
 
 ALL_PERMISSIONS = {
     'can_create':           'Создавать обращения',
@@ -50,6 +50,7 @@ ALL_PERMISSIONS = {
     'can_users':            'Управление пользователями',
     'can_view_all':         'Видит все обращения (вкл. поиск)',
     'can_view_investmap':   'Просмотр инвест. карты',
+    'can_view_phonebook':   'Просмотр телефонного справочника',
 }
 
 ADMIN_PERMISSIONS = {k: 1 for k in ALL_PERMISSIONS}
@@ -61,7 +62,7 @@ def get_user_perm(key: str) -> bool:
     return bool(session.get(f'perm_{key}', 0))
 
 
-# ─── ДЕКОРАТОРЫ ────────────────────────────────────────────────────────────────────────
+# ─── ДЕКОРАТОРЫ ───────────────────────────────────────────────────────────────────────
 
 def login_required(f):
     @wraps(f)
