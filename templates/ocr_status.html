@@ -18,7 +18,7 @@
   {% endif %}
 </div>
 
-{# ── Таблица зависимостей ─────────────────────────────────────────────────── #}
+{# ── Таблица зависимостей ──────────────────────────────────────────────────────── #}
 <div class="card mb-4">
   <div class="card-header bg-white fw-semibold d-flex align-items-center gap-2">
     <i class="bi bi-boxes text-secondary"></i> Зависимости
@@ -36,7 +36,6 @@
 
         {% set dep_labels = [
           ('easyocr',    'bi-eye-fill',        'easyocr'),
-          ('tesseract',  'bi-file-binary',     'Tesseract OCR'),
           ('pdfplumber', 'bi-file-pdf-fill',   'pdfplumber'),
           ('docx',       'bi-file-word-fill',  'python-docx'),
           ('pillow',     'bi-image-fill',      'Pillow (PIL)'),
@@ -75,7 +74,7 @@
   </div>
 </div>
 
-{# ── Статистика и тестовый запуск ────────────────────────────────────────── #}
+{# ── Статистика и тестовый запуск ─────────────────────────────────────────────────── #}
 <div class="row g-4 mb-4">
 
   {# Счётчики #}
@@ -134,7 +133,7 @@
 
 </div>
 
-{# ── Последние ошибки OCR ─────────────────────────────────────────────────── #}
+{# ── Последние ошибки OCR ───────────────────────────────────────────────────────────── #}
 {% if recent_errors %}
 <div class="card">
   <div class="card-header bg-white fw-semibold d-flex align-items-center gap-2">
