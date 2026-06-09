@@ -1,8 +1,7 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║ ocr_utils.py                                                 ║
-# ║ v3.1.0 — fix #65: нормализация телефона/ИНН,                ║
-# ║          fix offset e-mail, парсинг applicant_inn,           ║
-# ║          парсинг preferred_districts из текста               ║
+# ║ v3.2.0 — feat #67: extract_anketa_fields() → (fields,msg,   ║
+# ║          raw_text); raw_text нужен для ocr-preview           ║
 # ║                                                              ║
 # ║  • PDF: текст без OCR                                       ║
 # ║  • DOCX/DOC: абзацы + ТАБЛИЦЫ (спец-парсер MTS)             ║
@@ -438,12 +437,13 @@ def _parse_anketa_text_blocks(text: str) -> Dict[str, str]:
 
 # ─── ПУБЛИЧНАЯ ФУНКЦИЯ ───────────────────────────────────────────────────────
 
-def extract_anketa_fields(path: str) -> Tuple[Dict[str, str], str]:
+def extract_anketa_fields(path: str) -> Tuple[Dict[str, str], str, str]:
     """
     На вход: путь к файлу анкеты.
     На выход:
-      fields — dict под ALL_FIELDS
-      msg    — человекочитаемое описание, как обрабатывали файл
+      fields   — dict под ALL_FIELDS
+      msg      — человекочитаемое описание, как обрабатывали файл
+      raw_text — сырой извлечённый текст (для ocr-preview, #67)
     """
     p: Path = Path(path)
     ext = (p.suffix or "").lower()
@@ -451,10 +451,10 @@ def extract_anketa_fields(path: str) -> Tuple[Dict[str, str], str]:
     # fix #66: проверка существования и размера файла до любой обработки
     if not p.exists():
         logger.error("OCR: файл не найден '%s'", path)
-        return {}, f"Файл не найден: {path}"
+        return {}, f"Файл не найден: {path}", ""
     if p.stat().st_size == 0:
         logger.error("OCR: файл пустой (0 байт) '%s'", path)
-        return {}, "Файл пустой (0 байт) — загрузите корректный файл анкеты."
+        return {}, "Файл пустой (0 байт) — загрузите корректный файл анкеты.", ""
 
     logger.debug("OCR: path=%s ext=%s", path, ext)
 
@@ -475,7 +475,7 @@ def extract_anketa_fields(path: str) -> Tuple[Dict[str, str], str]:
             text = "\n".join(parts)
             msg = "Файл анкеты обработан как DOC/DOCX (таблицы + текст, без OCR)."
         except Exception as e:
-            return {}, f"Не удалось прочитать DOC/DOCX: {e}"
+            return {}, f"Не удалось прочитать DOC/DOCX: {e}", ""
 
     elif ext == ".pdf":
         if _is_text_pdf(path):
@@ -483,12 +483,12 @@ def extract_anketa_fields(path: str) -> Tuple[Dict[str, str], str]:
             msg = "Файл анкеты обработан как текстовый PDF (без OCR)."
         else:
             if not _HAS_EASYOCR:
-                return {}, "Анкета похожа на скан PDF, но OCR (easyocr) на сервере не установлен."
-            return {}, "Сканированный PDF пока не поддерживается (нужна доработка OCR по картинкам)."
+                return {}, "Анкета похожа на скан PDF, но OCR (easyocr) на сервере не установлен.", ""
+            return {}, "Сканированный PDF пока не поддерживается (нужна доработка OCR по картинкам).", ""
 
     elif ext in (".jpg", ".jpeg", ".png"):
         if not _HAS_EASYOCR:
-            return {}, "Для обработки сканов анкеты нужен easyocr, который сейчас не установлен."
+            return {}, "Для обработки сканов анкеты нужен easyocr, который сейчас не установлен.", ""
         text = _extract_text_image(path)
         msg = "Файл анкеты обработан как изображение (OCR)."
 
@@ -508,7 +508,7 @@ def extract_anketa_fields(path: str) -> Tuple[Dict[str, str], str]:
             logger.error("OCR: не удалось определить тип файла '%s': %s", path, e)
             return {}, (
                 "Неподдерживаемый формат файла. Загрузите PDF или DOCX. Ошибка: " + str(e)
-            )
+            ), ""
 
     if text and text.strip():
         logger.debug("OCR TEXT SAMPLE: %s", repr(text[:500]))
@@ -517,6 +517,6 @@ def extract_anketa_fields(path: str) -> Tuple[Dict[str, str], str]:
             fields.setdefault(k, v)
 
     if not fields:
-        return {}, msg or "Не удалось распознать структуру анкеты."
+        return {}, msg or "Не удалось распознать структуру анкеты.", text
 
-    return fields, msg
+    return fields, msg, text
