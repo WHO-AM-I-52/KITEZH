@@ -6,6 +6,7 @@
 # ║             в БД), ocr-upload обновлён под Tuple[Dict,str,str]  ║
 # ║ feat #68: GET /ai/ocr-status — панель статуса OCR-движка      ║
 # ║           POST /ai/ocr-test  — тестовый запуск OCR            ║
+# ║ fix: убрана проверка Tesseract — не используется в проекте    ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 import json
@@ -157,13 +158,6 @@ def match_result():
 @ai_bp.route("/ocr-upload", methods=["POST"])
 @login_required
 def ocr_upload():
-    """
-    POST /ai/ocr-upload
-    Принимает файл анкеты, запускает OCR, возвращает JSON:
-      — успех: {"ok": true,  "fields": {...}, "msg": "..."}
-      — ошибка: {"ok": false, "error": "..."}
-    Ошибки логируются в activity_log с типом ocr_error.
-    """
     if "file" not in request.files:
         return jsonify({"ok": False, "error": "Файл не передан"}), 400
 
@@ -172,7 +166,7 @@ def ocr_upload():
         return jsonify({"ok": False, "error": "Пустое имя файла"}), 400
 
     try:
-        filename, fields, msg, _ = _save_and_parse(f)  # raw_text не нужен здесь
+        filename, fields, msg, _ = _save_and_parse(f)
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 400
     except Exception as e:
@@ -193,14 +187,6 @@ def ocr_upload():
 @ai_bp.route("/ocr-preview", methods=["POST"])
 @login_required
 def ocr_preview():
-    """
-    POST /ai/ocr-preview
-    Принимает файл, возвращает JSON без сохранения в БД:
-      — успех: {"ok": true, "raw_text": "...", "fields": {...}, "msg": "..."}
-      — ошибка: {"ok": false, "error": "..."}
-    Используется для ocr_preview.html — просмотр и редактирование
-    распознанных полей до переноса в форму обращения.
-    """
     if "file" not in request.files:
         return jsonify({"ok": False, "error": "Файл не передан"}), 400
 
@@ -246,16 +232,6 @@ def _check_ocr_deps() -> dict:
     except Exception as e:
         status['easyocr'] = {'ok': False, 'error': str(e)}
 
-    # pytesseract / Tesseract binary
-    try:
-        import pytesseract
-        v = pytesseract.get_tesseract_version()
-        status['tesseract'] = {'ok': True, 'version': str(v)}
-    except ImportError:
-        status['tesseract'] = {'ok': False, 'error': 'pytesseract не установлен'}
-    except Exception as e:
-        status['tesseract'] = {'ok': False, 'error': str(e)}
-
     # pdfplumber
     try:
         import pdfplumber
@@ -289,13 +265,8 @@ def _check_ocr_deps() -> dict:
 @ai_bp.route("/ocr-status", methods=["GET"])
 @admin_required
 def ocr_status():
-    """
-    GET /ai/ocr-status
-    Страница администратора: статус OCR-зависимостей + статистика ошибок.
-    """
     deps = _check_ocr_deps()
 
-    # Ошибки OCR за последние 7 дней
     conn = get_db()
     try:
         errors_7d = conn.execute(
@@ -304,7 +275,6 @@ def ocr_status():
             "AND created_at >= datetime('now','-7 days')"
         ).fetchone()[0]
 
-        # Последние 10 ошибок OCR
         recent_errors = conn.execute(
             "SELECT al.created_at, al.detail, u.full_name "
             "FROM activity_log al "
@@ -314,7 +284,6 @@ def ocr_status():
         ).fetchall()
         recent_errors = [dict(r) for r in recent_errors]
 
-        # Последняя успешная OCR-активность
         last_ocr = conn.execute(
             "SELECT created_at FROM activity_log "
             "WHERE action IN ('ocr_upload','ocr_preview') "
@@ -340,22 +309,16 @@ def ocr_status():
 @ai_bp.route("/ocr-test", methods=["POST"])
 @admin_required
 def ocr_test():
-    """
-    POST /ai/ocr-test
-    Создаёт тестовый PNG 1×1 и прогоняет через easyocr.
-    Возвращает JSON: {"ok": true/false, "result": "...", "error": "..."}
-    """
     try:
         import easyocr
         import numpy as np
 
-        # Минимальный тестовый массив (белое изображение)
         img = np.ones((50, 200, 3), dtype=np.uint8) * 255
         reader = easyocr.Reader(['ru', 'en'], gpu=False, verbose=False)
         result = reader.readtext(img, detail=0)
         return jsonify({
             'ok': True,
-            'result': f"easyocr запущен успешно. Результат: {result or '(пусто — норма для белого изображения)'}" 
+            'result': f"easyocr запущен успешно. Результат: {result or '(пусто — норма для белого изображения)'}"
         })
     except ImportError:
         return jsonify({'ok': False, 'error': 'easyocr не установлен'})
