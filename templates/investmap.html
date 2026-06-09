@@ -59,7 +59,7 @@
     </div>
   </div>
 
-  {# ─── Результат конвертации (для ИИ) ─────────────────────────── #}
+  {# ─── Результат конвертации (для ИИ) ──────────────────────────── #}
   <div class="col-12 col-lg-7">
     <div class="card h-100">
       <div class="card-body d-flex flex-column">
@@ -92,7 +92,28 @@
   </div>
 </div>
 
-{# ─── Блок анализа (скрыт до запуска) ───────────────────────── #}
+{# ─── Навигатор площадок (формат 2) ───────────────────────── #}
+<div id="plotNav" class="d-none mt-3">
+  <div class="card">
+    <div class="card-body py-2 px-3 d-flex align-items-center gap-3">
+      <button class="btn btn-sm btn-outline-secondary" id="navPrev" disabled>
+        <i class="bi bi-chevron-left"></i>
+      </button>
+      <span style="font-size:13px">
+        Площадка
+        <span id="navCurrent" class="fw-bold">1</span>
+        из
+        <span id="navTotal" class="fw-bold">1</span>
+      </span>
+      <button class="btn btn-sm btn-outline-secondary" id="navNext">
+        <i class="bi bi-chevron-right"></i>
+      </button>
+      <span id="navName" class="text-muted ms-1" style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:340px"></span>
+    </div>
+  </div>
+</div>
+
+{# ─── Блок анализа (скрыт до запуска) ────────────────────────── #}
 <div id="analysisBlock" class="d-none mt-3">
 
   {# Карточка: Итог #}
@@ -188,7 +209,7 @@
 
 </div>
 
-{# ─── Подсказка по форматам ──────────────────────────────────── #}
+{# ─── Подсказка по форматам ────────────────────────────────────────── #}
 <div class="card mt-3">
   <div class="card-body py-2 px-3">
     <div class="row g-2" style="font-size:12px;color:var(--text-muted)">
@@ -213,7 +234,7 @@
 <script>
 (function(){
 
-  // ─── Элементы ────────────────────────────────────────────────
+  // ─── Элементы ─────────────────────────────────────────────────────────
   var dropzone      = document.getElementById('dropzone');
   var fileInput     = document.getElementById('fileInput');
   var fileInfo      = document.getElementById('fileInfo');
@@ -232,9 +253,48 @@
   var smsText       = document.getElementById('smsText');
   var copySmsBtn    = document.getElementById('copySmsBtn');
 
+  // ─── Навигатор площадок ─────────────────────────────────────────────
+  var plotNav     = document.getElementById('plotNav');
+  var navPrev     = document.getElementById('navPrev');
+  var navNext     = document.getElementById('navNext');
+  var navCurrent  = document.getElementById('navCurrent');
+  var navTotal    = document.getElementById('navTotal');
+  var navName     = document.getElementById('navName');
+
+  var analysisData = null;   // [] или одиночный объект
+  var currentIdx   = 0;
+
+  function initNav(data){
+    analysisData = data;
+    currentIdx   = 0;
+    var list = Array.isArray(data) ? data : [data];
+    navTotal.textContent   = list.length;
+    navCurrent.textContent = 1;
+    navName.textContent    = list[0] ? ('\u2014 ' + list[0].id) : '';
+    plotNav.classList.toggle('d-none', list.length <= 1);
+    navPrev.disabled = true;
+    navNext.disabled = list.length <= 1;
+    renderAnalysis(list[0]);
+  }
+
+  function goToPlot(idx){
+    var list = Array.isArray(analysisData) ? analysisData : [analysisData];
+    if (idx < 0 || idx >= list.length) return;
+    currentIdx = idx;
+    navCurrent.textContent = idx + 1;
+    navName.textContent    = list[idx] ? ('\u2014 ' + list[idx].id) : '';
+    navPrev.disabled = idx === 0;
+    navNext.disabled = idx === list.length - 1;
+    renderAnalysis(list[idx]);
+    analysisBlock.scrollIntoView({behavior:'smooth', block:'start'});
+  }
+
+  navPrev.addEventListener('click', function(){ goToPlot(currentIdx - 1); });
+  navNext.addEventListener('click', function(){ goToPlot(currentIdx + 1); });
+
   var selectedFile = null;
 
-  // ─── Drag & Drop ──────────────────────────────────────────────
+  // ─── Drag & Drop ──────────────────────────────────────────────────────────
   dropzone.addEventListener('click', function(){ fileInput.click(); });
   dropzone.addEventListener('dragover', function(e){
     e.preventDefault();
@@ -278,9 +338,11 @@
     analyzeBtn.disabled = true;
     clearResult();
     analysisBlock.classList.add('d-none');
+    plotNav.classList.add('d-none');
+    analysisData = null;
   });
 
-  // ─── Конвертация для ИИ ───────────────────────────────────────
+  // ─── Конвертация для ИИ ───────────────────────────────────────────────
   convertBtn.addEventListener('click', function(){
     if (!selectedFile) return;
     var fd = new FormData();
@@ -288,6 +350,7 @@
     setLoading(true);
     clearResult();
     analysisBlock.classList.add('d-none');
+    plotNav.classList.add('d-none');
 
     fetch('/admin/investmap/convert', { method:'POST', body:fd, credentials:'same-origin' })
     .then(function(r){ return r.json(); })
@@ -307,7 +370,7 @@
     .catch(function(e){ setLoading(false); showError('Сетевая ошибка: ' + e); });
   });
 
-  // ─── Анализ ───────────────────────────────────────────────────
+  // ─── Анализ ──────────────────────────────────────────────────────────────
   analyzeBtn.addEventListener('click', function(){
     if (!selectedFile) return;
     var fd = new FormData();
@@ -315,6 +378,7 @@
     setLoading(true);
     clearResult();
     analysisBlock.classList.add('d-none');
+    plotNav.classList.add('d-none');
 
     fetch('/admin/investmap/analyze', { method:'POST', body:fd, credentials:'same-origin' })
     .then(function(r){ return r.json(); })
@@ -322,7 +386,7 @@
       setLoading(false);
       if (resp.error){ showError('Ошибка: ' + resp.error); return; }
 
-      // Показываем текст в textarea тоже
+      // Показываем текст в textarea
       resultEmpty.classList.add('d-none');
       resultText.classList.remove('d-none');
       resultText.value = resp.export.text;
@@ -333,15 +397,13 @@
       resultBadge.textContent = fmtLabels[resp.export.format] || 'Формат ' + resp.export.format;
       copyBtn.classList.remove('d-none');
 
-      // Берём первый анализ если список
-      var a = Array.isArray(resp.analysis) ? resp.analysis[0] : resp.analysis;
-      if (!a) return;
-      renderAnalysis(a);
+      // Инициализируем навигатор и рендерим первую площадку
+      if (resp.analysis) initNav(resp.analysis);
     })
     .catch(function(e){ setLoading(false); showError('Сетевая ошибка: ' + e); });
   });
 
-  // ─── Рендер анализа ───────────────────────────────────────────
+  // ─── Рендер анализа ───────────────────────────────────────────────────
   var BLOCK_NAMES = {
     1: 'Сведения об объекте',
     2: 'Свободные площади и коммерция',
@@ -375,7 +437,7 @@
     bar.setAttribute('aria-valuenow', a.total);
 
     // Метаданные
-    document.getElementById('plotId').textContent     = '📍 ' + a.id;
+    document.getElementById('plotId').textContent     = '\ud83d\udccd ' + a.id;
     document.getElementById('metaFormat').textContent = a.format;
     document.getElementById('metaStatus').textContent = a.status;
 
@@ -417,7 +479,6 @@
             ? '<span class="badge bg-warning text-dark">' + missingCount + '</span>'
             : '<span class="text-success">✓</span>') +
         '</td>';
-      // Клик — скролл к аккордеону блока
       if (missingCount > 0){
         tr.addEventListener('click', function(){
           var acc = document.getElementById('acc-block-' + k);
@@ -479,12 +540,12 @@
     analysisBlock.classList.remove('d-none');
   }
 
-  // ─── Копировать текст для ИИ ──────────────────────────────────
+  // ─── Копировать текст для ИИ ───────────────────────────────────────────
   copyBtn.addEventListener('click', function(){
     copyToClipboard(resultText.value, copyBtn, 'Скопировано!');
   });
 
-  // ─── Копировать SMS ───────────────────────────────────────────
+  // ─── Копировать SMS ────────────────────────────────────────────────
   copySmsBtn.addEventListener('click', function(){
     copyToClipboard(smsText.value, copySmsBtn, 'Скопировано!');
   });
@@ -505,7 +566,7 @@
     });
   }
 
-  // ─── Утилиты ──────────────────────────────────────────────────
+  // ─── Утилиты ──────────────────────────────────────────────────────────────
   function setLoading(on){
     convertBtn.disabled = on || !selectedFile;
     analyzeBtn.disabled = on || !selectedFile;
