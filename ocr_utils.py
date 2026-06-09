@@ -1,5 +1,7 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║ ocr_utils.py                                                 ║
+# ║ v3.2.3 — fix: _norm_investment() — нормализация OCR-        ║
+# ║          артефактов в поле investment_total                  ║
 # ║ v3.2.2 — fix: additional_info не захватывает текст          ║
 # ║          согласия; investment_total — только первая строка  ║
 # ║ v3.2.1 — fix: _is_blank_value() — прочерки/пустые        ║
@@ -54,6 +56,35 @@ def _get_ocr_reader():
 #   • пробелов, прочерков _, тире —/–, точек ., запятых ,
 #   • слеш из перечисленных символов
 _BLANK_RE = re.compile(r'^[\s_\-—–.,/|]+$')
+
+# fix v3.2.3: паттерн для нормализации OCR-мусора перед «рублей»
+# Примеры: «млн юрублей» → «млн рублей», «млн. ырублей» → «млн рублей»
+_INV_NORM_RE = re.compile(
+    r'(\d[\d\s.,]*(?:млн|тыс|миллион|тысяч)[а-яё.\s]*)([а-яё]+рублей)',
+    re.IGNORECASE,
+)
+
+
+def _norm_investment(val: str) -> str:
+    """
+    Нормализует OCR-артефакты в значении объёма инвестиций.
+    Убирает мусорные символы перед словом «рублей», вставленные OCR.
+
+    Примеры:
+      «100 млн юрублей»  → «100 млн рублей»
+      «40млн. ырублей»   → «40млн. рублей»
+      «160 млн рублей»   → «160 млн рублей»  (без изменений)
+    """
+    def _fix_rublei(m: re.Match) -> str:
+        prefix = m.group(1)  # «100 млн »
+        rublei = m.group(2)  # «юрублей» / «ырублей» / «рублей»
+        # Если слово уже «рублей» или «руб» — не трогаем
+        if re.match(r'^руб', rublei, re.IGNORECASE):
+            return m.group(0)
+        # Иначе заменяем на «рублей», убирая OCR-префикс
+        return prefix.rstrip() + ' рублей'
+
+    return _INV_NORM_RE.sub(_fix_rublei, val)
 
 
 def _is_blank_value(val: str) -> bool:
@@ -274,8 +305,6 @@ def _parse_docx_tables(path: str) -> Dict[str, str]:
                     for c in row:
                         if "планируемый объем инвестиций" not in c.lower() \
                                 and "планируемый объём инвестиций" not in c.lower():
-                            # fix v3.2.2: берём только первую строку ячейки,
-                            # чтобы не захватывать «в т.ч. собственных» и мусор
                             first_line = c.strip().split("\n")[0].strip()
                             if first_line and not _is_blank_value(first_line):
                                 inv_lines.append(first_line)
@@ -294,7 +323,8 @@ def _parse_docx_tables(path: str) -> Dict[str, str]:
                         j += 1
                     for l in inv_lines:
                         if any(ch.isdigit() for ch in l):
-                            fields["investment_total"] = l
+                            # fix v3.2.3: нормализуем OCR-артефакты («юрублей» → «рублей»)
+                            fields["investment_total"] = _norm_investment(l)
                             break
                     i = j
                     continue
@@ -436,7 +466,6 @@ def _parse_anketa_text_blocks(text: str) -> Dict[str, str]:
         fields["applicant_inn"] = inn_match.group(1)
 
     # fix v3.2.2: стоп-якоря для additional_info — отрезаем текст согласия
-    # который начинается с "просим ответить" или "согласие инициатора"
     add_info = slice_block(
         "6. дополнительная информация:",
         [
