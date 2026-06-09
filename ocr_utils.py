@@ -1,5 +1,7 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║ ocr_utils.py                                                 ║
+# ║ v3.2.6 — feat: power_electricity — потребляемая         ║
+# ║          мощность (кВт) из таблиц DOCX                    ║
 # ║ v3.2.5 — feat: land_area — размер земельного участка  ║
 # ║          (га) из таблицы раздела II                        ║
 # ║ v3.2.4 — feat: planned_location — планируемое              ║
@@ -59,6 +61,13 @@ _BLANK_RE = re.compile(r'^[\s_\-—–.,/|]+$')
 
 _INV_NORM_RE = re.compile(
     r'(\d[\d\s.,]*(?:млн|тыс|миллион|тысяч)[а-яё.\s]*)(['а-яё]+рублей)',
+    re.IGNORECASE,
+)
+
+# feat v3.2.6: регексп для извлечения потребляемой мощности (кВт)
+# Примеры: «Потребляемая мощность*650 кВт», «потребляемая мощность: 200 квт»
+_POWER_RE = re.compile(
+    r'потребляемая\s+мощность[*\s:]*([\d.,]+)\s*к[BbвВ][TtтТ]',
     re.IGNORECASE,
 )
 
@@ -355,18 +364,24 @@ def _parse_docx_tables(path: str) -> Dict[str, str]:
                     i += 1
                     continue
 
-                # feat v3.2.5: размер земельного участка (га) из раздела II
                 if "размер земельного участка" in joined:
                     for c in row:
                         if "размер земельного участка" not in c.lower():
                             ct = c.strip()
-                            # Берём только первую непустую ячейку с цифрой
                             if ct and not _is_blank_value(ct) and any(ch.isdigit() for ch in ct):
-                                # Сохраняем только цифры/запятые/точки
                                 digits = re.sub(r"[^\d.,]", "", ct).strip(",. ")
                                 if digits:
                                     _set_field("land_area", digits)
                                     break
+                    i += 1
+                    continue
+
+                # feat v3.2.6: электроснабжение — потребляемая мощность (кВт)
+                if "электроснабжение" in joined or "потребляемая мощность" in joined:
+                    cell_text = " ".join(row)
+                    m_pwr = _POWER_RE.search(cell_text)
+                    if m_pwr:
+                        _set_field("power_electricity", m_pwr.group(1).strip())
                     i += 1
                     continue
 
