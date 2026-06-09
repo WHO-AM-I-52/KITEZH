@@ -9,7 +9,7 @@
 from flask import Blueprint, render_template, request, jsonify
 from auth_utils import login_required, permission_required
 from tools.investmap_export import convert_excel_to_text
-from tools.investmap_analyzer import analyze
+from tools.investmap_analyzer import analyze, build_summary_sms
 
 investmap_bp = Blueprint('investmap', __name__)
 
@@ -54,25 +54,13 @@ def investmap_analyze():
             'count': int,
             'text': str
         },
-        'analysis': {
-            'id':          str,
-            'format':      str,
-            'status':      str,
-            'blocks': {
-                '1': {'score': int, 'weight': float, 'contribution': float, 'missing': [str]},
-                ...
-            },
-            'total':       int,
-            'category':    str,
-            'ready':       str,
-            'all_missing': [str],
-            'sms':         str | null,
-            'signed':      str
-        },
+        'analysis': dict | list[dict],
+        'summary_sms': str | null,  # Только для формата 2 (N площадок)
         'error': null или строка
     }
 
     Для формата 2 (N площадок) 'analysis' является списком.
+    summary_sms — сводный текст по всем площадкам с проблемами (null если все заполнены).
     """
     f = request.files.get('file')
     if not f:
@@ -85,18 +73,21 @@ def investmap_analyze():
 
     if export.get('error'):
         return jsonify({
-            'export':   export,
-            'analysis': None,
-            'error':    export['error']
+            'export':      export,
+            'analysis':    None,
+            'summary_sms': None,
+            'error':       export['error']
         }), 400
 
     data = export.get('data', {})
     fmt  = export.get('format')
 
     if fmt == 2 and isinstance(data, list):
-        analysis = [analyze(d) for d in data]
+        analysis    = [analyze(d) for d in data]
+        summary_sms = build_summary_sms(analysis)
     else:
-        analysis = analyze(data)
+        analysis    = analyze(data)
+        summary_sms = None
 
     return jsonify({
         'export': {
@@ -104,6 +95,7 @@ def investmap_analyze():
             'count':  export.get('count', 1),
             'text':   export.get('text', '')
         },
-        'analysis': analysis,
-        'error':    None
+        'analysis':    analysis,
+        'summary_sms': summary_sms,
+        'error':       None
     })
