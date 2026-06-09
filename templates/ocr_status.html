@@ -2,6 +2,7 @@
 {# ╔══════════════════════════════════════════════════════════════╗ #}
 {# ║ ocr_status.html                                             ║ #}
 {# ║ feat #68: Панель статуса OCR-движка для администратора      ║ #}
+{# ║ feat: блок истории OCR-распознаваний с полным логом       ║ #}
 {# ╚══════════════════════════════════════════════════════════════╝ #}
 
 {% block content %}
@@ -18,7 +19,7 @@
   {% endif %}
 </div>
 
-{# ── Таблица зависимостей ──────────────────────────────────────────────────────── #}
+{# ── Таблица зависимостей ────────────────────────────────────────────────────────────────── #}
 <div class="card mb-4">
   <div class="card-header bg-white fw-semibold d-flex align-items-center gap-2">
     <i class="bi bi-boxes text-secondary"></i> Зависимости
@@ -33,14 +34,12 @@
         </tr>
       </thead>
       <tbody>
-
         {% set dep_labels = [
           ('easyocr',    'bi-eye-fill',        'easyocr'),
           ('pdfplumber', 'bi-file-pdf-fill',   'pdfplumber'),
           ('docx',       'bi-file-word-fill',  'python-docx'),
           ('pillow',     'bi-image-fill',      'Pillow (PIL)'),
         ] %}
-
         {% for key, icon, label in dep_labels %}
           {% set d = deps.get(key, {'ok': False, 'error': 'Нет данных'}) %}
           <tr>
@@ -50,34 +49,23 @@
             </td>
             <td>
               {% if d.ok %}
-                <span class="badge bg-success">
-                  <i class="bi bi-check-circle-fill me-1"></i>OK
-                </span>
+                <span class="badge bg-success"><i class="bi bi-check-circle-fill me-1"></i>OK</span>
               {% else %}
-                <span class="badge bg-danger">
-                  <i class="bi bi-x-circle-fill me-1"></i>Ошибка
-                </span>
+                <span class="badge bg-danger"><i class="bi bi-x-circle-fill me-1"></i>Ошибка</span>
               {% endif %}
             </td>
             <td class="{% if not d.ok %}text-danger{% else %}text-muted{% endif %}" style="font-size:13px">
-              {% if d.ok %}
-                {{ d.version }}
-              {% else %}
-                {{ d.error }}
-              {% endif %}
+              {% if d.ok %}{{ d.version }}{% else %}{{ d.error }}{% endif %}
             </td>
           </tr>
         {% endfor %}
-
       </tbody>
     </table>
   </div>
 </div>
 
-{# ── Статистика и тестовый запуск ─────────────────────────────────────────────────── #}
+{# ── Статистика и тестовый запуск ──────────────────────────────────────────────────────────── #}
 <div class="row g-4 mb-4">
-
-  {# Счётчики #}
   <div class="col-12 col-md-5">
     <div class="card h-100">
       <div class="card-header bg-white fw-semibold d-flex align-items-center gap-2">
@@ -110,7 +98,6 @@
     </div>
   </div>
 
-  {# Тестовый запуск #}
   <div class="col-12 col-md-7">
     <div class="card h-100">
       <div class="card-header bg-white fw-semibold d-flex align-items-center gap-2">
@@ -130,12 +117,11 @@
       </div>
     </div>
   </div>
-
 </div>
 
-{# ── Последние ошибки OCR ───────────────────────────────────────────────────────────── #}
+{# ── Последние ошибки OCR ────────────────────────────────────────────────────────────────────── #}
 {% if recent_errors %}
-<div class="card">
+<div class="card mb-4">
   <div class="card-header bg-white fw-semibold d-flex align-items-center gap-2">
     <i class="bi bi-exclamation-triangle-fill text-warning"></i> Последние ошибки OCR
     <span class="badge bg-danger ms-1">{{ recent_errors | length }}</span>
@@ -152,13 +138,9 @@
       <tbody>
         {% for err in recent_errors %}
         <tr>
-          <td class="text-muted" style="font-size:12px">
-            {{ err.created_at[:16] | replace('T', ' ') if err.created_at else '—' }}
-          </td>
+          <td class="text-muted" style="font-size:12px">{{ err.created_at[:16] | replace('T', ' ') if err.created_at else '—' }}</td>
           <td style="font-size:12px">{{ err.full_name or '—' }}</td>
-          <td style="font-size:12px" class="text-danger">
-            {{ err.detail or '—' }}
-          </td>
+          <td style="font-size:12px" class="text-danger">{{ err.detail or '—' }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -166,11 +148,122 @@
   </div>
 </div>
 {% else %}
-<div class="alert alert-success d-flex align-items-center gap-2">
+<div class="alert alert-success d-flex align-items-center gap-2 mb-4">
   <i class="bi bi-check-circle-fill"></i>
   Ошибок OCR за последние 7 дней не зафиксировано.
 </div>
 {% endif %}
+
+{# ── История распознаваний ──────────────────────────────────────────────────────────────────── #}
+<div class="card">
+  <div class="card-header bg-white fw-semibold d-flex align-items-center gap-2">
+    <i class="bi bi-clock-history text-secondary"></i> История распознаваний
+    {% if ocr_logs %}
+      <span class="badge bg-secondary ms-1">{{ ocr_logs | length }}</span>
+    {% endif %}
+  </div>
+
+  {% if ocr_logs %}
+  <div class="card-body p-0">
+    <table class="table table-sm table-hover mb-0" style="font-size:12px">
+      <thead class="table-light">
+        <tr>
+          <th style="width:140px">Дата/время</th>
+          <th style="width:80px">Статус</th>
+          <th style="width:160px">Файл</th>
+          <th style="width:120px">Пользователь</th>
+          <th>Сообщение</th>
+          <th style="width:110px"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for log in ocr_logs %}
+        <tr>
+          <td class="text-muted">{{ log.created_at[:16] if log.created_at else '—' }}</td>
+          <td>
+            {% if log.ok %}
+              <span class="badge bg-success">ОК</span>
+            {% else %}
+              <span class="badge bg-danger">Ошибка</span>
+            {% endif %}
+          </td>
+          <td class="text-truncate" style="max-width:160px" title="{{ log.filename or '' }}">
+            {{ log.filename or '—' }}
+          </td>
+          <td>{{ log.user_name or '—' }}</td>
+          <td class="text-muted">{{ (log.msg or '—')[:80] }}{% if log.msg and log.msg|length > 80 %}…{% endif %}</td>
+          <td>
+            <button class="btn btn-xs btn-outline-secondary py-0 px-2"
+                    style="font-size:11px"
+                    onclick="toggleOcrLog({{ log.id }})"
+                    id="btn-log-{{ log.id }}">
+              <i class="bi bi-journal-text me-1"></i>Лог
+            </button>
+          </td>
+        </tr>
+        {# ─ Разворачиваемый блок лога ─ #}
+        <tr id="log-detail-{{ log.id }}" style="display:none">
+          <td colspan="6" class="p-0">
+            <div class="p-3" style="background:#f8f9fa; border-top:1px solid #dee2e6">
+              <div class="row g-3">
+
+                {# Левая панель: исходный текст #}
+                <div class="col-12 col-md-6">
+                  <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="fw-semibold" style="font-size:11px; color:#555">
+                      <i class="bi bi-file-text me-1"></i>ИСХОДНЫЙ ТЕКСТ (raw_text)
+                    </span>
+                    <button class="btn btn-xs btn-outline-secondary py-0 px-2"
+                            style="font-size:10px"
+                            onclick="copyText('raw-{{ log.id }}')">
+                      <i class="bi bi-clipboard me-1"></i>Копировать
+                    </button>
+                  </div>
+                  <pre id="raw-{{ log.id }}"
+                       style="font-size:11px; max-height:300px; overflow-y:auto;
+                              background:#fff; border:1px solid #dee2e6;
+                              border-radius:4px; padding:8px; white-space:pre-wrap;
+                              word-break:break-word; margin:0">{{ log.raw_text or '(пусто)' }}</pre>
+                </div>
+
+                {# Правая панель: распознанные поля #}
+                <div class="col-12 col-md-6">
+                  <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="fw-semibold" style="font-size:11px; color:#555">
+                      <i class="bi bi-list-check me-1"></i>РАСПОЗНАННЫЕ ПОЛЯ (fields_json)
+                    </span>
+                    <button class="btn btn-xs btn-outline-secondary py-0 px-2"
+                            style="font-size:10px"
+                            onclick="copyText('fields-{{ log.id }}')">
+                      <i class="bi bi-clipboard me-1"></i>Копировать
+                    </button>
+                  </div>
+                  <pre id="fields-{{ log.id }}"
+                       style="font-size:11px; max-height:300px; overflow-y:auto;
+                              background:#fff; border:1px solid #dee2e6;
+                              border-radius:4px; padding:8px; white-space:pre-wrap;
+                              word-break:break-word; margin:0">{{ log.fields_json or '{}' }}</pre>
+                </div>
+
+              </div>{# /row #}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% else %}
+  <div class="card-body">
+    <p class="text-muted mb-0" style="font-size:13px">
+      <i class="bi bi-info-circle me-1"></i>
+      История пуста. Записи появятся после первого OCR-распознавания.
+    </p>
+  </div>
+  {% endif %}
+
+</div>{# /card история #}
 
 {% endblock %}
 
@@ -180,34 +273,70 @@ function runOcrTest() {
   var btn = document.getElementById('btnOcrTest');
   var resultDiv = document.getElementById('ocrTestResult');
   var resultBody = document.getElementById('ocrTestBody');
-
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Запуск...';
   resultDiv.style.display = 'none';
-
-  fetch('/ai/ocr-test', {
-    method: 'POST',
-    headers: {'X-Requested-With': 'XMLHttpRequest'}
-  })
-  .then(function(r){ return r.json(); })
-  .then(function(data){
-    resultDiv.style.display = 'block';
-    if (data.ok) {
-      resultBody.className = 'alert alert-success mb-0';
-      resultBody.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i>' + data.result;
-    } else {
+  fetch('/ai/ocr-test', {method:'POST', headers:{'X-Requested-With':'XMLHttpRequest'}})
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      resultDiv.style.display = 'block';
+      if (data.ok) {
+        resultBody.className = 'alert alert-success mb-0';
+        resultBody.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i>' + data.result;
+      } else {
+        resultBody.className = 'alert alert-danger mb-0';
+        resultBody.innerHTML = '<i class="bi bi-x-circle-fill me-1"></i>' + (data.error || 'Неизвестная ошибка');
+      }
+    })
+    .catch(function(e){
+      resultDiv.style.display = 'block';
       resultBody.className = 'alert alert-danger mb-0';
-      resultBody.innerHTML = '<i class="bi bi-x-circle-fill me-1"></i>' + (data.error || 'Неизвестная ошибка');
+      resultBody.innerHTML = '<i class="bi bi-x-circle-fill me-1"></i>Ошибка сети: ' + e;
+    })
+    .finally(function(){
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-play-fill me-1"></i> Запустить тест';
+    });
+}
+
+function toggleOcrLog(id) {
+  var row = document.getElementById('log-detail-' + id);
+  var btn = document.getElementById('btn-log-' + id);
+  if (!row) return;
+  var visible = row.style.display !== 'none';
+  row.style.display = visible ? 'none' : 'table-row';
+  btn.classList.toggle('btn-outline-secondary', visible);
+  btn.classList.toggle('btn-secondary', !visible);
+}
+
+function copyText(elemId) {
+  var el = document.getElementById(elemId);
+  if (!el) return;
+  navigator.clipboard.writeText(el.innerText).then(function() {
+    var btn = el.previousElementSibling
+              ? el.previousElementSibling.querySelector('button')
+              : null;
+    // находим кнопку через closest парента
+    var wrapper = document.getElementById(elemId).closest('.col-12, .col-md-6');
+    var copyBtn = wrapper ? wrapper.querySelector('button') : null;
+    if (copyBtn) {
+      var orig = copyBtn.innerHTML;
+      copyBtn.innerHTML = '<i class="bi bi-check me-1"></i>Скопировано';
+      copyBtn.classList.add('btn-success');
+      copyBtn.classList.remove('btn-outline-secondary');
+      setTimeout(function() {
+        copyBtn.innerHTML = orig;
+        copyBtn.classList.remove('btn-success');
+        copyBtn.classList.add('btn-outline-secondary');
+      }, 1500);
     }
-  })
-  .catch(function(e){
-    resultDiv.style.display = 'block';
-    resultBody.className = 'alert alert-danger mb-0';
-    resultBody.innerHTML = '<i class="bi bi-x-circle-fill me-1"></i>Ошибка сети: ' + e;
-  })
-  .finally(function(){
-    btn.disabled = false;
-    btn.innerHTML = '<i class="bi bi-play-fill me-1"></i> Запустить тест';
+  }).catch(function() {
+    var range = document.createRange();
+    range.selectNode(el);
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+    document.execCommand('copy');
+    window.getSelection().removeAllRanges();
   });
 }
 </script>
