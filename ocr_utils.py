@@ -1,5 +1,7 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║ ocr_utils.py                                                 ║
+# ║ v3.2.4 — feat: planned_location — планируемое              ║
+# ║          месторасположение из таблицы DOCX                ║
 # ║ v3.2.3 — fix: _norm_investment() — нормализация OCR-        ║
 # ║          артефактов в поле investment_total                  ║
 # ║ v3.2.2 — fix: additional_info не захватывает текст          ║
@@ -52,15 +54,10 @@ def _get_ocr_reader():
 
 # ─── НОРМАЛИЗАЦИЯ ЗНАЧЕНИЙ ───────────────────────────────────────────────────
 
-# Паттерн: строка считается пустой/незаполненной если состоит только из:
-#   • пробелов, прочерков _, тире —/–, точек ., запятых ,
-#   • слеш из перечисленных символов
 _BLANK_RE = re.compile(r'^[\s_\-—–.,/|]+$')
 
-# fix v3.2.3: паттерн для нормализации OCR-мусора перед «рублей»
-# Примеры: «млн юрублей» → «млн рублей», «млн. ырублей» → «млн рублей»
 _INV_NORM_RE = re.compile(
-    r'(\d[\d\s.,]*(?:млн|тыс|миллион|тысяч)[а-яё.\s]*)([а-яё]+рублей)',
+    r'(\d[\d\s.,]*(?:млн|тыс|миллион|тысяч)[а-яё.\s]*)(['а-яё]+рублей)',
     re.IGNORECASE,
 )
 
@@ -69,19 +66,12 @@ def _norm_investment(val: str) -> str:
     """
     Нормализует OCR-артефакты в значении объёма инвестиций.
     Убирает мусорные символы перед словом «рублей», вставленные OCR.
-
-    Примеры:
-      «100 млн юрублей»  → «100 млн рублей»
-      «40млн. ырублей»   → «40млн. рублей»
-      «160 млн рублей»   → «160 млн рублей»  (без изменений)
     """
     def _fix_rublei(m: re.Match) -> str:
-        prefix = m.group(1)  # «100 млн »
-        rublei = m.group(2)  # «юрублей» / «ырублей» / «рублей»
-        # Если слово уже «рублей» или «руб» — не трогаем
+        prefix = m.group(1)
+        rublei = m.group(2)
         if re.match(r'^руб', rublei, re.IGNORECASE):
             return m.group(0)
-        # Иначе заменяем на «рублей», убирая OCR-префикс
         return prefix.rstrip() + ' рублей'
 
     return _INV_NORM_RE.sub(_fix_rublei, val)
@@ -91,9 +81,6 @@ def _is_blank_value(val: str) -> bool:
     """
     True если значение поля является пустым или состоит только
     из прочерков/тире/спецсимволов (незаполненные строки анкеты).
-
-    Примеры пустых: "", "___", "---", "__ __", "———", "   "
-    Примеры непустых: "0", "Да", "Весна 2026г."
     """
     if not val or not val.strip():
         return True
@@ -101,10 +88,6 @@ def _is_blank_value(val: str) -> bool:
 
 
 def _norm_phone(raw: str) -> str:
-    """
-    Нормализует телефон: оставляет только цифры и '+', убирает мусор.
-    Если цифр меньше 7 — возвращает пустую строку (это не телефон).
-    """
     cleaned = re.sub(r"[^\d+\-() ]", "", raw).strip()
     digits_only = re.sub(r"\D", "", cleaned)
     if len(digits_only) < 7:
@@ -113,10 +96,6 @@ def _norm_phone(raw: str) -> str:
 
 
 def _norm_inn(raw: str) -> str:
-    """
-    Нормализует ИНН: оставляет только цифры.
-    Допустимая длина ИНН — 10 (юр. лицо) или 12 (физ. лицо).
-    """
     digits = re.sub(r"\D", "", raw)
     if len(digits) in (10, 12):
         return digits
@@ -187,7 +166,7 @@ def _parse_docx_tables(path: str) -> Dict[str, str]:
             return v
 
         _PHONE_RE = re.compile(
-            r"(?:телефон|тел\.?\s*:)\s*([+\d][\d\s\-().+]{5,})",
+            r"(?:телефон|тел\.?\s*:?)\s*([+\d][\d\s\-().+]{5,})",
             re.IGNORECASE,
         )
         _EMAIL_RE = re.compile(
@@ -261,6 +240,18 @@ def _parse_docx_tables(path: str) -> Dict[str, str]:
                     i += 1
                     continue
 
+                # feat v3.2.4: планируемое месторасположение площадки
+                if "планируемое месторасположение" in joined:
+                    value_parts = []
+                    for c in row:
+                        if "планируемое месторасположение" not in c.lower():
+                            if c.strip() and not _is_blank_value(c.strip()):
+                                value_parts.append(c.strip())
+                    if value_parts:
+                        _set_field("planned_location", " ".join(value_parts))
+                    i += 1
+                    continue
+
                 if "уполномоченное лицо по ведению проекта" in joined:
                     j = i + 1
                     while j < len(rows):
@@ -323,7 +314,6 @@ def _parse_docx_tables(path: str) -> Dict[str, str]:
                         j += 1
                     for l in inv_lines:
                         if any(ch.isdigit() for ch in l):
-                            # fix v3.2.3: нормализуем OCR-артефакты («юрублей» → «рублей»)
                             fields["investment_total"] = _norm_investment(l)
                             break
                     i = j
@@ -465,7 +455,6 @@ def _parse_anketa_text_blocks(text: str) -> Dict[str, str]:
     if inn_match and "applicant_inn" not in fields:
         fields["applicant_inn"] = inn_match.group(1)
 
-    # fix v3.2.2: стоп-якоря для additional_info — отрезаем текст согласия
     add_info = slice_block(
         "6. дополнительная информация:",
         [
