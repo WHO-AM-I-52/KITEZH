@@ -2,8 +2,9 @@
 {% block content %}
 
 {# ╔══════════════════════════════════════════════════════════════╗ #}
-{# ║  phonebook.html — Телефонный справочник (v2.3.0)            ║ #}
+{# ║  phonebook.html — Телефонный справочник (v2.4.0)            ║ #}
 {# ║  - Поиск по имени, организации, должности, телефону, email  ║ #}
+{# ║  - Live-поиск с debounce 300мс (от 2 символов)                    ║ #}
 {# ║  - Группировка по организациям                              ║ #}
 {# ║  - Модалка добавления / редактирования (только админ)       ║ #}
 {# ║  - AJAX подтягивание адреса при выборе организации          ║ #}
@@ -136,6 +137,11 @@
     border: 1px solid var(--border);
     font-size: 10px;
   }
+  #pb-search-spinner {
+    display: none;
+    width: 1rem;
+    height: 1rem;
+  }
 </style>
 
 {# ─── Заголовок страницы ─── #}
@@ -181,21 +187,26 @@
 </div>
 
 {# ─── Поиск ─── #}
-<form method="get" class="mb-4">
+<form method="get" id="pb-search-form" class="mb-4">
   <div class="input-group">
     <span class="input-group-text" style="background:#1B5E7B;border-color:#1B5E7B">
-      <i class="bi bi-search text-white"></i>
+      <span class="spinner-border spinner-border-sm text-white" id="pb-search-spinner"></span>
+      <i class="bi bi-search text-white" id="pb-search-icon"></i>
     </span>
-    <input type="text" name="q" class="form-control"
+    <input type="text" name="q" id="pb-search-input" class="form-control"
            placeholder="Поиск по имени, организации, должности, телефону, email..."
-           value="{{ search }}">
-    {% if search %}
+           value="{{ search }}"
+           autocomplete="off">
     <a href="{{ url_for('phonebook.phonebook') }}"
-       class="btn btn-outline-secondary">
+       class="btn btn-outline-secondary" id="pb-clear-btn"
+       style="{{ '' if search else 'display:none' }}">
       <i class="bi bi-x-circle"></i>
     </a>
-    {% endif %}
     <button type="submit" class="btn btn-primary">Найти</button>
+  </div>
+  <div class="form-text text-muted ms-1" style="font-size:11px">
+    <i class="bi bi-lightning-fill text-warning"></i>
+    Автопоиск срабатывает автоматически от 2 символов
   </div>
 </form>
 
@@ -403,6 +414,38 @@
 {% endif %}
 
 <script>
+(function () {
+  var input   = document.getElementById('pb-search-input');
+  var form    = document.getElementById('pb-search-form');
+  var spinner = document.getElementById('pb-search-spinner');
+  var icon    = document.getElementById('pb-search-icon');
+  var clearBtn = document.getElementById('pb-clear-btn');
+  var timer   = null;
+
+  if (!input) return;
+
+  input.addEventListener('input', function () {
+    clearTimeout(timer);
+    var val = this.value.trim();
+
+    if (clearBtn) clearBtn.style.display = val ? '' : 'none';
+
+    if (val.length === 0) {
+      window.location.href = form.action || '/phonebook';
+      return;
+    }
+    if (val.length < 2) return;
+
+    spinner.style.display = 'inline-block';
+    icon.style.display    = 'none';
+
+    timer = setTimeout(function () {
+      var url = (form.action || '/phonebook') + '?q=' + encodeURIComponent(val);
+      window.location.href = url;
+    }, 300);
+  });
+}());
+
 function applyPhoneMask(input, type) {
   input.addEventListener('input', function () {
     var digits = this.value.replace(/\D/g, '');
