@@ -1,5 +1,5 @@
 # phonebook_routes.py
-# Blueprint: телефонный справочник (v2.1.0)
+# Blueprint: телефонный справочник (v2.2.0)
 # Маршруты:
 #   GET  /phonebook                — список сотрудников с поиском
 #   POST /phonebook/add            — добавить сотрудника (админ)
@@ -30,18 +30,29 @@ def get_all_orgs():
 def get_all_contacts(search: str = ''):
     conn = get_db()
     if search:
-        like = f'%{search.lower()}%'
-        rows = conn.execute("""
+        tokens = search.lower().split()
+        base_sql = """
             SELECT p.*, o.name AS org_name, o.address AS org_address
             FROM phonebook p
             LEFT JOIN phonebook_orgs o ON p.org_id = o.id
-            WHERE LOWER(p.full_name) LIKE ?
-               OR LOWER(p.position)  LIKE ?
-               OR LOWER(o.name)      LIKE ?
-               OR p.phone_work LIKE ?
-               OR LOWER(p.email)     LIKE ?
+            WHERE {conditions}
             ORDER BY o.name, p.full_name
-        """, (like, like, like, like, like)).fetchall()
+        """
+        # Каждый токен должен встречаться хотя бы в одном из полей
+        token_clauses = []
+        params = []
+        for token in tokens:
+            like = f'%{token}%'
+            token_clauses.append("""(
+                LOWER(p.full_name) LIKE ?
+                OR LOWER(p.position)   LIKE ?
+                OR LOWER(o.name)       LIKE ?
+                OR LOWER(p.phone_work) LIKE ?
+                OR LOWER(p.email)      LIKE ?
+            )""")
+            params.extend([like, like, like, like, like])
+        sql = base_sql.format(conditions=' AND '.join(token_clauses))
+        rows = conn.execute(sql, params).fetchall()
     else:
         rows = conn.execute("""
             SELECT p.*, o.name AS org_name, o.address AS org_address
@@ -223,7 +234,7 @@ def phonebook_orgs_delete():
         flash(f'Нельзя удалить: к организации привязано {count} сотрудников', 'error')
     else:
         row  = conn.execute(
-            "SELECT name FROM phonebook_orgs WHERE id=?", (oid,)
+            "SELECT name FROM phonebook_orgs WHERE id=?\", (oid,)"
         ).fetchone()
         name = row['name'] if row else f'ID:{oid}'
         conn.execute("DELETE FROM phonebook_orgs WHERE id=?", (oid,))
