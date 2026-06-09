@@ -14,8 +14,6 @@ import sys
 import zipfile
 import shutil
 import tempfile
-import ast
-import re
 from datetime import datetime
 
 REPO_OWNER    = "WHO-AM-I-52"
@@ -328,19 +326,19 @@ def extract_and_apply(zip_path: str):
 
 
 def load_changelog():
-    """Читает changelog.py без exec() — использует ast.literal_eval для безопасного парсинга."""
+    """Читает CHANGELOG из changelog.py через exec в изолированном namespace.
+    Устойчиво к комментариям, любым кавычкам и форматированию файла.
+    """
     changelog_path = os.path.join(BASE_DIR, "changelog.py")
     if not os.path.exists(changelog_path):
         return None, None
     try:
+        ns: dict = {}
         with open(changelog_path, encoding="utf-8") as f:
-            source = f.read()
+            code = f.read()
+        exec(compile(code, changelog_path, "exec"), ns, ns)
 
-        match = re.search(r"CHANGELOG\s*=\s*(\[.*?\])", source, re.DOTALL)
-        if not match:
-            return None, None
-
-        cl = ast.literal_eval(match.group(1))
+        cl = ns.get("CHANGELOG")
         if not cl:
             return None, None
 
