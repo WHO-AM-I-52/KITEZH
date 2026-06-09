@@ -96,6 +96,7 @@ if exist "%APP_DIR%db\database.db" (
   echo  [ПРЕДУПРЕЖДЕНИЕ] db\database.db не найден
 )
 
+
 "%PYTHON%" -c "import os,glob;files=sorted(glob.glob('db/backups/database_*.db'));[os.remove(f) for f in files[:-5]]"
 echo.
 
@@ -192,19 +193,6 @@ if exist "%APP_DIR%update.bat" (
       echo.
     )
   )
-)
-
-:: Синхронизация changelog
-set "SYNC=x"
-set /p SYNC=  Синхронизировать changelog? [Ввод=да / 0=нет]: 
-if "!SYNC!"=="x" (
-  echo.
-  "%PYTHON%" sync_changelog.py
-  echo.
-) else if not "!SYNC!"=="0" (
-  echo.
-  "%PYTHON%" sync_changelog.py
-  echo.
 )
 
 :: Режим запуска
