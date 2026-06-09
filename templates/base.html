@@ -2,7 +2,7 @@
 {# ╔══════════════════════════════════════════════════════════════╗ #}
 {# ║                        base.html                            ║ #}
 {# ║  Базовый шаблон приложения "Подбор ЗУ — НО"                 ║ #}
-{# ║  v2.21.1: fix sidebar — perms.can_view_* вместо session.*   ║ #}
+{# ║  v2.22.0: sidebar — collapsible sections + localStorage     ║ #}
 {# ╚══════════════════════════════════════════════════════════════╝ #}
 <html lang="ru">
 <head>
@@ -94,8 +94,34 @@
     .sb-lbl { transition:opacity .2s; }
     body.sb-col .sb-lbl { opacity:0; pointer-events:none; }
     .sb-sep { height:1px; background:rgba(255,255,255,.1); margin:6px 12px; }
-    .sb-cat { font-size:10px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:rgba(255,255,255,.4); padding:10px 19px 4px; white-space:nowrap; }
-    body.sb-col .sb-cat { opacity:0; }
+
+    /* ─── Сворачиваемые секции ────────────────────────────────────────────── */
+    .sb-cat-toggle {
+      display:flex; align-items:center; gap:0;
+      width:100%; background:none; border:none;
+      font-size:10px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase;
+      color:rgba(255,255,255,.4); padding:10px 12px 4px 19px;
+      white-space:nowrap; cursor:pointer; transition:color .15s;
+    }
+    .sb-cat-toggle:hover { color:rgba(255,255,255,.7); }
+    .sb-cat-toggle .sb-cat-lbl { flex:1; text-align:left; }
+    .sb-cat-toggle .sb-cat-chevron {
+      font-size:11px; margin-left:4px; flex-shrink:0;
+      transition:transform .22s ease, opacity .2s;
+      opacity:.5;
+    }
+    .sb-cat-toggle.collapsed .sb-cat-chevron { transform:rotate(-90deg); }
+    body.sb-col .sb-cat-toggle { opacity:0; pointer-events:none; }
+
+    .sb-section {
+      overflow:hidden;
+      max-height:600px;
+      transition:max-height .25s ease;
+    }
+    .sb-section.collapsed { max-height:0; }
+    /* В режиме иконок — всегда раскрыто */
+    body.sb-col .sb-section { max-height:600px !important; }
+
     .sb-badge { margin-left:auto; background:#dc3545; color:#fff; font-size:10px; font-weight:700; padding:1px 6px; border-radius:10px; transition:opacity .2s; }
     body.sb-col .sb-badge { opacity:0; }
     .sb-update-dot { margin-left:auto; width:8px; height:8px; border-radius:50%; background:#fbbf24; flex-shrink:0; transition:opacity .2s; box-shadow:0 0 0 0 rgba(251,191,36,.6); animation:updDotPulse 2s infinite; }
@@ -231,7 +257,8 @@
     body[data-theme="zone"] .sb-link{color:rgba(200,196,168,.75)}
     body[data-theme="zone"] .sb-link:hover{background:rgba(200,168,75,.08);color:#c8a84b}
     body[data-theme="zone"] .sb-link.active{background:rgba(200,168,75,.12);color:#c8a84b;border-left-color:#c8a84b}
-    body[data-theme="zone"] .sb-cat{color:rgba(200,168,75,.35)}
+    body[data-theme="zone"] .sb-cat-toggle{color:rgba(200,168,75,.35)}
+    body[data-theme="zone"] .sb-cat-toggle:hover{color:rgba(200,168,75,.7)}
     body[data-theme="zone"] .sb-sep{background:rgba(200,168,75,.1)}
     body[data-theme="zone"] .sb-online{border-top-color:rgba(200,168,75,.1)}
     body[data-theme="zone"] .sb-online-dot{background:#c8a84b}
@@ -381,62 +408,81 @@
   <nav class="sb-nav">
 
     {# ─────────────────────────── ОБРАЩЕНИЯ ─────────────────────────── #}
-    <div class="sb-cat">Обращения</div>
+    <button class="sb-cat-toggle" data-sec="requests">
+      <span class="sb-cat-lbl">Обращения</span>
+      <i class="bi bi-chevron-down sb-cat-chevron"></i>
+    </button>
+    <div class="sb-section" data-sec="requests">
 
-    <a href="/" class="sb-link {{ 'active' if request.path=='/' }}">
-      <i class="bi bi-list-ul"></i>
-      <span class="sb-lbl">Список обращений</span>
-      {% if active_requests_count > 0 %}<span class="sb-badge">{{ active_requests_count }}</span>{% endif %}
-    </a>
+      <a href="/" class="sb-link {{ 'active' if request.path=='/' }}">
+        <i class="bi bi-list-ul"></i>
+        <span class="sb-lbl">Список обращений</span>
+        {% if active_requests_count > 0 %}<span class="sb-badge">{{ active_requests_count }}</span>{% endif %}
+      </a>
 
-    <a href="/dashboard" class="sb-link {{ 'active' if request.path=='/dashboard' }}">
-      <i class="bi bi-bar-chart-line"></i><span class="sb-lbl">Дашборд</span>
-    </a>
+      <a href="/dashboard" class="sb-link {{ 'active' if request.path=='/dashboard' }}">
+        <i class="bi bi-bar-chart-line"></i><span class="sb-lbl">Дашборд</span>
+      </a>
 
-    <a href="/request/new" class="sb-link {{ 'active' if request.path=='/request/new' }}">
-      <i class="bi bi-plus-circle"></i><span class="sb-lbl">Новое обращение</span>
-    </a>
+      <a href="/request/new" class="sb-link {{ 'active' if request.path=='/request/new' }}">
+        <i class="bi bi-plus-circle"></i><span class="sb-lbl">Новое обращение</span>
+      </a>
 
-    <a href="/saved-filters" class="sb-link {{ 'active' if 'saved-filters' in request.path }}">
-      <i class="bi bi-bookmark-star"></i><span class="sb-lbl">Фильтры</span>
-    </a>
+      <a href="/saved-filters" class="sb-link {{ 'active' if 'saved-filters' in request.path }}">
+        <i class="bi bi-bookmark-star"></i><span class="sb-lbl">Фильтры</span>
+      </a>
 
-    <a href="/notifications" class="sb-link {{ 'active' if request.path=='/notifications' }}" id="sbNotifLink">
-      <i class="bi bi-bell"></i><span class="sb-lbl">Уведомления</span>
-      {% if unread_count > 0 %}<span class="sb-badge">{{ unread_count }}</span>{% endif %}
-    </a>
+      <a href="/notifications" class="sb-link {{ 'active' if request.path=='/notifications' }}" id="sbNotifLink">
+        <i class="bi bi-bell"></i><span class="sb-lbl">Уведомления</span>
+        {% if unread_count > 0 %}<span class="sb-badge">{{ unread_count }}</span>{% endif %}
+      </a>
+
+    </div>
 
     {# ─────────────────────────── СЕРВИСЫ ─────────────────────────── #}
     {% if perms.can_view_investmap or perms.can_view_phonebook %}
     <div class="sb-sep"></div>
-    <div class="sb-cat">Сервисы</div>
+    <button class="sb-cat-toggle" data-sec="services">
+      <span class="sb-cat-lbl">Сервисы</span>
+      <i class="bi bi-chevron-down sb-cat-chevron"></i>
+    </button>
+    <div class="sb-section" data-sec="services">
 
-    {% if perms.can_view_phonebook %}
-    <a href="{{ url_for('phonebook.phonebook') }}" class="sb-link {{ 'active' if request.endpoint and request.endpoint.startswith('phonebook') }}">
-      <i class="bi bi-telephone-fill"></i><span class="sb-lbl">Справочник</span>
-    </a>
-    {% endif %}
+      {% if perms.can_view_phonebook %}
+      <a href="{{ url_for('phonebook.phonebook') }}" class="sb-link {{ 'active' if request.endpoint and request.endpoint.startswith('phonebook') }}">
+        <i class="bi bi-telephone-fill"></i><span class="sb-lbl">Справочник</span>
+      </a>
+      {% endif %}
 
-    {% if perms.can_view_investmap %}
-    <a href="/investmap" class="sb-link {{ 'active' if 'investmap' in request.path }}">
-      <i class="bi bi-pin-map-fill"></i><span class="sb-lbl">Инвестплощадки</span>
-    </a>
-    {% endif %}
+      {% if perms.can_view_investmap %}
+      <a href="/investmap" class="sb-link {{ 'active' if 'investmap' in request.path }}">
+        <i class="bi bi-pin-map-fill"></i><span class="sb-lbl">Инвестплощадки</span>
+      </a>
+      {% endif %}
+
+    </div>
     {% endif %}
 
     {# ─────────────────────────── АДМИНИСТРАТОР ─────────────────────────── #}
     {% if session.get('role')=='admin' %}
     <div class="sb-sep"></div>
-    <div class="sb-cat">Администратор</div>
-    <a href="/admin/classifiers" class="sb-link {{ 'active' if 'classifiers' in request.path }}">
-      <i class="bi bi-tags"></i><span class="sb-lbl">Справочники</span>
-    </a>
-    <a href="/admin/users" class="sb-link {{ 'active' if 'users' in request.path }}">
-      <i class="bi bi-people"></i><span class="sb-lbl">Пользователи</span>
-    </a>
-    <a href="{{ url_for('ai.ocr_status') }}" class="sb-link {{ 'active' if request.path=='/ai/ocr-status' }}">
-      <i class="bi bi-cpu-fill"></i><span class="sb-lbl">Статус OCR</span>
-    </a>
+    <button class="sb-cat-toggle" data-sec="admin">
+      <span class="sb-cat-lbl">Администратор</span>
+      <i class="bi bi-chevron-down sb-cat-chevron"></i>
+    </button>
+    <div class="sb-section" data-sec="admin">
+
+      <a href="/admin/classifiers" class="sb-link {{ 'active' if 'classifiers' in request.path }}">
+        <i class="bi bi-tags"></i><span class="sb-lbl">Справочники</span>
+      </a>
+      <a href="/admin/users" class="sb-link {{ 'active' if 'users' in request.path }}">
+        <i class="bi bi-people"></i><span class="sb-lbl">Пользователи</span>
+      </a>
+      <a href="{{ url_for('ai.ocr_status') }}" class="sb-link {{ 'active' if request.path=='/ai/ocr-status' }}">
+        <i class="bi bi-cpu-fill"></i><span class="sb-lbl">Статус OCR</span>
+      </a>
+
+    </div>
     {% endif %}
 
     <div class="sb-sep"></div>
@@ -522,6 +568,29 @@
   document.getElementById('sbToggle').addEventListener('click', function(){
     if (window.innerWidth <= 768) { b.classList.toggle('sb-open'); }
     else { b.classList.toggle('sb-col'); localStorage.setItem('sb_col', b.classList.contains('sb-col') ? '1' : '0'); }
+  });
+})();
+</script>
+
+{# ── Сворачиваемые секции сайдбара ── #}
+<script>
+(function(){
+  var SEC_PREFIX = 'sb_sec_';
+  document.querySelectorAll('.sb-cat-toggle').forEach(function(btn){
+    var sec = btn.getAttribute('data-sec');
+    var panel = document.querySelector('.sb-section[data-sec="' + sec + '"]');
+    if (!panel) return;
+    var collapsed = localStorage.getItem(SEC_PREFIX + sec) === '1';
+    if (collapsed) {
+      panel.classList.add('collapsed');
+      btn.classList.add('collapsed');
+    }
+    btn.addEventListener('click', function(){
+      var isCollapsed = panel.classList.contains('collapsed');
+      panel.classList.toggle('collapsed', !isCollapsed);
+      btn.classList.toggle('collapsed', !isCollapsed);
+      localStorage.setItem(SEC_PREFIX + sec, isCollapsed ? '0' : '1');
+    });
   });
 })();
 </script>
@@ -748,12 +817,6 @@
   var CACHE_KEY = 'sonar_upd_status';
   var SEEN_KEY  = 'sonar_upd_seen';
   var INTERVAL  = 30 * 60 * 1000;
-  /*
-   * FIX v2.20.1: Точка показывается только если has=true И пользователь ЕЩЄ
-   * не просмотрел страницу версий в текущей сессии.
-   * После клика в sidebar'e по «Версии» — seen становится '1',
-   * и точка перестаёт появляться до следующего рестарта браузера / выхода из сессии.
-  */
   function applyUpdateState(has) {
     var seen = sessionStorage.getItem(SEEN_KEY) === '1';
     var show = has && !seen;
