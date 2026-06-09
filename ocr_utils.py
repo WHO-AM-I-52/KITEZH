@@ -1,5 +1,10 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║ ocr_utils.py                                                 ║
+# ║ v3.2.9 — feat: маппинг OCR-полей → поля БД:             ║
+# ║          planned_location → location_extra               ║
+# ║          land_area        → site_area_ha (float)         ║
+# ║          power_electricity→ electricity_total + elec_unit║
+# ║          railway_required → railway_needed (0/1)         ║
 # ║ v3.2.8 — fix: SyntaxError в _INV_NORM_RE (умная кавычка) ║
 # ║ v3.2.7 — feat: railway_required — доступ к жел.дороге   ║
 # ║          из таблиц DOCX                                    ║
@@ -114,7 +119,6 @@ def _norm_yes_no(val: str) -> str:
         return 'Да'
     if v in ('нет', 'no', 'нетнет'):
         return 'Нет'
-    # Подчёркнутый вариант: берём первое слово
     first_word = re.split(r'[\s/|,]', v)[0]
     if first_word.startswith('да'):
         return 'Да'
@@ -404,7 +408,6 @@ def _parse_docx_tables(path: str) -> Dict[str, str]:
                     i += 1
                     continue
 
-                # feat v3.2.7: железнодорожный доступ
                 if "железнодорожн" in joined:
                     for c in row:
                         ct = c.strip()
@@ -521,13 +524,55 @@ def _parse_anketa_text_blocks(text: str) -> Dict[str, str]:
     return {k: v for k, v in fields.items() if v and not _is_blank_value(v)}
 
 
+# ─── МАППИНГ OCR-ПОЛЕЙ → ПОЛЯ БД ────────────────────────────────────────────
+
+def _map_ocr_to_db(fields: Dict[str, str]) -> Dict[str, str]:
+    """
+    Переименовывает/преобразует внутренние OCR-ключи в имена полей БД (ALL_FIELDS).
+
+    planned_location → location_extra   (адрес из шапки анкеты)
+    land_area        → site_area_ha     (только число, float-совместимо)
+    power_electricity→ electricity_total (кВт; elec_unit='кВт' по умолчанию)
+    railway_required → railway_needed   ('Да'→'1', 'Нет'→'0')
+    """
+    # planned_location → location_extra (не перезаписываем если уже есть)
+    if 'planned_location' in fields:
+        val = fields.pop('planned_location')
+        if 'location_extra' not in fields and val and not _is_blank_value(val):
+            fields['location_extra'] = val
+
+    # land_area → site_area_ha
+    if 'land_area' in fields:
+        val = fields.pop('land_area')
+        # оставляем только цифры и разделитель — float-совместимо
+        clean = re.sub(r'[^\d.,]', '', val).replace(',', '.').strip('.')
+        if clean:
+            fields['site_area_ha'] = clean
+
+    # power_electricity → electricity_total + elec_unit='кВт'
+    if 'power_electricity' in fields:
+        val = fields.pop('power_electricity')
+        clean = re.sub(r'[^\d.,]', '', val).replace(',', '.').strip('.')
+        if clean:
+            fields['electricity_total'] = clean
+            # единица: только если cat1/cat2/cat3 не заполнены — ставим кВт
+            fields.setdefault('elec_unit', 'кВт')
+
+    # railway_required → railway_needed (строка '1'/'0' — build_values разберёт как BOOL_F)
+    if 'railway_required' in fields:
+        val = fields.pop('railway_required')
+        fields['railway_needed'] = '1' if val == 'Да' else '0'
+
+    return fields
+
+
 # ─── ПУБЛИЧНАЯ ФУНКЦИЯ ──────────────────────────────────────────────────────────
 
 def extract_anketa_fields(path: str) -> Tuple[Dict[str, str], str, str]:
     """
     На вход: путь к файлу анкеты.
     На выход:
-      fields   — dict под ALL_FIELDS
+      fields   — dict под ALL_FIELDS (после маппинга OCR→БД)
       msg      — человекочитаемое описание, как обрабатывали файл
       raw_text — сырой извлечённый текст (для ocr-preview, #67)
     """
@@ -602,5 +647,8 @@ def extract_anketa_fields(path: str) -> Tuple[Dict[str, str], str, str]:
 
     if not fields:
         return {}, msg or "Не удалось распознать структуру анкеты.", text
+
+    # ── Маппинг OCR-ключей → имена полей БД ──────────────────────────────────
+    fields = _map_ocr_to_db(fields)
 
     return fields, msg, text
