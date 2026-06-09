@@ -1,8 +1,8 @@
 # phonebook_routes.py
-# Blueprint: телефонный справочник (v2.6.2)
+# Blueprint: телефонный справочник (v2.7.0)
 # Маршруты:
-#   GET  /phonebook                — список сотрудников с поиском
-#   GET  /phonebook/search         — AJAX: поиск, возвращает JSON
+#   GET  /phonebook                — список сотрудников с поиском  [can_view_phonebook]
+#   GET  /phonebook/search         — AJAX: поиск, возвращает JSON       [can_view_phonebook]
 #   POST /phonebook/add            — добавить сотрудника (админ)
 #   POST /phonebook/edit           — редактировать сотрудника (админ)
 #   POST /phonebook/delete         — удалить сотрудника (админ)
@@ -19,7 +19,7 @@
 from flask import (Blueprint, render_template, request,
                    redirect, url_for, flash, jsonify, session)
 from db import get_db
-from auth_utils import login_required, admin_required
+from auth_utils import login_required, admin_required, permission_required
 from activity_log import log_action
 
 phonebook_bp = Blueprint('phonebook', __name__)
@@ -67,6 +67,7 @@ def get_all_contacts(search: str = ''):
 
 @phonebook_bp.route('/phonebook')
 @login_required
+@permission_required('can_view_phonebook')
 def phonebook():
     search   = request.args.get('q', '').strip()
     contacts = get_all_contacts(search)
@@ -82,6 +83,7 @@ def phonebook():
 
 @phonebook_bp.route('/phonebook/search')
 @login_required
+@permission_required('can_view_phonebook')
 def phonebook_search():
     """AJAX-эндпоинт: возвращает JSON для live-поиска."""
     search   = request.args.get('q', '').strip()
