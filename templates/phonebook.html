@@ -2,12 +2,13 @@
 {% block content %}
 
 {# ╔══════════════════════════════════════════════════════════════╗ #}
-{# ║  phonebook.html — Телефонный справочник (v2.5.0)            ║ #}
+{# ║  phonebook.html — Телефонный справочник (v2.6.0)            ║ #}
 {# ║  - Поиск по имени, орг., должности, тел., email, каб., notes║ #}
 {# ║  - AJAX live-поиск: без перезагрузки, фокус сохраняется     ║ #}
 {# ║  - Debounce 300мс, от 2 символов                            ║ #}
 {# ║  - Конвертация EN→RU раскладки на лету                      ║ #}
 {# ║  - Подсветка совпадений <mark> в карточках                  ║ #}
+{# ║  - История поиска в localStorage (до 5 запросов)              ║ #}
 {# ║  - Группировка по организациям                              ║ #}
 {# ║  - Модалка добавления / редактирования (только админ)       ║ #}
 {# ║  - AJAX подтягивание адреса при выборе организации          ║ #}
@@ -15,7 +16,7 @@
 {# ║  - Импорт из Excel (шаблон + загрузка) — v2.3.0             ║ #}
 {# ╚══════════════════════════════════════════════════════════════╝ #}
 
-{# ─── МАКРОС определяем ПЕРВЫМ — до любых вызовов ─── #}
+{# ─── МАКРОС определяем ПЕРВЫМ ─── #}
 {% macro contact_form_fields(orgs, c=none) %}
 <div class="row g-3">
   <div class="col-md-8">
@@ -43,8 +44,7 @@
   <div class="col-md-8">
     <label class="form-label fw-bold">Должность</label>
     <input type="text" name="position" class="form-control form-control-sm"
-           value="{{ c.position if c else '' }}"
-           placeholder="Главный специалист">
+           value="{{ c.position if c else '' }}" placeholder="Главный специалист">
   </div>
   <div class="col-md-4">
     <label class="form-label fw-bold">Кабинет</label>
@@ -60,27 +60,23 @@
   <div class="col-md-6">
     <label class="form-label fw-bold">Рабочий телефон</label>
     <input type="tel" name="phone_work" class="form-control form-control-sm mask-work"
-           value="{{ c.phone_work if c else '' }}"
-           placeholder="+7 (___) ___-__-__">
+           value="{{ c.phone_work if c else '' }}" placeholder="+7 (___) ___-__-__">
   </div>
   <div class="col-md-6">
     <label class="form-label fw-bold">Добавочный</label>
     <input type="text" name="phone_ext" class="form-control form-control-sm"
-           value="{{ c.phone_ext if c else '' }}"
-           placeholder="123" maxlength="6"
+           value="{{ c.phone_ext if c else '' }}" placeholder="123" maxlength="6"
            oninput="this.value=this.value.replace(/\D/g,'')">
   </div>
   <div class="col-md-6">
     <label class="form-label fw-bold">Личный телефон</label>
     <input type="tel" name="phone_personal" class="form-control form-control-sm mask-personal"
-           value="{{ c.phone_personal if c else '' }}"
-           placeholder="8 (9__) ___-__-__">
+           value="{{ c.phone_personal if c else '' }}" placeholder="8 (9__) ___-__-__">
   </div>
   <div class="col-md-6">
     <label class="form-label fw-bold">Эл. почта</label>
     <input type="email" name="email" class="form-control form-control-sm"
-           value="{{ c.email if c else '' }}"
-           placeholder="ivanov@example.com">
+           value="{{ c.email if c else '' }}" placeholder="ivanov@example.com">
   </div>
   <div class="col-12">
     <label class="form-label fw-bold">Заметка</label>
@@ -91,42 +87,74 @@
 {% endmacro %}
 
 <style>
-  .pb-card {
-    border-left: 3px solid #1B5E7B;
-    transition: box-shadow .15s;
-  }
-  .pb-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,.1); }
+  .pb-card { border-left:3px solid #1B5E7B; transition:box-shadow .15s; }
+  .pb-card:hover { box-shadow:0 2px 8px rgba(0,0,0,.1); }
   .pb-org-header {
-    background: var(--surface2);
-    border-left: 4px solid #1B5E7B;
-    padding: 6px 12px;
-    font-weight: 600;
-    font-size: 13px;
-    color: #1B5E7B;
-    margin-bottom: 8px;
-    border-radius: 4px;
+    background:var(--surface2); border-left:4px solid #1B5E7B;
+    padding:6px 12px; font-weight:600; font-size:13px;
+    color:#1B5E7B; margin-bottom:8px; border-radius:4px;
   }
-  body[data-theme="dark"]  .pb-org-header { color: #60a5fa; }
-  body[data-theme="zone"]  .pb-org-header { color: #c8a84b; border-left-color: #c8a84b; }
-  .pb-org-address { font-size: 11px; color: #6c757d; font-weight: normal; }
-  .pb-room-badge {
-    background: var(--surface2);
-    color: var(--text);
-    border: 1px solid var(--border);
-    font-size: 10px;
-  }
-  mark.pb-hl {
-    background: #fff176;
-    color: inherit;
-    padding: 0 1px;
-    border-radius: 2px;
-  }
-  body[data-theme="dark"] mark.pb-hl  { background: #b45309; color: #fff; }
-  body[data-theme="zone"] mark.pb-hl  { background: #78350f; color: #fde68a; }
+  body[data-theme="dark"] .pb-org-header { color:#60a5fa; }
+  body[data-theme="zone"] .pb-org-header { color:#c8a84b; border-left-color:#c8a84b; }
+  .pb-org-address { font-size:11px; color:#6c757d; font-weight:normal; }
+  .pb-room-badge { background:var(--surface2); color:var(--text); border:1px solid var(--border); font-size:10px; }
+  mark.pb-hl { background:#fff176; color:inherit; padding:0 1px; border-radius:2px; }
+  body[data-theme="dark"] mark.pb-hl { background:#b45309; color:#fff; }
+  body[data-theme="zone"] mark.pb-hl { background:#78350f; color:#fde68a; }
   #pb-search-spinner { display:none; width:1rem; height:1rem; }
+
+  /* ── История поиска ── */
+  #pb-history {
+    display:none;
+    position:absolute;
+    z-index:1050;
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:6px;
+    box-shadow:0 4px 16px rgba(0,0,0,.12);
+    min-width:280px;
+    max-width:520px;
+    padding:4px 0;
+    top:100%;
+    left:0;
+  }
+  .pb-hist-item {
+    display:flex;
+    align-items:center;
+    gap:8px;
+    padding:6px 12px;
+    cursor:pointer;
+    font-size:13px;
+    color:var(--text);
+    transition:background .1s;
+  }
+  .pb-hist-item:hover { background:var(--surface2); }
+  .pb-hist-item i { color:#6c757d; flex-shrink:0; }
+  .pb-hist-del {
+    margin-left:auto;
+    color:#6c757d;
+    cursor:pointer;
+    padding:0 4px;
+    font-size:12px;
+    flex-shrink:0;
+  }
+  .pb-hist-del:hover { color:#dc3545; }
+  .pb-hist-header {
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:4px 12px 4px 12px;
+    font-size:11px;
+    color:#6c757d;
+    border-bottom:1px solid var(--border);
+    margin-bottom:2px;
+  }
+  .pb-hist-clear { cursor:pointer; color:#6c757d; }
+  .pb-hist-clear:hover { color:#dc3545; }
+  #pb-search-wrap { position:relative; flex:1; }
 </style>
 
-{# ─── Заголовок страницы ─── #}
+{# ─── Заголовок ─── #}
 <div class="d-flex align-items-center justify-content-between mb-3">
   <div class="d-flex align-items-center gap-2">
     <a href="{{ url_for('requests.index') }}" class="btn btn-sm btn-outline-secondary">
@@ -140,12 +168,11 @@
   <div class="d-flex gap-2 flex-wrap">
     {% if session.get('role') == 'admin' %}
     <a href="{{ url_for('pb_import.import_template') }}"
-       class="btn btn-sm btn-outline-success" title="Скачать шаблон для заполнения">
+       class="btn btn-sm btn-outline-success" title="Скачать шаблон">
       <i class="bi bi-file-earmark-arrow-down me-1"></i>Шаблон
     </a>
     <button class="btn btn-sm btn-outline-primary"
-            data-bs-toggle="modal" data-bs-target="#importModal"
-            title="Загрузить контакты из Excel">
+            data-bs-toggle="modal" data-bs-target="#importModal">
       <i class="bi bi-file-earmark-arrow-up me-1"></i>Импорт Excel
     </button>
     <a href="{{ url_for('phonebook.phonebook_orgs') }}" class="btn btn-sm btn-outline-secondary">
@@ -166,24 +193,26 @@
       <span class="spinner-border spinner-border-sm text-white" id="pb-search-spinner"></span>
       <i class="bi bi-search text-white" id="pb-search-icon"></i>
     </span>
-    <input type="text" name="q" id="pb-search-input" class="form-control"
-           placeholder="Поиск по имени, организации, должности, телефону, email, кабинету..."
-           value="{{ search }}"
-           autocomplete="off">
+    <div id="pb-search-wrap">
+      <input type="text" name="q" id="pb-search-input" class="form-control h-100"
+             style="border-radius:0"
+             placeholder="Поиск по имени, организации, должности, телефону, email, кабинету..."
+             value="{{ search }}" autocomplete="off">
+      <div id="pb-history"></div>
+    </div>
     <button type="button" class="btn btn-outline-secondary" id="pb-clear-btn"
-            style="{{ '' if search else 'display:none' }}"
-            onclick="pbClear()">
+            style="{{ '' if search else 'display:none' }}" onclick="pbClear()">
       <i class="bi bi-x-circle"></i>
     </button>
     <button type="submit" class="btn btn-primary">Найти</button>
   </div>
   <div class="form-text text-muted ms-1" style="font-size:11px">
     <i class="bi bi-lightning-fill text-warning"></i>
-    Автопоиск от 2 символов · автоконвертация раскладки EN→RU
+    Автопоиск от 2 символов · автоконвертация EN→RU · история поиска
   </div>
 </form>
 
-{# ─── Контейнер результатов (управляется JS при AJAX, Jinja при обычной загрузке) ─── #}
+{# ─── Контейнер результатов ─── #}
 <div id="pb-results">
 {% if groups %}
   {% for org_name, contacts in groups.items() %}
@@ -202,19 +231,15 @@
         <div class="card pb-card h-100">
           <div class="card-body py-2 px-3">
             <div class="d-flex justify-content-between align-items-start">
-              <div class="fw-bold" style="font-size:14px;color:#1a2a3a">
-                {{ c.full_name }}
-              </div>
+              <div class="fw-bold" style="font-size:14px;color:#1a2a3a">{{ c.full_name }}</div>
               {% if session.get('role') == 'admin' %}
               <div class="d-flex gap-1 ms-2 flex-shrink-0">
                 <button class="btn btn-sm btn-outline-primary py-0 px-1"
-                        data-bs-toggle="modal" data-bs-target="#editModal{{ c.id }}"
-                        title="Редактировать">
+                        data-bs-toggle="modal" data-bs-target="#editModal{{ c.id }}" title="Редактировать">
                   <i class="bi bi-pencil" style="font-size:11px"></i>
                 </button>
                 <form method="post" action="{{ url_for('phonebook.phonebook_delete') }}"
-                      class="d-inline"
-                      onsubmit="return confirm('Удалить {{ c.full_name }}?')">
+                      class="d-inline" onsubmit="return confirm('Удалить {{ c.full_name }}?')">
                   <input type="hidden" name="contact_id" value="{{ c.id }}">
                   <button class="btn btn-sm btn-outline-danger py-0 px-1" title="Удалить">
                     <i class="bi bi-trash" style="font-size:11px"></i>
@@ -257,15 +282,13 @@
               {% endif %}
             </div>
             {% if c.notes %}
-            <div class="mt-1 text-muted"
-                 style="font-size:11px;border-top:1px solid var(--border);padding-top:4px">
+            <div class="mt-1 text-muted" style="font-size:11px;border-top:1px solid var(--border);padding-top:4px">
               <i class="bi bi-chat-left-text me-1"></i>{{ c.notes }}
             </div>
             {% endif %}
           </div>
         </div>
       </div>
-      {# ─── Модалка редактирования ─── #}
       {% if session.get('role') == 'admin' %}
       <div class="modal fade" id="editModal{{ c.id }}" tabindex="-1">
         <div class="modal-dialog modal-lg"><div class="modal-content">
@@ -291,7 +314,7 @@
   </div>
   {% endfor %}
 {% else %}
-  <div class="text-center text-muted py-5" id="pb-empty">
+  <div class="text-center text-muted py-5">
     <i class="bi bi-search" style="font-size:2rem"></i>
     <div class="mt-2">
       {% if search %}По запросу «{{ search }}» ничего не найдено
@@ -299,9 +322,9 @@
     </div>
   </div>
 {% endif %}
-</div>{# /pb-results #}
+</div>
 
-{# ─── Модалка добавления (только админ) ─── #}
+{# ─── Модалка добавления ─── #}
 {% if session.get('role') == 'admin' %}
 <div class="modal fade" id="addModal" tabindex="-1">
   <div class="modal-dialog modal-lg"><div class="modal-content">
@@ -320,8 +343,6 @@
     </form>
   </div></div>
 </div>
-
-{# ─── Модалка импорта Excel ─── #}
 <div class="modal fade" id="importModal" tabindex="-1">
   <div class="modal-dialog"><div class="modal-content">
     <div class="modal-header" style="background:#1B5E7B;color:#fff">
@@ -352,109 +373,91 @@
 {% endif %}
 
 <script>
-/* ── Конвертация EN→RU раскладки ── */
-var EN_RU = {
-  'q':'й','w':'ц','e':'у','r':'к','t':'е','y':'н','u':'г','i':'ш','o':'щ','p':'з',
-  '[':'х',']':'ъ','a':'ф','s':'ы','d':'в','f':'а','g':'п','h':'р','j':'о','k':'л',
-  'l':'д',';':'ж',"'":"э",'z':'я','x':'ч','c':'с','v':'м','b':'и','n':'т','m':'ь',
-  ',':'б','.':'ю',
-  'Q':'Й','W':'Ц','E':'У','R':'К','T':'Е','Y':'Н','U':'Г','I':'Ш','O':'Щ','P':'З',
-  '{':'Х','}':'Ъ','A':'Ф','S':'Ы','D':'В','F':'А','G':'П','H':'Р','J':'О','K':'Л',
-  'L':'Д',':':'Ж','"':'Э','Z':'Я','X':'Ч','C':'С','V':'М','B':'И','N':'Т','M':'Ь',
-  '<':'Б','>':'Ю'
-};
-function convertLayout(str) {
-  /* Если строка содержит хотя бы одну кириллическую букву — не конвертируем */
-  if (/[а-яёА-ЯЁ]/.test(str)) return str;
-  return str.split('').map(function(c){ return EN_RU[c] || c; }).join('');
+/* ── EN→RU ── */
+var EN_RU={'q':'й','w':'ц','e':'у','r':'к','t':'е','y':'н','u':'г','i':'ш','o':'щ','p':'з','[':'х',']':'ъ','a':'ф','s':'ы','d':'в','f':'а','g':'п','h':'р','j':'о','k':'л','l':'д',';':'ж',"'":"э",'z':'я','x':'ч','c':'с','v':'м','b':'и','n':'т','m':'ь',',':'б','.':'ю','Q':'Й','W':'Ц','E':'У','R':'К','T':'Е','Y':'Н','U':'Г','I':'Ш','O':'Щ','P':'З','{':'Х','}':'Ъ','A':'Ф','S':'Ы','D':'В','F':'А','G':'П','H':'Р','J':'О','K':'Л','L':'Д',':':'Ж','"':'Э','Z':'Я','X':'Ч','C':'С','V':'М','B':'И','N':'Т','M':'Ь','<':'Б','>':'Ю'};
+function convertLayout(s){if(/[а-яёА-ЯЁ]/.test(s))return s;return s.split('').map(function(c){return EN_RU[c]||c;}).join('');}
+
+/* ── HTML helpers ── */
+function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+function reEsc(s){return s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');}
+function highlightText(text,tokens){
+  if(!tokens||!tokens.length)return escHtml(text);
+  var r=escHtml(text);
+  tokens.forEach(function(t){if(t)r=r.replace(new RegExp('('+reEsc(t)+')','gi'),'<mark class="pb-hl">$1</mark>');});
+  return r;
 }
 
-/* ── Подсветка совпадений ── */
-function highlightText(text, tokens) {
-  if (!tokens || tokens.length === 0) return escHtml(text);
-  var result = escHtml(text);
-  tokens.forEach(function(t) {
-    if (!t) return;
-    var re = new RegExp('(' + reEsc(t) + ')', 'gi');
-    result = result.replace(re, '<mark class="pb-hl">$1</mark>');
+/* ── Построение карточек ── */
+function buildCard(c,tokens){
+  var posHtml='';
+  if(c.position){
+    posHtml='<div class="text-muted" style="font-size:12px">'+highlightText(c.position,tokens);
+    if(c.room)posHtml+='<span class="ms-1 badge pb-room-badge"><i class="bi bi-door-open me-1"></i>каб. '+highlightText(c.room,tokens)+'</span>';
+    posHtml+='</div>';
+  }
+  var ph='<div class="mt-1" style="font-size:12px">';
+  if(c.phone_work){ph+='<div><i class="bi bi-telephone text-success me-1"></i><a href="tel:'+escHtml(c.phone_work)+'" class="text-decoration-none">'+highlightText(c.phone_work,tokens)+'</a>';if(c.phone_ext)ph+='<span class="text-muted ms-1">доб. '+highlightText(c.phone_ext,tokens)+'</span>';ph+='</div>';}
+  if(c.phone_personal)ph+='<div><i class="bi bi-phone text-primary me-1"></i><a href="tel:'+escHtml(c.phone_personal)+'" class="text-decoration-none">'+highlightText(c.phone_personal,tokens)+'</a></div>';
+  if(c.email)ph+='<div><i class="bi bi-envelope text-danger me-1"></i><a href="mailto:'+escHtml(c.email)+'" class="text-decoration-none">'+highlightText(c.email,tokens)+'</a></div>';
+  ph+='</div>';
+  var nh=c.notes?'<div class="mt-1 text-muted" style="font-size:11px;border-top:1px solid var(--border);padding-top:4px"><i class="bi bi-chat-left-text me-1"></i>'+highlightText(c.notes,tokens)+'</div>':'';
+  return '<div class="col-md-6 col-lg-4"><div class="card pb-card h-100"><div class="card-body py-2 px-3"><div class="d-flex justify-content-between align-items-start"><div class="fw-bold" style="font-size:14px;color:#1a2a3a">'+highlightText(c.full_name,tokens)+'</div></div>'+posHtml+ph+nh+'</div></div></div>';
+}
+function buildOrgBlock(name,data,tokens){
+  var addr=data.address?'<span class="pb-org-address ms-2"><i class="bi bi-geo-alt me-1"></i>'+escHtml(data.address)+'</span>':'';
+  return '<div class="mb-4"><div class="pb-org-header"><i class="bi bi-building me-1"></i>'+escHtml(name)+addr+'</div><div class="row g-2">'+data.contacts.map(function(c){return buildCard(c,tokens);}).join('')+'</div></div>';
+}
+
+/* ── История поиска (localStorage) ── */
+var PB_HIST_KEY = 'pb_search_history';
+var PB_HIST_MAX = 5;
+
+function histLoad(){try{return JSON.parse(localStorage.getItem(PB_HIST_KEY)||'[]');}catch(e){return [];}}
+function histSave(arr){try{localStorage.setItem(PB_HIST_KEY,JSON.stringify(arr));}catch(e){}}
+function histAdd(q){
+  if(!q||q.length<2)return;
+  var arr=histLoad().filter(function(x){return x!==q;});
+  arr.unshift(q);
+  if(arr.length>PB_HIST_MAX)arr=arr.slice(0,PB_HIST_MAX);
+  histSave(arr);
+}
+function histRemove(q){
+  histSave(histLoad().filter(function(x){return x!==q;}));
+}
+
+var pbHistEl = document.getElementById('pb-history');
+
+function histRender(){
+  var arr=histLoad();
+  if(!arr.length){pbHistEl.style.display='none';return;}
+  var html='<div class="pb-hist-header">'
+    +'<span><i class="bi bi-clock-history me-1"></i>Последние запросы</span>'
+    +'<span class="pb-hist-clear" onclick="histClearAll()">Очистить</span>'
+    +'</div>';
+  arr.forEach(function(q){
+    html+='<div class="pb-hist-item" onclick="histPick('+JSON.stringify(q)+'")>'
+      +'<i class="bi bi-search"></i>'
+      +'<span>'+escHtml(q)+'</span>'
+      +'<span class="pb-hist-del" onclick="event.stopPropagation();histRemoveAndRefresh('+JSON.stringify(q)+')">'
+      +'<i class="bi bi-x"></i></span>'
+      +'</div>';
   });
-  return result;
+  pbHistEl.innerHTML=html;
+  pbHistEl.style.display='block';
 }
-function escHtml(s) {
-  return String(s)
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-}
-function reEsc(s) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
-}
-
-/* ── Построение HTML карточки контакта (только просмотр, без модалок редактирования) ── */
-function buildCard(c, tokens) {
-  var name     = highlightText(c.full_name, tokens);
-  var position = c.position ? highlightText(c.position, tokens) : '';
-  var room     = c.room     ? highlightText(c.room, tokens)     : '';
-  var notes    = c.notes    ? highlightText(c.notes, tokens)    : '';
-
-  var posHtml = '';
-  if (c.position) {
-    posHtml = '<div class="text-muted" style="font-size:12px">' + position;
-    if (c.room) posHtml += '<span class="ms-1 badge pb-room-badge"><i class="bi bi-door-open me-1"></i>каб. ' + room + '</span>';
-    posHtml += '</div>';
-  }
-
-  var contactsHtml = '<div class="mt-1" style="font-size:12px">';
-  if (c.phone_work) {
-    contactsHtml += '<div><i class="bi bi-telephone text-success me-1"></i>'
-      + '<a href="tel:' + escHtml(c.phone_work) + '" class="text-decoration-none">'
-      + highlightText(c.phone_work, tokens) + '</a>';
-    if (c.phone_ext) contactsHtml += '<span class="text-muted ms-1">доб. ' + highlightText(c.phone_ext, tokens) + '</span>';
-    contactsHtml += '</div>';
-  }
-  if (c.phone_personal) {
-    contactsHtml += '<div><i class="bi bi-phone text-primary me-1"></i>'
-      + '<a href="tel:' + escHtml(c.phone_personal) + '" class="text-decoration-none">'
-      + highlightText(c.phone_personal, tokens) + '</a></div>';
-  }
-  if (c.email) {
-    contactsHtml += '<div><i class="bi bi-envelope text-danger me-1"></i>'
-      + '<a href="mailto:' + escHtml(c.email) + '" class="text-decoration-none">'
-      + highlightText(c.email, tokens) + '</a></div>';
-  }
-  contactsHtml += '</div>';
-
-  var notesHtml = '';
-  if (c.notes) {
-    notesHtml = '<div class="mt-1 text-muted" style="font-size:11px;border-top:1px solid var(--border);padding-top:4px">'
-      + '<i class="bi bi-chat-left-text me-1"></i>' + notes + '</div>';
-  }
-
-  return '<div class="col-md-6 col-lg-4">'
-    + '<div class="card pb-card h-100"><div class="card-body py-2 px-3">'
-    + '<div class="d-flex justify-content-between align-items-start">'
-    + '<div class="fw-bold" style="font-size:14px;color:#1a2a3a">' + name + '</div>'
-    + '</div>'
-    + posHtml + contactsHtml + notesHtml
-    + '</div></div></div>';
+function histHide(){pbHistEl.style.display='none';}
+function histClearAll(){histSave([]);histHide();}
+function histRemoveAndRefresh(q){histRemove(q);histRender();}
+function histPick(q){
+  pbInput.value=q;
+  histHide();
+  pbDoSearch(q);
+  history.replaceState(null,'','/phonebook?q='+encodeURIComponent(q));
+  if(pbClearEl)pbClearEl.style.display='';
 }
 
-/* ── Построение HTML блока организации ── */
-function buildOrgBlock(orgName, orgData, tokens) {
-  var addrHtml = orgData.address
-    ? '<span class="pb-org-address ms-2"><i class="bi bi-geo-alt me-1"></i>' + escHtml(orgData.address) + '</span>'
-    : '';
-  var header = '<div class="pb-org-header">'
-    + '<i class="bi bi-building me-1"></i>' + escHtml(orgName) + addrHtml
-    + '</div>';
-  var cards = orgData.contacts.map(function(c){ return buildCard(c, tokens); }).join('');
-  return '<div class="mb-4">' + header + '<div class="row g-2">' + cards + '</div></div>';
-}
-
-/* ── AJAX-поиск ── */
-var pbTimer    = null;
-var pbXhr      = null;
-var pbLastQuery = '';
-
+/* ── Основной AJAX-поиск ── */
+var pbTimer=null, pbXhr=null;
 var pbInput   = document.getElementById('pb-search-input');
 var pbSpinner = document.getElementById('pb-search-spinner');
 var pbIcon    = document.getElementById('pb-search-icon');
@@ -462,135 +465,108 @@ var pbClearEl = document.getElementById('pb-clear-btn');
 var pbResults = document.getElementById('pb-results');
 var pbBadge   = document.getElementById('pb-total-badge');
 
-function pbShowSpinner(on) {
-  pbSpinner.style.display = on ? 'inline-block' : 'none';
-  pbIcon.style.display    = on ? 'none' : 'inline-block';
+function pbShowSpinner(on){pbSpinner.style.display=on?'inline-block':'none';pbIcon.style.display=on?'none':'inline-block';}
+
+function pbRenderResults(data){
+  var q=data.query||'',tokens=q.toLowerCase().split(/\s+/).filter(Boolean),groups=data.groups||{},keys=Object.keys(groups);
+  if(pbBadge)pbBadge.textContent=data.total||0;
+  pbResults.innerHTML=keys.length
+    ?keys.map(function(o){return buildOrgBlock(o,groups[o],tokens);}).join('')
+    :'<div class="text-center text-muted py-5"><i class="bi bi-search" style="font-size:2rem"></i><div class="mt-2">'+(q?'По запросу «'+escHtml(q)+'» ничего не найдено':'Справочник пуст — добавьте первого сотрудника')+'</div></div>';
 }
 
-function pbRenderResults(data) {
-  var q      = data.query || '';
-  var tokens = q.toLowerCase().split(/\s+/).filter(Boolean);
-  var groups = data.groups || {};
-  var keys   = Object.keys(groups);
-
-  if (pbBadge) pbBadge.textContent = data.total || 0;
-
-  if (keys.length === 0) {
-    pbResults.innerHTML = '<div class="text-center text-muted py-5">'
-      + '<i class="bi bi-search" style="font-size:2rem"></i>'
-      + '<div class="mt-2">' + (q ? 'По запросу «' + escHtml(q) + '» ничего не найдено' : 'Справочник пуст — добавьте первого сотрудника') + '</div>'
-      + '</div>';
-    return;
-  }
-  pbResults.innerHTML = keys.map(function(org){
-    return buildOrgBlock(org, groups[org], tokens);
-  }).join('');
-}
-
-function pbDoSearch(val) {
-  if (pbXhr) { pbXhr.abort(); pbXhr = null; }
+function pbDoSearch(val){
+  if(pbXhr){pbXhr.abort();pbXhr=null;}
   pbShowSpinner(true);
-  pbXhr = new XMLHttpRequest();
-  pbXhr.open('GET', '/phonebook/search?q=' + encodeURIComponent(val), true);
-  pbXhr.onload = function() {
-    pbShowSpinner(false);
-    if (pbXhr.status === 200) {
-      try { pbRenderResults(JSON.parse(pbXhr.responseText)); } catch(e) {}
-    }
-    pbXhr = null;
-  };
-  pbXhr.onerror = function() { pbShowSpinner(false); pbXhr = null; };
+  pbXhr=new XMLHttpRequest();
+  pbXhr.open('GET','/phonebook/search?q='+encodeURIComponent(val),true);
+  pbXhr.onload=function(){pbShowSpinner(false);if(pbXhr.status===200){try{pbRenderResults(JSON.parse(pbXhr.responseText));}catch(e){}}pbXhr=null;};
+  pbXhr.onerror=function(){pbShowSpinner(false);pbXhr=null;};
   pbXhr.send();
 }
 
-function pbClear() {
-  pbInput.value = '';
-  if (pbClearEl) pbClearEl.style.display = 'none';
+function pbClear(){
+  pbInput.value='';
+  if(pbClearEl)pbClearEl.style.display='none';
   pbDoSearch('');
   pbInput.focus();
-  history.replaceState(null, '', '/phonebook');
+  history.replaceState(null,'','/phonebook');
 }
 
-function pbSubmit(e) {
+function pbSubmit(e){
   e.preventDefault();
-  var val = convertLayout(pbInput.value.trim());
-  pbInput.value = val;
+  var val=convertLayout(pbInput.value.trim());
+  pbInput.value=val;
+  histAdd(val);
+  histHide();
   pbDoSearch(val);
   return false;
 }
 
-if (pbInput) {
-  pbInput.addEventListener('input', function() {
+if(pbInput){
+  pbInput.addEventListener('focus',function(){
+    if(!this.value.trim())histRender();
+  });
+  pbInput.addEventListener('input',function(){
     clearTimeout(pbTimer);
-    var raw = this.value.trim();
-    if (pbClearEl) pbClearEl.style.display = raw ? '' : 'none';
-
-    if (raw.length === 0) {
-      pbDoSearch('');
-      history.replaceState(null, '', '/phonebook');
-      return;
-    }
-    if (raw.length < 2) return;
-
-    var val = convertLayout(raw);
-    if (val !== raw) pbInput.value = val;
-
-    pbTimer = setTimeout(function() {
+    var raw=this.value.trim();
+    if(pbClearEl)pbClearEl.style.display=raw?'':'none';
+    if(raw.length===0){histRender();pbDoSearch('');history.replaceState(null,'','/phonebook');return;}
+    histHide();
+    if(raw.length<2)return;
+    var val=convertLayout(raw);
+    if(val!==raw)pbInput.value=val;
+    pbTimer=setTimeout(function(){
+      histAdd(val);
       pbDoSearch(val);
-      history.replaceState(null, '', '/phonebook?q=' + encodeURIComponent(val));
-    }, 300);
+      history.replaceState(null,'','/phonebook?q='+encodeURIComponent(val));
+    },300);
+  });
+  document.addEventListener('click',function(e){
+    if(!pbHistEl.contains(e.target)&&e.target!==pbInput)histHide();
   });
 }
 
 /* ── Телефонные маски ── */
-function applyPhoneMask(input, type) {
-  input.addEventListener('input', function () {
-    var digits = this.value.replace(/\D/g, '');
-    var val = '';
-    if (type === 'work') {
-      if (digits.length === 0) { this.value = ''; return; }
-      if (digits[0] === '8') digits = '7' + digits.slice(1);
-      if (digits[0] !== '7') digits = '7' + digits;
-      digits = digits.slice(0, 11);
-      val = '+7';
-      if (digits.length > 1)  val += ' (' + digits.slice(1, 4);
-      if (digits.length >= 4) val += ')';
-      if (digits.length > 4)  val += ' ' + digits.slice(4, 7);
-      if (digits.length > 7)  val += '-' + digits.slice(7, 9);
-      if (digits.length > 9)  val += '-' + digits.slice(9, 11);
-    } else {
-      if (digits.length === 0) { this.value = ''; return; }
-      if (digits[0] === '7') digits = '8' + digits.slice(1);
-      if (digits[0] !== '8') digits = '8' + digits;
-      digits = digits.slice(0, 11);
-      val = '8';
-      if (digits.length > 1)  val += ' (' + digits.slice(1, 4);
-      if (digits.length >= 4) val += ')';
-      if (digits.length > 4)  val += ' ' + digits.slice(4, 7);
-      if (digits.length > 7)  val += '-' + digits.slice(7, 9);
-      if (digits.length > 9)  val += '-' + digits.slice(9, 11);
+function applyPhoneMask(el,type){
+  el.addEventListener('input',function(){
+    var d=this.value.replace(/\D/g,''),v='';
+    if(type==='work'){
+      if(!d.length){this.value='';return;}
+      if(d[0]==='8')d='7'+d.slice(1);
+      if(d[0]!=='7')d='7'+d;
+      d=d.slice(0,11);v='+7';
+      if(d.length>1)v+=' ('+d.slice(1,4);
+      if(d.length>=4)v+=')';
+      if(d.length>4)v+=' '+d.slice(4,7);
+      if(d.length>7)v+='-'+d.slice(7,9);
+      if(d.length>9)v+='-'+d.slice(9,11);
+    }else{
+      if(!d.length){this.value='';return;}
+      if(d[0]==='7')d='8'+d.slice(1);
+      if(d[0]!=='8')d='8'+d;
+      d=d.slice(0,11);v='8';
+      if(d.length>1)v+=' ('+d.slice(1,4);
+      if(d.length>=4)v+=')';
+      if(d.length>4)v+=' '+d.slice(4,7);
+      if(d.length>7)v+='-'+d.slice(7,9);
+      if(d.length>9)v+='-'+d.slice(9,11);
     }
-    this.value = val;
+    this.value=v;
   });
 }
-
-function fetchAddress(select) {
-  var opt     = select.options[select.selectedIndex];
-  var address = opt ? (opt.dataset.address || '') : '';
-  var modal   = select.closest('.modal-body, .card-body');
-  if (modal) {
-    var field = modal.querySelector('.org-address-field');
-    if (field) field.value = address;
-  }
+function fetchAddress(select){
+  var opt=select.options[select.selectedIndex],address=opt?(opt.dataset.address||')':'';
+  var modal=select.closest('.modal-body,.card-body');
+  if(modal){var f=modal.querySelector('.org-address-field');if(f)f.value=address;}
 }
-
-document.addEventListener('DOMContentLoaded', function () {
-  document.querySelectorAll('.mask-work').forEach(function(el){ applyPhoneMask(el,'work'); });
-  document.querySelectorAll('.mask-personal').forEach(function(el){ applyPhoneMask(el,'personal'); });
+document.addEventListener('DOMContentLoaded',function(){
+  document.querySelectorAll('.mask-work').forEach(function(el){applyPhoneMask(el,'work');});
+  document.querySelectorAll('.mask-personal').forEach(function(el){applyPhoneMask(el,'personal');});
 });
-document.addEventListener('shown.bs.modal', function (e) {
-  e.target.querySelectorAll('.mask-work').forEach(function(el){ applyPhoneMask(el,'work'); });
-  e.target.querySelectorAll('.mask-personal').forEach(function(el){ applyPhoneMask(el,'personal'); });
+document.addEventListener('shown.bs.modal',function(e){
+  e.target.querySelectorAll('.mask-work').forEach(function(el){applyPhoneMask(el,'work');});
+  e.target.querySelectorAll('.mask-personal').forEach(function(el){applyPhoneMask(el,'personal');});
 });
 </script>
 
