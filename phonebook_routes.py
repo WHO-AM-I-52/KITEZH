@@ -1,5 +1,5 @@
 # phonebook_routes.py
-# Blueprint: телефонный справочник (v2.3.0)
+# Blueprint: телефонный справочник (v2.6.2)
 # Маршруты:
 #   GET  /phonebook                — список сотрудников с поиском
 #   GET  /phonebook/search         — AJAX: поиск, возвращает JSON
@@ -11,6 +11,10 @@
 #   POST /phonebook/orgs/edit      — редактировать организацию (админ)
 #   POST /phonebook/orgs/delete    — удалить организацию (админ)
 #   GET  /phonebook/org_address    — AJAX: получить адрес организации
+#
+# ИСПРАВЛЕНИЕ v2.6.2:
+#   SQLite LOWER() не работает с кириллицей (только ASCII).
+#   Фильтрация перенесена на Python — используем str.lower() / casefold().
 
 from flask import (Blueprint, render_template, request,
                    redirect, url_for, flash, jsonify, session)
@@ -28,42 +32,36 @@ def get_all_orgs():
     return orgs
 
 
+def _row_matches(row, tokens: list[str]) -> bool:
+    """Проверяет, содержит ли запись ВСЕ токены (регистронезависимо, включая кириллицу)."""
+    haystack = ' '.join([
+        row['full_name']     or '',
+        row['position']      or '',
+        row['org_name']      or '',
+        row['phone_work']    or '',
+        row['phone_ext']     or '',
+        row['phone_personal'] or '',
+        row['email']         or '',
+        row['room']          or '',
+        row['notes']         or '',
+    ]).lower()
+    return all(t in haystack for t in tokens)
+
+
 def get_all_contacts(search: str = ''):
     conn = get_db()
+    rows = conn.execute("""
+        SELECT p.*, o.name AS org_name, o.address AS org_address
+        FROM phonebook p
+        LEFT JOIN phonebook_orgs o ON p.org_id = o.id
+        ORDER BY o.name, p.full_name
+    """).fetchall()
+    conn.close()
+
     if search:
         tokens = search.lower().split()
-        base_sql = """
-            SELECT p.*, o.name AS org_name, o.address AS org_address
-            FROM phonebook p
-            LEFT JOIN phonebook_orgs o ON p.org_id = o.id
-            WHERE {conditions}
-            ORDER BY o.name, p.full_name
-        """
-        token_clauses = []
-        params = []
-        for token in tokens:
-            like = f'%{token}%'
-            token_clauses.append("""(
-                LOWER(p.full_name)     LIKE ?
-                OR LOWER(p.position)   LIKE ?
-                OR LOWER(o.name)       LIKE ?
-                OR LOWER(p.phone_work) LIKE ?
-                OR LOWER(p.phone_ext)  LIKE ?
-                OR LOWER(p.email)      LIKE ?
-                OR LOWER(p.room)       LIKE ?
-                OR LOWER(p.notes)      LIKE ?
-            )""")
-            params.extend([like, like, like, like, like, like, like, like])
-        sql = base_sql.format(conditions=' AND '.join(token_clauses))
-        rows = conn.execute(sql, params).fetchall()
-    else:
-        rows = conn.execute("""
-            SELECT p.*, o.name AS org_name, o.address AS org_address
-            FROM phonebook p
-            LEFT JOIN phonebook_orgs o ON p.org_id = o.id
-            ORDER BY o.name, p.full_name
-        """).fetchall()
-    conn.close()
+        rows = [r for r in rows if _row_matches(r, tokens)]
+
     return rows
 
 
