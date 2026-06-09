@@ -4,17 +4,20 @@
 # ║ fix #66 [2/2]: логирование ocr_error, маршрут /ai/ocr-upload   ║
 # ║ feat #67 [2/3]: маршрут POST /ai/ocr-preview (без сохранения  ║
 # ║             в БД), ocr-upload обновлён под Tuple[Dict,str,str]  ║
+# ║ feat #68: GET /ai/ocr-status — панель статуса OCR-движка      ║
+# ║           POST /ai/ocr-test  — тестовый запуск OCR            ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 import json
 import os
 import logging
 import requests as http_requests
+from datetime import datetime
 from flask import Blueprint, request, jsonify, render_template, session
 from werkzeug.utils import secure_filename
 
 from db import get_db
-from auth_utils import login_required
+from auth_utils import login_required, admin_required
 from activity_log import log_action
 from ocr_utils import extract_anketa_fields
 
@@ -226,6 +229,138 @@ def ocr_preview():
         "fields": fields,
         "msg": msg,
     })
+
+
+# ─── OCR-СТАТУС (#68) ─────────────────────────────────────────────────
+
+def _check_ocr_deps() -> dict:
+    """Проверяет наличие и версии всех OCR-зависимостей."""
+    status = {}
+
+    # easyocr
+    try:
+        import easyocr
+        status['easyocr'] = {'ok': True, 'version': getattr(easyocr, '__version__', '—')}
+    except ImportError:
+        status['easyocr'] = {'ok': False, 'error': 'Не установлен (pip install easyocr)'}
+    except Exception as e:
+        status['easyocr'] = {'ok': False, 'error': str(e)}
+
+    # pytesseract / Tesseract binary
+    try:
+        import pytesseract
+        v = pytesseract.get_tesseract_version()
+        status['tesseract'] = {'ok': True, 'version': str(v)}
+    except ImportError:
+        status['tesseract'] = {'ok': False, 'error': 'pytesseract не установлен'}
+    except Exception as e:
+        status['tesseract'] = {'ok': False, 'error': str(e)}
+
+    # pdfplumber
+    try:
+        import pdfplumber
+        status['pdfplumber'] = {'ok': True, 'version': getattr(pdfplumber, '__version__', '—')}
+    except ImportError:
+        status['pdfplumber'] = {'ok': False, 'error': 'Не установлен (pip install pdfplumber)'}
+    except Exception as e:
+        status['pdfplumber'] = {'ok': False, 'error': str(e)}
+
+    # python-docx
+    try:
+        import docx
+        status['docx'] = {'ok': True, 'version': getattr(docx, '__version__', '—')}
+    except ImportError:
+        status['docx'] = {'ok': False, 'error': 'Не установлен (pip install python-docx)'}
+    except Exception as e:
+        status['docx'] = {'ok': False, 'error': str(e)}
+
+    # Pillow
+    try:
+        import PIL
+        status['pillow'] = {'ok': True, 'version': getattr(PIL, '__version__', '—')}
+    except ImportError:
+        status['pillow'] = {'ok': False, 'error': 'Не установлен (pip install Pillow)'}
+    except Exception as e:
+        status['pillow'] = {'ok': False, 'error': str(e)}
+
+    return status
+
+
+@ai_bp.route("/ocr-status", methods=["GET"])
+@admin_required
+def ocr_status():
+    """
+    GET /ai/ocr-status
+    Страница администратора: статус OCR-зависимостей + статистика ошибок.
+    """
+    deps = _check_ocr_deps()
+
+    # Ошибки OCR за последние 7 дней
+    conn = get_db()
+    try:
+        errors_7d = conn.execute(
+            "SELECT COUNT(*) FROM activity_log "
+            "WHERE action='ocr_error' "
+            "AND created_at >= datetime('now','-7 days')"
+        ).fetchone()[0]
+
+        # Последние 10 ошибок OCR
+        recent_errors = conn.execute(
+            "SELECT al.created_at, al.detail, u.full_name "
+            "FROM activity_log al "
+            "LEFT JOIN users u ON al.user_id = u.id "
+            "WHERE al.action='ocr_error' "
+            "ORDER BY al.created_at DESC LIMIT 10"
+        ).fetchall()
+        recent_errors = [dict(r) for r in recent_errors]
+
+        # Последняя успешная OCR-активность
+        last_ocr = conn.execute(
+            "SELECT created_at FROM activity_log "
+            "WHERE action IN ('ocr_upload','ocr_preview') "
+            "ORDER BY created_at DESC LIMIT 1"
+        ).fetchone()
+        last_ocr_dt = last_ocr['created_at'] if last_ocr else None
+    finally:
+        conn.close()
+
+    all_ok = all(v['ok'] for v in deps.values())
+
+    return render_template(
+        'ocr_status.html',
+        deps=deps,
+        errors_7d=errors_7d,
+        recent_errors=recent_errors,
+        last_ocr_dt=last_ocr_dt,
+        all_ok=all_ok,
+        checked_at=datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
+    )
+
+
+@ai_bp.route("/ocr-test", methods=["POST"])
+@admin_required
+def ocr_test():
+    """
+    POST /ai/ocr-test
+    Создаёт тестовый PNG 1×1 и прогоняет через easyocr.
+    Возвращает JSON: {"ok": true/false, "result": "...", "error": "..."}
+    """
+    try:
+        import easyocr
+        import numpy as np
+
+        # Минимальный тестовый массив (белое изображение)
+        img = np.ones((50, 200, 3), dtype=np.uint8) * 255
+        reader = easyocr.Reader(['ru', 'en'], gpu=False, verbose=False)
+        result = reader.readtext(img, detail=0)
+        return jsonify({
+            'ok': True,
+            'result': f"easyocr запущен успешно. Результат: {result or '(пусто — норма для белого изображения)'}" 
+        })
+    except ImportError:
+        return jsonify({'ok': False, 'error': 'easyocr не установлен'})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)})
 
 
 def _log_ocr_error(filename: str, detail: str) -> None:
