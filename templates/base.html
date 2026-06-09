@@ -2,7 +2,7 @@
 {# ╔══════════════════════════════════════════════════════════════╗ #}
 {# ║                        base.html                            ║ #}
 {# ║  Базовый шаблон приложения "Подбор ЗУ — НО"                 ║ #}
-{# ║  v2.22.0: sidebar — collapsible sections + localStorage     ║ #}
+{# ║  v2.23.0: notifications moved next to changelog             ║ #}
 {# ╚══════════════════════════════════════════════════════════════╝ #}
 <html lang="ru">
 <head>
@@ -432,11 +432,6 @@
         <i class="bi bi-bookmark-star"></i><span class="sb-lbl">Фильтры</span>
       </a>
 
-      <a href="/notifications" class="sb-link {{ 'active' if request.path=='/notifications' }}" id="sbNotifLink">
-        <i class="bi bi-bell"></i><span class="sb-lbl">Уведомления</span>
-        {% if unread_count > 0 %}<span class="sb-badge">{{ unread_count }}</span>{% endif %}
-      </a>
-
     </div>
 
     {# ─────────────────────────── СЕРВИСЫ ─────────────────────────── #}
@@ -486,6 +481,12 @@
     {% endif %}
 
     <div class="sb-sep"></div>
+
+    <a href="/notifications" class="sb-link {{ 'active' if request.path=='/notifications' }}" id="sbNotifLink">
+      <i class="bi bi-bell"></i><span class="sb-lbl">Уведомления</span>
+      {% if unread_count > 0 %}<span class="sb-badge">{{ unread_count }}</span>{% endif %}
+    </a>
+
     <a href="{{ url_for('misc.changelog') }}" class="sb-link {{ 'active' if request.path=='/changelog' }}" id="sbChangelogLink">
       <i class="bi bi-journal-text"></i>
       <span class="sb-lbl">Версии</span>
@@ -493,6 +494,7 @@
       <span class="sb-update-dot d-none" id="sbUpdateDot" title="Доступно обновление"></span>
       {% endif %}
     </a>
+
     <div class="sb-sep"></div>
 
     <button class="theme-toggle-btn" id="themeToggle" title="Тема оформления">
