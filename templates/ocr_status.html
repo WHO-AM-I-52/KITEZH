@@ -3,6 +3,7 @@
 {# ║ ocr_status.html                                             ║ #}
 {# ║ feat #68: Панель статуса OCR-движка для администратора      ║ #}
 {# ║ feat: блок истории OCR-распознаваний с полным логом       ║ #}
+{# ║ fix: copyText — textarea-фоллбек, работает на http://         ║ #}
 {# ╚══════════════════════════════════════════════════════════════╝ #}
 
 {% block content %}
@@ -19,7 +20,7 @@
   {% endif %}
 </div>
 
-{# ── Таблица зависимостей ────────────────────────────────────────────────────────────────── #}
+{# ── Зависимости ───────────────────────────────────────────────────────────────────────── #}
 <div class="card mb-4">
   <div class="card-header bg-white fw-semibold d-flex align-items-center gap-2">
     <i class="bi bi-boxes text-secondary"></i> Зависимости
@@ -119,7 +120,7 @@
   </div>
 </div>
 
-{# ── Последние ошибки OCR ────────────────────────────────────────────────────────────────────── #}
+{# ── Последние ошибки OCR ────────────────────────────────────────────────────────────────────────── #}
 {% if recent_errors %}
 <div class="card mb-4">
   <div class="card-header bg-white fw-semibold d-flex align-items-center gap-2">
@@ -154,7 +155,7 @@
 </div>
 {% endif %}
 
-{# ── История распознаваний ──────────────────────────────────────────────────────────────────── #}
+{# ── История распознаваний ────────────────────────────────────────────────────────────────────── #}
 <div class="card">
   <div class="card-header bg-white fw-semibold d-flex align-items-center gap-2">
     <i class="bi bi-clock-history text-secondary"></i> История распознаваний
@@ -201,13 +202,14 @@
             </button>
           </td>
         </tr>
+
         {# ─ Разворачиваемый блок лога ─ #}
         <tr id="log-detail-{{ log.id }}" style="display:none">
           <td colspan="6" class="p-0">
             <div class="p-3" style="background:#f8f9fa; border-top:1px solid #dee2e6">
               <div class="row g-3">
 
-                {# Левая панель: исходный текст #}
+                {# Левая: raw_text #}
                 <div class="col-12 col-md-6">
                   <div class="d-flex justify-content-between align-items-center mb-1">
                     <span class="fw-semibold" style="font-size:11px; color:#555">
@@ -215,7 +217,8 @@
                     </span>
                     <button class="btn btn-xs btn-outline-secondary py-0 px-2"
                             style="font-size:10px"
-                            onclick="copyText('raw-{{ log.id }}')">
+                            id="copybtn-raw-{{ log.id }}"
+                            onclick="copyText('raw-{{ log.id }}', 'copybtn-raw-{{ log.id }}')">
                       <i class="bi bi-clipboard me-1"></i>Копировать
                     </button>
                   </div>
@@ -226,7 +229,7 @@
                               word-break:break-word; margin:0">{{ log.raw_text or '(пусто)' }}</pre>
                 </div>
 
-                {# Правая панель: распознанные поля #}
+                {# Правая: fields_json #}
                 <div class="col-12 col-md-6">
                   <div class="d-flex justify-content-between align-items-center mb-1">
                     <span class="fw-semibold" style="font-size:11px; color:#555">
@@ -234,7 +237,8 @@
                     </span>
                     <button class="btn btn-xs btn-outline-secondary py-0 px-2"
                             style="font-size:10px"
-                            onclick="copyText('fields-{{ log.id }}')">
+                            id="copybtn-fields-{{ log.id }}"
+                            onclick="copyText('fields-{{ log.id }}', 'copybtn-fields-{{ log.id }}')">
                       <i class="bi bi-clipboard me-1"></i>Копировать
                     </button>
                   </div>
@@ -245,7 +249,7 @@
                               word-break:break-word; margin:0">{{ log.fields_json or '{}' }}</pre>
                 </div>
 
-              </div>{# /row #}
+              </div>
             </div>
           </td>
         </tr>
@@ -263,7 +267,7 @@
   </div>
   {% endif %}
 
-</div>{# /card история #}
+</div>
 
 {% endblock %}
 
@@ -309,35 +313,60 @@ function toggleOcrLog(id) {
   btn.classList.toggle('btn-secondary', !visible);
 }
 
-function copyText(elemId) {
-  var el = document.getElementById(elemId);
+/**
+ * copyText(elemId, btnId)
+ * Копирует текст из <pre id=elemId> в буфер.
+ * Работает на http:// через textarea-фоллбек;
+ * на https:// использует нативный Clipboard API.
+ */
+function copyText(elemId, btnId) {
+  var el  = document.getElementById(elemId);
+  var btn = document.getElementById(btnId);
   if (!el) return;
-  navigator.clipboard.writeText(el.innerText).then(function() {
-    var btn = el.previousElementSibling
-              ? el.previousElementSibling.querySelector('button')
-              : null;
-    // находим кнопку через closest парента
-    var wrapper = document.getElementById(elemId).closest('.col-12, .col-md-6');
-    var copyBtn = wrapper ? wrapper.querySelector('button') : null;
-    if (copyBtn) {
-      var orig = copyBtn.innerHTML;
-      copyBtn.innerHTML = '<i class="bi bi-check me-1"></i>Скопировано';
-      copyBtn.classList.add('btn-success');
-      copyBtn.classList.remove('btn-outline-secondary');
-      setTimeout(function() {
-        copyBtn.innerHTML = orig;
-        copyBtn.classList.remove('btn-success');
-        copyBtn.classList.add('btn-outline-secondary');
-      }, 1500);
-    }
-  }).catch(function() {
-    var range = document.createRange();
-    range.selectNode(el);
-    window.getSelection().removeAllRanges();
-    window.getSelection().addRange(range);
+
+  var text = el.innerText || el.textContent || '';
+
+  function flashBtn() {
+    if (!btn) return;
+    var orig = btn.innerHTML;
+    btn.innerHTML = '<i class="bi bi-check me-1"></i>Скопировано';
+    btn.classList.add('btn-success');
+    btn.classList.remove('btn-outline-secondary');
+    setTimeout(function() {
+      btn.innerHTML = orig;
+      btn.classList.remove('btn-success');
+      btn.classList.add('btn-outline-secondary');
+    }, 1500);
+  }
+
+  /* Попытка 1: нативный Clipboard API (https:// / localhost) */
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text)
+      .then(flashBtn)
+      .catch(function() { fallbackCopy(text, flashBtn); });
+  } else {
+    fallbackCopy(text, flashBtn);
+  }
+}
+
+/* Фоллбек через временный textarea — работает на http:// */
+function fallbackCopy(text, cb) {
+  var ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.top = '0';
+  ta.style.left = '0';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  try {
     document.execCommand('copy');
-    window.getSelection().removeAllRanges();
-  });
+    if (cb) cb();
+  } catch(e) {
+    console.warn('copyText fallback не сработал:', e);
+  }
+  document.body.removeChild(ta);
 }
 </script>
 {% endblock %}
