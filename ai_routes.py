@@ -2,6 +2,8 @@
 # ║ ai_routes.py — ИИ-подбор площадок + OCR-загрузка анкет           ║
 # ║ fix #64: flask_login → auth_utils; исправлены колонки БД           ║
 # ║ fix #66 [2/2]: логирование ocr_error, маршрут /ai/ocr-upload   ║
+# ║ feat #67 [2/3]: маршрут POST /ai/ocr-preview (без сохранения  ║
+# ║             в БД), ocr-upload обновлён под Tuple[Dict,str,str]  ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 import json
@@ -87,7 +89,31 @@ def _ask_ollama(investor_profile: dict, site_requests: list) -> dict:
     return json.loads(content[start:end])
 
 
-# ─── МАРШРУТЫ ИИ-ПОДБОРА ───────────────────────────────────────────────
+# ─── ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ: сохранить + разобрать файл ──────────────────
+
+def _save_and_parse(file_storage) -> tuple:
+    """
+    Сохраняет файл в tmp, запускает OCR, удаляет tmp.
+    Возвращает: (filename, fields, msg, raw_text)
+    Бросает Exception при ошибке сохранения или OCR.
+    """
+    filename = secure_filename(file_storage.filename)
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise ValueError(
+            f"Неподдерживаемый формат {ext}. Допустимые: PDF, DOCX, DOC, JPG, PNG"
+        )
+    tmp_path = os.path.join(_UPLOAD_FOLDER, filename)
+    try:
+        file_storage.save(tmp_path)
+        fields, msg, raw_text = extract_anketa_fields(tmp_path)
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+    return filename, fields, msg, raw_text
+
+
+# ─── МАРШРУТЫ ИИ-ПОДБОРА ──────────────────────────────────────────
 
 @ai_bp.route("/match", methods=["GET"])
 @login_required
@@ -123,7 +149,7 @@ def match_result():
     return jsonify(result)
 
 
-# ─── МАРШРУТ OCR-ЗАГРУЗКИ АНКЕТЫ ────────────────────────────────────────
+# ─── МАРШРУТ OCR-ЗАГРУЗКИ АНКЕТЫ ───────────────────────────────────
 
 @ai_bp.route("/ocr-upload", methods=["POST"])
 @login_required
@@ -142,34 +168,64 @@ def ocr_upload():
     if not f or not f.filename:
         return jsonify({"ok": False, "error": "Пустое имя файла"}), 400
 
-    filename = secure_filename(f.filename)
-    ext = os.path.splitext(filename)[1].lower()
-    if ext not in ALLOWED_EXTENSIONS:
-        return jsonify({
-            "ok": False,
-            "error": f"Неподдерживаемый формат {ext}. Допустимые: PDF, DOCX, DOC, JPG, PNG"
-        }), 400
-
-    tmp_path = os.path.join(_UPLOAD_FOLDER, filename)
     try:
-        f.save(tmp_path)
-        fields, msg = extract_anketa_fields(tmp_path)
+        filename, fields, msg, _ = _save_and_parse(f)  # raw_text не нужен здесь
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
     except Exception as e:
+        filename = secure_filename(f.filename) if f.filename else "unknown"
         logger.error("OCR /ocr-upload: неожиданная ошибка '%s': %s", filename, e)
-        # fix #66: логировать неожиданные OCR-ошибки в activity_log
         _log_ocr_error(filename, str(e))
         return jsonify({"ok": False, "error": f"Ошибка обработки: {e}"}), 500
-    finally:
-        # Удаляем временный файл после обработки
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
 
     if not fields:
-        # fix #66: пустой результат — тоже ошибка, логируем
         _log_ocr_error(filename, msg)
         return jsonify({"ok": False, "error": msg or "Не удалось распознать структуру анкеты."}), 422
 
     return jsonify({"ok": True, "fields": fields, "msg": msg})
+
+
+# ─── МАРШРУТ OCR-PREVIEW (#67) ───────────────────────────────────────
+
+@ai_bp.route("/ocr-preview", methods=["POST"])
+@login_required
+def ocr_preview():
+    """
+    POST /ai/ocr-preview
+    Принимает файл, возвращает JSON без сохранения в БД:
+      — успех: {"ok": true, "raw_text": "...", "fields": {...}, "msg": "..."}
+      — ошибка: {"ok": false, "error": "..."}
+    Используется для ocr_preview.html — просмотр и редактирование
+    распознанных полей до переноса в форму обращения.
+    """
+    if "file" not in request.files:
+        return jsonify({"ok": False, "error": "Файл не передан"}), 400
+
+    f = request.files["file"]
+    if not f or not f.filename:
+        return jsonify({"ok": False, "error": "Пустое имя файла"}), 400
+
+    try:
+        filename, fields, msg, raw_text = _save_and_parse(f)
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    except Exception as e:
+        filename = secure_filename(f.filename) if f.filename else "unknown"
+        logger.error("OCR /ocr-preview: неожиданная ошибка '%s': %s", filename, e)
+        return jsonify({"ok": False, "error": f"Ошибка обработки: {e}"}), 500
+
+    if not fields and not raw_text:
+        return jsonify({
+            "ok": False,
+            "error": msg or "Не удалось распознать структуру анкеты."
+        }), 422
+
+    return jsonify({
+        "ok": True,
+        "raw_text": raw_text,
+        "fields": fields,
+        "msg": msg,
+    })
 
 
 def _log_ocr_error(filename: str, detail: str) -> None:
