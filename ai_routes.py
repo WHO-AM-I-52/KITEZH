@@ -8,7 +8,7 @@
 # ║           POST /ai/ocr-test  — тестовый запуск OCR            ║
 # ║ fix: убрана проверка Tesseract — не используется в проекте    ║
 # ║ fix: _save_and_parse — ext берётся до secure_filename()       ║
-# ║      чтобы кириллические имена файлов не давали пустой ext    ║
+# ║ feat: _write_ocr_log() — каждый OCR пишется в ocr_log      ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 import json
@@ -106,13 +106,11 @@ def _save_and_parse(file_storage) -> tuple:
     Расширение берётся из оригинального имени файла ДО secure_filename(),
     чтобы кириллические имена (например «Анкета.docx») не давали пустой ext.
     """
-    # ext из оригинала — secure_filename() может обнулить кириллическое имя
     ext = os.path.splitext(file_storage.filename)[1].lower()
     if ext not in ALLOWED_EXTENSIONS:
         raise ValueError(
             f"Неподдерживаемый формат {ext}. Допустимые: PDF, DOCX, DOC, JPG, PNG"
         )
-    # fallback-имя если secure_filename вернул пустую строку
     safe_name = secure_filename(file_storage.filename) or f"upload{ext}"
     tmp_path = os.path.join(_UPLOAD_FOLDER, safe_name)
     try:
@@ -122,6 +120,40 @@ def _save_and_parse(file_storage) -> tuple:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
     return safe_name, fields, msg, raw_text
+
+
+def _write_ocr_log(
+    filename: str,
+    raw_text: str,
+    fields: dict,
+    msg: str,
+    ok: bool,
+) -> None:
+    """
+    Записывает результат OCR-распознавания в таблицу ocr_log.
+    Не бросает исключения — ошибка логирования не должна рушить OCR-ответ.
+    """
+    try:
+        conn = get_db()
+        conn.execute(
+            """
+            INSERT INTO ocr_log (created_at, user_id, filename, raw_text, fields_json, msg, ok)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                session.get('user_id'),
+                filename,
+                raw_text or '',
+                json.dumps(fields or {}, ensure_ascii=False),
+                msg or '',
+                1 if ok else 0,
+            )
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.warning("_write_ocr_log: не удалось записать в ocr_log: %s", e)
 
 
 # ─── МАРШРУТЫ ИИ-ПОДБОРА ──────────────────────────────────────────
@@ -173,19 +205,22 @@ def ocr_upload():
         return jsonify({"ok": False, "error": "Пустое имя файла"}), 400
 
     try:
-        filename, fields, msg, _ = _save_and_parse(f)
+        filename, fields, msg, raw_text = _save_and_parse(f)
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 400
     except Exception as e:
         filename = secure_filename(f.filename) if f.filename else "unknown"
         logger.error("OCR /ocr-upload: неожиданная ошибка '%s': %s", filename, e)
         _log_ocr_error(filename, str(e))
+        _write_ocr_log(filename, '', {}, str(e), ok=False)
         return jsonify({"ok": False, "error": f"Ошибка обработки: {e}"}), 500
 
     if not fields:
         _log_ocr_error(filename, msg)
+        _write_ocr_log(filename, raw_text or '', {}, msg, ok=False)
         return jsonify({"ok": False, "error": msg or "Не удалось распознать структуру анкеты."}), 422
 
+    _write_ocr_log(filename, raw_text or '', fields, msg, ok=True)
     return jsonify({"ok": True, "fields": fields, "msg": msg})
 
 
@@ -208,14 +243,17 @@ def ocr_preview():
     except Exception as e:
         filename = secure_filename(f.filename) if f.filename else "unknown"
         logger.error("OCR /ocr-preview: неожиданная ошибка '%s': %s", filename, e)
+        _write_ocr_log(filename, '', {}, str(e), ok=False)
         return jsonify({"ok": False, "error": f"Ошибка обработки: {e}"}), 500
 
     if not fields and not raw_text:
+        _write_ocr_log(filename, '', {}, msg, ok=False)
         return jsonify({
             "ok": False,
             "error": msg or "Не удалось распознать структуру анкеты."
         }), 422
 
+    _write_ocr_log(filename, raw_text or '', fields, msg, ok=True)
     return jsonify({
         "ok": True,
         "raw_text": raw_text,
@@ -230,7 +268,6 @@ def _check_ocr_deps() -> dict:
     """Проверяет наличие и версии всех OCR-зависимостей."""
     status = {}
 
-    # easyocr
     try:
         import easyocr
         status['easyocr'] = {'ok': True, 'version': getattr(easyocr, '__version__', '—')}
@@ -239,7 +276,6 @@ def _check_ocr_deps() -> dict:
     except Exception as e:
         status['easyocr'] = {'ok': False, 'error': str(e)}
 
-    # pdfplumber
     try:
         import pdfplumber
         status['pdfplumber'] = {'ok': True, 'version': getattr(pdfplumber, '__version__', '—')}
@@ -248,7 +284,6 @@ def _check_ocr_deps() -> dict:
     except Exception as e:
         status['pdfplumber'] = {'ok': False, 'error': str(e)}
 
-    # python-docx
     try:
         import docx
         status['docx'] = {'ok': True, 'version': getattr(docx, '__version__', '—')}
@@ -257,7 +292,6 @@ def _check_ocr_deps() -> dict:
     except Exception as e:
         status['docx'] = {'ok': False, 'error': str(e)}
 
-    # Pillow
     try:
         import PIL
         status['pillow'] = {'ok': True, 'version': getattr(PIL, '__version__', '—')}
@@ -297,6 +331,18 @@ def ocr_status():
             "ORDER BY created_at DESC LIMIT 1"
         ).fetchone()
         last_ocr_dt = last_ocr['created_at'] if last_ocr else None
+
+        ocr_logs = conn.execute(
+            """
+            SELECT ol.id, ol.created_at, ol.filename, ol.msg, ol.ok,
+                   ol.raw_text, ol.fields_json, u.full_name AS user_name
+            FROM ocr_log ol
+            LEFT JOIN users u ON ol.user_id = u.id
+            ORDER BY ol.created_at DESC
+            LIMIT 20
+            """
+        ).fetchall()
+        ocr_logs = [dict(r) for r in ocr_logs]
     finally:
         conn.close()
 
@@ -310,6 +356,7 @@ def ocr_status():
         last_ocr_dt=last_ocr_dt,
         all_ok=all_ok,
         checked_at=datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
+        ocr_logs=ocr_logs,
     )
 
 
