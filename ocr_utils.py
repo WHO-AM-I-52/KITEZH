@@ -1,5 +1,7 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║ ocr_utils.py                                                 ║
+# ║ v3.2.2 — fix: additional_info не захватывает текст          ║
+# ║          согласия; investment_total — только первая строка  ║
 # ║ v3.2.1 — fix: _is_blank_value() — прочерки/пустые        ║
 # ║          строки считаются незаполненными              ║
 # ║ v3.2.0 — feat #67: extract_anketa_fields() → (fields,msg,   ║
@@ -58,7 +60,7 @@ def _is_blank_value(val: str) -> bool:
     """
     True если значение поля является пустым или состоит только
     из прочерков/тире/спецсимволов (незаполненные строки анкеты).
-    
+
     Примеры пустых: "", "___", "---", "__ __", "———", "   "
     Примеры непустых: "0", "Да", "Весна 2026г."
     """
@@ -272,8 +274,11 @@ def _parse_docx_tables(path: str) -> Dict[str, str]:
                     for c in row:
                         if "планируемый объем инвестиций" not in c.lower() \
                                 and "планируемый объём инвестиций" not in c.lower():
-                            if c.strip() and not _is_blank_value(c.strip()):
-                                inv_lines.append(c.strip())
+                            # fix v3.2.2: берём только первую строку ячейки,
+                            # чтобы не захватывать «в т.ч. собственных» и мусор
+                            first_line = c.strip().split("\n")[0].strip()
+                            if first_line and not _is_blank_value(first_line):
+                                inv_lines.append(first_line)
                     j = i + 1
                     while j < len(rows):
                         l = " | ".join(rows[j]).strip()
@@ -283,8 +288,9 @@ def _parse_docx_tables(path: str) -> Dict[str, str]:
                             continue
                         if "описание строительства" in low_l or "планируемый срок начала строительства" in low_l:
                             break
-                        if not _is_blank_value(l):
-                            inv_lines.append(l)
+                        first_line = l.split("\n")[0].strip()
+                        if first_line and not _is_blank_value(first_line):
+                            inv_lines.append(first_line)
                         j += 1
                     for l in inv_lines:
                         if any(ch.isdigit() for ch in l):
@@ -347,7 +353,7 @@ def _parse_docx_tables(path: str) -> Dict[str, str]:
         return {}
 
 
-# ─── ПАРСИНГ ТЕКСТА (РАЗДЕЛЫ 1.1–6, PDF и т.п.) ───────────────────────────────
+# ─── ПАРСИНГ ТЕКСТА (РАЗДЕЛЫ 1.1–6, PDF и т.п.) ──────────────────────────────
 
 def _parse_anketa_text_blocks(text: str) -> Dict[str, str]:
     raw = _normalize_text(text)
@@ -406,7 +412,7 @@ def _parse_anketa_text_blocks(text: str) -> Dict[str, str]:
 
     transport_extra = slice_block(
         "2.3. при необходимости укажите дополнительные требования к транспортной инфраструктуре",
-        ["\n3.", "\n3. "]
+        ["\n3.", "\n3. ", "\n4.", "\n4. "]
     )
     if transport_extra and not _is_blank_value(transport_extra):
         fields["transport_extra"] = transport_extra
@@ -429,9 +435,16 @@ def _parse_anketa_text_blocks(text: str) -> Dict[str, str]:
     if inn_match and "applicant_inn" not in fields:
         fields["applicant_inn"] = inn_match.group(1)
 
+    # fix v3.2.2: стоп-якоря для additional_info — отрезаем текст согласия
+    # который начинается с "просим ответить" или "согласие инициатора"
     add_info = slice_block(
         "6. дополнительная информация:",
-        []
+        [
+            "просим ответить",
+            "согласие инициатора",
+            "генеральному директору",
+            "полное и сокращенное наименование юридического лица",
+        ]
     )
     if add_info and not _is_blank_value(add_info):
         fields["additional_info"] = add_info
@@ -439,7 +452,7 @@ def _parse_anketa_text_blocks(text: str) -> Dict[str, str]:
     return {k: v for k, v in fields.items() if v and not _is_blank_value(v)}
 
 
-# ─── ПУБЛИЧНАЯ ФУНКЦИЯ ───────────────────────────────────────────────────────────────────
+# ─── ПУБЛИЧНАЯ ФУНКЦИЯ ──────────────────────────────────────────────────────────
 
 def extract_anketa_fields(path: str) -> Tuple[Dict[str, str], str, str]:
     """
