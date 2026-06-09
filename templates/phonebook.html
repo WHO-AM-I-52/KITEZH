@@ -2,21 +2,22 @@
 {% block content %}
 
 {# ╔══════════════════════════════════════════════════════════════╗ #}
-{# ║  phonebook.html — Телефонный справочник (v2.4.0)            ║ #}
-{# ║  - Поиск по имени, организации, должности, телефону, email  ║ #}
-{# ║  - Live-поиск с debounce 300мс (от 2 символов)                    ║ #}
+{# ║  phonebook.html — Телефонный справочник (v2.5.0)            ║ #}
+{# ║  - Поиск по имени, орг., должности, тел., email, каб., notes║ #}
+{# ║  - AJAX live-поиск: без перезагрузки, фокус сохраняется     ║ #}
+{# ║  - Debounce 300мс, от 2 символов                            ║ #}
+{# ║  - Конвертация EN→RU раскладки на лету                      ║ #}
+{# ║  - Подсветка совпадений <mark> в карточках                  ║ #}
 {# ║  - Группировка по организациям                              ║ #}
 {# ║  - Модалка добавления / редактирования (только админ)       ║ #}
 {# ║  - AJAX подтягивание адреса при выборе организации          ║ #}
 {# ║  - Маски: рабочий +7, личный 8(9XX), email валидация        ║ #}
-{# ║  - Импорт из Excel (шаблон + загрузка) — v2.3.0               ║ #}
+{# ║  - Импорт из Excel (шаблон + загрузка) — v2.3.0             ║ #}
 {# ╚══════════════════════════════════════════════════════════════╝ #}
 
 {# ─── МАКРОС определяем ПЕРВЫМ — до любых вызовов ─── #}
 {% macro contact_form_fields(orgs, c=none) %}
 <div class="row g-3">
-
-  {# Организация #}
   <div class="col-md-8">
     <label class="form-label fw-bold">Организация</label>
     <select name="org_id" class="form-select form-select-sm"
@@ -32,8 +33,6 @@
       {% endfor %}
     </select>
   </div>
-
-  {# Адрес (подтягивается автоматически) #}
   <div class="col-md-4">
     <label class="form-label fw-bold">Адрес</label>
     <input type="text" class="form-control form-control-sm org-address-field"
@@ -41,39 +40,29 @@
            value="{{ c.org_address if c and c.org_address else '' }}"
            style="background:var(--surface2);font-size:12px">
   </div>
-
-  {# Должность #}
   <div class="col-md-8">
     <label class="form-label fw-bold">Должность</label>
     <input type="text" name="position" class="form-control form-control-sm"
            value="{{ c.position if c else '' }}"
            placeholder="Главный специалист">
   </div>
-
-  {# Кабинет #}
   <div class="col-md-4">
     <label class="form-label fw-bold">Кабинет</label>
     <input type="text" name="room" class="form-control form-control-sm"
            value="{{ c.room if c else '' }}" placeholder="101">
   </div>
-
-  {# ФИО #}
   <div class="col-12">
     <label class="form-label fw-bold">ФИО <span class="text-danger">*</span></label>
     <input type="text" name="full_name" class="form-control form-control-sm"
            value="{{ c.full_name if c else '' }}"
            placeholder="Иванов Иван Иванович" required>
   </div>
-
-  {# Рабочий телефон #}
   <div class="col-md-6">
     <label class="form-label fw-bold">Рабочий телефон</label>
     <input type="tel" name="phone_work" class="form-control form-control-sm mask-work"
            value="{{ c.phone_work if c else '' }}"
            placeholder="+7 (___) ___-__-__">
   </div>
-
-  {# Добавочный #}
   <div class="col-md-6">
     <label class="form-label fw-bold">Добавочный</label>
     <input type="text" name="phone_ext" class="form-control form-control-sm"
@@ -81,30 +70,23 @@
            placeholder="123" maxlength="6"
            oninput="this.value=this.value.replace(/\D/g,'')">
   </div>
-
-  {# Личный телефон #}
   <div class="col-md-6">
     <label class="form-label fw-bold">Личный телефон</label>
     <input type="tel" name="phone_personal" class="form-control form-control-sm mask-personal"
            value="{{ c.phone_personal if c else '' }}"
            placeholder="8 (9__) ___-__-__">
   </div>
-
-  {# Email #}
   <div class="col-md-6">
     <label class="form-label fw-bold">Эл. почта</label>
     <input type="email" name="email" class="form-control form-control-sm"
            value="{{ c.email if c else '' }}"
            placeholder="ivanov@example.com">
   </div>
-
-  {# Заметка #}
   <div class="col-12">
     <label class="form-label fw-bold">Заметка</label>
     <textarea name="notes" class="form-control form-control-sm" rows="2"
               placeholder="Дополнительная информация...">{{ c.notes if c else '' }}</textarea>
   </div>
-
 </div>
 {% endmacro %}
 
@@ -126,22 +108,22 @@
   }
   body[data-theme="dark"]  .pb-org-header { color: #60a5fa; }
   body[data-theme="zone"]  .pb-org-header { color: #c8a84b; border-left-color: #c8a84b; }
-  .pb-org-address {
-    font-size: 11px;
-    color: #6c757d;
-    font-weight: normal;
-  }
+  .pb-org-address { font-size: 11px; color: #6c757d; font-weight: normal; }
   .pb-room-badge {
     background: var(--surface2);
     color: var(--text);
     border: 1px solid var(--border);
     font-size: 10px;
   }
-  #pb-search-spinner {
-    display: none;
-    width: 1rem;
-    height: 1rem;
+  mark.pb-hl {
+    background: #fff176;
+    color: inherit;
+    padding: 0 1px;
+    border-radius: 2px;
   }
+  body[data-theme="dark"] mark.pb-hl  { background: #b45309; color: #fff; }
+  body[data-theme="zone"] mark.pb-hl  { background: #78350f; color: #fde68a; }
+  #pb-search-spinner { display:none; width:1rem; height:1rem; }
 </style>
 
 {# ─── Заголовок страницы ─── #}
@@ -152,30 +134,21 @@
     </a>
     <h5 class="mb-0" style="color:#1B5E7B">
       <i class="bi bi-telephone-fill me-1"></i>Телефонный справочник
-      {% if total %}
-      <span class="badge bg-secondary ms-1" style="font-size:12px">{{ total }}</span>
-      {% endif %}
+      <span class="badge bg-secondary ms-1" id="pb-total-badge" style="font-size:12px">{{ total }}</span>
     </h5>
   </div>
   <div class="d-flex gap-2 flex-wrap">
     {% if session.get('role') == 'admin' %}
-
-    {# ── Кнопка: скачать шаблон Excel ── #}
     <a href="{{ url_for('pb_import.import_template') }}"
-       class="btn btn-sm btn-outline-success"
-       title="Скачать шаблон для заполнения">
+       class="btn btn-sm btn-outline-success" title="Скачать шаблон для заполнения">
       <i class="bi bi-file-earmark-arrow-down me-1"></i>Шаблон
     </a>
-
-    {# ── Кнопка: загрузить Excel ── #}
     <button class="btn btn-sm btn-outline-primary"
             data-bs-toggle="modal" data-bs-target="#importModal"
             title="Загрузить контакты из Excel">
       <i class="bi bi-file-earmark-arrow-up me-1"></i>Импорт Excel
     </button>
-
-    <a href="{{ url_for('phonebook.phonebook_orgs') }}"
-       class="btn btn-sm btn-outline-secondary">
+    <a href="{{ url_for('phonebook.phonebook_orgs') }}" class="btn btn-sm btn-outline-secondary">
       <i class="bi bi-building me-1"></i>Организации
     </a>
     <button class="btn btn-sm" style="background:#1B5E7B;color:#fff"
@@ -187,34 +160,34 @@
 </div>
 
 {# ─── Поиск ─── #}
-<form method="get" id="pb-search-form" class="mb-4">
+<form method="get" id="pb-search-form" class="mb-4" onsubmit="return pbSubmit(event)">
   <div class="input-group">
     <span class="input-group-text" style="background:#1B5E7B;border-color:#1B5E7B">
       <span class="spinner-border spinner-border-sm text-white" id="pb-search-spinner"></span>
       <i class="bi bi-search text-white" id="pb-search-icon"></i>
     </span>
     <input type="text" name="q" id="pb-search-input" class="form-control"
-           placeholder="Поиск по имени, организации, должности, телефону, email..."
+           placeholder="Поиск по имени, организации, должности, телефону, email, кабинету..."
            value="{{ search }}"
            autocomplete="off">
-    <a href="{{ url_for('phonebook.phonebook') }}"
-       class="btn btn-outline-secondary" id="pb-clear-btn"
-       style="{{ '' if search else 'display:none' }}">
+    <button type="button" class="btn btn-outline-secondary" id="pb-clear-btn"
+            style="{{ '' if search else 'display:none' }}"
+            onclick="pbClear()">
       <i class="bi bi-x-circle"></i>
-    </a>
+    </button>
     <button type="submit" class="btn btn-primary">Найти</button>
   </div>
   <div class="form-text text-muted ms-1" style="font-size:11px">
     <i class="bi bi-lightning-fill text-warning"></i>
-    Автопоиск срабатывает автоматически от 2 символов
+    Автопоиск от 2 символов · автоконвертация раскладки EN→RU
   </div>
 </form>
 
-{# ─── Список контактов сгруппированных по организациям ─── #}
+{# ─── Контейнер результатов (управляется JS при AJAX, Jinja при обычной загрузке) ─── #}
+<div id="pb-results">
 {% if groups %}
   {% for org_name, contacts in groups.items() %}
   <div class="mb-4">
-
     <div class="pb-org-header">
       <i class="bi bi-building me-1"></i>{{ org_name }}
       {% if contacts[0]['org_address'] %}
@@ -223,13 +196,11 @@
       </span>
       {% endif %}
     </div>
-
     <div class="row g-2">
       {% for c in contacts %}
       <div class="col-md-6 col-lg-4">
         <div class="card pb-card h-100">
           <div class="card-body py-2 px-3">
-
             <div class="d-flex justify-content-between align-items-start">
               <div class="fw-bold" style="font-size:14px;color:#1a2a3a">
                 {{ c.full_name }}
@@ -237,8 +208,7 @@
               {% if session.get('role') == 'admin' %}
               <div class="d-flex gap-1 ms-2 flex-shrink-0">
                 <button class="btn btn-sm btn-outline-primary py-0 px-1"
-                        data-bs-toggle="modal"
-                        data-bs-target="#editModal{{ c.id }}"
+                        data-bs-toggle="modal" data-bs-target="#editModal{{ c.id }}"
                         title="Редактировать">
                   <i class="bi bi-pencil" style="font-size:11px"></i>
                 </button>
@@ -253,7 +223,6 @@
               </div>
               {% endif %}
             </div>
-
             {% if c.position %}
             <div class="text-muted" style="font-size:12px">
               {{ c.position }}
@@ -264,14 +233,11 @@
               {% endif %}
             </div>
             {% endif %}
-
             <div class="mt-1" style="font-size:12px">
               {% if c.phone_work %}
               <div>
                 <i class="bi bi-telephone text-success me-1"></i>
-                <a href="tel:{{ c.phone_work }}" class="text-decoration-none">
-                  {{ c.phone_work }}
-                </a>
+                <a href="tel:{{ c.phone_work }}" class="text-decoration-none">{{ c.phone_work }}</a>
                 {% if c.phone_ext %}
                 <span class="text-muted ms-1">доб. {{ c.phone_ext }}</span>
                 {% endif %}
@@ -280,32 +246,25 @@
               {% if c.phone_personal %}
               <div>
                 <i class="bi bi-phone text-primary me-1"></i>
-                <a href="tel:{{ c.phone_personal }}" class="text-decoration-none">
-                  {{ c.phone_personal }}
-                </a>
+                <a href="tel:{{ c.phone_personal }}" class="text-decoration-none">{{ c.phone_personal }}</a>
               </div>
               {% endif %}
               {% if c.email %}
               <div>
                 <i class="bi bi-envelope text-danger me-1"></i>
-                <a href="mailto:{{ c.email }}" class="text-decoration-none">
-                  {{ c.email }}
-                </a>
+                <a href="mailto:{{ c.email }}" class="text-decoration-none">{{ c.email }}</a>
               </div>
               {% endif %}
             </div>
-
             {% if c.notes %}
             <div class="mt-1 text-muted"
                  style="font-size:11px;border-top:1px solid var(--border);padding-top:4px">
               <i class="bi bi-chat-left-text me-1"></i>{{ c.notes }}
             </div>
             {% endif %}
-
           </div>
         </div>
       </div>
-
       {# ─── Модалка редактирования ─── #}
       {% if session.get('role') == 'admin' %}
       <div class="modal fade" id="editModal{{ c.id }}" tabindex="-1">
@@ -313,18 +272,12 @@
           <form method="post" action="{{ url_for('phonebook.phonebook_edit') }}">
             <input type="hidden" name="contact_id" value="{{ c.id }}">
             <div class="modal-header" style="background:#1B5E7B;color:#fff">
-              <h6 class="modal-title">
-                <i class="bi bi-pencil me-1"></i>{{ c.full_name }}
-              </h6>
-              <button type="button" class="btn-close btn-close-white"
-                      data-bs-dismiss="modal"></button>
+              <h6 class="modal-title"><i class="bi bi-pencil me-1"></i>{{ c.full_name }}</h6>
+              <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body">
-              {{ contact_form_fields(orgs, c) }}
-            </div>
+            <div class="modal-body">{{ contact_form_fields(orgs, c) }}</div>
             <div class="modal-footer">
-              <button type="button" class="btn btn-secondary btn-sm"
-                      data-bs-dismiss="modal">Отмена</button>
+              <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Отмена</button>
               <button type="submit" class="btn btn-primary btn-sm">
                 <i class="bi bi-check-circle me-1"></i>Сохранить
               </button>
@@ -333,13 +286,12 @@
         </div></div>
       </div>
       {% endif %}
-
       {% endfor %}
     </div>
   </div>
   {% endfor %}
 {% else %}
-  <div class="text-center text-muted py-5">
+  <div class="text-center text-muted py-5" id="pb-empty">
     <i class="bi bi-search" style="font-size:2rem"></i>
     <div class="mt-2">
       {% if search %}По запросу «{{ search }}» ничего не найдено
@@ -347,6 +299,7 @@
     </div>
   </div>
 {% endif %}
+</div>{# /pb-results #}
 
 {# ─── Модалка добавления (только админ) ─── #}
 {% if session.get('role') == 'admin' %}
@@ -354,18 +307,12 @@
   <div class="modal-dialog modal-lg"><div class="modal-content">
     <form method="post" action="{{ url_for('phonebook.phonebook_add') }}">
       <div class="modal-header" style="background:#1B5E7B;color:#fff">
-        <h6 class="modal-title">
-          <i class="bi bi-person-plus me-1"></i>Новый сотрудник
-        </h6>
-        <button type="button" class="btn-close btn-close-white"
-                data-bs-dismiss="modal"></button>
+        <h6 class="modal-title"><i class="bi bi-person-plus me-1"></i>Новый сотрудник</h6>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
       </div>
-      <div class="modal-body">
-        {{ contact_form_fields(orgs) }}
-      </div>
+      <div class="modal-body">{{ contact_form_fields(orgs) }}</div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-secondary btn-sm"
-                data-bs-dismiss="modal">Отмена</button>
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Отмена</button>
         <button type="submit" class="btn btn-primary btn-sm">
           <i class="bi bi-plus-circle me-1"></i>Добавить
         </button>
@@ -374,19 +321,14 @@
   </div></div>
 </div>
 
-{# ─── Модалка импорта Excel (v2.3.0) ─── #}
+{# ─── Модалка импорта Excel ─── #}
 <div class="modal fade" id="importModal" tabindex="-1">
   <div class="modal-dialog"><div class="modal-content">
     <div class="modal-header" style="background:#1B5E7B;color:#fff">
-      <h6 class="modal-title">
-        <i class="bi bi-file-earmark-arrow-up me-1"></i>Импорт справочника из Excel
-      </h6>
-      <button type="button" class="btn-close btn-close-white"
-              data-bs-dismiss="modal"></button>
+      <h6 class="modal-title"><i class="bi bi-file-earmark-arrow-up me-1"></i>Импорт справочника из Excel</h6>
+      <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
     </div>
-    <form method="post"
-          action="{{ url_for('pb_import.import_upload') }}"
-          enctype="multipart/form-data">
+    <form method="post" action="{{ url_for('pb_import.import_upload') }}" enctype="multipart/form-data">
       <div class="modal-body">
         <p class="text-muted" style="font-size:.9em;">
           Загрузите файл <strong>.xlsx</strong>, заполненный по шаблону SONAR.
@@ -394,16 +336,12 @@
         </p>
         <div class="mb-3">
           <label class="form-label fw-bold">Файл Excel (.xlsx)</label>
-          <input type="file"
-                 name="import_file"
-                 accept=".xlsx"
-                 class="form-control form-control-sm"
-                 required>
+          <input type="file" name="import_file" accept=".xlsx"
+                 class="form-control form-control-sm" required>
         </div>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-secondary btn-sm"
-                data-bs-dismiss="modal">Отмена</button>
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Отмена</button>
         <button type="submit" class="btn btn-primary btn-sm">
           <i class="bi bi-upload me-1"></i>Загрузить
         </button>
@@ -414,38 +352,197 @@
 {% endif %}
 
 <script>
-(function () {
-  var input   = document.getElementById('pb-search-input');
-  var form    = document.getElementById('pb-search-form');
-  var spinner = document.getElementById('pb-search-spinner');
-  var icon    = document.getElementById('pb-search-icon');
-  var clearBtn = document.getElementById('pb-clear-btn');
-  var timer   = null;
+/* ── Конвертация EN→RU раскладки ── */
+var EN_RU = {
+  'q':'й','w':'ц','e':'у','r':'к','t':'е','y':'н','u':'г','i':'ш','o':'щ','p':'з',
+  '[':'х',']':'ъ','a':'ф','s':'ы','d':'в','f':'а','g':'п','h':'р','j':'о','k':'л',
+  'l':'д',';':'ж',"'":"э",'z':'я','x':'ч','c':'с','v':'м','b':'и','n':'т','m':'ь',
+  ',':'б','.':'ю',
+  'Q':'Й','W':'Ц','E':'У','R':'К','T':'Е','Y':'Н','U':'Г','I':'Ш','O':'Щ','P':'З',
+  '{':'Х','}':'Ъ','A':'Ф','S':'Ы','D':'В','F':'А','G':'П','H':'Р','J':'О','K':'Л',
+  'L':'Д',':':'Ж','"':'Э','Z':'Я','X':'Ч','C':'С','V':'М','B':'И','N':'Т','M':'Ь',
+  '<':'Б','>':'Ю'
+};
+function convertLayout(str) {
+  /* Если строка содержит хотя бы одну кириллическую букву — не конвертируем */
+  if (/[а-яёА-ЯЁ]/.test(str)) return str;
+  return str.split('').map(function(c){ return EN_RU[c] || c; }).join('');
+}
 
-  if (!input) return;
+/* ── Подсветка совпадений ── */
+function highlightText(text, tokens) {
+  if (!tokens || tokens.length === 0) return escHtml(text);
+  var result = escHtml(text);
+  tokens.forEach(function(t) {
+    if (!t) return;
+    var re = new RegExp('(' + reEsc(t) + ')', 'gi');
+    result = result.replace(re, '<mark class="pb-hl">$1</mark>');
+  });
+  return result;
+}
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function reEsc(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+}
 
-  input.addEventListener('input', function () {
-    clearTimeout(timer);
-    var val = this.value.trim();
+/* ── Построение HTML карточки контакта (только просмотр, без модалок редактирования) ── */
+function buildCard(c, tokens) {
+  var name     = highlightText(c.full_name, tokens);
+  var position = c.position ? highlightText(c.position, tokens) : '';
+  var room     = c.room     ? highlightText(c.room, tokens)     : '';
+  var notes    = c.notes    ? highlightText(c.notes, tokens)    : '';
 
-    if (clearBtn) clearBtn.style.display = val ? '' : 'none';
+  var posHtml = '';
+  if (c.position) {
+    posHtml = '<div class="text-muted" style="font-size:12px">' + position;
+    if (c.room) posHtml += '<span class="ms-1 badge pb-room-badge"><i class="bi bi-door-open me-1"></i>каб. ' + room + '</span>';
+    posHtml += '</div>';
+  }
 
-    if (val.length === 0) {
-      window.location.href = form.action || '/phonebook';
+  var contactsHtml = '<div class="mt-1" style="font-size:12px">';
+  if (c.phone_work) {
+    contactsHtml += '<div><i class="bi bi-telephone text-success me-1"></i>'
+      + '<a href="tel:' + escHtml(c.phone_work) + '" class="text-decoration-none">'
+      + highlightText(c.phone_work, tokens) + '</a>';
+    if (c.phone_ext) contactsHtml += '<span class="text-muted ms-1">доб. ' + highlightText(c.phone_ext, tokens) + '</span>';
+    contactsHtml += '</div>';
+  }
+  if (c.phone_personal) {
+    contactsHtml += '<div><i class="bi bi-phone text-primary me-1"></i>'
+      + '<a href="tel:' + escHtml(c.phone_personal) + '" class="text-decoration-none">'
+      + highlightText(c.phone_personal, tokens) + '</a></div>';
+  }
+  if (c.email) {
+    contactsHtml += '<div><i class="bi bi-envelope text-danger me-1"></i>'
+      + '<a href="mailto:' + escHtml(c.email) + '" class="text-decoration-none">'
+      + highlightText(c.email, tokens) + '</a></div>';
+  }
+  contactsHtml += '</div>';
+
+  var notesHtml = '';
+  if (c.notes) {
+    notesHtml = '<div class="mt-1 text-muted" style="font-size:11px;border-top:1px solid var(--border);padding-top:4px">'
+      + '<i class="bi bi-chat-left-text me-1"></i>' + notes + '</div>';
+  }
+
+  return '<div class="col-md-6 col-lg-4">'
+    + '<div class="card pb-card h-100"><div class="card-body py-2 px-3">'
+    + '<div class="d-flex justify-content-between align-items-start">'
+    + '<div class="fw-bold" style="font-size:14px;color:#1a2a3a">' + name + '</div>'
+    + '</div>'
+    + posHtml + contactsHtml + notesHtml
+    + '</div></div></div>';
+}
+
+/* ── Построение HTML блока организации ── */
+function buildOrgBlock(orgName, orgData, tokens) {
+  var addrHtml = orgData.address
+    ? '<span class="pb-org-address ms-2"><i class="bi bi-geo-alt me-1"></i>' + escHtml(orgData.address) + '</span>'
+    : '';
+  var header = '<div class="pb-org-header">'
+    + '<i class="bi bi-building me-1"></i>' + escHtml(orgName) + addrHtml
+    + '</div>';
+  var cards = orgData.contacts.map(function(c){ return buildCard(c, tokens); }).join('');
+  return '<div class="mb-4">' + header + '<div class="row g-2">' + cards + '</div></div>';
+}
+
+/* ── AJAX-поиск ── */
+var pbTimer    = null;
+var pbXhr      = null;
+var pbLastQuery = '';
+
+var pbInput   = document.getElementById('pb-search-input');
+var pbSpinner = document.getElementById('pb-search-spinner');
+var pbIcon    = document.getElementById('pb-search-icon');
+var pbClearEl = document.getElementById('pb-clear-btn');
+var pbResults = document.getElementById('pb-results');
+var pbBadge   = document.getElementById('pb-total-badge');
+
+function pbShowSpinner(on) {
+  pbSpinner.style.display = on ? 'inline-block' : 'none';
+  pbIcon.style.display    = on ? 'none' : 'inline-block';
+}
+
+function pbRenderResults(data) {
+  var q      = data.query || '';
+  var tokens = q.toLowerCase().split(/\s+/).filter(Boolean);
+  var groups = data.groups || {};
+  var keys   = Object.keys(groups);
+
+  if (pbBadge) pbBadge.textContent = data.total || 0;
+
+  if (keys.length === 0) {
+    pbResults.innerHTML = '<div class="text-center text-muted py-5">'
+      + '<i class="bi bi-search" style="font-size:2rem"></i>'
+      + '<div class="mt-2">' + (q ? 'По запросу «' + escHtml(q) + '» ничего не найдено' : 'Справочник пуст — добавьте первого сотрудника') + '</div>'
+      + '</div>';
+    return;
+  }
+  pbResults.innerHTML = keys.map(function(org){
+    return buildOrgBlock(org, groups[org], tokens);
+  }).join('');
+}
+
+function pbDoSearch(val) {
+  if (pbXhr) { pbXhr.abort(); pbXhr = null; }
+  pbShowSpinner(true);
+  pbXhr = new XMLHttpRequest();
+  pbXhr.open('GET', '/phonebook/search?q=' + encodeURIComponent(val), true);
+  pbXhr.onload = function() {
+    pbShowSpinner(false);
+    if (pbXhr.status === 200) {
+      try { pbRenderResults(JSON.parse(pbXhr.responseText)); } catch(e) {}
+    }
+    pbXhr = null;
+  };
+  pbXhr.onerror = function() { pbShowSpinner(false); pbXhr = null; };
+  pbXhr.send();
+}
+
+function pbClear() {
+  pbInput.value = '';
+  if (pbClearEl) pbClearEl.style.display = 'none';
+  pbDoSearch('');
+  pbInput.focus();
+  history.replaceState(null, '', '/phonebook');
+}
+
+function pbSubmit(e) {
+  e.preventDefault();
+  var val = convertLayout(pbInput.value.trim());
+  pbInput.value = val;
+  pbDoSearch(val);
+  return false;
+}
+
+if (pbInput) {
+  pbInput.addEventListener('input', function() {
+    clearTimeout(pbTimer);
+    var raw = this.value.trim();
+    if (pbClearEl) pbClearEl.style.display = raw ? '' : 'none';
+
+    if (raw.length === 0) {
+      pbDoSearch('');
+      history.replaceState(null, '', '/phonebook');
       return;
     }
-    if (val.length < 2) return;
+    if (raw.length < 2) return;
 
-    spinner.style.display = 'inline-block';
-    icon.style.display    = 'none';
+    var val = convertLayout(raw);
+    if (val !== raw) pbInput.value = val;
 
-    timer = setTimeout(function () {
-      var url = (form.action || '/phonebook') + '?q=' + encodeURIComponent(val);
-      window.location.href = url;
+    pbTimer = setTimeout(function() {
+      pbDoSearch(val);
+      history.replaceState(null, '', '/phonebook?q=' + encodeURIComponent(val));
     }, 300);
   });
-}());
+}
 
+/* ── Телефонные маски ── */
 function applyPhoneMask(input, type) {
   input.addEventListener('input', function () {
     var digits = this.value.replace(/\D/g, '');
@@ -488,21 +585,12 @@ function fetchAddress(select) {
 }
 
 document.addEventListener('DOMContentLoaded', function () {
-  document.querySelectorAll('.mask-work').forEach(function (el) {
-    applyPhoneMask(el, 'work');
-  });
-  document.querySelectorAll('.mask-personal').forEach(function (el) {
-    applyPhoneMask(el, 'personal');
-  });
+  document.querySelectorAll('.mask-work').forEach(function(el){ applyPhoneMask(el,'work'); });
+  document.querySelectorAll('.mask-personal').forEach(function(el){ applyPhoneMask(el,'personal'); });
 });
-
 document.addEventListener('shown.bs.modal', function (e) {
-  e.target.querySelectorAll('.mask-work').forEach(function (el) {
-    applyPhoneMask(el, 'work');
-  });
-  e.target.querySelectorAll('.mask-personal').forEach(function (el) {
-    applyPhoneMask(el, 'personal');
-  });
+  e.target.querySelectorAll('.mask-work').forEach(function(el){ applyPhoneMask(el,'work'); });
+  e.target.querySelectorAll('.mask-personal').forEach(function(el){ applyPhoneMask(el,'personal'); });
 });
 </script>
 
