@@ -1,6 +1,8 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║ ocr_utils.py                                                 ║
-# ║ v3.0.1 — fix #12: print→logger, fix #13: lazy OCR init      ║
+# ║ v3.0.2 — fix #66 [1/2]: проверка файла до обработки,        ║
+# ║          try/except в _extract_text_image(),                 ║
+# ║          logger.error в else-блоке                           ║
 # ║                                                              ║
 # ║  • PDF: текст без OCR                                       ║
 # ║  • DOCX/DOC: абзацы + ТАБЛИЦЫ (спец-парсер MTS)             ║
@@ -72,8 +74,13 @@ def _extract_text_image(path: str) -> str:
     reader = _get_ocr_reader()
     if reader is None:
         return ""
-    result = reader.readtext(path, detail=0, paragraph=True)
-    return "\n".join(result)
+    # fix #66: защита от падения на повреждённых/неподдерживаемых изображениях
+    try:
+        result = reader.readtext(path, detail=0, paragraph=True)
+        return "\n".join(result)
+    except Exception as e:
+        logger.warning("OCR: не удалось распознать изображение '%s': %s", path, e)
+        return ""
 
 
 def _normalize_text(text: str) -> str:
@@ -367,6 +374,14 @@ def extract_anketa_fields(path: str) -> Tuple[Dict[str, str], str]:
     p: Path = Path(path)
     ext = (p.suffix or "").lower()
 
+    # fix #66: проверка существования и размера файла до любой обработки
+    if not p.exists():
+        logger.error("OCR: файл не найден '%s'", path)
+        return {}, f"Файл не найден: {path}"
+    if p.stat().st_size == 0:
+        logger.error("OCR: файл пустой (0 байт) '%s'", path)
+        return {}, "Файл пустой (0 байт) — загрузите корректный файл анкеты."
+
     logger.debug("OCR: path=%s ext=%s", path, ext)
 
     text = ""
@@ -404,6 +419,7 @@ def extract_anketa_fields(path: str) -> Tuple[Dict[str, str], str]:
         msg = "Файл анкеты обработан как изображение (OCR)."
 
     else:
+        # fix #66: logger.error вместо молчаливого провала в else-блоке
         try:
             if _is_text_pdf(path):
                 text = _extract_text_pdf(path)
@@ -415,9 +431,9 @@ def extract_anketa_fields(path: str) -> Tuple[Dict[str, str], str]:
                 text = "\n".join(parts)
                 msg = "Файл анкеты обработан как DOCX/DOC без расширения (эвристика по содержимому)."
         except Exception as e:
+            logger.error("OCR: не удалось определить тип файла '%s': %s", path, e)
             return {}, (
-                "Для автоматического заполнения анкеты нужно загружать файл в формате PDF "
-                "или DOCX (современный формат Word). Ошибка: " + str(e)
+                "Неподдерживаемый формат файла. Загрузите PDF или DOCX. Ошибка: " + str(e)
             )
 
     if text and text.strip():
