@@ -326,6 +326,25 @@ def _migrate(conn):
     )
 
     # ════════════════════════════════════════════════════════════════
+    # Таблица логов OCR-распознаваний
+    # ════════════════════════════════════════════════════════════════
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS ocr_log (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at  TEXT    NOT NULL,
+            user_id     INTEGER,
+            filename    TEXT,
+            raw_text    TEXT,
+            fields_json TEXT,
+            msg         TEXT,
+            ok          INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_ocr_log_created ON ocr_log(created_at)"
+    )
+
+    # ════════════════════════════════════════════════════════════════
     # Чистка NULL → '' в текстовых полях таблицы requests.
     # ════════════════════════════════════════════════════════════════
     _TEXT_FIELDS_TO_CLEAN = [
