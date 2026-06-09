@@ -261,7 +261,7 @@
   var navTotal    = document.getElementById('navTotal');
   var navName     = document.getElementById('navName');
 
-  var analysisData = null;   // [] или одиночный объект
+  var analysisData = null;
   var currentIdx   = 0;
 
   function initNav(data){
@@ -352,7 +352,7 @@
     analysisBlock.classList.add('d-none');
     plotNav.classList.add('d-none');
 
-    fetch('/admin/investmap/convert', { method:'POST', body:fd, credentials:'same-origin' })
+    fetch('/investmap/convert', { method:'POST', body:fd, credentials:'same-origin' })
     .then(function(r){ return r.json(); })
     .then(function(data){
       setLoading(false);
@@ -380,13 +380,12 @@
     analysisBlock.classList.add('d-none');
     plotNav.classList.add('d-none');
 
-    fetch('/admin/investmap/analyze', { method:'POST', body:fd, credentials:'same-origin' })
+    fetch('/investmap/analyze', { method:'POST', body:fd, credentials:'same-origin' })
     .then(function(r){ return r.json(); })
     .then(function(resp){
       setLoading(false);
       if (resp.error){ showError('Ошибка: ' + resp.error); return; }
 
-      // Показываем текст в textarea
       resultEmpty.classList.add('d-none');
       resultText.classList.remove('d-none');
       resultText.value = resp.export.text;
@@ -397,7 +396,6 @@
       resultBadge.textContent = fmtLabels[resp.export.format] || 'Формат ' + resp.export.format;
       copyBtn.classList.remove('d-none');
 
-      // Инициализируем навигатор и рендерим первую площадку
       if (resp.analysis) initNav(resp.analysis);
     })
     .catch(function(e){ setLoading(false); showError('Сетевая ошибка: ' + e); });
@@ -421,7 +419,6 @@
   }
 
   function renderAnalysis(a){
-    // Круг с баллом
     var circle = document.getElementById('scoreCircle');
     var color  = scoreColor(a.total);
     circle.style.borderColor = color;
@@ -430,13 +427,11 @@
 
     document.getElementById('categoryLabel').textContent = a.category;
 
-    // Прогресс-бар
     var bar = document.getElementById('progressBar');
     bar.style.width      = a.total + '%';
     bar.style.background = color;
     bar.setAttribute('aria-valuenow', a.total);
 
-    // Метаданные
     document.getElementById('plotId').textContent     = '\ud83d\udccd ' + a.id;
     document.getElementById('metaFormat').textContent = a.format;
     document.getElementById('metaStatus').textContent = a.status;
@@ -445,7 +440,6 @@
     readyEl.textContent = a.ready;
     readyEl.style.color = a.ready === 'да' ? '#198754' : (a.ready === 'после доработки' ? '#ffc107' : '#dc3545');
 
-    // Подпись
     var signWrap = document.getElementById('signedBadgeWrap');
     if (a.signed && a.signed !== 'ПУСТО'){
       var isSigned = a.signed.toLowerCase().indexOf('не подписан') === -1;
@@ -455,7 +449,6 @@
       signWrap.innerHTML = '<span class="badge bg-secondary"><i class="bi bi-shield-x me-1"></i>Статус подписи неизвестен</span>';
     }
 
-    // Таблица блоков
     var tbody = document.getElementById('blocksTableBody');
     var tfoot = document.getElementById('blocksTableFoot');
     tbody.innerHTML = '';
@@ -496,7 +489,6 @@
       '<td class="px-3 py-2 text-center" style="color:' + scoreColor(a.total) + ';font-size:15px">' + a.total + '</td>' +
       '<td class="px-3 py-2 text-center text-muted">' + (a.all_missing ? a.all_missing.length : 0) + ' полей</td></tr>';
 
-    // Аккордеон незаполненных полей
     var accordion = document.getElementById('missingAccordion');
     accordion.innerHTML = '';
     var hasMissing = false;
@@ -529,7 +521,6 @@
     });
     document.getElementById('missingCard').style.display = hasMissing ? '' : 'none';
 
-    // SMS
     if (a.sms){
       smsCard.classList.remove('d-none');
       smsText.value = a.sms;
@@ -540,12 +531,10 @@
     analysisBlock.classList.remove('d-none');
   }
 
-  // ─── Копировать текст для ИИ ───────────────────────────────────────────
   copyBtn.addEventListener('click', function(){
     copyToClipboard(resultText.value, copyBtn, 'Скопировано!');
   });
 
-  // ─── Копировать SMS ────────────────────────────────────────────────
   copySmsBtn.addEventListener('click', function(){
     copyToClipboard(smsText.value, copySmsBtn, 'Скопировано!');
   });
@@ -566,7 +555,6 @@
     });
   }
 
-  // ─── Утилиты ──────────────────────────────────────────────────────────────
   function setLoading(on){
     convertBtn.disabled = on || !selectedFile;
     analyzeBtn.disabled = on || !selectedFile;
