@@ -1,5 +1,7 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║ ocr_utils.py                                                 ║
+# ║ v3.2.5 — feat: land_area — размер земельного участка  ║
+# ║          (га) из таблицы раздела II                        ║
 # ║ v3.2.4 — feat: planned_location — планируемое              ║
 # ║          месторасположение из таблицы DOCX                ║
 # ║ v3.2.3 — fix: _norm_investment() — нормализация OCR-        ║
@@ -36,7 +38,6 @@ try:
 except ImportError:
     _HAS_EASYOCR = False
 
-# fix #13: ленивая инициализация — модель грузится только при первом OCR-запросе
 _OCR_READER = None
 
 
@@ -63,25 +64,16 @@ _INV_NORM_RE = re.compile(
 
 
 def _norm_investment(val: str) -> str:
-    """
-    Нормализует OCR-артефакты в значении объёма инвестиций.
-    Убирает мусорные символы перед словом «рублей», вставленные OCR.
-    """
     def _fix_rublei(m: re.Match) -> str:
         prefix = m.group(1)
         rublei = m.group(2)
         if re.match(r'^руб', rublei, re.IGNORECASE):
             return m.group(0)
         return prefix.rstrip() + ' рублей'
-
     return _INV_NORM_RE.sub(_fix_rublei, val)
 
 
 def _is_blank_value(val: str) -> bool:
-    """
-    True если значение поля является пустым или состоит только
-    из прочерков/тире/спецсимволов (незаполненные строки анкеты).
-    """
     if not val or not val.strip():
         return True
     return bool(_BLANK_RE.match(val.strip()))
@@ -179,7 +171,6 @@ def _parse_docx_tables(path: str) -> Dict[str, str]:
         )
 
         def _set_field(key: str, val: str) -> None:
-            """Устанавливает поле только если значение непустое."""
             if val and not _is_blank_value(val) and key not in fields:
                 fields[key] = val
 
@@ -240,7 +231,6 @@ def _parse_docx_tables(path: str) -> Dict[str, str]:
                     i += 1
                     continue
 
-                # feat v3.2.4: планируемое месторасположение площадки
                 if "планируемое месторасположение" in joined:
                     value_parts = []
                     for c in row:
@@ -362,6 +352,21 @@ def _parse_docx_tables(path: str) -> Dict[str, str]:
                     val = " ".join([c for c in row if "номенклатура планируемой к выпуску продукции" not in c.lower()]).strip()
                     if not _is_blank_value(val):
                         _set_field("product_nomenclature", val)
+                    i += 1
+                    continue
+
+                # feat v3.2.5: размер земельного участка (га) из раздела II
+                if "размер земельного участка" in joined:
+                    for c in row:
+                        if "размер земельного участка" not in c.lower():
+                            ct = c.strip()
+                            # Берём только первую непустую ячейку с цифрой
+                            if ct and not _is_blank_value(ct) and any(ch.isdigit() for ch in ct):
+                                # Сохраняем только цифры/запятые/точки
+                                digits = re.sub(r"[^\d.,]", "", ct).strip(",. ")
+                                if digits:
+                                    _set_field("land_area", digits)
+                                    break
                     i += 1
                     continue
 
