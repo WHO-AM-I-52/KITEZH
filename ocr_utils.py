@@ -1,5 +1,7 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║ ocr_utils.py                                                 ║
+# ║ v3.2.7 — feat: railway_required — доступ к жел.дороге   ║
+# ║          из таблиц DOCX                                    ║
 # ║ v3.2.6 — feat: power_electricity — потребляемая         ║
 # ║          мощность (кВт) из таблиц DOCX                    ║
 # ║ v3.2.5 — feat: land_area — размер земельного участка  ║
@@ -64,8 +66,6 @@ _INV_NORM_RE = re.compile(
     re.IGNORECASE,
 )
 
-# feat v3.2.6: регексп для извлечения потребляемой мощности (кВт)
-# Примеры: «Потребляемая мощность*650 кВт», «потребляемая мощность: 200 квт»
 _POWER_RE = re.compile(
     r'потребляемая\s+мощность[*\s:]*([\d.,]+)\s*к[BbвВ][TtтТ]',
     re.IGNORECASE,
@@ -101,6 +101,25 @@ def _norm_inn(raw: str) -> str:
     if len(digits) in (10, 12):
         return digits
     return ""
+
+
+def _norm_yes_no(val: str) -> str:
+    """
+    Нормализует значение Да/Нет из разных вариантов (в т.ч. подчёркнутых).
+    Возвращает 'Да', 'Нет' или пустую строку если не распознано.
+    """
+    v = val.strip().lower()
+    if v in ('да', 'yes', 'дада'):
+        return 'Да'
+    if v in ('нет', 'no', 'нетнет'):
+        return 'Нет'
+    # Подчёркнутый вариант: берём первое слово
+    first_word = re.split(r'[\s/|,]', v)[0]
+    if first_word.startswith('да'):
+        return 'Да'
+    if first_word.startswith('нет') or first_word.startswith('не'):
+        return 'Нет'
+    return ''
 
 
 # ─── БАЗОВОЕ ИЗВЛЕЧЕНИЕ ТЕКСТА ───────────────────────────────────────────────
@@ -376,12 +395,23 @@ def _parse_docx_tables(path: str) -> Dict[str, str]:
                     i += 1
                     continue
 
-                # feat v3.2.6: электроснабжение — потребляемая мощность (кВт)
                 if "электроснабжение" in joined or "потребляемая мощность" in joined:
                     cell_text = " ".join(row)
                     m_pwr = _POWER_RE.search(cell_text)
                     if m_pwr:
                         _set_field("power_electricity", m_pwr.group(1).strip())
+                    i += 1
+                    continue
+
+                # feat v3.2.7: железнодорожный доступ
+                if "железнодорожн" in joined:
+                    for c in row:
+                        ct = c.strip()
+                        if ct and not _is_blank_value(ct) and "железнодорожн" not in ct.lower():
+                            normed = _norm_yes_no(ct)
+                            if normed:
+                                _set_field("railway_required", normed)
+                                break
                     i += 1
                     continue
 
@@ -451,7 +481,7 @@ def _parse_anketa_text_blocks(text: str) -> Dict[str, str]:
         fields["engineering_extra"] = eng_extra
 
     transport_extra = slice_block(
-        "2.3. при необходимости укажите дополнительные требования к транспортной инфраструктуре",
+        "2.3. при необходимости укажите дополнитемые требования к транспортной инфраструктуре",
         ["\n3.", "\n3. ", "\n4.", "\n4. "]
     )
     if transport_extra and not _is_blank_value(transport_extra):
