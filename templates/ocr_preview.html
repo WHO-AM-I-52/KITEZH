@@ -1,0 +1,244 @@
+{#
+  ocr_preview.html — Bootstrap-модальное окно OCR-просмотра (#67)
+  Подключается через {% include 'ocr_preview.html' %} в form.html
+  Принимает данные из JS: ocrPreviewOpen(rawText, fields)
+#}
+
+<!-- ═══════════════════════════════════════════════════════
+     OCR PREVIEW MODAL
+     Левая панель  — raw_text (реадонли)
+     Правая панель — редактируемые поля OCR
+     ═══════════════════════════════════════════════════════ -->
+<div class="modal fade" id="ocrPreviewModal" tabindex="-1"
+     aria-labelledby="ocrPreviewLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+
+      <!-- HEADER -->
+      <div class="modal-header py-2" style="background:#1B5E7B;color:#fff">
+        <h6 class="modal-title mb-0" id="ocrPreviewLabel">
+          <i class="bi bi-magic me-1"></i>
+          Проверка распознанных данных анкеты
+          <small class="ms-2 fw-normal opacity-75" id="ocrPreviewMsg"
+                 style="font-size:11px"></small>
+        </h6>
+        <button type="button" class="btn-close btn-close-white"
+                data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+
+      <!-- BODY -->
+      <div class="modal-body p-0">
+        <div class="row g-0" style="min-height:500px">
+
+          <!-- ЛЕВАЯ ПАНЕЛЬ: raw text -->
+          <div class="col-md-5 border-end d-flex flex-column" style="background:#f8f9fa">
+            <div class="px-3 pt-2 pb-1 border-bottom"
+                 style="font-size:11px;font-weight:600;color:#6c757d;text-transform:uppercase;
+                        letter-spacing:.05em">
+              <i class="bi bi-file-text me-1"></i>Исходный текст (режим просмотра)
+            </div>
+            <pre id="ocrRawText"
+                 class="flex-grow-1 m-0 px-3 py-2 overflow-auto"
+                 style="font-size:11px;line-height:1.55;white-space:pre-wrap;
+                        word-break:break-word;background:transparent;border:none"
+            ></pre>
+          </div>
+
+          <!-- ПРАВАЯ ПАНЕЛЬ: редактируемые поля -->
+          <div class="col-md-7 d-flex flex-column">
+            <div class="px-3 pt-2 pb-1 border-bottom"
+                 style="font-size:11px;font-weight:600;color:#6c757d;text-transform:uppercase;
+                        letter-spacing:.05em">
+              <i class="bi bi-pencil-square me-1"></i>Распознанные поля
+              <span class="ms-2 fw-normal text-warning" style="font-size:10px">
+                <i class="bi bi-circle-fill me-1" style="font-size:7px"></i>Жёлтый фон — заполнено OCR
+              </span>
+            </div>
+            <div class="flex-grow-1 overflow-auto px-3 py-2" id="ocrFieldsPane">
+              <!-- Динамически заполняется JS-ом -->
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- FOOTER -->
+      <div class="modal-footer py-2 d-flex justify-content-between">
+        <button type="button" class="btn btn-sm btn-outline-secondary"
+                data-bs-dismiss="modal">
+          <i class="bi bi-x-lg me-1"></i>Отмена
+        </button>
+        <button type="button" class="btn btn-sm btn-primary" id="btnOcrApply"
+                onclick="ocrApplyToForm()">
+          <i class="bi bi-check2-all me-1"></i>Применить в форму
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     OCR PREVIEW JS
+     ═══════════════════════════════════════════════════════ -->
+<script>
+// Маппинг: ключ OCR-поля → лейбл (читаемый) и name поля в форме
+// name используется при переносе значения через document.querySelector('[name="..."]')
+const OCR_FIELD_MAP = [
+  { key: 'applicant_full_name',  label: 'Наименование (полное)',        name: 'applicant_full_name',  type: 'input' },
+  { key: 'applicant_inn',        label: 'ИНН',                               name: 'applicant_inn',        type: 'input' },
+  { key: 'postal_address',       label: 'Почтовый адрес',                name: 'postal_address',       type: 'input' },
+  { key: 'project_name',         label: 'Название проекта',              name: 'project_name',         type: 'input' },
+  { key: 'contact_person',       label: 'Контактное лицо',              name: 'contact_person',       type: 'input' },
+  { key: 'contact_phone',        label: 'Телефон',                          name: 'contact_phone',        type: 'input' },
+  { key: 'contact_email',        label: 'E-mail',                            name: 'contact_email',        type: 'input' },
+  { key: 'jobs_total',           label: 'Рабочих мест (всего)',          name: 'jobs_total',           type: 'input' },
+  { key: 'jobs_foreign',         label: 'Рабочих мест (ин. раб.',    name: 'jobs_foreign',         type: 'input' },
+  { key: 'investment_total',     label: 'Объём инвестиций',            name: 'investment_total',     type: 'input' },
+  { key: 'construction_start',   label: 'Начало строительства',         name: 'construction_start',   type: 'input' },
+  { key: 'operation_start',      label: 'Ввод в эксплуатацию',       name: 'operation_start',      type: 'input' },
+  { key: 'object_composition',   label: 'Описание объекта',             name: 'object_composition',   type: 'textarea' },
+  { key: 'product_nomenclature', label: 'Номенклатура продукции',      name: 'product_nomenclature', type: 'textarea' },
+  { key: 'production_description', label: 'Описание производства',     name: 'production_description', type: 'textarea' },
+  { key: 'engineering_extra',    label: 'Доп. треб. (инженерия)',        name: 'engineering_extra',    type: 'textarea' },
+  { key: 'transport_extra',      label: 'Доп. треб. (транспорт)',          name: 'transport_extra',      type: 'textarea' },
+  { key: 'additional_info',      label: 'Дополнительная информация',      name: 'additional_info',      type: 'textarea' },
+  { key: 'preferred_districts',  label: 'Предпочт. районы',              name: 'preferred_districts',  type: 'input' },
+];
+
+// Храним текущий OCR-результат для btnOcrApply
+let _ocrCurrentFields = {};
+
+/**
+ * Заполняет правую панель редактируемыми полями.
+ * fields — объект из OCR: { applicant_full_name: "...", ... }
+ */
+function ocrPreviewOpen(rawText, fields, msg) {
+  _ocrCurrentFields = fields || {};
+
+  // Левая панель: raw text
+  const pre = document.getElementById('ocrRawText');
+  if (pre) pre.textContent = rawText || '(текст не извлечён)';
+
+  // Сообщение из OCR
+  const msgEl = document.getElementById('ocrPreviewMsg');
+  if (msgEl) msgEl.textContent = msg || '';
+
+  // Правая панель: генерируем поля
+  const pane = document.getElementById('ocrFieldsPane');
+  if (!pane) return;
+
+  const populated = OCR_FIELD_MAP.filter(f => fields[f.key]);
+  const empty     = OCR_FIELD_MAP.filter(f => !fields[f.key]);
+
+  let html = '';
+
+  if (populated.length === 0) {
+    html = '<div class="text-muted py-3 text-center" style="font-size:12px">'
+         + '<i class="bi bi-exclamation-circle me-1"></i>'
+         + 'Поля не распознаны. Проверьте исходный текст.'
+         + '</div>';
+  } else {
+    // Заполненные поля (жёлтая подсветка)
+    populated.forEach(f => {
+      const val = fields[f.key] || '';
+      const fieldHtml = f.type === 'textarea'
+        ? `<textarea id="ocr_prev_${f.key}" class="form-control form-control-sm ocr-filled"
+                     rows="2" style="font-size:12px;border-color:#ffc107;background:#fffde7"
+             >${escHtml(val)}</textarea>`
+        : `<input  id="ocr_prev_${f.key}" class="form-control form-control-sm ocr-filled"
+                   type="text" value="${escHtml(val)}"
+                   style="font-size:12px;border-color:#ffc107;background:#fffde7">`;
+      html += `
+        <div class="mb-2">
+          <label class="form-label mb-0" style="font-size:11px;color:#6c757d">${f.label}</label>
+          ${fieldHtml}
+        </div>`;
+    });
+
+    // Пустые поля (серые, свернуты)
+    if (empty.length > 0) {
+      html += `
+        <details class="mt-2" style="font-size:11px">
+          <summary class="text-muted" style="cursor:pointer">
+            <i class="bi bi-chevron-right me-1"></i>
+            Не распознано: ${empty.length} пол.
+          </summary>
+          <div class="mt-2">`;
+      empty.forEach(f => {
+        const fieldHtml = f.type === 'textarea'
+          ? `<textarea id="ocr_prev_${f.key}" class="form-control form-control-sm"
+                       rows="2" style="font-size:12px" placeholder="(не распознано)"></textarea>`
+          : `<input  id="ocr_prev_${f.key}" class="form-control form-control-sm"
+                     type="text" style="font-size:12px" placeholder="(не распознано)">`;
+        html += `
+            <div class="mb-2">
+              <label class="form-label mb-0" style="font-size:11px;color:#aaa">${f.label}</label>
+              ${fieldHtml}
+            </div>`;
+      });
+      html += '</div></details>';
+    }
+  }
+
+  pane.innerHTML = html;
+  const modal = new bootstrap.Modal(document.getElementById('ocrPreviewModal'));
+  modal.show();
+  // После открытия — фокус на первое заполненное поле
+  setTimeout(() => {
+    pane.querySelector('.ocr-filled')?.focus();
+  }, 350);
+}
+
+/**
+ * Переносит значения из правой панели превью в основную форму.
+ * Берёт значения из полей превью (не из _ocrCurrentFields).
+ * То есть пользователь может отредактировать до применения.
+ */
+function ocrApplyToForm() {
+  OCR_FIELD_MAP.forEach(f => {
+    const preview = document.getElementById(`ocr_prev_${f.key}`);
+    if (!preview) return;
+    const val = preview.value.trim();
+    if (!val) return;
+    // preferred_districts: особый случай — чекбоксы, не текст
+    if (f.key === 'preferred_districts') {
+      _applyDistricts(val);
+      return;
+    }
+    const target = document.querySelector(`[name="${f.name}"]`);
+    if (target && !target.value) {
+      target.value = val;
+      target.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  });
+  // Закрываем модаль
+  bootstrap.Modal.getInstance(
+    document.getElementById('ocrPreviewModal')
+  )?.hide();
+  // Фокус возвращается на первое поле формы
+  setTimeout(() => {
+    document.querySelector('#mainForm input:not([type=hidden])')?.focus();
+  }, 300);
+}
+
+/**
+ * Отмечает чекбоксы районов, если их названия встречаются в тексте val.
+ * val — строка из OCR вида "Кстовский, Арзамасский"
+ */
+function _applyDistricts(val) {
+  const low = val.toLowerCase();
+  document.querySelectorAll('input[name="preferred_districts"]').forEach(cb => {
+    const name = (cb.dataset.name || cb.value || '').toLowerCase();
+    if (name && low.includes(name)) cb.checked = true;
+  });
+}
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+</script>
