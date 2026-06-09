@@ -7,6 +7,8 @@
 # ║ feat #68: GET /ai/ocr-status — панель статуса OCR-движка      ║
 # ║           POST /ai/ocr-test  — тестовый запуск OCR            ║
 # ║ fix: убрана проверка Tesseract — не используется в проекте    ║
+# ║ fix: _save_and_parse — ext берётся до secure_filename()       ║
+# ║      чтобы кириллические имена файлов не давали пустой ext    ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 import json
@@ -100,21 +102,26 @@ def _save_and_parse(file_storage) -> tuple:
     Сохраняет файл в tmp, запускает OCR, удаляет tmp.
     Возвращает: (filename, fields, msg, raw_text)
     Бросает Exception при ошибке сохранения или OCR.
+
+    Расширение берётся из оригинального имени файла ДО secure_filename(),
+    чтобы кириллические имена (например «Анкета.docx») не давали пустой ext.
     """
-    filename = secure_filename(file_storage.filename)
-    ext = os.path.splitext(filename)[1].lower()
+    # ext из оригинала — secure_filename() может обнулить кириллическое имя
+    ext = os.path.splitext(file_storage.filename)[1].lower()
     if ext not in ALLOWED_EXTENSIONS:
         raise ValueError(
             f"Неподдерживаемый формат {ext}. Допустимые: PDF, DOCX, DOC, JPG, PNG"
         )
-    tmp_path = os.path.join(_UPLOAD_FOLDER, filename)
+    # fallback-имя если secure_filename вернул пустую строку
+    safe_name = secure_filename(file_storage.filename) or f"upload{ext}"
+    tmp_path = os.path.join(_UPLOAD_FOLDER, safe_name)
     try:
         file_storage.save(tmp_path)
         fields, msg, raw_text = extract_anketa_fields(tmp_path)
     finally:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
-    return filename, fields, msg, raw_text
+    return safe_name, fields, msg, raw_text
 
 
 # ─── МАРШРУТЫ ИИ-ПОДБОРА ──────────────────────────────────────────
