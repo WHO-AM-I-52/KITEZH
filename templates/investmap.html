@@ -299,7 +299,6 @@
     navPrev.disabled = true;
     navNext.disabled = list.length <= 1;
 
-    // Сводная SMS — показываем над навигатором, если есть текст
     if (summary_sms) {
       summaryText.value = summary_sms;
       summaryCard.classList.remove('d-none');
@@ -579,20 +578,34 @@
     copyToClipboard(summaryText.value, copySummaryBtn, 'Скопировано!');
   });
 
+  // ─── Копирование в буфер обмена ───────────────────────────────────────────────────
+  // Поддерживает как HTTPS (Clipboard API), так и HTTP/file:// (fallback через execCommand)
   function copyToClipboard(text, btn, label){
     if (!text) return;
     var orig = btn.innerHTML;
-    navigator.clipboard.writeText(text).then(function(){
+    function onSuccess(){
       btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>' + label;
       setTimeout(function(){ btn.innerHTML = orig; }, 2000);
-    }).catch(function(){
+    }
+    function fallback(){
       var ta = document.createElement('textarea');
-      ta.value = text; document.body.appendChild(ta);
-      ta.select(); document.execCommand('copy');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.top = '0';
+      ta.style.left = '0';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      try { document.execCommand('copy'); } catch(e){}
       document.body.removeChild(ta);
-      btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>' + label;
-      setTimeout(function(){ btn.innerHTML = orig; }, 2000);
-    });
+      onSuccess();
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(onSuccess).catch(fallback);
+    } else {
+      fallback();
+    }
   }
 
   function setLoading(on){
