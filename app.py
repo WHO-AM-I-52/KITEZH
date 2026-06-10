@@ -1,6 +1,7 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║ app.py                                                        ║
-# ║ v2.9: fix #64 — ai_bp подключён                          ║
+# ║ v3.0: quality_bp подключён                                   ║
+# ║      fix #64 — ai_bp подключён                          ║
 # ║      fix #61 — rate-limiting                                ║
 # ║      fix #63 — _startup() вынесен из __main__           ║
 # ╚═════════════════════════════════════════════════════════════╝
@@ -77,7 +78,8 @@ from preview_routes    import preview_bp
 from phonebook_import  import pb_import_bp
 from investmap_routes  import investmap_bp
 from api.requests_api  import api_bp
-from ai_routes         import ai_bp   # fix #64
+from ai_routes         import ai_bp
+from quality_checks    import quality_bp
 import backup_scheduler
 
 for bp in [
@@ -87,7 +89,8 @@ for bp in [
     report_bp, misc_bp, settings_bp,
     preview_bp, pb_import_bp, investmap_bp,
     api_bp,
-    ai_bp,           # fix #64
+    ai_bp,
+    quality_bp,
 ]:
     app.register_blueprint(bp)
 
