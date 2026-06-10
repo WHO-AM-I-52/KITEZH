@@ -1,7 +1,7 @@
-# ╔═════════════════════════════════════════════════════════════════════════════╗
+# ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║                        quality_checks.py                                      ║
-# ║  v1.0: проверки качества данных Q-01..Q-10                                ║
-# ╚═════════════════════════════════════════════════════════════════════════════╝
+# ║  v1.1: fix F401 (timedelta), fix Q-03 assigned_to                        ║
+# ╚═══════════════════════════════════════════════════════════════════════════╝
 """Переиспользуемый модуль проверок качества данных по обращениям SONAR.
 
 Использование:
@@ -14,13 +14,13 @@
 
     # Вся база:
     report = quality_report_all(conn)
-АPI:
+API:
     GET /quality/check        — JSON-отчёт по всей базе
     GET /quality/check/<id>   — JSON-отчёт по одному обращению
 """
 
 from flask import Blueprint, jsonify, session
-from datetime import datetime, date, timedelta
+from datetime import datetime, date
 
 from db import get_db
 from auth_utils import login_required
@@ -29,9 +29,7 @@ from activity_log import log_action
 quality_bp = Blueprint('quality', __name__)
 
 
-# ─── РЕЕСТР ПРАВИЛ ────────────────────────────────────────────────────────────────────────
-# Формат: {'код': ('уровень', 'описание', вес_штрафа)}
-# вес_штрафа — сколько баллов снимается с оценки 100 при срабатывании правила
+# ─── РЕЕСТР ПРАВИЛ ─────────────────────────────────────────────────────────────────────────────────
 CHECKS: dict[str, tuple[str, str, int]] = {
     'Q-01': ('error',   'Нет даты обращения',                                      20),
     'Q-02': ('error',   'Нет наименования заявителя',                           20),
@@ -45,7 +43,6 @@ CHECKS: dict[str, tuple[str, str, int]] = {
     'Q-10': ('info',    'Не указаны предпочтительные районы',                5),
 }
 
-# Максимальный вес (сумма всех весов)
 _MAX_PENALTY = sum(w for _, _, w in CHECKS.values())
 
 
@@ -56,6 +53,15 @@ def _val(row, key: str) -> str:
     except (KeyError, IndexError):
         return ''
     return str(v).strip() if v is not None else ''
+
+
+def _int_val(row, key: str):
+    """Возвращает числовое значение поля или None."""
+    try:
+        v = row[key]
+        return int(v) if v is not None else None
+    except (KeyError, IndexError, ValueError, TypeError):
+        return None
 
 
 def check_request_quality(row) -> dict:
@@ -69,7 +75,7 @@ def check_request_quality(row) -> dict:
             'errors':   [{'code': 'Q-01', 'message': '...'}],
             'warnings': [{'code': 'Q-03', 'message': '...'}],
             'info':     [{'code': 'Q-07', 'message': '...'}],
-            'score':    int 0..100  (чем выше — тем лучше),
+            'score':    int 0..100,
         }
     """
     errors   = []
@@ -98,8 +104,9 @@ def check_request_quality(row) -> dict:
     if not _val(row, 'applicant_full_name') and not _val(row, 'applicant_short_name'):
         _add('Q-02')
 
-    # Q-03: нет ответственного
-    if not _val(row, 'assigned_to') and not _val(row, 'assigned_name'):
+    # Q-03: нет ответственного — assigned_to числовой user_id
+    assigned_id = _int_val(row, 'assigned_to')
+    if not assigned_id and not _val(row, 'assigned_name'):
         _add('Q-03')
 
     # Q-04: нет контактов
@@ -111,7 +118,7 @@ def check_request_quality(row) -> dict:
     if status in ('answered', 'sent_to_applicant') and not _val(row, 'answer_date'):
         _add('Q-05', f'статус: {status}')
 
-    # Q-06: инвестиции есть, рабочих мест = 0 или пусто
+    # Q-06: инвестиции есть, рабочих мест = 0
     try:
         inv = float(_val(row, 'investment_total') or 0)
         jobs_raw = _val(row, 'jobs_total')
@@ -155,16 +162,7 @@ def check_request_quality(row) -> dict:
 
 
 def quality_report_all(conn) -> dict:
-    """Прогоняет все обращения из БД и возвращает сводный отчёт.
-
-    Returns:
-        {
-            'total':        int,
-            'avg_score':    float,
-            'by_code':      {'код': кол-во сработываний},
-            'records':      [{id, request_number, score, errors, warnings, info}]
-        }
-    """
+    """Прогоняет все обращения из БД и возвращает сводный отчёт."""
     rows = conn.execute("""
         SELECT r.id, r.request_number, r.request_date, r.status,
                r.applicant_full_name, r.applicant_short_name,
@@ -214,7 +212,7 @@ def quality_report_all(conn) -> dict:
     }
 
 
-# ─── МАРШРУТЫ ─────────────────────────────────────────────────────────────────────────────────
+# ─── МАРШРУТЫ ───────────────────────────────────────────────────────────────────────────────────
 
 @quality_bp.route('/quality/check')
 @login_required
