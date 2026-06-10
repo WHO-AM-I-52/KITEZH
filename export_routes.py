@@ -1,6 +1,6 @@
 # ╔═════════════════════════════════════════════════════════════════════════════╗
 # ║                       export_routes.py                                       ║
-# ║  v3.4: 3В-2 валидация обяз. полей + 3В-3 авто-номер ЗУ при импорте          ║
+# ║  v3.5: валидация площадок ГИС НСИ (БАГ-2,6,7,8,10,13,14)                   ║
 # ╚═════════════════════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, request, send_file, jsonify, session
@@ -25,6 +25,30 @@ NUMERIC_FIELDS = {'investment_total', 'jobs_total', 'site_area_ha', 'site_build_
 
 # Обязательные поля для создания новой записи при импорте (3В-2)
 REQUIRED_FOR_CREATE = ('applicant_full_name', 'request_date')
+
+# ─── КОНСТАНТЫ ВАЛИДАЦИИ ПЛОЩАДОК ГИС НСИ ────────────────────────────────────
+
+# БАГ-6: плата ниже порога считается заглушкой
+STUB_PAYMENT_MAX = 100
+
+# БАГ-8: ВРИ несовместимые с категорией «земли сельскохозяйственного назначения»
+VRI_INCOMPATIBLE_WITH_AGRI = {
+    'Коммунальное обслуживание',
+    'Производственная деятельность',
+    'Склады',
+    'Тяжелая промышленность',
+}
+
+# БАГ-13: виды деятельности, несовместимые с ВРИ «Коммунальное обслуживание»
+PRODUCTION_ACTIVITY_KEYWORDS = (
+    'производств', 'завод', 'фабрик', 'переработк', 'промышленн',
+    'склад', 'логистик', 'добыч',
+)
+
+# БАГ-10: ключевые слова для детектирования текста про дорогу в поле ТКО
+ROAD_KEYWORDS_IN_TKO = (
+    'дорог', 'асфальт', 'подъезд', 'автодорог', 'проезд',
+)
 
 
 # ─── ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ────────────────────────────────────────────────────────
@@ -915,3 +939,226 @@ def autosave():
         return jsonify({'status': 'ok'})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+# ─── ВАЛИДАЦИЯ ПЛОЩАДОК ГИС НСИ ─────────────────────────────────────────────
+# Используется при импорте выгрузки из ГИС НСИ Нижегородской области.
+# Каждая функция принимает словарь записи и возвращает список проблем.
+
+def _parse_coords_point(coords_str: str) -> tuple[float | None, float | None]:
+    """БАГ-2: разбирает 'lon,lat' или 'lat,lon' → (lat_wgs84, lon_wgs84).
+    ГИС НСИ экспортирует в формате 'longitude,latitude'.
+    Возвращает (None, None) если разобрать не удалось.
+    """
+    if not coords_str or not coords_str.strip():
+        return None, None
+    s = coords_str.strip().replace(' ', '')
+    # Пробуем разделители: запятая, точка с запятой, пробел
+    for sep in (',', ';'):
+        parts = s.split(sep)
+        if len(parts) == 2:
+            try:
+                first  = float(parts[0].replace(',', '.'))
+                second = float(parts[1].replace(',', '.'))
+                # ГИС НСИ: первое = долгота (36..45 для НО), второе = широта (54..58)
+                if 36.0 <= first <= 50.0 and 50.0 <= second <= 60.0:
+                    return second, first   # (lat, lon)
+                # Обратный порядок
+                if 50.0 <= first <= 60.0 and 36.0 <= second <= 50.0:
+                    return first, second   # (lat, lon)
+            except ValueError:
+                continue
+    return None, None
+
+
+def validate_site_record(rec: dict) -> dict:
+    """Валидирует одну запись площадки ГИС НСИ.
+
+    Args:
+        rec: словарь с полями записи (ключи = заголовки столбцов выгрузки).
+
+    Returns:
+        dict с ключами:
+            'errors'   — список критических ошибок (блокируют сохранение)
+            'warnings' — список предупреждений (сохраняем, но сигнализируем)
+            'fixes'    — словарь автоисправлений {поле: новое_значение}
+    """
+    errors   = []
+    warnings = []
+    fixes    = {}
+
+    name = rec.get('Название площадки', '') or ''
+
+    # ── БАГ-14: название со строчной буквы → автоисправление ──────────────
+    if name and name[0].islower():
+        fixed_name = name[0].upper() + name[1:]
+        fixes['Название площадки'] = fixed_name
+        warnings.append(
+            f'БАГ-14: название начинается со строчной буквы — исправлено: «{fixed_name}»'
+        )
+
+    # ── БАГ-2: координаты — авторазбор точки → Широта/Долгота WGS-84 ──────
+    coords_pt  = rec.get('Координаты (точка)', '') or ''
+    lat_filled = rec.get('Широта WGS-84', '') or ''
+    lon_filled = rec.get('Долгота WGS-84', '') or ''
+
+    if coords_pt and not str(lat_filled).strip() and not str(lon_filled).strip():
+        lat, lon = _parse_coords_point(coords_pt)
+        if lat is not None and lon is not None:
+            fixes['Широта WGS-84']  = lat
+            fixes['Долгота WGS-84'] = lon
+            warnings.append(
+                f'БАГ-2: Широта/Долгота WGS-84 пусты — авторазобрано из «{coords_pt}»: '
+                f'lat={lat}, lon={lon}'
+            )
+        else:
+            warnings.append(
+                f'БАГ-2: не удалось разобрать координаты из «{coords_pt}» — '
+                f'заполните Широту/Долготу WGS-84 вручную'
+            )
+
+    # ── БАГ-6: плата за подключение — заглушка ──────────────────────────────
+    for pay_field in (
+        'Плата за подключение к электросетям, руб.',
+        'Плата за подключение к газу, руб.',
+        'Плата за подключение к воде, руб.',
+        'Плата за подключение к теплу, руб.',
+        'Плата за подключение к канализации, руб.',
+    ):
+        pay_val = rec.get(pay_field)
+        if pay_val is not None and str(pay_val).strip() not in ('', '—', '-'):
+            try:
+                pay_num = float(str(pay_val).replace(',', '.').replace('\xa0', '').replace(' ', ''))
+                if 0 < pay_num <= STUB_PAYMENT_MAX:
+                    warnings.append(
+                        f'БАГ-6: «{pay_field}» = {pay_val} руб. — похоже на заглушку '
+                        f'(значение ≤ {STUB_PAYMENT_MAX} руб.), уточните реальную плату'
+                    )
+            except (ValueError, TypeError):
+                pass
+
+    # ── БАГ-7: форма сделки есть, а стоимость пустая ─────────────────────────
+    deal_form  = rec.get('Форма сделки', '') or ''
+    site_price = rec.get('Стоимость объекта, руб.', '') or ''
+    if str(deal_form).strip() and not str(site_price).strip():
+        warnings.append(
+            f'БАГ-7: форма сделки «{deal_form}» указана, но поле «Стоимость объекта» пустое — '
+            f'заполните стоимость или уточните условия сделки'
+        )
+
+    # ── БАГ-8: категория с/х + ВРИ несовместимые ─────────────────────────────
+    catland = rec.get('Категория земель', '') or ''
+    vri     = rec.get('Вид разрешённого использования', '') or ''
+    if 'сельскохоз' in catland.lower():
+        for incompatible_vri in VRI_INCOMPATIBLE_WITH_AGRI:
+            if incompatible_vri.lower() in vri.lower():
+                errors.append(
+                    f'БАГ-8: категория земель «{catland}» несовместима с ВРИ «{vri}» — '
+                    f'необходим перевод категории или изменение ВРИ'
+                )
+                break
+
+    # ── БАГ-10: текст про дорогу в поле ТКО ──────────────────────────────────
+    tko_field = rec.get('Объекты ТКО Иные характеристики', '') or ''
+    tko_lower = tko_field.lower()
+    if any(kw in tko_lower for kw in ROAD_KEYWORDS_IN_TKO) and len(tko_lower) > 5:
+        warnings.append(
+            f'БАГ-10: в поле «Объекты ТКО Иные характеристики» обнаружено описание дороги/подъезда: '
+            f'«{tko_field[:120]}...» — перенесите в поле «Подъездные пути»'
+        )
+
+    # ── БАГ-13: ВРИ = Коммунальное, но виды деятельности производственные ──
+    activities = rec.get('Виды экономической деятельности', '') or ''
+    act_lower  = activities.lower()
+    if 'коммунальн' in vri.lower():
+        matched = [kw for kw in PRODUCTION_ACTIVITY_KEYWORDS if kw in act_lower]
+        if matched:
+            warnings.append(
+                f'БАГ-13: ВРИ «{vri}» (коммунальное), но среди видов деятельности найдены '
+                f'производственные ключевые слова: {", ".join(matched)} — '
+                f'проверьте корректность ВРИ'
+            )
+
+    return {'errors': errors, 'warnings': warnings, 'fixes': fixes}
+
+
+@report_bp.route('/import/sites', methods=['POST'])
+@login_required
+def import_sites():
+    """Импорт выгрузки площадок ГИС НСИ с валидацией качества данных.
+
+    POST multipart/form-data:
+        import_file — .xlsx файл выгрузки ГИС НСИ
+        dry_run     — '1' = только проверить, не сохранять
+
+    Response JSON:
+        total       — всего строк
+        passed      — прошли без критических ошибок
+        blocked     — заблокированы критическими ошибками
+        fixes_count — кол-во автоисправлений
+        report      — список {row, name, errors, warnings, fixes} для каждой строки
+    """
+    if not get_user_perm('can_import_full'):
+        return jsonify({'error': 'Недостаточно прав'}), 403
+
+    file = request.files.get('import_file')
+    if not file or not file.filename.endswith('.xlsx'):
+        return jsonify({'error': 'Загрузите файл .xlsx'}), 400
+
+    dry_run = request.form.get('dry_run') == '1'
+
+    try:
+        wb = openpyxl.load_workbook(file, read_only=True, data_only=True)
+        ws = wb.active
+    except Exception as e:
+        return jsonify({'error': f'Ошибка чтения файла: {e}'}), 400
+
+    rows_iter = ws.iter_rows(min_row=1, values_only=True)
+    headers   = [str(v).strip() if v else '' for v in next(rows_iter)]
+
+    total       = 0
+    passed      = 0
+    blocked     = 0
+    fixes_count = 0
+    report      = []
+
+    for row_num, row_vals in enumerate(rows_iter, start=2):
+        total += 1
+        rec = {headers[i]: (row_vals[i] if i < len(row_vals) else None)
+               for i in range(len(headers))}
+
+        result = validate_site_record(rec)
+
+        if result['fixes']:
+            fixes_count += len(result['fixes'])
+
+        if result['errors']:
+            blocked += 1
+        else:
+            passed += 1
+
+        name = rec.get('Название площадки') or rec.get('global_id') or f'строка {row_num}'
+        report.append({
+            'row':      row_num,
+            'name':     str(name)[:80],
+            'errors':   result['errors'],
+            'warnings': result['warnings'],
+            'fixes':    result['fixes'],
+        })
+
+    log_action(
+        get_db(), session['user_id'], 'import_sites_validate',
+        detail=(
+            f'Валидация площадок ГИС НСИ: всего={total}, прошло={passed}, '
+            f'заблокировано={blocked}, автоисправлений={fixes_count}, dry_run={dry_run}'
+        )
+    )
+
+    return jsonify({
+        'total':       total,
+        'passed':      passed,
+        'blocked':     blocked,
+        'fixes_count': fixes_count,
+        'dry_run':     dry_run,
+        'report':      report,
+    })
