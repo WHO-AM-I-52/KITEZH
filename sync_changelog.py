@@ -73,8 +73,20 @@ def fetch_releases():
         changes = []
         for line in body.splitlines():
             line = line.strip()
+            if not line:
+                continue
+            # строки с ведущим маркером: - * –
             if line.startswith(("-", "*", "\u2013")):
                 changes.append(line.lstrip("-*\u2013 ").strip())
+                continue
+            # строки вида "#N — текст" или "текст — текст" (формат SONAR-релизов)
+            if re.match(r"^#?\d", line) and " \u2014 " in line:
+                changes.append(line)
+                continue
+            # строки вида "текст → текст" (формат исправлений)
+            if " \u2192 " in line and not line.startswith(("#", "!")):
+                changes.append(line)
+                continue
         if not changes:
             changes = [r.get("name", f"Release {version}")]
         changelog.append({"version": version, "date": date, "changes": changes})
@@ -171,32 +183,32 @@ def write_roadmap(roadmap):
 
 
 def main():
-    print("  \u0421\u0438\u043d\u0445\u0440\u043e\u043d\u0438\u0437\u0430\u0446\u0438\u044f changelog \u0441 GitHub...")
+    print("  Синхронизация changelog с GitHub...")
     if TOKEN:
-        print("  \u0422\u043e\u043a\u0435\u043d \u043d\u0430\u0439\u0434\u0435\u043d \u2014 \u043b\u0438\u043c\u0438\u0442 5000 \u0437\u0430\u043f\u0440\u043e\u0441\u043e\u0432/\u0447\u0430\u0441")
+        print("  Токен найден — лимит 5000 запросов/час")
     else:
-        print("  \u0422\u043e\u043a\u0435\u043d \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d \u2014 \u043b\u0438\u043c\u0438\u0442 60 \u0437\u0430\u043f\u0440\u043e\u0441\u043e\u0432/\u0447\u0430\u0441")
+        print("  Токен не найден — лимит 60 запросов/час")
     try:
         releases = fetch_releases()
-        print(f"  \u0420\u0435\u043b\u0438\u0437\u043e\u0432 \u043d\u0430\u0439\u0434\u0435\u043d\u043e: {len(releases)}")
+        print(f"  Релизов найдено: {len(releases)}")
 
         roadmap = fetch_roadmap()
-        print(f"  ROADMAP \u0437\u0430\u043f\u0438\u0441\u0435\u0439: {len(roadmap)}")
+        print(f"  ROADMAP записей: {len(roadmap)}")
 
         if not releases:
-            print("  [!] \u0420\u0435\u043b\u0438\u0437\u043e\u0432 \u043d\u0435\u0442 \u2014 CHANGELOG \u043d\u0435 \u043e\u0431\u043d\u043e\u0432\u043b\u044f\u0435\u0442\u0441\u044f.")
+            print("  [!] Релизов нет — CHANGELOG не обновляется.")
             from changelog import CHANGELOG as existing
             releases = [{"version": e["version"],
                          "date": e["date"],
                          "changes": e["changes"]} for e in existing]
 
         write_changelog(releases)
-        print("  changelog.py \u043e\u0431\u043d\u043e\u0432\u043b\u0451\u043d.")
+        print("  changelog.py обновлён.")
 
         write_roadmap(roadmap)
-        print("  roadmap.py \u043e\u0431\u043d\u043e\u0432\u043b\u0451\u043d.")
+        print("  roadmap.py обновлён.")
     except Exception as e:
-        print(f"  [\u041e\u0428\u0418\u0411\u041a\u0410] {e}")
+        print(f"  [ОШИБКА] {e}")
 
 
 if __name__ == "__main__":
