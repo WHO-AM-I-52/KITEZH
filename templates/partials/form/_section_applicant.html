@@ -105,6 +105,27 @@
              value="{{ req.contact_email if req else '' }}" placeholder="example@mail.ru">
     </div>
 
+    {# ===== Issue #PB-1: чекбокс «Добавить в справочник» ===== #}
+    <div class="col-12">
+      <div class="form-check d-flex align-items-center gap-2
+                  border border-success-subtle rounded px-3 py-2
+                  bg-success-subtle" style="cursor:pointer;font-size:12px">
+        <input class="form-check-input flex-shrink-0 mt-0" type="checkbox"
+               name="sync_to_phonebook" id="sync_to_phonebook" value="1"
+               style="width:1.1em;height:1.1em">
+        <label class="form-check-label mb-0" for="sync_to_phonebook"
+               style="cursor:pointer">
+          <i class="bi bi-book me-1 text-success"></i>
+          <strong>Добавить в телефонный справочник</strong>
+          <span class="text-muted ms-1">
+            — автоматически создаёт организацию
+            и контакт по данным выше
+          </span>
+        </label>
+      </div>
+    </div>
+    {# ===== /Issue #PB-1 ===== #}
+
     <div class="col-md-6">
       <label class="form-label fw-bold" style="font-size:12px">
         Предмет обращения
