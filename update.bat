@@ -3,7 +3,7 @@ chcp 65001 >nul
 setlocal
 
 :: ============================================================
-::  SONAR - Скачивание архива обновления с GitHub
+::  KITEZH - Скачивание архива обновления с GitHub
 :: ============================================================
 
 set "APP_DIR=%~dp0"
@@ -38,13 +38,13 @@ if not defined PYTHON (
 
 echo.
 echo  ================================================
-echo   SONAR - Скачивание архива обновления с GitHub
+echo   KITEZH - Скачивание архива обновления с GitHub
 echo  ================================================
 echo.
 
 if not defined PYTHON (
   echo  [ОШИБКА] Python не найден.
-  echo  Убедись, что папка WPy находится рядом с SONAR.
+  echo  Убедись, что папка WPy находится рядом с KITEZH.
   pause
   exit /b 1
 )
@@ -61,8 +61,8 @@ pause
 :: Если _updater.py вернул 2 — bat-файл был обновлён
 if "%UPDATER_EXIT%"=="2" (
   echo.
-  echo  [!] start SONAR.bat был обновлён.
-  echo  [!] Закрой это окно и запусти start SONAR.bat заново вручную.
+  echo  [!] start KITEZH.bat был обновлён.
+  echo  [!] Закрой это окно и запусти start KITEZH.bat заново вручную.
   echo.
   pause
   exit /b 0
