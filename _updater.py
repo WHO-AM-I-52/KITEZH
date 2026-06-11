@@ -1,6 +1,6 @@
 # ╔════════════════════════════════════════════════════════════════════════╗
 # ║                         _updater.py                                     ║
-# ║  Скачивает обновления SONAR с GitHub одним zip-архивом (1 API-запрос)   ║
+# ║  Скачивает обновления KITEZH с GitHub одним zip-архивом (1 API-запрос)   ║
 # ║  Режим --check: сравнивает SHA и выходит без скачивания                 ║
 # ║  Не трогает БД и файлы пользователя.                                    ║
 # ║  get_commits_between: список коммитов для панели обновлений              ║
@@ -17,14 +17,14 @@ import tempfile
 from datetime import datetime
 
 REPO_OWNER    = "WHO-AM-I-52"
-REPO_NAME     = "SONAR"
+REPO_NAME     = "KITEZH"
 BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
 API_BASE      = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}"
 COMMIT_FILE   = os.path.join(BASE_DIR, "_last_commit.txt")
 BRANCH_FILE   = os.path.join(BASE_DIR, "_branch.txt")
 FALLBACK_KB   = 600
 
-# ── Читаем активную ветку из _branch.txt (по умолчанию main) ─────────────────
+# ── Читаем активную ветку из _branch.txt (по умолчанию main) ─────────────────────
 def load_branch() -> str:
     if os.path.exists(BRANCH_FILE):
         try:
@@ -37,7 +37,7 @@ def load_branch() -> str:
 
 BRANCH = load_branch()
 
-BAT_NAME = "start SONAR.bat"
+BAT_NAME = "start KITEZH.bat"
 
 # update.bat намеренно НЕ защищён — обновляется автоматически как обычный файл
 # _updater.py защищён — самообновление небезопасно во время работы
@@ -73,7 +73,7 @@ def load_token():
 TOKEN = load_token()
 
 def _headers():
-    h = {"User-Agent": "SONAR-Updater", "Accept": "application/vnd.github+json"}
+    h = {"User-Agent": "KITEZH-Updater", "Accept": "application/vnd.github+json"}
     if TOKEN:
         h["Authorization"] = f"Bearer {TOKEN}"
     return h
@@ -114,7 +114,7 @@ def show_rate_limit(headers):
           (f" (сброс в {reset_str})" if reset_str else ""))
 
 
-# ─── Список коммитов между двумя SHA ────────────────────────────────────────
+# ─── Список коммитов между двумя SHA ────────────────────────────────────────────
 
 def get_commits_between(local_sha: str, remote_sha: str) -> list:
     """Возвращает список коммитов между local_sha и remote_sha (до 20 шт.).
@@ -166,7 +166,7 @@ def save_local_sha(sha: str):
 def check_for_updates() -> int:
     print()
     print("  ================================================")
-    print(f"   SONAR - Проверка обновлений (ветка: {BRANCH})")
+    print(f"   KITEZH - Проверка обновлений (ветка: {BRANCH})")
     print("  ================================================")
     print()
     print("  Подключаемся к GitHub...")
@@ -198,7 +198,7 @@ def check_for_updates() -> int:
         return 1
 
 
-# ─── Размер архива ───────────────────────────────────────────────────────────
+# ─── Размер архива ────────────────────────────────────────────────────────────────────────────
 
 def get_zip_size_kb() -> int:
     url = f"{API_BASE}/zipball/{BRANCH}"
@@ -357,7 +357,6 @@ def ensure_github_release():
         print("  [Релиз] Токен не найден — автосоздание релиза пропущено.")
         return
 
-    # Релиз создаём только для main-ветки
     if BRANCH != "main":
         print(f"  [Релиз] Ветка {BRANCH} — автосоздание релиза пропущено.")
         return
@@ -430,7 +429,7 @@ def main():
 
     remote_sha = get_remote_sha()
 
-    zip_path = os.path.join(BASE_DIR, "_sonar_update.zip")
+    zip_path = os.path.join(BASE_DIR, "_kitezh_update.zip")
 
     try:
         download_zip(zip_path)
@@ -482,8 +481,8 @@ def main():
 
     if bat_updated:
         print()
-        print("  [!] start SONAR.bat был обновлён.")
-        print("  [!] Закрой это окно и запусти start SONAR.bat заново вручную.")
+        print("  [!] start KITEZH.bat был обновлён.")
+        print("  [!] Закрой это окно и запусти start KITEZH.bat заново вручную.")
         print()
         sys.exit(2)
 
