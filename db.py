@@ -1,12 +1,12 @@
-# ╔═══════════════════════════════════════════════════════════════
+# ╔═══════════════════════════════════════════════
 # ║                         db.py                               ║
 # ║  Подключение к базе данных и пути к папкам приложения       ║
-# ╚═══════════════════════════════════════════════════════════════
+# ╚═══════════════════════════════════════════════
 
 import sqlite3
 import os
 
-# ─── ПУТИ ───────────────────────────────────────────────────────────────────────────────────────
+# ─── ПУТИ ──────────────────────────────────────────────────────────────────────────────────
 
 BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
 DB_PATH     = os.path.join(BASE_DIR, 'db', 'database.db')
@@ -20,7 +20,7 @@ os.makedirs(UPLOADS_TMP, exist_ok=True)
 os.makedirs(REPORTS_DIR, exist_ok=True)
 
 
-# ─── МИГРАЦИЯ ──────────────────────────────────────────────────────────────────────────────────
+# ─── МИГРАЦИЯ ──────────────────────────────────────────────────────────────────────────────
 
 # Маппинг названий предметов → префиксы рег. номеров.
 # Сравнение нечувствительно к регистру (LOWER).
@@ -43,7 +43,7 @@ _migrated = False
 
 
 def _has_column(conn, table: str, column: str) -> bool:
-    """True если колонка уже есть в таблице."""
+    """Труе если колонка уже есть в таблице."""
     rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
     return any(r['name'] == column for r in rows)
 
@@ -301,6 +301,14 @@ def _migrate(conn):
         )
 
     # ════════════════════════════════════════════════════════════════
+    # Phonebook sync (Issue #PB-1): колонка должности уполн. лица
+    # ════════════════════════════════════════════════════════════════
+    if not _has_column(conn, 'requests', 'contact_position'):
+        conn.execute(
+            "ALTER TABLE requests ADD COLUMN contact_position TEXT NOT NULL DEFAULT ''"
+        )
+
+    # ════════════════════════════════════════════════════════════════
     # Индексы — fix #6
     # ════════════════════════════════════════════════════════════════
     conn.execute("CREATE INDEX IF NOT EXISTS idx_req_status     ON requests(status)")
@@ -346,6 +354,7 @@ def _migrate(conn):
 
     # ════════════════════════════════════════════════════════════════
     # Чистка NULL → '' в текстовых полях таблицы requests.
+    # contact_position добавлен сразу после contact_email (Issue #PB-1).
     # ════════════════════════════════════════════════════════════════
     _TEXT_FIELDS_TO_CLEAN = [
         'status', 'source_type',
@@ -353,6 +362,7 @@ def _migrate(conn):
         'applicant_inn', 'applicant_msp_category', 'applicant_okved_main',
         'postal_address', 'legal_address', 'project_name',
         'contact_person', 'contact_phone', 'contact_email',
+        'contact_position',   # ← Issue #PB-1: должность уполн. лица
         'construction_stages',
         'product_nomenclature', 'production_description', 'object_composition',
         'site_right', 'hazard_class', 'site_shape', 'site_other',
@@ -374,7 +384,7 @@ def _migrate(conn):
     conn.commit()
 
 
-# ─── ПОДКЛЮЧЕНИЕ К БД ──────────────────────────────────────────────────────────────────────────────────────
+# ─── ПОДКЛЮЧЕНИЕ К БД ────────────────────────────────────────────────────────────────────────
 
 def get_db():
     """
