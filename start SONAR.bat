@@ -78,6 +78,11 @@ exit /b 1
 echo  OK: %PYTHON%
 echo.
 
+:: Явно задаём PYTHONHOME для портативной WPy-сборки
+:: Без этого Python не находит стандартную библиотеку если
+:: PYTHONHOME задан системно (другой Python) или не задан вовсе
+set "PYTHONHOME=%APP_DIR%WPy\python313"
+
 :: Очистка устаревших .pth
 if not defined SITEPKG goto :skip_pth
 del /f /q "%SITEPKG%\distutils-precedence.pth" 2>nul
