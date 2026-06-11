@@ -2,7 +2,7 @@
 # ║                      form_utils.py                           ║
 # ║  Работа с формой обращения: поля, приведение типов,          ║
 # ║  классификаторы                                              ║
-# ║  v2.5: пустые текстовые поля → '' вместо NULL               ║
+# ║  v2.6: contact_position добавлен после contact_email         ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from validators import _int, _flt
@@ -89,6 +89,9 @@ def denormalize_from_base(value, unit_key, unit_value):
 
 # ───────────────────────────────────────────────────────────────────────────────
 # Поля формы обращения (используются для массового чтения/записи)
+# ВАЖНО: порядок элементов должен строго совпадать с порядком колонок
+# в INSERT/UPDATE запросах (form_routes.py использует позиционный маппинг).
+# contact_position добавлен СРАЗУ ПОСЛЕ contact_email.
 # ───────────────────────────────────────────────────────────────────────────────
 ALL_FIELDS = [
     "request_date", "status", "consent_disclosure",
@@ -97,6 +100,7 @@ ALL_FIELDS = [
     "applicant_inn", "applicant_msp_category", "applicant_okved_main",
     "postal_address", "legal_address", "project_name",
     "contact_person", "contact_phone", "contact_email",
+    "contact_position",   # ← Должность уполномоченного лица (phonebook sync)
     "jobs_total", "jobs_foreign",
     "investment_total", "investment_borrowed",
     "construction_stages", "construction_start", "operation_start",
