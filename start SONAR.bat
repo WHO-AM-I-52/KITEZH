@@ -78,9 +78,18 @@ exit /b 1
 echo  OK: %PYTHON%
 echo.
 
+:: Автофикс python313._pth — перезаписываем относительными путями.
+:: Это гарантирует работу WPy на любом ПК и диске независимо от
+:: того какие пути были прописаны при сборке WPy.
+set "PTH_FILE=%APP_DIR%WPy\python313\python313._pth"
+(
+  echo python313.zip
+  echo Lib
+  echo Lib\site-packages
+  echo .
+) > "%PTH_FILE%"
+
 :: Явно задаём PYTHONHOME для портативной WPy-сборки
-:: Без этого Python не находит стандартную библиотеку если
-:: PYTHONHOME задан системно (другой Python) или не задан вовсе
 set "PYTHONHOME=%APP_DIR%WPy\python313"
 
 :: Очистка устаревших .pth
@@ -100,7 +109,6 @@ if exist "%APP_DIR%db\database.db" (
 ) else (
   echo  [ПРЕДУПРЕЖДЕНИЕ] db\database.db не найден
 )
-
 
 "%PYTHON%" -c "import os,glob;files=sorted(glob.glob('db/backups/database_*.db'));[os.remove(f) for f in files[:-5]]"
 echo.
