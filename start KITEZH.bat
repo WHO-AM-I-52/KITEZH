@@ -79,14 +79,14 @@ echo  OK: %PYTHON%
 echo.
 
 :: Автофикс python313._pth — перезаписываем относительными путями.
-:: Это гарантирует работу WPy на любом ПК и диске независимо от
-:: того какие пути были прописаны при сборке WPy.
+:: Добавляем APP_DIR чтобы Python находил модули проекта (db.py, app.py и др.)
 set "PTH_FILE=%APP_DIR%WPy\python313\python313._pth"
 (
   echo python313.zip
   echo Lib
   echo Lib\site-packages
   echo .
+  echo %APP_DIR%
 ) > "%PTH_FILE%"
 
 :: Явно задаём PYTHONHOME для портативной WPy-сборки
