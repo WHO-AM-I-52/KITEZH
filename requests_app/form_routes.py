@@ -13,10 +13,11 @@ from validators import allowed_file, validate_inn
 from activity_log import log_action
 from ocr_utils import extract_anketa_fields
 from request_history import save_history
+from phonebook_routes import sync_request_to_phonebook  # Issue #PB-1
 from . import requests_bp
 
 # Поля issue #53, которых нет в форме редактирования form.html.
-# При UPDATE их значение берётся из текущей записи БД, чтобы не затереть
+# При UPDATE их значение берётся из текущей записи БД, чтобы не затреть
 # NOT NULL-колонки (например review_days INTEGER NOT NULL DEFAULT 7).
 _PRESERVE_FIELDS = [
     'review_days',
@@ -211,6 +212,10 @@ def new_request():
                 dst = os.path.join(UPLOADS_DIR, fn)
                 if os.path.exists(tmp) and not os.path.exists(dst):
                     shutil.move(tmp, dst)
+            # ── Issue #PB-1: синхронизация в справочник ─────────────────────────
+            if request.form.get('sync_to_phonebook') == '1':
+                sync_request_to_phonebook(conn, request.form, new_id, session['user_id'])
+                conn.commit()  # отдельный commit только для phonebook-записей
         except Exception:
             _cleanup_tmp(pending)
             conn.close()
@@ -303,6 +308,10 @@ def edit_request(rid):
                     dst = os.path.join(UPLOADS_DIR, fn)
                     if os.path.exists(tmp) and not os.path.exists(dst):
                         shutil.move(tmp, dst)
+            # ── Issue #PB-1: синхронизация в справочник ─────────────────────────
+            if request.form.get('sync_to_phonebook') == '1':
+                sync_request_to_phonebook(conn, request.form, rid, session['user_id'])
+                conn.commit()  # отдельный commit только для phonebook-записей
         except Exception:
             _cleanup_tmp(pending)
             conn.close()
