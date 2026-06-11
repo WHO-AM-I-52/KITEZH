@@ -1,5 +1,5 @@
 # phonebook_routes.py
-# Blueprint: телефонный справочник (v2.7.0)
+# Blueprint: телефонный справочник (v2.8.0)
 # Маршруты:
 #   GET  /phonebook                — список сотрудников с поиском  [can_view_phonebook]
 #   GET  /phonebook/search         — AJAX: поиск, возвращает JSON       [can_view_phonebook]
@@ -15,6 +15,10 @@
 # ИСПРАВЛЕНИЕ v2.6.2:
 #   SQLite LOWER() не работает с кириллицей (только ASCII).
 #   Фильтрация перенесена на Python — используем str.lower() / casefold().
+#
+# Issue #PB-1 (v2.8.0):
+#   Добавлена sync_request_to_phonebook() — авто-создание орг. и контакта
+#   из формы обращения по нажатию чекбокса «Добавить в справочник».
 
 from flask import (Blueprint, render_template, request,
                    redirect, url_for, flash, jsonify, session)
@@ -263,7 +267,7 @@ def phonebook_orgs_delete():
         flash(f'Нельзя удалить: к организации привязано {count} сотрудников', 'error')
     else:
         row  = conn.execute(
-            "SELECT name FROM phonebook_orgs WHERE id=?", (oid,)
+            "SELECT name FROM phonebook_orgs WHERE id=?\", (oid,)"
         ).fetchone()
         name = row['name'] if row else f'ID:{oid}'
         conn.execute("DELETE FROM phonebook_orgs WHERE id=?", (oid,))
@@ -285,3 +289,73 @@ def org_address():
     ).fetchone()
     conn.close()
     return jsonify({'address': row['address'] if row else ''})
+
+
+# ── Issue #PB-1: Синхронизация из формы обращения ────────────────────────────
+def sync_request_to_phonebook(conn, form_data, request_id: int, user_id: int) -> None:
+    """
+    Создаёт организацию и контакт в справочнике по данным формы обращения.
+
+    Вызывается из form_routes.py ПОСЛЕ conn.commit() основного обращения.
+    conn.commit() здесь НЕ вызывается — caller делает отдельный commit:
+
+        sync_request_to_phonebook(conn, request.form, new_id, session['user_id'])
+        conn.commit()  # ← отдельный commit в form_routes.py
+
+    Дедупликация:
+      - организация: по точному совпадению name (legal_form + full_name)
+      - контакт:     по (org_id, full_name)
+
+    Маппинг:
+      applicant_legal_form + applicant_full_name → phonebook_orgs.name
+      legal_address                              → phonebook_orgs.address
+      contact_person                             → phonebook.full_name
+      contact_position                           → phonebook.position
+      contact_phone                              → phonebook.phone_work
+      contact_email                              → phonebook.email
+    """
+    legal_form    = (form_data.get('applicant_legal_form') or '').strip()
+    full_name_org = (form_data.get('applicant_full_name')  or '').strip()
+    address       = (form_data.get('legal_address')        or '').strip()
+    contact_name  = (form_data.get('contact_person')       or '').strip()
+    contact_pos   = (form_data.get('contact_position')     or '').strip()
+    phone_work    = (form_data.get('contact_phone')        or '').strip()
+    email         = (form_data.get('contact_email')        or '').strip()
+
+    org_name = f"{legal_form} {full_name_org}".strip()
+    if not org_name:
+        return  # нет названия — нечего добавлять
+
+    # 1. Ищем или создаём организацию
+    row = conn.execute(
+        "SELECT id FROM phonebook_orgs WHERE name = ?", (org_name,)
+    ).fetchone()
+
+    if row:
+        org_id = row['id']
+    else:
+        cur = conn.execute(
+            "INSERT INTO phonebook_orgs (name, address) VALUES (?, ?)",
+            (org_name, address)
+        )
+        org_id = cur.lastrowid
+        log_action(conn, user_id, 'create', request_id,
+                   f'Справочник орг.: добавлена «{org_name}» из обращения #{request_id}')
+
+    # 2. Ищем или создаём контакт (только если указано ФИО)
+    if contact_name:
+        exists = conn.execute(
+            "SELECT id FROM phonebook WHERE org_id = ? AND full_name = ?",
+            (org_id, contact_name)
+        ).fetchone()
+
+        if not exists:
+            conn.execute(
+                """INSERT INTO phonebook
+                       (org_id, full_name, position, phone_work, email)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (org_id, contact_name, contact_pos, phone_work, email)
+            )
+            log_action(conn, user_id, 'create', request_id,
+                       f'Справочник: добавлен контакт «{contact_name}» ({org_name}) '
+                       f'из обращения #{request_id}')
