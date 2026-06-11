@@ -4,14 +4,17 @@
 # ║  v2.2.0: /ping фиксирует присутствие, /api/online — счётчик  ║
 # ║  v2.3.6: /api/update/check и /api/update/apply               ║
 # ║  v2.4.0: /dashboard роут добавлен                            ║
+# ║  v2.5.0: управление уведомлениями (mark_all_read,            ║
+# ║           delete_selected, delete_read)                      ║
 # ║  fix: ?force=1 сбрасывает серверный кэш                      ║
 # ║  fix: _restart.flag + sys.exit(42) → run_server.py           ║
 # ║  fix: удалён дублирующий /api/search (живёт в search_routes)  ║
 # ╚══════════════════════════════════════════════════════════════╝
 
-from flask import Blueprint, render_template, session, jsonify, request as flask_request
+from flask import Blueprint, render_template, session, jsonify, request as flask_request, redirect, url_for
 from db import get_db, BASE_DIR
 from auth_utils import login_required
+from activity_log import log_action
 from changelog import CHANGELOG
 from roadmap import ROADMAP
 from dashboard import build_dash
@@ -30,13 +33,56 @@ misc_bp = Blueprint('misc', __name__)
 def notifications():
     conn = get_db()
     items = conn.execute(
-        "SELECT * FROM notifications WHERE user_id=? ORDER BY created_at DESC",
+        "SELECT id, message, link, is_read, created_at FROM notifications WHERE user_id=? ORDER BY created_at DESC",
         (session['user_id'],)
     ).fetchall()
-    conn.execute("UPDATE notifications SET is_read=1 WHERE user_id=?", (session['user_id'],))
-    conn.commit()
     conn.close()
     return render_template('notifications.html', items=items)
+
+
+@misc_bp.route('/notifications/mark_all_read', methods=['POST'])
+@login_required
+def notifications_mark_all_read():
+    conn = get_db()
+    conn.execute(
+        "UPDATE notifications SET is_read=1 WHERE user_id=?",
+        (session['user_id'],)
+    )
+    conn.commit()
+    conn.close()
+    log_action(session['user_id'], 'notifications_mark_all_read', 'Помечены все уведомления как прочитанные')
+    return redirect(url_for('misc.notifications'))
+
+
+@misc_bp.route('/notifications/delete_selected', methods=['POST'])
+@login_required
+def notifications_delete_selected():
+    ids = flask_request.form.getlist('ids')
+    if ids:
+        conn = get_db()
+        placeholders = ','.join('?' * len(ids))
+        conn.execute(
+            f"DELETE FROM notifications WHERE id IN ({placeholders}) AND user_id=?",
+            (*ids, session['user_id'])
+        )
+        conn.commit()
+        conn.close()
+        log_action(session['user_id'], 'notifications_delete_selected', f'Удалено уведомлений: {len(ids)}')
+    return redirect(url_for('misc.notifications'))
+
+
+@misc_bp.route('/notifications/delete_read', methods=['POST'])
+@login_required
+def notifications_delete_read():
+    conn = get_db()
+    conn.execute(
+        "DELETE FROM notifications WHERE user_id=? AND is_read=1",
+        (session['user_id'],)
+    )
+    conn.commit()
+    conn.close()
+    log_action(session['user_id'], 'notifications_delete_read', 'Удалены все прочитанные уведомления')
+    return redirect(url_for('misc.notifications'))
 
 
 @misc_bp.route('/changelog')
@@ -98,7 +144,7 @@ def api_online():
     return jsonify({'online': count})
 
 
-# ─── Обновления SONAR через GitHub ───────────────────────────────────────────
+# ─── Обновления KITEZH через GitHub ──────────────────────────────────────────
 
 _FLAG_FILE    = os.path.join(BASE_DIR, '_update_available.json')
 _LOCK_FILE    = os.path.join(BASE_DIR, '_updating.lock')
