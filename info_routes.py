@@ -48,9 +48,9 @@ def notifications_mark_all_read():
         "UPDATE notifications SET is_read=1 WHERE user_id=?",
         (session['user_id'],)
     )
+    log_action(conn, session['user_id'], 'notifications_mark_all_read', detail='Помечены все уведомления как прочитанные')
     conn.commit()
     conn.close()
-    log_action(session['user_id'], 'notifications_mark_all_read', 'Помечены все уведомления как прочитанные')
     return redirect(url_for('misc.notifications'))
 
 
@@ -65,9 +65,9 @@ def notifications_delete_selected():
             f"DELETE FROM notifications WHERE id IN ({placeholders}) AND user_id=?",
             (*ids, session['user_id'])
         )
+        log_action(conn, session['user_id'], 'notifications_delete_selected', detail=f'Удалено уведомлений: {len(ids)}')
         conn.commit()
         conn.close()
-        log_action(session['user_id'], 'notifications_delete_selected', f'Удалено уведомлений: {len(ids)}')
     return redirect(url_for('misc.notifications'))
 
 
@@ -79,9 +79,9 @@ def notifications_delete_read():
         "DELETE FROM notifications WHERE user_id=? AND is_read=1",
         (session['user_id'],)
     )
+    log_action(conn, session['user_id'], 'notifications_delete_read', detail='Удалены все прочитанные уведомления')
     conn.commit()
     conn.close()
-    log_action(session['user_id'], 'notifications_delete_read', 'Удалены все прочитанные уведомления')
     return redirect(url_for('misc.notifications'))
 
 
