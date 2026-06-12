@@ -1,27 +1,135 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║                      admin_routes.py                         ║
 # ║  v2.8: уведомление пользователю при изменении прав доступа   ║
-# ╚══════════════════════════════════════════════════════════════╝
+# ║  v2.9: /admin дашборд, /admin/deps, /api/deps/check|install  ║
+# ╚═════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify
 import json
+import os
+import sys
+import subprocess
+import importlib.util
 
-from db import get_db
+from db import get_db, BASE_DIR
 from auth_utils import login_required, admin_required, hash_pw, ALL_PERMISSIONS
 from activity_log import get_activity_log, ACTION_LABELS
 
 admin_bp = Blueprint('admin', __name__)
 
+_REQUIREMENTS = os.path.join(BASE_DIR, 'requirements.txt')
 
-# ─── Войти как (Имперсонация) ──────────────────────────────────────────────────
 
+# ─── /admin дашборд ─────────────────────────────────────────────────────────────────────────
+@admin_bp.route('/admin')
+@login_required
+@admin_required
+def admin_index():
+    return render_template('admin/index.html')
+
+
+# ─── /admin/deps ────────────────────────────────────────────────────────────────────────
+@admin_bp.route('/admin/deps')
+@login_required
+@admin_required
+def admin_deps():
+    return render_template('admin/deps.html')
+
+
+# ─── /api/deps/check ───────────────────────────────────────────────────────────────────
+@admin_bp.route('/api/deps/check')
+@login_required
+@admin_required
+def api_deps_check():
+    """Read requirements.txt, check which packages are installed."""
+    if not os.path.exists(_REQUIREMENTS):
+        return jsonify({'error': 'requirements.txt not found'}), 404
+
+    packages = []
+    with open(_REQUIREMENTS, encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            # Разбиваем на имя и версию: flask==3.1.3 → name=flask, ver=3.1.3
+            import re
+            m = re.match(r'^([A-Za-z0-9_\-\.]+)([><=!].+)?$', line)
+            if not m:
+                continue
+            pkg_name = m.group(1)
+            req_ver  = (m.group(2) or '').strip()
+
+            # Проверяем установлен ли пакет
+            installed     = False
+            installed_ver = ''
+            try:
+                # importlib.util.find_spec работает для большинства пакетов
+                spec = importlib.util.find_spec(pkg_name.replace('-', '_').lower())
+                installed = spec is not None
+            except (ModuleNotFoundError, ValueError):
+                installed = False
+
+            # Получаем установленную версию через importlib.metadata
+            if installed:
+                try:
+                    import importlib.metadata as meta
+                    installed_ver = meta.version(pkg_name)
+                except Exception:
+                    installed_ver = ''
+
+            packages.append({
+                'name':              pkg_name,
+                'required_version':  req_ver,
+                'installed':         installed,
+                'installed_version': installed_ver,
+            })
+
+    return jsonify({'packages': packages})
+
+
+# ─── /api/deps/install ──────────────────────────────────────────────────────────────────
+@admin_bp.route('/api/deps/install', methods=['POST'])
+@login_required
+@admin_required
+def api_deps_install():
+    """Install a single package or all from requirements.txt.
+    Body: {"package": "jellyfish"} or {"all": true}
+    """
+    data = request.get_json(silent=True) or {}
+
+    if data.get('all'):
+        if not os.path.exists(_REQUIREMENTS):
+            return jsonify({'ok': False, 'error': 'requirements.txt not found'}), 404
+        cmd = [sys.executable, '-m', 'pip', 'install', '-r', _REQUIREMENTS]
+    elif data.get('package'):
+        pkg = data['package'].strip()
+        if not pkg or not all(c.isalnum() or c in '-_.' for c in pkg):
+            return jsonify({'ok': False, 'error': 'invalid package name'}), 400
+        cmd = [sys.executable, '-m', 'pip', 'install', pkg]
+    else:
+        return jsonify({'ok': False, 'error': 'no package specified'}), 400
+
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        output = (result.stdout + result.stderr).strip()
+        ok     = result.returncode == 0
+        return jsonify({'ok': ok, 'output': output[-3000:]})
+    except subprocess.TimeoutExpired:
+        return jsonify({'ok': False, 'error': 'timeout', 'output': 'Установка превысила 120 сек'})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)})
+
+
+# ─── Войти как (Имперсонация) ───────────────────────────────────────────────────────
 @admin_bp.route('/impersonate/<int:uid>')
 @login_required
 @admin_required
 def impersonate(uid):
-    """Admin: войти от имени пользователя uid.
-    Сохраняем текущие данные админа в _orig_* для возврата.
-    """
     conn = get_db()
     try:
         target = conn.execute(
@@ -53,7 +161,6 @@ def impersonate(uid):
 @admin_bp.route('/impersonate/stop')
 @login_required
 def impersonate_stop():
-    """Admin: вернуться в свою учётную запись админа."""
     orig_id = session.pop('_orig_user_id', None)
     if not orig_id:
         flash('Имперсонация не активна', 'warning')
@@ -69,8 +176,7 @@ def impersonate_stop():
     return redirect(url_for('requests.index'))
 
 
-# ─── Классификаторы ───────────────────────────────────────────────────────────────────
-
+# ─── Классификаторы ─────────────────────────────────────────────────────────────────────────────────
 @admin_bp.route('/admin/classifiers', methods=['GET', 'POST'])
 @login_required
 @admin_required
