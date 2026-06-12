@@ -4,6 +4,8 @@
 # ║  Запускается из run_server.py если KITEZH_TRAY=1             ║
 # ║  notify_error(title, msg) — Windows-уведомление об ошибке    ║
 # ║  get_notify_level() — читает уровень из classifiers          ║
+# ║  pystray/PIL импортируются лениво — не падает               ║
+# ║  если модуль не установлен (сервер без трея)              ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 import os
@@ -11,14 +13,31 @@ import ctypes
 import threading
 import webbrowser
 
-import pystray
-from PIL import Image
+# pystray и PIL импортируются лениво в run_tray() —
+# это позволяет импортировать tray в app.py без падения
+# на серверах где pystray не установлен.
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ICON_PATH = os.path.join(BASE_DIR, 'static', 'favicon.ico')
 
 _console_visible = True
 _tray_icon = None
+
+# Флаг: pystray доступен (заполняется при первом вызове run_tray)
+_pystray_available = None
+
+
+def _check_pystray() -> bool:
+    """True если pystray и PIL доступны."""
+    global _pystray_available
+    if _pystray_available is None:
+        try:
+            import pystray      # noqa: F401
+            from PIL import Image  # noqa: F401
+            _pystray_available = True
+        except ImportError:
+            _pystray_available = False
+    return _pystray_available
 
 
 # ─── УРОВЕНЬ УВЕДОМЛЕНИЙ ────────────────────────────────────────────────────────────
@@ -27,7 +46,7 @@ def get_notify_level() -> str:
     """
     Читает уровень уведомлений из таблицы classifiers.
     Возвращает 'critical' или 'extended'.
-    При любой ошибке чтения БД — возвращает 'critical' (безопасно).
+    При любой ошибке — возвращает 'critical' (безопасно).
     """
     try:
         from db import get_db
@@ -47,7 +66,7 @@ def get_notify_level() -> str:
 def notify_error(title: str, message: str) -> None:
     """
     Показывает Windows-уведомление через иконку трея.
-    Безопасно если трей не запущен — ничего не делает.
+    Безопасно если трей не запущен или pystray недоступен.
     """
     if _tray_icon is None:
         return
@@ -103,6 +122,7 @@ def _stop_server(icon, item):
 
 
 def _make_menu():
+    import pystray
     return pystray.Menu(
         pystray.MenuItem('Открыть браузер', _open_browser, default=True),
         pystray.MenuItem(
@@ -117,8 +137,16 @@ def _make_menu():
 # ─── ЗАПУСК ────────────────────────────────────────────────────────────────────────────
 
 def run_tray(hide_on_start: bool = True):
-    """Запускает иконку трея. Блокирует поток до остановки."""
+    """Запускает иконку трея. Блокирует поток до остановки. 
+    Если pystray недоступен — выходит тихо."""
     global _tray_icon
+
+    if not _check_pystray():
+        print('[ПРЕДУПРЕЖДЕНИЕ] Трей недоступен: pystray или Pillow не установлены.')
+        return
+
+    import pystray
+    from PIL import Image
 
     image = Image.open(ICON_PATH)
     _tray_icon = pystray.Icon(
