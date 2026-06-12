@@ -78,8 +78,7 @@ exit /b 1
 echo  OK: %PYTHON%
 echo.
 
-:: Автофикс python313._pth — перезаписываем относительными путями.
-:: Добавляем APP_DIR чтобы Python находил модули проекта (db.py, app.py и др.)
+:: Автофикс python313._pth
 set "PTH_FILE=%APP_DIR%WPy\python313\python313._pth"
 (
   echo python313.zip
@@ -113,7 +112,7 @@ if exist "%APP_DIR%db\database.db" (
 "%PYTHON%" -c "import os,glob;files=sorted(glob.glob('db/backups/database_*.db'));[os.remove(f) for f in files[:-5]]"
 echo.
 
-:: Очистка uploads\tmp\ — удаление мусора от прерванных загрузок
+:: Очистка uploads\tmp\
 if exist "%APP_DIR%uploads\tmp" (
   del /f /q "%APP_DIR%uploads\tmp\*" 2>nul
   echo  uploads\tmp\ очищена.
@@ -213,15 +212,22 @@ if exist "%APP_DIR%update.bat" (
 echo  Выбери режим:
 echo    [1] Production
 echo    [2] Debug
+echo    [3] Tray (Production + иконка в трее)
 echo.
 set "MODE_CHOICE="
-set /p MODE_CHOICE=  Режим (1/2): 
+set /p MODE_CHOICE=  Режим (1/2/3): 
 if "%MODE_CHOICE%"=="1" (
   set "FLASK_ENV=production"
   set "APP_DEBUG=0"
+  set "KITEZH_TRAY=0"
 ) else if "%MODE_CHOICE%"=="2" (
   set "FLASK_ENV=development"
   set "APP_DEBUG=1"
+  set "KITEZH_TRAY=0"
+) else if "%MODE_CHOICE%"=="3" (
+  set "FLASK_ENV=production"
+  set "APP_DEBUG=0"
+  set "KITEZH_TRAY=1"
 ) else (
   echo  Неверный выбор.
   goto :ask_mode
@@ -258,10 +264,15 @@ echo ============================================
 echo.
 
 :start_server
-echo  Сервер запущен... Для остановки нажми Ctrl+C
+if "%KITEZH_TRAY%"=="1" (
+  echo  Tray-режим: консоль свернётся через 2 сек.
+) else (
+  echo  Сервер запущен... Для остановки нажми Ctrl+C
+)
 echo.
 set FLASK_ENV=%FLASK_ENV%
 set APP_DEBUG=%APP_DEBUG%
+set KITEZH_TRAY=%KITEZH_TRAY%
 set PYTHONUTF8=1
 set PYTHONPATH=%APP_DIR%
 cd /d "%APP_DIR%"
@@ -289,7 +300,7 @@ if "!EXIT_CODE!"=="42" (
 )
 
 echo   [1] Повторный запуск
-  echo   [2] Выйти
+echo   [2] Выйти
 echo.
 set "CHOICE="
 set /p CHOICE=  Выбор (1/2): 
