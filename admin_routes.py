@@ -3,6 +3,7 @@
 # ║  v2.8: уведомление пользователю при изменении прав доступа   ║
 # ║  v2.9: /admin дашборд, /admin/deps, /api/deps/check|install  ║
 # ║  v3.0: fix deps/install — WinPython-совместимость              ║
+# ║  v3.1: fix syntax — убран мусор 'raktika:' в classifiers()    ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify
@@ -120,8 +121,8 @@ def api_deps_install():
             cmd,
             capture_output=True,
             text=True,
-            timeout=300,   # 5 мин — достаточно для Pillow/python-docx
-            cwd=os.path.dirname(os.path.abspath(__file__)),  # CWD = папка KITEZH
+            timeout=300,
+            cwd=os.path.dirname(os.path.abspath(__file__)),
         )
         output = (result.stdout + result.stderr).strip()
         ok     = result.returncode == 0
@@ -195,7 +196,7 @@ def impersonate_stop():
 def classifiers():
     conn = get_db()
     try:
-raktika:        if request.method == 'POST':
+        if request.method == 'POST':
             action = request.form.get('action')
 
             if action == 'add':
