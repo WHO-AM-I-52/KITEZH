@@ -4,7 +4,7 @@
 {# ║ feat #68: Панель статуса OCR-движка для администратора      ║ #}
 {# ║ feat: блок истории OCR-распознаваний с полным логом       ║ #}
 {# ║ fix: copyText — textarea-фоллбэк, работает на http://         ║ #}
-{# ║ feat: кнопка Установить для отсутствующих зависимостей + лог ║ #}
+{# ║ feat: кнопка Установить + лог pip (фон + polling)      ║ #}
 {# ╚══════════════════════════════════════════════════════════════╝ #}
 
 {% block content %}
@@ -21,7 +21,7 @@
   {% endif %}
 </div>
 
-{# ── Зависимости ─────────────────────────────────────────────────────────────────────────────────────── #}
+{# ── Зависимости ──────────────────────────────────────────────────────────────────────────────────────── #}
 <div class="card mb-4">
   <div class="card-header bg-white fw-semibold d-flex align-items-center gap-2">
     <i class="bi bi-boxes text-secondary"></i> Зависимости
@@ -70,7 +70,7 @@
               {% endif %}
             </td>
           </tr>
-          {# ─ строка лога установки (initially hidden) ─ #}
+          {# ─ консоль лога pip (initially hidden) ─ #}
           <tr id="install-log-row-{{ key }}" style="display:none">
             <td colspan="3" class="p-0">
               <div class="px-3 py-2" style="background:#1e2235">
@@ -81,7 +81,7 @@
                   <span id="install-status-{{ key }}" style="font-size:11px"></span>
                 </div>
                 <pre id="install-log-{{ key }}"
-                     style="font-size:11px; max-height:200px; overflow-y:auto;
+                     style="font-size:11px; max-height:220px; overflow-y:auto;
                             background:transparent; color:#c8d0e8;
                             white-space:pre-wrap; word-break:break-all;
                             margin:0; padding:0"></pre>
@@ -94,7 +94,7 @@
   </div>
 </div>
 
-{# ── Статистика и тестовый запуск ───────────────────────────────────────────────────────────────── #}
+{# ── Статистика и тест ───────────────────────────────────────────────────────────────────────────────────── #}
 <div class="row g-4 mb-4">
   <div class="col-12 col-md-5">
     <div class="card h-100">
@@ -149,7 +149,7 @@
   </div>
 </div>
 
-{# ── Последние ошибки OCR ───────────────────────────────────────────────────────────────────────────────────────────────────────── #}
+{# ── Последние ошибки OCR ───────────────────────────────────────────────────────────────────────────────────────────── #}
 {% if recent_errors %}
 <div class="card mb-4">
   <div class="card-header bg-white fw-semibold d-flex align-items-center gap-2">
@@ -168,7 +168,7 @@
       <tbody>
         {% for err in recent_errors %}
         <tr>
-          <td class="text-muted" style="font-size:12px">{{ err.created_at[:16] | replace('T', ' ') if err.created_at else '—' }}</td>
+          <td class="text-muted" style="font-size:12px">{{ err.created_at[:16] | replace('T',' ') if err.created_at else '—' }}</td>
           <td style="font-size:12px">{{ err.full_name or '—' }}</td>
           <td style="font-size:12px" class="text-danger">{{ err.detail or '—' }}</td>
         </tr>
@@ -184,7 +184,7 @@
 </div>
 {% endif %}
 
-{# ── История распознаваний ───────────────────────────────────────────────────────────────────────────────────────────────────────── #}
+{# ── История распознаваний ───────────────────────────────────────────────────────────────────────────────────────────────────── #}
 <div class="card">
   <div class="card-header bg-white fw-semibold d-flex align-items-center gap-2">
     <i class="bi bi-clock-history text-secondary"></i> История распознаваний
@@ -192,7 +192,6 @@
       <span class="badge bg-secondary ms-1">{{ ocr_logs | length }}</span>
     {% endif %}
   </div>
-
   {% if ocr_logs %}
   <div class="card-body p-0">
     <table class="table table-sm table-hover mb-0" style="font-size:12px">
@@ -217,67 +216,54 @@
               <span class="badge bg-danger">Ошибка</span>
             {% endif %}
           </td>
-          <td class="text-truncate" style="max-width:160px" title="{{ log.filename or '' }}">
-            {{ log.filename or '—' }}
-          </td>
+          <td class="text-truncate" style="max-width:160px" title="{{ log.filename or '' }}">{{ log.filename or '—' }}</td>
           <td>{{ log.user_name or '—' }}</td>
           <td class="text-muted">{{ (log.msg or '—')[:80] }}{% if log.msg and log.msg|length > 80 %}…{% endif %}</td>
           <td>
-            <button class="btn btn-xs btn-outline-secondary py-0 px-2"
-                    style="font-size:11px"
-                    onclick="toggleOcrLog({{ log.id }})"
-                    id="btn-log-{{ log.id }}">
+            <button class="btn btn-xs btn-outline-secondary py-0 px-2" style="font-size:11px"
+                    onclick="toggleOcrLog({{ log.id }})" id="btn-log-{{ log.id }}">
               <i class="bi bi-journal-text me-1"></i>Лог
             </button>
           </td>
         </tr>
-
-        {# ─ Разворачиваемый блок лога ─ #}
         <tr id="log-detail-{{ log.id }}" style="display:none">
           <td colspan="6" class="p-0">
             <div class="p-3" style="background:#f8f9fa; border-top:1px solid #dee2e6">
               <div class="row g-3">
-
-                {# Левая: raw_text #}
                 <div class="col-12 col-md-6">
                   <div class="d-flex justify-content-between align-items-center mb-1">
                     <span class="fw-semibold" style="font-size:11px; color:#555">
-                      <i class="bi bi-file-text me-1"></i>ИСХОДНЫЙ ТЕКСТ (raw_text)
+                      <i class="bi bi-file-text me-1"></i>ИСХОДНЫЙ ТЕКСТ
                     </span>
-                    <button class="btn btn-xs btn-outline-secondary py-0 px-2"
-                            style="font-size:10px"
+                    <button class="btn btn-xs btn-outline-secondary py-0 px-2" style="font-size:10px"
                             id="copybtn-raw-{{ log.id }}"
-                            onclick="copyText('raw-{{ log.id }}', 'copybtn-raw-{{ log.id }}')">
+                            onclick="copyText('raw-{{ log.id }}','copybtn-raw-{{ log.id }}')">
                       <i class="bi bi-clipboard me-1"></i>Копировать
                     </button>
                   </div>
                   <pre id="raw-{{ log.id }}"
-                       style="font-size:11px; max-height:300px; overflow-y:auto;
-                              background:#fff; border:1px solid #dee2e6;
-                              border-radius:4px; padding:8px; white-space:pre-wrap;
-                              word-break:break-word; margin:0">{{ log.raw_text or '(пусто)' }}</pre>
+                       style="font-size:11px;max-height:300px;overflow-y:auto;
+                              background:#fff;border:1px solid #dee2e6;
+                              border-radius:4px;padding:8px;white-space:pre-wrap;
+                              word-break:break-word;margin:0">{{ log.raw_text or '(пусто)' }}</pre>
                 </div>
-
-                {# Правая: fields_json #}
                 <div class="col-12 col-md-6">
                   <div class="d-flex justify-content-between align-items-center mb-1">
                     <span class="fw-semibold" style="font-size:11px; color:#555">
-                      <i class="bi bi-list-check me-1"></i>РАСПОЗНАННЫЕ ПОЛЯ (fields_json)
+                      <i class="bi bi-list-check me-1"></i>РАСПОЗНАННЫЕ ПОЛЯ
                     </span>
-                    <button class="btn btn-xs btn-outline-secondary py-0 px-2"
-                            style="font-size:10px"
+                    <button class="btn btn-xs btn-outline-secondary py-0 px-2" style="font-size:10px"
                             id="copybtn-fields-{{ log.id }}"
-                            onclick="copyText('fields-{{ log.id }}', 'copybtn-fields-{{ log.id }}')">
+                            onclick="copyText('fields-{{ log.id }}','copybtn-fields-{{ log.id }}')">
                       <i class="bi bi-clipboard me-1"></i>Копировать
                     </button>
                   </div>
                   <pre id="fields-{{ log.id }}"
-                       style="font-size:11px; max-height:300px; overflow-y:auto;
-                              background:#fff; border:1px solid #dee2e6;
-                              border-radius:4px; padding:8px; white-space:pre-wrap;
-                              word-break:break-word; margin:0">{{ log.fields_json or '{}' }}</pre>
+                       style="font-size:11px;max-height:300px;overflow-y:auto;
+                              background:#fff;border:1px solid #dee2e6;
+                              border-radius:4px;padding:8px;white-space:pre-wrap;
+                              word-break:break-word;margin:0">{{ log.fields_json or '{}' }}</pre>
                 </div>
-
               </div>
             </div>
           </td>
@@ -286,7 +272,6 @@
       </tbody>
     </table>
   </div>
-
   {% else %}
   <div class="card-body">
     <p class="text-muted mb-0" style="font-size:13px">
@@ -295,9 +280,7 @@
     </p>
   </div>
   {% endif %}
-
 </div>
-
 {% endblock %}
 
 {% block scripts %}
@@ -342,23 +325,24 @@ function toggleOcrLog(id) {
   btn.classList.toggle('btn-secondary', !visible);
 }
 
-// ─── Установка OCR-зависимости ────────────────────────────────────────────────
-function installPkg(key) {
-  var btn       = document.getElementById('btn-install-' + key);
-  var logRow    = document.getElementById('install-log-row-' + key);
-  var logPre    = document.getElementById('install-log-' + key);
-  var statusEl  = document.getElementById('install-status-' + key);
-  var statusBadge = document.getElementById('dep-status-' + key);
+// ─── Установка зависимости — запуск + polling ──────────────────────────────
+var _pollTimers = {};
 
+function installPkg(key) {
+  var btn      = document.getElementById('btn-install-' + key);
+  var logRow   = document.getElementById('install-log-row-' + key);
+  var logPre   = document.getElementById('install-log-' + key);
+  var statusEl = document.getElementById('install-status-' + key);
   if (!btn || !logRow || !logPre) return;
 
-  // Показываем блок лога и спиннер
+  // Показываем консоль сразу
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" style="width:.7rem;height:.7rem"></span>Устанавливаю...';
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm" style="width:.7rem;height:.7rem"></span>';
   logRow.style.display = 'table-row';
-  logPre.textContent = '';
-  statusEl.innerHTML = '<span class="spinner-border spinner-border-sm" style="width:.65rem;height:.65rem;color:#8899cc"></span>';
+  logPre.textContent = 'Запуск pip install…';
+  statusEl.innerHTML = '<span style="color:#8899cc;font-size:11px"><span class="spinner-border spinner-border-sm" style="width:.6rem;height:.6rem"></span> Устанавливаю...<\/span>';
 
+  // 1. Запускаем фоновую установку
   fetch('/ai/ocr-install', {
     method: 'POST',
     credentials: 'same-origin',
@@ -367,85 +351,83 @@ function installPkg(key) {
   })
     .then(function(r) { return r.json(); })
     .then(function(data) {
-      logPre.textContent = data.output || data.error || '(нет вывода)';
-      // Автоскролл лога вниз
-      logPre.scrollTop = logPre.scrollHeight;
-
-      if (data.ok) {
-        statusEl.innerHTML = '<span style="color:#4caf50;font-size:11px"><i class="bi bi-check-circle-fill me-1"></i>Установлено</span>';
-        if (statusBadge) {
-          statusBadge.innerHTML = '<span class="badge bg-success"><i class="bi bi-check-circle-fill me-1"></i>OK</span>';
-        }
-        btn.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i>Готово';
-        btn.classList.remove('btn-outline-warning');
-        btn.classList.add('btn-outline-success');
-        // Перезагрузка через 3 сек чтобы обновился статус версии
-        setTimeout(function() { location.reload(); }, 3000);
-      } else {
-        statusEl.innerHTML = '<span style="color:#f44336;font-size:11px"><i class="bi bi-x-circle-fill me-1"></i>Ошибка</span>';
+      if (!data.ok) {
+        logPre.textContent = data.error || 'Ошибка запуска';
+        statusEl.innerHTML = '<span style="color:#f44336;font-size:11px">Ошибка<\/span>';
         btn.disabled = false;
-        btn.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>Повторить';
+        btn.innerHTML = '<i class="bi bi-download me-1"></i>Установить';
+        return;
       }
+      // 2. Запуск принят — начинаем polling
+      _pollTimers[key] = setInterval(function() { _pollStatus(key); }, 2000);
     })
     .catch(function(e) {
       logPre.textContent = 'Ошибка сети: ' + e;
-      statusEl.innerHTML = '<span style="color:#f44336;font-size:11px"><i class="bi bi-wifi-off me-1"></i>Нет связи</span>';
+      statusEl.innerHTML = '<span style="color:#f44336;font-size:11px">Нет связи<\/span>';
       btn.disabled = false;
       btn.innerHTML = '<i class="bi bi-download me-1"></i>Установить';
     });
 }
 
-/**
- * copyText(elemId, btnId)
- * Копирует текст из <pre id=elemId> в буфер.
- * Работает на http:// через textarea-фоллбэк;
- * на https:// использует нативный Clipboard API.
- */
+function _pollStatus(key) {
+  fetch('/ai/ocr-install-status?pkg=' + encodeURIComponent(key), {credentials: 'same-origin'})
+    .then(function(r) { return r.json(); })
+    .then(function(job) {
+      var logPre   = document.getElementById('install-log-' + key);
+      var statusEl = document.getElementById('install-status-' + key);
+      var btn      = document.getElementById('btn-install-' + key);
+      var statusBadge = document.getElementById('dep-status-' + key);
+
+      if (job.output) {
+        logPre.textContent = job.output;
+        logPre.scrollTop = logPre.scrollHeight;
+      }
+
+      if (job.done) {
+        clearInterval(_pollTimers[key]);
+        delete _pollTimers[key];
+
+        if (job.ok) {
+          statusEl.innerHTML = '<span style="color:#4caf50;font-size:11px"><i class="bi bi-check-circle-fill me-1"></i>Установлено<\/span>';
+          if (statusBadge) statusBadge.innerHTML = '<span class="badge bg-success"><i class="bi bi-check-circle-fill me-1"></i>OK<\/span>';
+          if (btn) { btn.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i>Готово'; btn.classList.replace('btn-outline-warning','btn-outline-success'); }
+          // Перезагрузка через 3 с — версия обновится
+          setTimeout(function() { location.reload(); }, 3000);
+        } else {
+          statusEl.innerHTML = '<span style="color:#f44336;font-size:11px"><i class="bi bi-x-circle-fill me-1"></i>Ошибка<\/span>';
+          if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>Повторить'; }
+        }
+      }
+    })
+    .catch(function() { /* тихая ошибка поллинга */ });
+}
+
 function copyText(elemId, btnId) {
   var el  = document.getElementById(elemId);
   var btn = document.getElementById(btnId);
   if (!el) return;
-
   var text = el.innerText || el.textContent || '';
-
   function flashBtn() {
     if (!btn) return;
     var orig = btn.innerHTML;
     btn.innerHTML = '<i class="bi bi-check me-1"></i>Скопировано';
-    btn.classList.add('btn-success');
-    btn.classList.remove('btn-outline-secondary');
+    btn.classList.add('btn-success'); btn.classList.remove('btn-outline-secondary');
     setTimeout(function() {
       btn.innerHTML = orig;
-      btn.classList.remove('btn-success');
-      btn.classList.add('btn-outline-secondary');
+      btn.classList.remove('btn-success'); btn.classList.add('btn-outline-secondary');
     }, 1500);
   }
-
   if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(text)
-      .then(flashBtn)
-      .catch(function() { fallbackCopy(text, flashBtn); });
+    navigator.clipboard.writeText(text).then(flashBtn).catch(function() { fallbackCopy(text, flashBtn); });
   } else {
     fallbackCopy(text, flashBtn);
   }
 }
-
 function fallbackCopy(text, cb) {
   var ta = document.createElement('textarea');
-  ta.value = text;
-  ta.style.position = 'fixed';
-  ta.style.top = '0';
-  ta.style.left = '0';
-  ta.style.opacity = '0';
-  document.body.appendChild(ta);
-  ta.focus();
-  ta.select();
-  try {
-    document.execCommand('copy');
-    if (cb) cb();
-  } catch(e) {
-    console.warn('copyText fallback не сработал:', e);
-  }
+  ta.value = text; ta.style.position='fixed'; ta.style.top='0'; ta.style.left='0'; ta.style.opacity='0';
+  document.body.appendChild(ta); ta.focus(); ta.select();
+  try { document.execCommand('copy'); if(cb) cb(); } catch(e) { console.warn(e); }
   document.body.removeChild(ta);
 }
 </script>
