@@ -4,18 +4,22 @@
 # ║      fix #64 — ai_bp подключён                          ║
 # ║      fix #61 — rate-limiting                                ║
 # ║      fix #63 — _startup() вынесен из __main__           ║
+# ║      feat: maintenance mode (.maintenance флаг)              ║
 # ╚═════════════════════════════════════════════════════════════╝
 
 import os
 from datetime import timedelta, datetime, date
 
-from flask import Flask
+from flask import Flask, jsonify, render_template, request as flask_request
 
 from db import BASE_DIR, run_migrations
 from migrations import init_db, migrate_db, migrate_districts
 from context_processors import inject_globals
 
 app = Flask(__name__)
+
+# ─── MAINTENANCE FLAG ──────────────────────────────────────────────────────────
+_MAINTENANCE_FLAG = os.path.join(BASE_DIR, '.maintenance')
 
 # ─── SECRET_KEY ────────────────────────────────────────────────────────────────────────────────────
 from limiter import limiter
@@ -62,6 +66,27 @@ def todatetime_filter(value):
 # ─── CONTEXT PROCESSOR ──────────────────────────────────────────────────────────────────────────────────────────
 app.context_processor(inject_globals)
 
+# ─── MAINTENANCE MODE ─────────────────────────────────────────────────────────
+@app.route('/health')
+def health():
+    """Эндпоинт для проверки доступности сервера.
+    Используется JS-пуллером на странице maintenance.html.
+    Не требует авторизации, не блокируется лимитером."""
+    return jsonify({'status': 'ok'})
+
+
+@app.before_request
+def check_maintenance():
+    """Если .maintenance существует — отдаём страницу ТО для всех запросов,
+    кроме /health и /static/."""
+    if not os.path.exists(_MAINTENANCE_FLAG):
+        return
+    path = flask_request.path
+    if path == '/health' or path.startswith('/static/'):
+        return
+    return render_template('maintenance.html'), 503
+
+
 # ─── BLUEPRINTS ──────────────────────────────────────────────────────────────────────────────────────────
 from phonebook_routes  import phonebook_bp
 from search_routes     import search_bp
@@ -97,6 +122,12 @@ for bp in [
 
 # ─── ИНИЦИАЛИЗАЦИЯ БД И ПЛАНИРОВЩИКА ──────────────────────────────────────────────────
 def _startup():
+    # Убираем флаг ТО при старте — на случай если остался от обновления
+    if os.path.exists(_MAINTENANCE_FLAG):
+        try:
+            os.remove(_MAINTENANCE_FLAG)
+        except Exception:
+            pass
     init_db()
     migrate_db()
     migrate_districts()
