@@ -2,7 +2,7 @@
 # ║ api/requests_api.py                                           ║
 # ║ GET  /api/requests          — JSON для Tabulator.js           ║
 # ║ POST /api/request/<id>/favorite — тоггл избранного         ║
-# ║ POST /api/check-duplicate   — проверка дублей (jellyfish)     ║
+# ║ POST /api/check-duplicate   — проверка дублей (difflib)      ║
 # ║                                                               ║
 # ║ Параметры GET:                                           ║
 # ║   page, size         — пагинация                           ║
@@ -15,10 +15,10 @@
 # ╚══════════════════════════════════════════════════════════════╝
 
 from datetime import date, timedelta
+from difflib import SequenceMatcher
 from flask import Blueprint, jsonify, request, session
 from functools import wraps
 from db import get_db
-import jellyfish
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
@@ -342,7 +342,7 @@ def check_duplicate():
                 'method': 'inn'
             })
 
-    # 2. Нечёткое совпадение по названию
+    # 2. Нечёткое совпадение по названию (через difflib)
     if not name:
         db.close()
         return jsonify({'duplicates': []})
@@ -362,8 +362,8 @@ def check_duplicate():
         candidate = (row['applicant_short_name'] or '').lower()
         if not candidate:
             continue
-        score = jellyfish.jaro_winkler_similarity(name, candidate)
-        if score >= 0.88:
+        score = SequenceMatcher(None, name, candidate).ratio()
+        if score >= 0.75:
             hits.append({
                 'id':    row['id'],
                 'name':  row['applicant_short_name'],
