@@ -2,7 +2,7 @@
 {# ╔══════════════════════════════════════════════════════════════╗ #}
 {# ║                        base.html                            ║ #}
 {# ║  Базовый шаблон приложения "Подбор ЗУ — НО"                 ║ #}
-{# ║  v2.23.0: notifications moved next to changelog             ║ #}
+{# ║  v2.23.1: ссылка /admin в сайдбаре                         ║ #}
 {# ╚══════════════════════════════════════════════════════════════╝ #}
 <html lang="ru">
 <head>
@@ -467,6 +467,9 @@
     </button>
     <div class="sb-section" data-sec="admin">
 
+      <a href="{{ url_for('admin.admin_index') }}" class="sb-link {{ 'active' if request.path=='/admin' }}">
+        <i class="bi bi-shield-lock"></i><span class="sb-lbl">Панель админа</span>
+      </a>
       <a href="/admin/classifiers" class="sb-link {{ 'active' if 'classifiers' in request.path }}">
         <i class="bi bi-tags"></i><span class="sb-lbl">Справочники</span>
       </a>
