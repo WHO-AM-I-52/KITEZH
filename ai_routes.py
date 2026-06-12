@@ -9,10 +9,13 @@
 # ║ fix: убрана проверка Tesseract — не используется в проекте    ║
 # ║ fix: _save_and_parse — ext берётся до secure_filename()       ║
 # ║ feat: _write_ocr_log() — каждый OCR пишется в ocr_log      ║
+# ║ feat: POST /ai/ocr-install — установка OCR-зависимостей через UI ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 import json
 import os
+import sys
+import subprocess
 import logging
 import requests as http_requests
 from datetime import datetime
@@ -36,6 +39,15 @@ _UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "uploads", "ocr_tmp")
 os.makedirs(_UPLOAD_FOLDER, exist_ok=True)
 
 ALLOWED_EXTENSIONS = {".pdf", ".docx", ".doc", ".jpg", ".jpeg", ".png"}
+
+# Белый список пакетов доступных для установки через UI
+# key = идентификатор в deps, value = реальное имя пакета pip
+_OCR_INSTALL_WHITELIST = {
+    'easyocr':   'easyocr',
+    'pdfplumber': 'pdfplumber',
+    'docx':      'python-docx',
+    'pillow':    'Pillow',
+}
 
 SYSTEM_PROMPT = (
     "Ты — ИИ-помощник CRM-системы SONAR (Нижегородская область). "
@@ -95,7 +107,7 @@ def _ask_ollama(investor_profile: dict, site_requests: list) -> dict:
     return json.loads(content[start:end])
 
 
-# ─── ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ: сохранить + разобрать файл ──────────────────
+# ─── ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ: сохранить + разобрать файл ──────────────
 
 def _save_and_parse(file_storage) -> tuple:
     """
@@ -156,7 +168,7 @@ def _write_ocr_log(
         logger.warning("_write_ocr_log: не удалось записать в ocr_log: %s", e)
 
 
-# ─── МАРШРУТЫ ИИ-ПОДБОРА ──────────────────────────────────────────
+# ─── МАРШРУТЫ ИИ-ПОДБОРА ──────────────────────────────────
 
 @ai_bp.route("/match", methods=["GET"])
 @login_required
@@ -192,7 +204,7 @@ def match_result():
     return jsonify(result)
 
 
-# ─── МАРШРУТ OCR-ЗАГРУЗКИ АНКЕТЫ ───────────────────────────────────
+# ─── МАРШРУТ OCR-ЗАГРУЗКИ АНКЕТЫ ──────────────────────────────
 
 @ai_bp.route("/ocr-upload", methods=["POST"])
 @login_required
@@ -224,7 +236,7 @@ def ocr_upload():
     return jsonify({"ok": True, "fields": fields, "msg": msg})
 
 
-# ─── МАРШРУТ OCR-PREVIEW (#67) ───────────────────────────────────────
+# ─── МАРШРУТ OCR-PREVIEW (#67) ───────────────────────────────────
 
 @ai_bp.route("/ocr-preview", methods=["POST"])
 @login_required
@@ -262,7 +274,7 @@ def ocr_preview():
     })
 
 
-# ─── OCR-СТАТУС (#68) ─────────────────────────────────────────────────
+# ─── OCR-СТАТУС (#68) ──────────────────────────────────────────────────────────
 
 def _check_ocr_deps() -> dict:
     """Проверяет наличие и версии всех OCR-зависимостей."""
@@ -378,6 +390,58 @@ def ocr_test():
         return jsonify({'ok': False, 'error': 'easyocr не установлен'})
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)})
+
+
+# ─── OCR-УСТАНОВКА ЗАВИСИМОСТЕЙ ЧЕРЕЗ UI ─────────────────────────────
+
+@ai_bp.route("/ocr-install", methods=["POST"])
+@admin_required
+def ocr_install():
+    """
+    Устанавливает OCR-зависимость через pip.
+    Принимает: {"package": "easyocr"}  (ключ из _OCR_INSTALL_WHITELIST)
+    Возвращает: {"ok": true, "output": "..."} или {"ok": false, "error": "..."}
+    Доступен только admin.
+    """
+    data = request.get_json(silent=True) or {}
+    pkg_key = data.get('package', '').strip()
+
+    if pkg_key not in _OCR_INSTALL_WHITELIST:
+        return jsonify({
+            'ok': False,
+            'error': f'Пакет «{pkg_key}» не входит в список дозволенных для установки.'
+        }), 400
+
+    pip_package = _OCR_INSTALL_WHITELIST[pkg_key]
+
+    try:
+        result = subprocess.run(
+            [sys.executable, '-m', 'pip', 'install', pip_package],
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        output = (result.stdout or '') + (result.stderr or '')
+        ok = result.returncode == 0
+
+        conn = get_db()
+        log_action(
+            conn,
+            session.get('user_id'),
+            'ocr_install',
+            None,
+            f"pip install {pip_package} — {'ok' if ok else 'error'} | {output[:200]}"
+        )
+        conn.commit()
+        conn.close()
+
+        return jsonify({'ok': ok, 'output': output.strip()})
+
+    except subprocess.TimeoutExpired:
+        return jsonify({'ok': False, 'error': 'Таймаут установки (300 сек). Попробуйте вручную.'}), 504
+    except Exception as e:
+        logger.error("ocr_install: ошибка при установке %s: %s", pip_package, e)
+        return jsonify({'ok': False, 'error': str(e)}), 500
 
 
 def _log_ocr_error(filename: str, detail: str) -> None:
