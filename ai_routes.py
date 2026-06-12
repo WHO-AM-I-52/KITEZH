@@ -9,13 +9,15 @@
 # ║ fix: убрана проверка Tesseract — не используется в проекте    ║
 # ║ fix: _save_and_parse — ext берётся до secure_filename()       ║
 # ║ feat: _write_ocr_log() — каждый OCR пишется в ocr_log      ║
-# ║ feat: POST /ai/ocr-install — установка OCR-зависимостей через UI ║
+# ║ feat: POST /ai/ocr-install — фоновая установка + polling     ║
+# ║ feat: GET  /ai/ocr-install-status — поллинг статуса pip       ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 import json
 import os
 import sys
 import subprocess
+import threading
 import logging
 import requests as http_requests
 from datetime import datetime
@@ -34,20 +36,23 @@ ai_bp = Blueprint("ai", __name__, url_prefix="/ai")
 OLLAMA_URL   = "http://localhost:11434/api/chat"
 OLLAMA_MODEL = "qwen2.5"
 
-# Папка для временных OCR-файлов
 _UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "uploads", "ocr_tmp")
 os.makedirs(_UPLOAD_FOLDER, exist_ok=True)
 
 ALLOWED_EXTENSIONS = {".pdf", ".docx", ".doc", ".jpg", ".jpeg", ".png"}
 
-# Белый список пакетов доступных для установки через UI
-# key = идентификатор в deps, value = реальное имя пакета pip
+# Белый список: key = ид в deps, value = реальное имя pip-пакета
 _OCR_INSTALL_WHITELIST = {
-    'easyocr':   'easyocr',
-    'pdfplumber': 'pdfplumber',
-    'docx':      'python-docx',
-    'pillow':    'Pillow',
+    'easyocr':    'easyocr',
+    'pdfplumber':  'pdfplumber',
+    'docx':        'python-docx',
+    'pillow':      'Pillow',
 }
+
+# Хранилище фоновых заданий установки
+# { pkg_key: {'running': bool, 'done': bool, 'ok': bool, 'output': str} }
+_install_jobs: dict = {}
+_install_lock = threading.Lock()
 
 SYSTEM_PROMPT = (
     "Ты — ИИ-помощник CRM-системы SONAR (Нижегородская область). "
@@ -60,7 +65,6 @@ SYSTEM_PROMPT = (
 
 
 def _get_site_requests():
-    """Возвращает обращения типа 'Подбор з/у' и 'Подбор здания / помещения'."""
     conn = get_db()
     try:
         rows = conn.execute(
@@ -86,7 +90,6 @@ def _get_site_requests():
 
 
 def _ask_ollama(investor_profile: dict, site_requests: list) -> dict:
-    """Отправляет запрос к локальному Ollama/qwen2.5."""
     user_message = (
         f"Профиль инвестора:\n{json.dumps(investor_profile, ensure_ascii=False)}\n\n"
         f"Доступные обращения по площадкам:\n{json.dumps(site_requests, ensure_ascii=False)}"
@@ -107,17 +110,9 @@ def _ask_ollama(investor_profile: dict, site_requests: list) -> dict:
     return json.loads(content[start:end])
 
 
-# ─── ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ: сохранить + разобрать файл ──────────────
+# ─── ВСПОМОГАТЕЛЬНЫЕ ────────────────────────────────────────────────────────────
 
 def _save_and_parse(file_storage) -> tuple:
-    """
-    Сохраняет файл в tmp, запускает OCR, удаляет tmp.
-    Возвращает: (filename, fields, msg, raw_text)
-    Бросает Exception при ошибке сохранения или OCR.
-
-    Расширение берётся из оригинального имени файла ДО secure_filename(),
-    чтобы кириллические имена (например «Анкета.docx») не давали пустой ext.
-    """
     ext = os.path.splitext(file_storage.filename)[1].lower()
     if ext not in ALLOWED_EXTENSIONS:
         raise ValueError(
@@ -134,17 +129,7 @@ def _save_and_parse(file_storage) -> tuple:
     return safe_name, fields, msg, raw_text
 
 
-def _write_ocr_log(
-    filename: str,
-    raw_text: str,
-    fields: dict,
-    msg: str,
-    ok: bool,
-) -> None:
-    """
-    Записывает результат OCR-распознавания в таблицу ocr_log.
-    Не бросает исключения — ошибка логирования не должна рушить OCR-ответ.
-    """
+def _write_ocr_log(filename, raw_text, fields, msg, ok):
     try:
         conn = get_db()
         conn.execute(
@@ -165,10 +150,21 @@ def _write_ocr_log(
         conn.commit()
         conn.close()
     except Exception as e:
-        logger.warning("_write_ocr_log: не удалось записать в ocr_log: %s", e)
+        logger.warning("_write_ocr_log: %s", e)
 
 
-# ─── МАРШРУТЫ ИИ-ПОДБОРА ──────────────────────────────────
+def _log_ocr_error(filename: str, detail: str) -> None:
+    try:
+        conn = get_db()
+        log_action(conn, session.get('user_id'), 'ocr_error', None,
+                   f"OCR ошибка: {filename} | {detail[:200]}")
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.warning("_log_ocr_error: %s", e)
+
+
+# ─── МАРШРУТЫ ИИ-ПОДБОРА ──────────────────────────────────────────────────────────
 
 @ai_bp.route("/match", methods=["GET"])
 @login_required
@@ -200,118 +196,79 @@ def match_result():
                f"ИИ-подбор площадки: {investor.get('industry', '—')}")
     conn.commit()
     conn.close()
-
     return jsonify(result)
 
 
-# ─── МАРШРУТ OCR-ЗАГРУЗКИ АНКЕТЫ ──────────────────────────────
+# ─── OCR-ЗАГРУЗКА ─────────────────────────────────────────────────────────────────────
 
 @ai_bp.route("/ocr-upload", methods=["POST"])
 @login_required
 def ocr_upload():
     if "file" not in request.files:
         return jsonify({"ok": False, "error": "Файл не передан"}), 400
-
     f = request.files["file"]
     if not f or not f.filename:
         return jsonify({"ok": False, "error": "Пустое имя файла"}), 400
-
     try:
         filename, fields, msg, raw_text = _save_and_parse(f)
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 400
     except Exception as e:
         filename = secure_filename(f.filename) if f.filename else "unknown"
-        logger.error("OCR /ocr-upload: неожиданная ошибка '%s': %s", filename, e)
+        logger.error("OCR /ocr-upload: '%s': %s", filename, e)
         _log_ocr_error(filename, str(e))
         _write_ocr_log(filename, '', {}, str(e), ok=False)
         return jsonify({"ok": False, "error": f"Ошибка обработки: {e}"}), 500
-
     if not fields:
         _log_ocr_error(filename, msg)
         _write_ocr_log(filename, raw_text or '', {}, msg, ok=False)
         return jsonify({"ok": False, "error": msg or "Не удалось распознать структуру анкеты."}), 422
-
     _write_ocr_log(filename, raw_text or '', fields, msg, ok=True)
     return jsonify({"ok": True, "fields": fields, "msg": msg})
 
-
-# ─── МАРШРУТ OCR-PREVIEW (#67) ───────────────────────────────────
 
 @ai_bp.route("/ocr-preview", methods=["POST"])
 @login_required
 def ocr_preview():
     if "file" not in request.files:
         return jsonify({"ok": False, "error": "Файл не передан"}), 400
-
     f = request.files["file"]
     if not f or not f.filename:
         return jsonify({"ok": False, "error": "Пустое имя файла"}), 400
-
     try:
         filename, fields, msg, raw_text = _save_and_parse(f)
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 400
     except Exception as e:
         filename = secure_filename(f.filename) if f.filename else "unknown"
-        logger.error("OCR /ocr-preview: неожиданная ошибка '%s': %s", filename, e)
+        logger.error("OCR /ocr-preview: '%s': %s", filename, e)
         _write_ocr_log(filename, '', {}, str(e), ok=False)
         return jsonify({"ok": False, "error": f"Ошибка обработки: {e}"}), 500
-
     if not fields and not raw_text:
         _write_ocr_log(filename, '', {}, msg, ok=False)
-        return jsonify({
-            "ok": False,
-            "error": msg or "Не удалось распознать структуру анкеты."
-        }), 422
-
+        return jsonify({"ok": False, "error": msg or "Не удалось распознать структуру анкеты."}), 422
     _write_ocr_log(filename, raw_text or '', fields, msg, ok=True)
-    return jsonify({
-        "ok": True,
-        "raw_text": raw_text,
-        "fields": fields,
-        "msg": msg,
-    })
+    return jsonify({"ok": True, "raw_text": raw_text, "fields": fields, "msg": msg})
 
 
-# ─── OCR-СТАТУС (#68) ──────────────────────────────────────────────────────────
+# ─── OCR-СТАТУС (#68) ─────────────────────────────────────────────────────────────
 
 def _check_ocr_deps() -> dict:
-    """Проверяет наличие и версии всех OCR-зависимостей."""
     status = {}
-
-    try:
-        import easyocr
-        status['easyocr'] = {'ok': True, 'version': getattr(easyocr, '__version__', '—')}
-    except ImportError:
-        status['easyocr'] = {'ok': False, 'error': 'Не установлен (pip install easyocr)'}
-    except Exception as e:
-        status['easyocr'] = {'ok': False, 'error': str(e)}
-
-    try:
-        import pdfplumber
-        status['pdfplumber'] = {'ok': True, 'version': getattr(pdfplumber, '__version__', '—')}
-    except ImportError:
-        status['pdfplumber'] = {'ok': False, 'error': 'Не установлен (pip install pdfplumber)'}
-    except Exception as e:
-        status['pdfplumber'] = {'ok': False, 'error': str(e)}
-
-    try:
-        import docx
-        status['docx'] = {'ok': True, 'version': getattr(docx, '__version__', '—')}
-    except ImportError:
-        status['docx'] = {'ok': False, 'error': 'Не установлен (pip install python-docx)'}
-    except Exception as e:
-        status['docx'] = {'ok': False, 'error': str(e)}
-
-    try:
-        import PIL
-        status['pillow'] = {'ok': True, 'version': getattr(PIL, '__version__', '—')}
-    except ImportError:
-        status['pillow'] = {'ok': False, 'error': 'Не установлен (pip install Pillow)'}
-    except Exception as e:
-        status['pillow'] = {'ok': False, 'error': str(e)}
-
+    for key, mod, attr in [
+        ('easyocr',    'easyocr',    '__version__'),
+        ('pdfplumber', 'pdfplumber', '__version__'),
+        ('docx',       'docx',       '__version__'),
+        ('pillow',     'PIL',        '__version__'),
+    ]:
+        try:
+            m = __import__(mod)
+            status[key] = {'ok': True, 'version': getattr(m, attr, '—')}
+        except ImportError:
+            pip_name = _OCR_INSTALL_WHITELIST.get(key, key)
+            status[key] = {'ok': False, 'error': f'Не установлен (pip install {pip_name})'}
+        except Exception as e:
+            status[key] = {'ok': False, 'error': str(e)}
     return status
 
 
@@ -319,47 +276,36 @@ def _check_ocr_deps() -> dict:
 @admin_required
 def ocr_status():
     deps = _check_ocr_deps()
-
     conn = get_db()
     try:
         errors_7d = conn.execute(
             "SELECT COUNT(*) FROM activity_log "
-            "WHERE action='ocr_error' "
-            "AND created_at >= datetime('now','-7 days')"
+            "WHERE action='ocr_error' AND created_at >= datetime('now','-7 days')"
         ).fetchone()[0]
-
         recent_errors = conn.execute(
             "SELECT al.created_at, al.detail, u.full_name "
-            "FROM activity_log al "
-            "LEFT JOIN users u ON al.user_id = u.id "
-            "WHERE al.action='ocr_error' "
-            "ORDER BY al.created_at DESC LIMIT 10"
+            "FROM activity_log al LEFT JOIN users u ON al.user_id = u.id "
+            "WHERE al.action='ocr_error' ORDER BY al.created_at DESC LIMIT 10"
         ).fetchall()
         recent_errors = [dict(r) for r in recent_errors]
-
         last_ocr = conn.execute(
             "SELECT created_at FROM activity_log "
             "WHERE action IN ('ocr_upload','ocr_preview') "
             "ORDER BY created_at DESC LIMIT 1"
         ).fetchone()
         last_ocr_dt = last_ocr['created_at'] if last_ocr else None
-
         ocr_logs = conn.execute(
             """
             SELECT ol.id, ol.created_at, ol.filename, ol.msg, ol.ok,
                    ol.raw_text, ol.fields_json, u.full_name AS user_name
-            FROM ocr_log ol
-            LEFT JOIN users u ON ol.user_id = u.id
-            ORDER BY ol.created_at DESC
-            LIMIT 20
+            FROM ocr_log ol LEFT JOIN users u ON ol.user_id = u.id
+            ORDER BY ol.created_at DESC LIMIT 20
             """
         ).fetchall()
         ocr_logs = [dict(r) for r in ocr_logs]
     finally:
         conn.close()
-
     all_ok = all(v['ok'] for v in deps.values())
-
     return render_template(
         'ocr_status.html',
         deps=deps,
@@ -376,86 +322,96 @@ def ocr_status():
 @admin_required
 def ocr_test():
     try:
-        import easyocr
-        import numpy as np
-
+        import easyocr, numpy as np
         img = np.ones((50, 200, 3), dtype=np.uint8) * 255
         reader = easyocr.Reader(['ru', 'en'], gpu=False, verbose=False)
         result = reader.readtext(img, detail=0)
-        return jsonify({
-            'ok': True,
-            'result': f"easyocr запущен успешно. Результат: {result or '(пусто — норма для белого изображения)'}"
-        })
+        return jsonify({'ok': True,
+                        'result': f"easyocr запущен успешно. {result or '(пусто — норма)'}" })
     except ImportError:
         return jsonify({'ok': False, 'error': 'easyocr не установлен'})
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)})
 
 
-# ─── OCR-УСТАНОВКА ЗАВИСИМОСТЕЙ ЧЕРЕЗ UI ─────────────────────────────
+# ─── OCR-УСТАНОВКА: ФОН ПОТОК + POLLING ────────────────────────────────────
+
+def _run_pip_install(pkg_key: str, pip_package: str, user_id) -> None:
+    """Запускается в отдельном потоке. Обновляет _install_jobs по завершении."""
+    try:
+        proc = subprocess.run(
+            [sys.executable, '-m', 'pip', 'install', pip_package],
+            capture_output=True, text=True, timeout=300,
+        )
+        output = (proc.stdout or '') + (proc.stderr or '')
+        ok = proc.returncode == 0
+    except subprocess.TimeoutExpired:
+        output = 'Ошибка: таймаут (300 сек). Установите вручную.'
+        ok = False
+    except Exception as e:
+        output = f'Ошибка: {e}'
+        ok = False
+
+    with _install_lock:
+        _install_jobs[pkg_key] = {
+            'running': False, 'done': True,
+            'ok': ok, 'output': output.strip()
+        }
+
+    # Логируем в activity_log (без app_context не работает session,
+    # поэтому передаём user_id явно)
+    try:
+        conn = get_db()
+        conn.execute(
+            "INSERT INTO activity_log (user_id, action, entity_id, detail, created_at) "
+            "VALUES (?, 'ocr_install', NULL, ?, datetime('now'))",
+            (user_id, f"pip install {pip_package} — {'ok' if ok else 'error'} | {output[:200]}")
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.warning("_run_pip_install: лог не записан: %s", e)
+
 
 @ai_bp.route("/ocr-install", methods=["POST"])
 @admin_required
 def ocr_install():
     """
-    Устанавливает OCR-зависимость через pip.
-    Принимает: {"package": "easyocr"}  (ключ из _OCR_INSTALL_WHITELIST)
-    Возвращает: {"ok": true, "output": "..."} или {"ok": false, "error": "..."}
-    Доступен только admin.
+    Запускает pip install в фоновом потоке и немедленно возвращает started=True.
+    Браузер опрашивает статус через GET /ai/ocr-install-status?pkg=<key>.
     """
     data = request.get_json(silent=True) or {}
     pkg_key = data.get('package', '').strip()
 
     if pkg_key not in _OCR_INSTALL_WHITELIST:
-        return jsonify({
-            'ok': False,
-            'error': f'Пакет «{pkg_key}» не входит в список дозволенных для установки.'
-        }), 400
+        return jsonify({'ok': False,
+                        'error': f'Пакет «{pkg_key}» не дозволен.'}), 400
+
+    with _install_lock:
+        job = _install_jobs.get(pkg_key, {})
+        if job.get('running'):
+            return jsonify({'ok': True, 'started': True, 'already': True})
+        _install_jobs[pkg_key] = {'running': True, 'done': False, 'ok': False, 'output': ''}
 
     pip_package = _OCR_INSTALL_WHITELIST[pkg_key]
+    user_id = session.get('user_id')
+    t = threading.Thread(
+        target=_run_pip_install,
+        args=(pkg_key, pip_package, user_id),
+        daemon=True,
+    )
+    t.start()
 
-    try:
-        result = subprocess.run(
-            [sys.executable, '-m', 'pip', 'install', pip_package],
-            capture_output=True,
-            text=True,
-            timeout=300,
-        )
-        output = (result.stdout or '') + (result.stderr or '')
-        ok = result.returncode == 0
-
-        conn = get_db()
-        log_action(
-            conn,
-            session.get('user_id'),
-            'ocr_install',
-            None,
-            f"pip install {pip_package} — {'ok' if ok else 'error'} | {output[:200]}"
-        )
-        conn.commit()
-        conn.close()
-
-        return jsonify({'ok': ok, 'output': output.strip()})
-
-    except subprocess.TimeoutExpired:
-        return jsonify({'ok': False, 'error': 'Таймаут установки (300 сек). Попробуйте вручную.'}), 504
-    except Exception as e:
-        logger.error("ocr_install: ошибка при установке %s: %s", pip_package, e)
-        return jsonify({'ok': False, 'error': str(e)}), 500
+    return jsonify({'ok': True, 'started': True})
 
 
-def _log_ocr_error(filename: str, detail: str) -> None:
-    """Записывает ocr_error в activity_log. Не бросает исключения."""
-    try:
-        conn = get_db()
-        log_action(
-            conn,
-            session.get('user_id'),
-            'ocr_error',
-            None,
-            f"OCR ошибка: {filename} | {detail[:200]}"
-        )
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        logger.warning("_log_ocr_error: не удалось записать в activity_log: %s", e)
+@ai_bp.route("/ocr-install-status", methods=["GET"])
+@admin_required
+def ocr_install_status():
+    """Возвращает текущий статус фоновой установки."""
+    pkg_key = request.args.get('pkg', '').strip()
+    with _install_lock:
+        job = _install_jobs.get(pkg_key)
+    if job is None:
+        return jsonify({'running': False, 'done': False, 'ok': False, 'output': ''})
+    return jsonify(job)
