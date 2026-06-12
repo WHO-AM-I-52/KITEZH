@@ -2,6 +2,7 @@
 # ║ api/requests_api.py                                           ║
 # ║ GET  /api/requests          — JSON для Tabulator.js           ║
 # ║ POST /api/request/<id>/favorite — тоггл избранного         ║
+# ║ POST /api/check-duplicate   — проверка дублей (jellyfish)     ║
 # ║                                                               ║
 # ║ Параметры GET:                                           ║
 # ║   page, size         — пагинация                           ║
@@ -17,6 +18,7 @@ from datetime import date, timedelta
 from flask import Blueprint, jsonify, request, session
 from functools import wraps
 from db import get_db
+import jellyfish
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
@@ -307,3 +309,67 @@ def toggle_favorite(request_id):
     db.commit()
     db.close()
     return jsonify({'favorite': is_fav})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# POST /api/check-duplicate — проверка дублей обращений
+# Тело: { "name": "...", "inn": "..." }
+# Ответ: { duplicates: [{id, name, inn, score}], method: "inn"|"fuzzy" }
+# ─────────────────────────────────────────────────────────────────────────────
+@api_bp.route('/check-duplicate', methods=['POST'])
+@login_required_api
+def check_duplicate():
+    data = request.get_json(silent=True) or {}
+    name = (data.get('name') or '').strip().lower()
+    inn  = (data.get('inn')  or '').strip()
+
+    if not name and not inn:
+        return jsonify({'duplicates': []})
+
+    db = get_db()
+
+    # 1. Точное совпадение по ИНН — приоритет
+    if inn:
+        rows = db.execute(
+            "SELECT id, applicant_short_name, applicant_inn "
+            "FROM requests WHERE applicant_inn = ? LIMIT 5",
+            (inn,)
+        ).fetchall()
+        if rows:
+            db.close()
+            return jsonify({
+                'duplicates': [dict(r) for r in rows],
+                'method': 'inn'
+            })
+
+    # 2. Нечёткое совпадение по названию
+    if not name:
+        db.close()
+        return jsonify({'duplicates': []})
+
+    prefix = name[:3]
+    candidates = db.execute(
+        "SELECT id, applicant_short_name, applicant_inn "
+        "FROM requests "
+        "WHERE lower(applicant_short_name) LIKE ? "
+        "LIMIT 200",
+        (prefix + '%',)
+    ).fetchall()
+    db.close()
+
+    hits = []
+    for row in candidates:
+        candidate = (row['applicant_short_name'] or '').lower()
+        if not candidate:
+            continue
+        score = jellyfish.jaro_winkler_similarity(name, candidate)
+        if score >= 0.88:
+            hits.append({
+                'id':    row['id'],
+                'name':  row['applicant_short_name'],
+                'inn':   row['applicant_inn'],
+                'score': round(score, 2),
+            })
+
+    hits.sort(key=lambda x: x['score'], reverse=True)
+    return jsonify({'duplicates': hits[:5], 'method': 'fuzzy'})
