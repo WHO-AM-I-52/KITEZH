@@ -7,9 +7,7 @@
 # ║  v2.5.0: управление уведомлениями (mark_all_read,            ║
 # ║           delete_selected, delete_read)                      ║
 # ║  v2.6.0: /maintenance/on|off|status — ручное и авто ТО       ║
-# ║  fix: ?force=1 сбрасывает серверный кэш                      ║
-# ║  fix: _restart.flag + sys.exit(42) → run_server.py           ║
-# ║  fix: удалён дублирующий /api/search (живёт в search_routes)  ║
+# ║  v2.7.0: /api/tray/notify-level — уровень уведомлений трея    ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, render_template, session, jsonify, request as flask_request, redirect, url_for
@@ -91,10 +89,18 @@ def notifications_delete_read():
 @misc_bp.route('/changelog')
 @login_required
 def changelog():
+    conn = get_db()
+    row = conn.execute(
+        "SELECT value FROM classifiers WHERE category=? LIMIT 1",
+        ('tray_notify_level',)
+    ).fetchone()
+    conn.close()
+    tray_notify_level = row['value'] if row else 'critical'
     current_version = CHANGELOG[0]['version'] if CHANGELOG else ''
     session['seen_version'] = current_version
     return render_template('changelog.html', changelog=CHANGELOG,
-                           version=current_version, roadmap=ROADMAP)
+                           version=current_version, roadmap=ROADMAP,
+                           tray_notify_level=tray_notify_level)
 
 
 @misc_bp.route('/dashboard')
@@ -147,7 +153,7 @@ def api_online():
     return jsonify({'online': count})
 
 
-# ─── Управление режимом технического обслуживания ────────────────────────────
+# ─── Управление режимом ТО ──────────────────────────────────────────────────────────────
 
 @misc_bp.route('/maintenance/on', methods=['POST'])
 def maintenance_on():
@@ -190,7 +196,50 @@ def maintenance_status():
     return jsonify({'active': os.path.exists(_MAINTENANCE_FLAG)})
 
 
-# ─── Обновления KITEZH через GitHub ──────────────────────────────────────────
+# ─── Уровень уведомлений трея ─────────────────────────────────────────────────────────
+
+@misc_bp.route('/api/tray/notify-level', methods=['POST'])
+def api_tray_notify_level():
+    """
+    Переключает уровень уведомлений трея (GET — чтение, POST — запись).
+    Доступно только admin.
+    Тело: { "level": "critical" } или { "level": "extended" }
+    """
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'forbidden'}), 403
+
+    data = flask_request.get_json(silent=True) or {}
+    level = data.get('level', '')
+    if level not in ('critical', 'extended'):
+        return jsonify({'error': 'invalid_level', 'allowed': ['critical', 'extended']}), 400
+
+    conn = get_db()
+    conn.execute(
+        "UPDATE classifiers SET value=? WHERE category=?",
+        (level, 'tray_notify_level')
+    )
+    log_action(conn, session['user_id'], 'tray_notify_level_change',
+               detail=f'Уровень уведомлений трея: {level}')
+    conn.commit()
+    conn.close()
+    return jsonify({'ok': True, 'level': level})
+
+
+@misc_bp.route('/api/tray/notify-level', methods=['GET'])
+def api_tray_notify_level_get():
+    """Возвращает текущий уровень уведомлений трея (только admin)."""
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'forbidden'}), 403
+    conn = get_db()
+    row = conn.execute(
+        "SELECT value FROM classifiers WHERE category=? LIMIT 1",
+        ('tray_notify_level',)
+    ).fetchone()
+    conn.close()
+    return jsonify({'level': row['value'] if row else 'critical'})
+
+
+# ─── Обновления KITEZH через GitHub ──────────────────────────────────────────────────
 
 _FLAG_FILE    = os.path.join(BASE_DIR, '_update_available.json')
 _LOCK_FILE    = os.path.join(BASE_DIR, '_updating.lock')
@@ -291,7 +340,6 @@ def api_update_apply():
         pass
 
     def _worker():
-        # Включаем режим ТО до перезапуска — пользователи увидят maintenance.html
         try:
             open(_MAINTENANCE_FLAG, 'w').close()
         except Exception:
