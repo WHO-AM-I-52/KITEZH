@@ -247,4 +247,33 @@ document.addEventListener('click', e => {
     box.style.display = 'none';
   }
 });
+
+// ── Проверка дублей (jellyfish) ────────────────────────────────────────
+document.getElementById('applicant_short_name')?.addEventListener('blur', function () {
+  const name = this.value.trim();
+  const inn  = (document.getElementById('applicant_inn')?.value || '').trim();
+  if (!name && !inn) return;
+
+  fetch('/api/check-duplicate', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+    body:    JSON.stringify({ name, inn })
+  })
+  .then(r => r.json())
+  .then(data => {
+    const box = document.getElementById('duplicateWarning');
+    if (!box) return;
+    if (!data.duplicates || !data.duplicates.length) {
+      box.style.display = 'none';
+      return;
+    }
+    const method = data.method === 'inn' ? 'совпадение по ИНН' : 'похожее название';
+    const links  = data.duplicates.map(d =>
+      `<a href="/request/${d.id}" target="_blank" class="alert-link">#${d.id} ${d.name || ''}</a>`
+    ).join(', ');
+    box.innerHTML = `<i class="bi bi-exclamation-triangle me-1"></i>Возможный дубль (${method}): ${links}`;
+    box.style.display = 'block';
+  })
+  .catch(() => {});
+});
 </script>
