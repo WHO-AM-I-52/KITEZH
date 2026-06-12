@@ -2,6 +2,7 @@
 # ║                      admin_routes.py                         ║
 # ║  v2.8: уведомление пользователю при изменении прав доступа   ║
 # ║  v2.9: /admin дашборд, /admin/deps, /api/deps/check|install  ║
+# ║  v3.0: fix deps/install — WinPython-совместимость              ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify
@@ -37,7 +38,7 @@ def admin_deps():
     return render_template('admin/deps.html')
 
 
-# ─── /api/deps/check ─────────────────────────────────────────────────────────
+# ─── /api/deps/check ───────────────────────────────────────────────────────
 @admin_bp.route('/api/deps/check')
 @login_required
 @admin_required
@@ -82,10 +83,10 @@ def api_deps_check():
                 'installed_version': installed_ver,
             })
 
-    return jsonify({'packages': packages})
+    return jsonify({'packages': packages, 'path': _REQUIREMENTS})
 
 
-# ─── /api/deps/install ───────────────────────────────────────────────────────
+# ─── /api/deps/install ─────────────────────────────────────────────────────
 @admin_bp.route('/api/deps/install', methods=['POST'])
 @login_required
 @admin_required
@@ -95,15 +96,22 @@ def api_deps_install():
     """
     data = request.get_json(silent=True) or {}
 
+    # Базовые флаги: без диалогов, совместимо с WinPython
+    BASE_FLAGS = [
+        '--no-warn-script-location',
+        '--disable-pip-version-check',
+        '--no-input',
+    ]
+
     if data.get('all'):
         if not os.path.exists(_REQUIREMENTS):
-            return jsonify({'ok': False, 'error': 'requirements.txt not found'}), 404
-        cmd = [sys.executable, '-m', 'pip', 'install', '-r', _REQUIREMENTS]
+            return jsonify({'ok': False, 'error': 'requirements.txt not found', 'path': _REQUIREMENTS}), 404
+        cmd = [sys.executable, '-m', 'pip', 'install', '-r', _REQUIREMENTS] + BASE_FLAGS
     elif data.get('package'):
         pkg = data['package'].strip()
         if not pkg or not all(c.isalnum() or c in '-_.' for c in pkg):
             return jsonify({'ok': False, 'error': 'invalid package name'}), 400
-        cmd = [sys.executable, '-m', 'pip', 'install', pkg]
+        cmd = [sys.executable, '-m', 'pip', 'install', pkg] + BASE_FLAGS
     else:
         return jsonify({'ok': False, 'error': 'no package specified'}), 400
 
@@ -112,13 +120,19 @@ def api_deps_install():
             cmd,
             capture_output=True,
             text=True,
-            timeout=120,
+            timeout=300,   # 5 мин — достаточно для Pillow/python-docx
+            cwd=os.path.dirname(os.path.abspath(__file__)),  # CWD = папка KITEZH
         )
         output = (result.stdout + result.stderr).strip()
         ok     = result.returncode == 0
-        return jsonify({'ok': ok, 'output': output[-3000:]})
+        return jsonify({
+            'ok':         ok,
+            'returncode': result.returncode,
+            'python':     sys.executable,
+            'output':     output[-4000:],
+        })
     except subprocess.TimeoutExpired:
-        return jsonify({'ok': False, 'error': 'timeout', 'output': 'Установка превысила 120 сек'})
+        return jsonify({'ok': False, 'error': 'timeout', 'output': 'Установка превысила 300 сек'})
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)})
 
@@ -181,7 +195,7 @@ def impersonate_stop():
 def classifiers():
     conn = get_db()
     try:
-        if request.method == 'POST':
+raktika:        if request.method == 'POST':
             action = request.form.get('action')
 
             if action == 'add':
