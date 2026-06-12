@@ -6,7 +6,7 @@
 import sqlite3
 import os
 
-# ─── ПУТИ ──────────────────────────────────────────────────────────────────────────────────
+# ─── ПУТИ ────────────────────────────────────────────────────────────────────────────
 
 BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
 DB_PATH     = os.path.join(BASE_DIR, 'db', 'database.db')
@@ -20,7 +20,7 @@ os.makedirs(UPLOADS_TMP, exist_ok=True)
 os.makedirs(REPORTS_DIR, exist_ok=True)
 
 
-# ─── МИГРАЦИЯ ──────────────────────────────────────────────────────────────────────────────
+# ─── МИГРАЦИЯ ────────────────────────────────────────────────────────────────────────────
 
 # Маппинг названий предметов → префиксы рег. номеров.
 # Сравнение нечувствительно к регистру (LOWER).
@@ -354,7 +354,6 @@ def _migrate(conn):
 
     # ════════════════════════════════════════════════════════════════
     # Чистка NULL → '' в текстовых полях таблицы requests.
-    # contact_position добавлен сразу после contact_email (Issue #PB-1).
     # ════════════════════════════════════════════════════════════════
     _TEXT_FIELDS_TO_CLEAN = [
         'status', 'source_type',
@@ -362,7 +361,7 @@ def _migrate(conn):
         'applicant_inn', 'applicant_msp_category', 'applicant_okved_main',
         'postal_address', 'legal_address', 'project_name',
         'contact_person', 'contact_phone', 'contact_email',
-        'contact_position',   # ← Issue #PB-1: должность уполн. лица
+        'contact_position',
         'construction_stages',
         'product_nomenclature', 'production_description', 'object_composition',
         'site_right', 'hazard_class', 'site_shape', 'site_other',
@@ -381,10 +380,19 @@ def _migrate(conn):
     set_parts = ', '.join(f"{col}=COALESCE({col}, '')" for col in _TEXT_FIELDS_TO_CLEAN)
     conn.execute(f"UPDATE requests SET {set_parts} WHERE 1=1")
 
+    # ════════════════════════════════════════════════════════════════
+    # Tray: уровень уведомлений (вариант А по умолчанию, переключается админом)
+    # ════════════════════════════════════════════════════════════════
+    if _table_exists(conn, 'classifiers'):
+        conn.execute("""
+            INSERT OR IGNORE INTO classifiers (category, value, sort_order)
+            VALUES ('tray_notify_level', 'critical', 1)
+        """)
+
     conn.commit()
 
 
-# ─── ПОДКЛЮЧЕНИЕ К БД ────────────────────────────────────────────────────────────────────────
+# ─── ПОДКЛЮЧЕНИЕ К БД ─────────────────────────────────────────────────────────────────────
 
 def get_db():
     """
