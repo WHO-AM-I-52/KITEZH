@@ -26,7 +26,7 @@
   }
   details > summary::-webkit-details-marker { display: none; }
   details > summary::before {
-    content: '▶';
+    content: '\25B6';
     font-size: 11px;
     transition: transform 0.2s;
     display: inline-block;
@@ -55,7 +55,7 @@
     background: #dee2e6;
   }
 
-  /* ── панель обновления ── */
+  /* -- панель обновления -- */
   #updatePanel { transition: border-color .3s; }
   #updatePanel.has-update  { border-left-color: #198754 !important; }
   #updatePanel.no-update   { border-left-color: #6c757d !important; }
@@ -76,7 +76,7 @@
   body[data-theme="dark"] #updateLogPre { background:#1e2235; color:#e2e8f0; }
   body[data-theme="zone"] #updateLogPre { background:#161712; color:#c8c4a8; }
 
-  /* ── список коммитов ── */
+  /* -- список коммитов -- */
   #commitsWrap {
     margin-top: 10px;
     border-top: 1px solid #dee2e6;
@@ -125,7 +125,7 @@
   @keyframes spinOnce { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
   .spin { animation: spinOnce .7s linear infinite; display:inline-block; }
 
-  /* ── таймер до следующей автопроверки ── */
+  /* -- таймер до следующей автопроверки -- */
   #nextCheckInfo {
     font-size: 11px;
     color: #6c757d;
@@ -134,9 +134,14 @@
   #nextCheckInfo i { font-size: 11px; }
   body[data-theme="dark"] #nextCheckInfo { color: #8899aa; }
   body[data-theme="zone"] #nextCheckInfo { color: #9a9880; }
+
+  /* -- панель ТО -- */
+  #maintenancePanel { transition: border-color .3s; }
+  #maintenancePanel.mnt-active   { border-left-color: #dc3545 !important; }
+  #maintenancePanel.mnt-inactive { border-left-color: #6c757d !important; }
 </style>
 
-{# ── Карточка "О программе" ── #}
+{# -- Карточка "О программе" -- #}
 <div class="card mb-4 p-3" style="border-left:4px solid #1B5E7B">
   <div class="d-flex align-items-center gap-3">
     <div><i class="bi bi-person-circle" style="font-size:2.5rem;color:#1B5E7B"></i></div>
@@ -161,7 +166,7 @@
   </div>
 </div>
 
-{# ── Панель обновления (only admin) ── #}
+{# -- Панель обновления (only admin) -- #}
 {% if session.get('role') == 'admin' %}
 <div id="updatePanel" class="card mb-4 p-3" style="border-left:4px solid #adb5bd">
   <div class="d-flex align-items-center justify-content-between gap-3 flex-wrap">
@@ -176,7 +181,7 @@
         Проверяем обновления…
       </div>
 
-      {# блок коммитов — показывается только если есть обновления #}
+      {# блок коммитов -- показывается только если есть обновления #}
       <div id="commitsWrap" class="d-none">
         <div class="text-muted mb-1" style="font-size:11px">
           <i class="bi bi-git me-1"></i>Что изменилось:
@@ -206,9 +211,32 @@
     <pre id="updateLogPre"></pre>
   </div>
 </div>
+
+{# -- Панель технического обслуживания (only admin) -- #}
+<div id="maintenancePanel" class="card mb-4 p-3" style="border-left:4px solid #6c757d">
+  <div class="d-flex align-items-center justify-content-between gap-3 flex-wrap">
+    <div style="min-width:0;flex:1">
+      <div class="fw-bold" style="font-size:14px">
+        <i class="bi bi-tools me-1" style="color:#dc3545"></i>
+        Технические работы
+      </div>
+      <div id="mntStatus" class="text-muted mt-1" style="font-size:12px">
+        <span class="spin"><i class="bi bi-arrow-repeat"></i></span> Проверяем статус…
+      </div>
+    </div>
+    <div class="d-flex gap-2 flex-shrink-0">
+      <button id="btnMntOn" class="btn btn-sm btn-outline-danger d-none" onclick="mntOn()">
+        <i class="bi bi-cone-striped"></i> Включить ТО
+      </button>
+      <button id="btnMntOff" class="btn btn-sm btn-outline-success d-none" onclick="mntOff()">
+        <i class="bi bi-check-circle"></i> Выключить ТО
+      </button>
+    </div>
+  </div>
+</div>
 {% endif %}
 
-{# ── Заголовок ── #}
+{# -- Заголовок -- #}
 <div class="d-flex align-items-center mb-4 gap-3">
   <a href="{{ url_for('requests.index') }}" class="btn btn-sm btn-outline-secondary">
     <i class="bi bi-arrow-left"></i>
@@ -230,7 +258,7 @@
 
 <div style="max-width:760px">
 
-  {# ── 1. Спойлер: история версий ── #}
+  {# -- 1. Спойлер: история версий -- #}
   {% if changelog|length > 1 %}
   <details class="mb-3">
     <summary>
@@ -258,7 +286,7 @@
   </details>
   {% endif %}
 
-  {# ── 2. Текущая версия ── #}
+  {# -- 2. Текущая версия -- #}
   {% if changelog %}
   {% set cur = changelog[0] %}
   <div class="card mb-3 version-current">
@@ -279,10 +307,10 @@
   </div>
   {% endif %}
 
-  {# ── разделитель ── #}
+  {# -- разделитель -- #}
   <div class="timeline-divider">в планах</div>
 
-  {# ── 3. Следующая / в работе ── #}
+  {# -- 3. Следующая / в работе -- #}
   {% if next_item %}
   <div class="card mb-3 version-next">
     <div class="card-header d-flex justify-content-between align-items-center">
@@ -310,7 +338,7 @@
   </div>
   {% endif %}
 
-  {# ── 4. Спойлер: будущие планы (planned) ── #}
+  {# -- 4. Спойлер: будущие планы (planned) -- #}
   {% if future_items %}
   <details class="mb-3">
     <summary>
@@ -343,7 +371,7 @@
   </details>
   {% endif %}
 
-  {# ── 5. Спойлер: ИДЕИ (idea) ── #}
+  {# -- 5. Спойлер: ИДЕИ (idea) -- #}
   {% if idea_items %}
   <details class="mb-3">
     <summary>
@@ -391,7 +419,12 @@
   var _commitsList = document.getElementById('commitsList');
   var _UPD_CACHE   = 'sonar_upd_status';
 
-  // ── Расписание автопроверок: 12:00 и 17:00 ──────────────────────────
+  var _mntPanel  = document.getElementById('maintenancePanel');
+  var _mntStatus = document.getElementById('mntStatus');
+  var _btnMntOn  = document.getElementById('btnMntOn');
+  var _btnMntOff = document.getElementById('btnMntOff');
+
+  // -- Расписание автопроверок: 12:00 и 17:00 --
   var AUTO_CHECK_HOURS = [12, 17];
 
   function _nextCheckTarget() {
@@ -435,7 +468,7 @@
   _tickCountdown();
   setInterval(_tickCountdown, 1000);
 
-  // ── Отрисовка панели статуса ─────────────────────────────────────────
+  // -- Отрисовка панели статуса --
   function _updSetStatus(html, type) {
     _updStatus.innerHTML = html;
     _updPanel.className = _updPanel.className
@@ -452,7 +485,7 @@
     _logWrap.classList.remove('d-none');
   }
 
-  // ── Отрисовка списка коммитов ─────────────────────────────────────────
+  // -- Отрисовка списка коммитов --
   function _updRenderCommits(commits) {
     _commitsList.innerHTML = '';
     if (!commits || !commits.length) {
@@ -476,7 +509,7 @@
       .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
-  // ── Основной обработчик ответа /api/update/check ─────────────────────
+  // -- Основной обработчик ответа /api/update/check --
   function _updRenderResult(data) {
     if (data.has_update) {
       _updSetStatus(
@@ -515,7 +548,7 @@
     if (data.output) _updShowLog(data.output);
   }
 
-  // ── Проверка обновлений ───────────────────────────────────────────────
+  // -- Проверка обновлений --
   function updCheck(force) {
     if (force) sessionStorage.removeItem(_UPD_CACHE);
 
@@ -545,7 +578,7 @@
       .finally(function() { _btnCheck.disabled = false; });
   }
 
-  // ── Применить обновление ─────────────────────────────────────────────
+  // -- Применить обновление --
   function updApply() {
     if (!confirm(
       'Применить обновление?\n\nСервер автоматически перезапустится — пользователи получат кратковременный разрыв (~5-15 сек).'
@@ -627,7 +660,53 @@
       });
   }
 
+  // -- Технические работы --
+  function _mntRender(active) {
+    _mntPanel.className = _mntPanel.className
+      .replace(/\b(mnt-active|mnt-inactive)\b/g, '').trim();
+    if (active) {
+      _mntPanel.classList.add('mnt-active');
+      _mntStatus.innerHTML = '<i class="bi bi-cone-striped me-1 text-danger"></i><strong class="text-danger">Режим ТО активен</strong> — пользователи видят страницу технических работ';
+      _btnMntOn.classList.add('d-none');
+      _btnMntOff.classList.remove('d-none');
+    } else {
+      _mntPanel.classList.add('mnt-inactive');
+      _mntStatus.innerHTML = '<i class="bi bi-check-circle-fill me-1 text-success"></i>Сервер работает в штатном режиме';
+      _btnMntOn.classList.remove('d-none');
+      _btnMntOff.classList.add('d-none');
+    }
+  }
+
+  function mntCheck() {
+    fetch('/api/maintenance/status', {credentials: 'same-origin'})
+      .then(function(r) { return r.json(); })
+      .then(function(d) { _mntRender(d.active); })
+      .catch(function() {
+        _mntStatus.innerHTML = '<i class="bi bi-exclamation-triangle-fill me-1 text-warning"></i>Не удалось получить статус';
+      });
+  }
+
+  function mntOn() {
+    if (!confirm('Включить режим технических работ?\nВсе пользователи увидят страницу ТО.')) return;
+    _btnMntOn.disabled = true;
+    fetch('/maintenance/on', {method: 'POST', credentials: 'same-origin'})
+      .then(function(r) { return r.json(); })
+      .then(function(d) { _mntRender(d.active); })
+      .catch(function() { _mntStatus.innerHTML = '<i class="bi bi-x-circle-fill me-1 text-danger"></i>Ошибка'; })
+      .finally(function() { _btnMntOn.disabled = false; });
+  }
+
+  function mntOff() {
+    _btnMntOff.disabled = true;
+    fetch('/maintenance/off', {method: 'POST', credentials: 'same-origin'})
+      .then(function(r) { return r.json(); })
+      .then(function(d) { _mntRender(d.active); })
+      .catch(function() { _mntStatus.innerHTML = '<i class="bi bi-x-circle-fill me-1 text-danger"></i>Ошибка'; })
+      .finally(function() { _btnMntOff.disabled = false; });
+  }
+
   updCheck(false);
+  mntCheck();
 </script>
 {% endif %}
 
