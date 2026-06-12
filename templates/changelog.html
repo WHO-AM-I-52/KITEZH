@@ -139,6 +139,16 @@
   #maintenancePanel { transition: border-color .3s; }
   #maintenancePanel.mnt-active   { border-left-color: #dc3545 !important; }
   #maintenancePanel.mnt-inactive { border-left-color: #6c757d !important; }
+
+  /* -- панель уведомлений трея -- */
+  #trayPanel { transition: border-color .3s; }
+  #trayPanel.tray-critical { border-left-color: #fd7e14 !important; }
+  #trayPanel.tray-extended { border-left-color: #0d6efd !important; }
+
+  .tray-btn-active {
+    box-shadow: 0 0 0 2px currentColor;
+    font-weight: 700;
+  }
 </style>
 
 {# -- Карточка "О программе" -- #}
@@ -230,6 +240,34 @@
       </button>
       <button id="btnMntOff" class="btn btn-sm btn-outline-success d-none" onclick="mntOff()">
         <i class="bi bi-check-circle"></i> Выключить ТО
+      </button>
+    </div>
+  </div>
+</div>
+
+{# -- Панель уведомлений трея (only admin) -- #}
+<div id="trayPanel" class="card mb-4 p-3" style="border-left:4px solid #adb5bd">
+  <div class="d-flex align-items-center justify-content-between gap-3 flex-wrap">
+    <div style="min-width:0;flex:1">
+      <div class="fw-bold" style="font-size:14px">
+        <i class="bi bi-bell me-1" style="color:#fd7e14"></i>
+        Уведомления трея (Windows)
+      </div>
+      <div id="trayStatus" class="text-muted mt-1" style="font-size:12px">
+        <span class="spin"><i class="bi bi-arrow-repeat"></i></span> Загружаем…
+      </div>
+      <div class="mt-1" style="font-size:11px;color:#6c757d">
+        <i class="bi bi-info-circle me-1"></i>
+        <strong>Критические</strong> — только ошибки 500.&nbsp;
+        <strong>Расширенные</strong> — + маршрут и 5 строк traceback.
+      </div>
+    </div>
+    <div class="d-flex gap-2 flex-shrink-0">
+      <button id="btnTrayCritical" class="btn btn-sm btn-outline-warning" onclick="traySetLevel('critical')">
+        <i class="bi bi-exclamation-triangle"></i> Критические
+      </button>
+      <button id="btnTrayExtended" class="btn btn-sm btn-outline-primary" onclick="traySetLevel('extended')">
+        <i class="bi bi-bug"></i> Расширенные
       </button>
     </div>
   </div>
@@ -423,6 +461,11 @@
   var _mntStatus = document.getElementById('mntStatus');
   var _btnMntOn  = document.getElementById('btnMntOn');
   var _btnMntOff = document.getElementById('btnMntOff');
+
+  var _trayPanel       = document.getElementById('trayPanel');
+  var _trayStatus      = document.getElementById('trayStatus');
+  var _btnTrayCritical = document.getElementById('btnTrayCritical');
+  var _btnTrayExtended = document.getElementById('btnTrayExtended');
 
   // -- Расписание автопроверок: 12:00 и 17:00 --
   var AUTO_CHECK_HOURS = [12, 17];
@@ -705,8 +748,62 @@
       .finally(function() { _btnMntOff.disabled = false; });
   }
 
+  // ── Уведомления трея ──────────────────────────────────────────────────────
+  function _trayRender(level) {
+    _trayPanel.className = _trayPanel.className
+      .replace(/\b(tray-critical|tray-extended)\b/g, '').trim();
+    _btnTrayCritical.classList.remove('tray-btn-active');
+    _btnTrayExtended.classList.remove('tray-btn-active');
+
+    if (level === 'extended') {
+      _trayPanel.classList.add('tray-extended');
+      _trayStatus.innerHTML =
+        '<i class="bi bi-bug me-1" style="color:#0d6efd"></i>' +
+        '<strong style="color:#0d6efd">Расширенные</strong> — маршрут и фрагмент traceback в уведомлении';
+      _btnTrayExtended.classList.add('tray-btn-active');
+    } else {
+      _trayPanel.classList.add('tray-critical');
+      _trayStatus.innerHTML =
+        '<i class="bi bi-exclamation-triangle me-1" style="color:#fd7e14"></i>' +
+        '<strong style="color:#fd7e14">Критические</strong> — только маршрут и тип исключения';
+      _btnTrayCritical.classList.add('tray-btn-active');
+    }
+  }
+
+  function trayCheck() {
+    fetch('/api/tray/notify-level', {credentials: 'same-origin'})
+      .then(function(r) { return r.json(); })
+      .then(function(d) { _trayRender(d.level || 'critical'); })
+      .catch(function() {
+        _trayStatus.innerHTML =
+          '<i class="bi bi-exclamation-triangle-fill me-1 text-warning"></i>Не удалось получить уровень';
+      });
+  }
+
+  function traySetLevel(level) {
+    _btnTrayCritical.disabled = true;
+    _btnTrayExtended.disabled = true;
+    fetch('/api/tray/notify-level', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({level: level})
+    })
+      .then(function(r) { return r.json(); })
+      .then(function(d) { if (d.ok) _trayRender(d.level); })
+      .catch(function() {
+        _trayStatus.innerHTML =
+          '<i class="bi bi-x-circle-fill me-1 text-danger"></i>Ошибка при сохранении';
+      })
+      .finally(function() {
+        _btnTrayCritical.disabled = false;
+        _btnTrayExtended.disabled = false;
+      });
+  }
+
   updCheck(false);
   mntCheck();
+  trayCheck();
 </script>
 {% endif %}
 
