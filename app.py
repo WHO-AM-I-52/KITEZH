@@ -5,6 +5,7 @@
 # ║      fix #61 — rate-limiting                                ║
 # ║      fix #63 — _startup() вынесен из __main__           ║
 # ║      feat: maintenance mode (.maintenance флаг)              ║
+# ║      fix: /maintenance/ и /ping в исключениях            ║
 # ╚═════════════════════════════════════════════════════════════╝
 
 import os
@@ -77,12 +78,20 @@ def health():
 
 @app.before_request
 def check_maintenance():
-    """Если .maintenance существует — отдаём страницу ТО для всех запросов,
-    кроме /health и /static/."""
+    """Если .maintenance существует — отдаём страницу ТО для всех запросов.
+    Исключения:
+      /health      — JS-пуллер на странице ТО
+      /static/     — статика (CSS, JS, шрифты)
+      /maintenance/ — роуты управления ТО (авторизация внутри)
+      /ping        — хеартбит онлайн-присутствия
+    """
     if not os.path.exists(_MAINTENANCE_FLAG):
         return
     path = flask_request.path
-    if path == '/health' or path.startswith('/static/'):
+    if (path == '/health'
+            or path.startswith('/static/')
+            or path.startswith('/maintenance/')
+            or path == '/ping'):
         return
     return render_template('maintenance.html'), 503
 
