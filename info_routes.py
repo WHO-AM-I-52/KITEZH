@@ -6,6 +6,7 @@
 # ║  v2.4.0: /dashboard роут добавлен                            ║
 # ║  v2.5.0: управление уведомлениями (mark_all_read,            ║
 # ║           delete_selected, delete_read)                      ║
+# ║  v2.6.0: /maintenance/on|off|status — ручное и авто ТО       ║
 # ║  fix: ?force=1 сбрасывает серверный кэш                      ║
 # ║  fix: _restart.flag + sys.exit(42) → run_server.py           ║
 # ║  fix: удалён дублирующий /api/search (живёт в search_routes)  ║
@@ -26,6 +27,8 @@ import json
 import threading
 
 misc_bp = Blueprint('misc', __name__)
+
+_MAINTENANCE_FLAG = os.path.join(BASE_DIR, '.maintenance')
 
 
 @misc_bp.route('/notifications')
@@ -144,6 +147,49 @@ def api_online():
     return jsonify({'online': count})
 
 
+# ─── Управление режимом технического обслуживания ────────────────────────────
+
+@misc_bp.route('/maintenance/on', methods=['POST'])
+def maintenance_on():
+    """Включает режим ТО вручную (только admin)."""
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'forbidden'}), 403
+    try:
+        open(_MAINTENANCE_FLAG, 'w').close()
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    conn = get_db()
+    log_action(conn, session['user_id'], 'maintenance_on', detail='Включён режим технического обслуживания')
+    conn.commit()
+    conn.close()
+    return jsonify({'ok': True, 'active': True})
+
+
+@misc_bp.route('/maintenance/off', methods=['POST'])
+def maintenance_off():
+    """Выключает режим ТО вручную (только admin)."""
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'forbidden'}), 403
+    try:
+        if os.path.exists(_MAINTENANCE_FLAG):
+            os.remove(_MAINTENANCE_FLAG)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    conn = get_db()
+    log_action(conn, session['user_id'], 'maintenance_off', detail='Выключён режим технического обслуживания')
+    conn.commit()
+    conn.close()
+    return jsonify({'ok': True, 'active': False})
+
+
+@misc_bp.route('/api/maintenance/status')
+def maintenance_status():
+    """Возвращает текущий статус режима ТО (только admin)."""
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'forbidden'}), 403
+    return jsonify({'active': os.path.exists(_MAINTENANCE_FLAG)})
+
+
 # ─── Обновления KITEZH через GitHub ──────────────────────────────────────────
 
 _FLAG_FILE    = os.path.join(BASE_DIR, '_update_available.json')
@@ -245,6 +291,12 @@ def api_update_apply():
         pass
 
     def _worker():
+        # Включаем режим ТО до перезапуска — пользователи увидят maintenance.html
+        try:
+            open(_MAINTENANCE_FLAG, 'w').close()
+        except Exception:
+            pass
+
         try:
             subprocess.run([sys.executable, _UPDATER], timeout=300)
         except Exception:
