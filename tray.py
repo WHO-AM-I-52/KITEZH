@@ -2,10 +2,11 @@
 # ║  tray.py                                                      ║
 # ║  Иконка KITEZH в системном трее Windows.                     ║
 # ║  Запускается из run_server.py если KITEZH_TRAY=1             ║
+# ║  notify_error(title, msg) — Windows-уведомление об ошибке    ║
+# ║  get_notify_level() — читает уровень из classifiers          ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 import os
-import sys
 import ctypes
 import threading
 import webbrowser
@@ -19,6 +20,44 @@ ICON_PATH = os.path.join(BASE_DIR, 'static', 'favicon.ico')
 _console_visible = True
 _tray_icon = None
 
+
+# ─── УРОВЕНЬ УВЕДОМЛЕНИЙ ────────────────────────────────────────────────────────────
+
+def get_notify_level() -> str:
+    """
+    Читает уровень уведомлений из таблицы classifiers.
+    Возвращает 'critical' или 'extended'.
+    При любой ошибке чтения БД — возвращает 'critical' (безопасно).
+    """
+    try:
+        from db import get_db
+        conn = get_db()
+        row = conn.execute(
+            "SELECT value FROM classifiers WHERE category=? LIMIT 1",
+            ('tray_notify_level',)
+        ).fetchone()
+        conn.close()
+        if row and row['value'] in ('critical', 'extended'):
+            return row['value']
+    except Exception:
+        pass
+    return 'critical'
+
+
+def notify_error(title: str, message: str) -> None:
+    """
+    Показывает Windows-уведомление через иконку трея.
+    Безопасно если трей не запущен — ничего не делает.
+    """
+    if _tray_icon is None:
+        return
+    try:
+        _tray_icon.notify(message, title)
+    except Exception:
+        pass
+
+
+# ─── КОНСОЛЬ ───────────────────────────────────────────────────────────────────────────
 
 def _get_console_hwnd():
     return ctypes.windll.kernel32.GetConsoleWindow()
@@ -43,6 +82,8 @@ def _hide_console():
     if _tray_icon:
         _tray_icon.update_menu()
 
+
+# ─── МЕНЮ ТРЕЯ ─────────────────────────────────────────────────────────────────────────
 
 def _open_browser(icon, item):
     webbrowser.open('http://127.0.0.1:5000')
@@ -72,6 +113,8 @@ def _make_menu():
         pystray.MenuItem('Остановить KITEZH', _stop_server),
     )
 
+
+# ─── ЗАПУСК ────────────────────────────────────────────────────────────────────────────
 
 def run_tray(hide_on_start: bool = True):
     """Запускает иконку трея. Блокирует поток до остановки."""
