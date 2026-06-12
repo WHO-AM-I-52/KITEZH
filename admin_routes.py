@@ -2,7 +2,7 @@
 # ║                      admin_routes.py                         ║
 # ║  v2.8: уведомление пользователю при изменении прав доступа   ║
 # ║  v2.9: /admin дашборд, /admin/deps, /api/deps/check|install  ║
-# ╚═════════════════════════════════════════════════════════════╝
+# ╚══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify
 import json
@@ -11,16 +11,17 @@ import sys
 import subprocess
 import importlib.util
 
-from db import get_db, BASE_DIR
+from db import get_db
 from auth_utils import login_required, admin_required, hash_pw, ALL_PERMISSIONS
 from activity_log import get_activity_log, ACTION_LABELS
 
 admin_bp = Blueprint('admin', __name__)
 
-_REQUIREMENTS = os.path.join(BASE_DIR, 'requirements.txt')
+# requirements.txt лежит рядом с этим файлом
+_REQUIREMENTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'requirements.txt')
 
 
-# ─── /admin дашборд ─────────────────────────────────────────────────────────────────────────
+# ─── /admin дашборд ──────────────────────────────────────────────────────────
 @admin_bp.route('/admin')
 @login_required
 @admin_required
@@ -28,7 +29,7 @@ def admin_index():
     return render_template('admin/index.html')
 
 
-# ─── /admin/deps ────────────────────────────────────────────────────────────────────────
+# ─── /admin/deps ─────────────────────────────────────────────────────────────
 @admin_bp.route('/admin/deps')
 @login_required
 @admin_required
@@ -36,14 +37,17 @@ def admin_deps():
     return render_template('admin/deps.html')
 
 
-# ─── /api/deps/check ───────────────────────────────────────────────────────────────────
+# ─── /api/deps/check ─────────────────────────────────────────────────────────
 @admin_bp.route('/api/deps/check')
 @login_required
 @admin_required
 def api_deps_check():
     """Read requirements.txt, check which packages are installed."""
     if not os.path.exists(_REQUIREMENTS):
-        return jsonify({'error': 'requirements.txt not found'}), 404
+        return jsonify({'error': 'requirements.txt not found', 'path': _REQUIREMENTS}), 404
+
+    import re
+    import importlib.metadata as meta
 
     packages = []
     with open(_REQUIREMENTS, encoding='utf-8') as f:
@@ -51,28 +55,22 @@ def api_deps_check():
             line = line.strip()
             if not line or line.startswith('#'):
                 continue
-            # Разбиваем на имя и версию: flask==3.1.3 → name=flask, ver=3.1.3
-            import re
             m = re.match(r'^([A-Za-z0-9_\-\.]+)([><=!].+)?$', line)
             if not m:
                 continue
             pkg_name = m.group(1)
             req_ver  = (m.group(2) or '').strip()
 
-            # Проверяем установлен ли пакет
             installed     = False
             installed_ver = ''
             try:
-                # importlib.util.find_spec работает для большинства пакетов
-                spec = importlib.util.find_spec(pkg_name.replace('-', '_').lower())
+                spec      = importlib.util.find_spec(pkg_name.replace('-', '_').lower())
                 installed = spec is not None
             except (ModuleNotFoundError, ValueError):
                 installed = False
 
-            # Получаем установленную версию через importlib.metadata
             if installed:
                 try:
-                    import importlib.metadata as meta
                     installed_ver = meta.version(pkg_name)
                 except Exception:
                     installed_ver = ''
@@ -87,7 +85,7 @@ def api_deps_check():
     return jsonify({'packages': packages})
 
 
-# ─── /api/deps/install ──────────────────────────────────────────────────────────────────
+# ─── /api/deps/install ───────────────────────────────────────────────────────
 @admin_bp.route('/api/deps/install', methods=['POST'])
 @login_required
 @admin_required
@@ -125,7 +123,7 @@ def api_deps_install():
         return jsonify({'ok': False, 'error': str(e)})
 
 
-# ─── Войти как (Имперсонация) ───────────────────────────────────────────────────────
+# ─── Войти как (Имперсонация) ────────────────────────────────────────────────
 @admin_bp.route('/impersonate/<int:uid>')
 @login_required
 @admin_required
@@ -176,7 +174,7 @@ def impersonate_stop():
     return redirect(url_for('requests.index'))
 
 
-# ─── Классификаторы ─────────────────────────────────────────────────────────────────────────────────
+# ─── Классификаторы ──────────────────────────────────────────────────────────
 @admin_bp.route('/admin/classifiers', methods=['GET', 'POST'])
 @login_required
 @admin_required
