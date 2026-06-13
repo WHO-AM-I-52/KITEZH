@@ -5,6 +5,7 @@
 # ║  v3.0: fix deps/install — WinPython-совместимость              ║
 # ║  v3.1: fix syntax — убран мусор 'raktika:' в classifiers()    ║
 # ║  v3.2: fix deps/check — маппинг import-имён для pip-пакетов    ║
+# ║  v3.3: fix _IMPORT_NAME — убран дубль Pillow, добавлен pystray ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify
@@ -27,13 +28,13 @@ _REQUIREMENTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'requir
 #          → реальное import-имя модуля
 # Нужен для пакетов, у которых имя дистрибутива ≠ import-имени
 _IMPORT_NAME = {
-    'python-dotenv': 'dotenv',
-    'Pillow':        'PIL',
-    'python-docx':   'docx',
-    'pdfminer.six':  'pdfminer',
-    'scikit-learn':  'sklearn',
-    'beautifulsoup4':'bs4',
-    'Pillow':        'PIL',
+    'python-dotenv':  'dotenv',
+    'Pillow':         'PIL',
+    'python-docx':    'docx',
+    'pdfminer.six':   'pdfminer',
+    'scikit-learn':   'sklearn',
+    'beautifulsoup4': 'bs4',
+    'pystray':        'pystray',
 }
 
 
