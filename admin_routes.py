@@ -4,6 +4,7 @@
 # ║  v2.9: /admin дашборд, /admin/deps, /api/deps/check|install  ║
 # ║  v3.0: fix deps/install — WinPython-совместимость              ║
 # ║  v3.1: fix syntax — убран мусор 'raktika:' в classifiers()    ║
+# ║  v3.2: fix deps/check — маппинг import-имён для pip-пакетов    ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify
@@ -22,8 +23,21 @@ admin_bp = Blueprint('admin', __name__)
 # requirements.txt лежит рядом с этим файлом
 _REQUIREMENTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'requirements.txt')
 
+# Маппинг: имя дистрибутива pip (как в requirements.txt)
+#          → реальное import-имя модуля
+# Нужен для пакетов, у которых имя дистрибутива ≠ import-имени
+_IMPORT_NAME = {
+    'python-dotenv': 'dotenv',
+    'Pillow':        'PIL',
+    'python-docx':   'docx',
+    'pdfminer.six':  'pdfminer',
+    'scikit-learn':  'sklearn',
+    'beautifulsoup4':'bs4',
+    'Pillow':        'PIL',
+}
 
-# ─── /admin дашборд ──────────────────────────────────────────────────────────
+
+# ─── /admin дашборд ─────────────────────────────────────────────────────────────────────────────────────
 @admin_bp.route('/admin')
 @login_required
 @admin_required
@@ -31,7 +45,7 @@ def admin_index():
     return render_template('admin/index.html')
 
 
-# ─── /admin/deps ─────────────────────────────────────────────────────────────
+# ─── /admin/deps ─────────────────────────────────────────────────────────────────────────────────────
 @admin_bp.route('/admin/deps')
 @login_required
 @admin_required
@@ -39,7 +53,7 @@ def admin_deps():
     return render_template('admin/deps.html')
 
 
-# ─── /api/deps/check ───────────────────────────────────────────────────────
+# ─── /api/deps/check ────────────────────────────────────────────────────────────────────────────────
 @admin_bp.route('/api/deps/check')
 @login_required
 @admin_required
@@ -63,10 +77,14 @@ def api_deps_check():
             pkg_name = m.group(1)
             req_ver  = (m.group(2) or '').strip()
 
+            # Определяем реальное import-имя:
+            # если есть в маппинге — берём его, иначе преобразуем дефисные в подчёрки
+            import_name = _IMPORT_NAME.get(pkg_name) or pkg_name.replace('-', '_').lower()
+
             installed     = False
             installed_ver = ''
             try:
-                spec      = importlib.util.find_spec(pkg_name.replace('-', '_').lower())
+                spec      = importlib.util.find_spec(import_name)
                 installed = spec is not None
             except (ModuleNotFoundError, ValueError):
                 installed = False
@@ -87,7 +105,7 @@ def api_deps_check():
     return jsonify({'packages': packages, 'path': _REQUIREMENTS})
 
 
-# ─── /api/deps/install ─────────────────────────────────────────────────────
+# ─── /api/deps/install ─────────────────────────────────────────────────────────────────────────────
 @admin_bp.route('/api/deps/install', methods=['POST'])
 @login_required
 @admin_required
@@ -138,7 +156,7 @@ def api_deps_install():
         return jsonify({'ok': False, 'error': str(e)})
 
 
-# ─── Войти как (Имперсонация) ────────────────────────────────────────────────
+# ─── Войти как (Имперсонация) ───────────────────────────────────────────────────────────────────────
 @admin_bp.route('/impersonate/<int:uid>')
 @login_required
 @admin_required
@@ -189,7 +207,7 @@ def impersonate_stop():
     return redirect(url_for('requests.index'))
 
 
-# ─── Классификаторы ──────────────────────────────────────────────────────────
+# ─── Классификаторы ─────────────────────────────────────────────────────────────────────────────────────
 @admin_bp.route('/admin/classifiers', methods=['GET', 'POST'])
 @login_required
 @admin_required
