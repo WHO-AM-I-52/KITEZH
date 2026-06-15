@@ -1,7 +1,7 @@
 """
 admin_sql_routes.py — консоль прямых SQL-запросов для администратора.
 
-Добавить в app.py одну строку:
+Добавить в app.py:
     from admin_sql_routes import admin_sql_bp
     app.register_blueprint(admin_sql_bp)
 Доступ: http://127.0.0.1:5000/admin/sql
@@ -14,11 +14,22 @@ from datetime import datetime
 
 admin_sql_bp = Blueprint('admin_sql', __name__, url_prefix='/admin/sql')
 
-# Запрещённые ключевые слова (case-insensitive)
+# Запрещённые ключевые слова
 _BLOCKED = re.compile(
     r'\b(DROP|ATTACH|DETACH|PRAGMA|VACUUM|sqlite_master|sqlite_temp_master)\b',
     re.IGNORECASE
 )
+
+# Мутирующие операции — требуют подтверждения
+_MUTATING = re.compile(
+    r'^\s*(UPDATE|DELETE|INSERT|REPLACE|TRUNCATE)\b',
+    re.IGNORECASE
+)
+
+# Автолимит для SELECT без своего LIMIT
+_AUTO_LIMIT = 500
+_HAS_LIMIT  = re.compile(r'\bLIMIT\b', re.IGNORECASE)
+_IS_SELECT  = re.compile(r'^\s*SELECT\b', re.IGNORECASE)
 
 
 def _require_admin():
@@ -28,17 +39,33 @@ def _require_admin():
     return None
 
 
+def _has_multiple_statements(query: str) -> bool:
+    """True если запрос содержит более одного statement (защита от stacked queries)."""
+    # Убираем строки и строковые литералы, чтобы не срабатывать на ';' внутри значения
+    cleaned = re.sub(r"'[^']*'", "''", query)
+    cleaned = re.sub(r'"[^"]*"', '""', cleaned)
+    parts = [p.strip() for p in cleaned.split(';') if p.strip()]
+    return len(parts) > 1
+
+
+def _apply_auto_limit(query: str) -> str:
+    """SELECT без LIMIT — автоматически добавляет LIMIT 500."""
+    if _IS_SELECT.match(query) and not _HAS_LIMIT.search(query):
+        return query.rstrip().rstrip(';') + f' LIMIT {_AUTO_LIMIT}'
+    return query
+
+
 def _ensure_log_table(conn):
     conn.execute("""
         CREATE TABLE IF NOT EXISTS admin_sql_log (
-            id         INTEGER PRIMARY KEY AUTOINCREMENT,
-            executed_at TEXT NOT NULL,
-            user_id    INTEGER,
-            username   TEXT,
-            query      TEXT NOT NULL,
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            executed_at   TEXT NOT NULL,
+            user_id       INTEGER,
+            username      TEXT,
+            query         TEXT NOT NULL,
             rows_affected INTEGER,
-            ok         INTEGER NOT NULL DEFAULT 1,
-            error      TEXT
+            ok            INTEGER NOT NULL DEFAULT 1,
+            error         TEXT
         )
     """)
 
@@ -57,12 +84,29 @@ def sql_execute():
     if guard:
         return jsonify({'error': 'Нет доступа'}), 403
 
-    query = (request.json or {}).get('query', '').strip()
+    payload   = request.json or {}
+    query     = payload.get('query', '').strip()
+    confirmed = payload.get('confirmed', False)
+
     if not query:
         return jsonify({'error': 'Запрос пустой'}), 400
 
     if _BLOCKED.search(query):
         return jsonify({'error': 'Запрос содержит запрещённую операцию (DROP/ATTACH/PRAGMA/VACUUM)'}), 400
+
+    if _has_multiple_statements(query):
+        return jsonify({'error': 'Нельзя выполнять несколько запросов за один раз (уберите лишние строки через ";")'}), 400
+
+    # Мутирующий запрос без подтверждения — просим фронт подтвердить
+    if _MUTATING.match(query) and not confirmed:
+        return jsonify({
+            'needs_confirm': True,
+            'message': 'Запрос изменяет данные (UPDATE/DELETE/INSERT). Вы уверены?'
+        }), 200
+
+    # Автолимит для SELECT
+    query_exec = _apply_auto_limit(query)
+    auto_limited = query_exec != query
 
     conn = get_db()
     _ensure_log_table(conn)
@@ -72,7 +116,7 @@ def sql_execute():
     ok, error, columns, rows, rows_affected = 1, None, [], [], 0
 
     try:
-        cursor = conn.execute(query)
+        cursor = conn.execute(query_exec)
         conn.commit()
         rows_affected = cursor.rowcount
 
@@ -87,7 +131,7 @@ def sql_execute():
         error = str(e)
         conn.rollback()
 
-    # Логируем
+    # Логируем оригинальный запрос (не модифицированный)
     try:
         conn.execute("""
             INSERT INTO admin_sql_log
@@ -103,8 +147,30 @@ def sql_execute():
         return jsonify({'error': error}), 400
 
     return jsonify({
-        'columns': columns,
-        'rows': rows,
+        'columns':      columns,
+        'rows':         rows,
         'rows_affected': rows_affected,
-        'is_select': bool(columns)
+        'is_select':    bool(columns),
+        'auto_limited': auto_limited,
+        'limit':        _AUTO_LIMIT,
     })
+
+
+@admin_sql_bp.route('/schema', methods=['GET'])
+def sql_schema():
+    """GET /admin/sql/schema — возвращает список таблиц и их колонок."""
+    guard = _require_admin()
+    if guard:
+        return jsonify({'error': 'Нет доступа'}), 403
+
+    conn = get_db()
+    tables = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+    ).fetchall()
+
+    schema = {}
+    for (tname,) in tables:
+        cols = conn.execute(f'PRAGMA table_info("{tname}")').fetchall()
+        schema[tname] = [c[1] for c in cols]  # c[1] = name
+
+    return jsonify(schema)
