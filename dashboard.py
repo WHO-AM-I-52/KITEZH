@@ -141,11 +141,22 @@ def build_dash(conn, period):
     ).fetchall()
 
     # ─── РАЙОНЫ ──────────────────────────────────────────────────
-    dist_rows = conn.execute(
-        f"SELECT preferred_districts,COUNT(*) FROM requests r "
-        f"WHERE preferred_districts IS NOT NULL AND preferred_districts!=''{pw_sql} "
-        f"GROUP BY 1 ORDER BY 2 DESC LIMIT 12", pw_params
+    # preferred_districts может хранить несколько районов через запятую —
+    # разбиваем в Python как source_type, затем берём топ-12
+    dist_raw = conn.execute(
+        f"SELECT preferred_districts FROM requests r "
+        f"WHERE preferred_districts IS NOT NULL AND preferred_districts!=''{pw_sql}",
+        pw_params
     ).fetchall()
+
+    dist_counts = {}
+    for row in dist_raw:
+        for d in (row[0] or '').split(','):
+            d = d.strip()
+            if d:
+                dist_counts[d] = dist_counts.get(d, 0) + 1
+
+    dist_top = sorted(dist_counts.items(), key=lambda x: x[1], reverse=True)[:12]
 
     # ─── ТИП ПЛОЩАДКИ ──────────────────────────────────────
     st_free = conn.execute(
@@ -226,7 +237,7 @@ def build_dash(conn, period):
         'kpi':               kpi_data,
         'trend_chart':       {'labels': [r[0] for r in tr],        'values': [r[1] for r in tr]},
         'emp_chart':         {'labels': [r[0] for r in emp_rows],  'values': [r[1] for r in emp_rows]},
-        'dist_chart':        {'labels': [r[0] for r in dist_rows], 'values': [r[1] for r in dist_rows]},
+        'dist_chart':        {'labels': [k for k, v in dist_top],  'values': [v for k, v in dist_top]},
         'site_type': {
             'free':          st_free,
             'existing':      st_ex,
