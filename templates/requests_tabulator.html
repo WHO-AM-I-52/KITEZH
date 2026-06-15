@@ -7,25 +7,30 @@
  ║  v1.5: bulk delete — чекбоксы + кнопка «Удалить выбранные»  ║
  ║  v1.6: overdue filter — карточка «Просрочено», убраны        ║
  ║         дублирующие чипы статуса                              ║
+ ║  v1.7: добавлены карточки ready_to_send, sent_to_applicant,  ║
+ ║         closed — теперь все 7 статусов + Просрочено + Всего  ║
  ╚══════════════════════════════════════════════════════════════╝
 #}
 
 {% block extra_head %}
 <style>
-.stat-cards { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
-.stat-card  { flex:1; min-width:140px; background:var(--surface); border-radius:10px;
-              border-left:4px solid #aaa; padding:10px 14px; cursor:pointer;
+.stat-cards { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
+.stat-card  { flex:1; min-width:120px; background:var(--surface); border-radius:10px;
+              border-left:4px solid #aaa; padding:10px 12px; cursor:pointer;
               box-shadow:var(--card-shadow); transition:box-shadow .15s, transform .12s;
               text-decoration:none; color:inherit; }
 .stat-card:hover  { box-shadow:0 4px 16px rgba(0,0,0,.12); transform:translateY(-1px); }
 .stat-card.active { box-shadow:0 0 0 2px var(--accent); }
-.stat-card .sc-num  { font-size:28px; font-weight:700; line-height:1; }
-.stat-card .sc-lbl  { font-size:11px; color:var(--text-muted); margin-top:2px; }
-.stat-card.sc-all   { border-left-color:#6c757d; }
+.stat-card .sc-num  { font-size:24px; font-weight:700; line-height:1; }
+.stat-card .sc-lbl  { font-size:10px; color:var(--text-muted); margin-top:2px; }
+.stat-card.sc-all   { border-left-color:#1B5E7B; }
 .stat-card.sc-draft { border-left-color:#6c757d; }
 .stat-card.sc-reg   { border-left-color:#0dcaf0; }
 .stat-card.sc-work  { border-left-color:#0d6efd; }
 .stat-card.sc-rev   { border-left-color:#ffc107; }
+.stat-card.sc-ready { border-left-color:#198754; }
+.stat-card.sc-sent  { border-left-color:#20c997; }
+.stat-card.sc-closed{ border-left-color:#212529; }
 .stat-card.sc-over  { border-left-color:#dc3545; }
 
 .filter-panel { background:var(--surface); border-radius:10px; padding:14px 16px 10px;
@@ -126,6 +131,15 @@
   <div class="stat-card sc-rev" data-filter-status="under_review">
     <div class="sc-num" id="sc-under_review">—</div><div class="sc-lbl"><i class="bi bi-search"></i> На проверке</div>
   </div>
+  <div class="stat-card sc-ready" data-filter-status="ready_to_send">
+    <div class="sc-num" id="sc-ready_to_send">—</div><div class="sc-lbl"><i class="bi bi-envelope-check"></i> Готово к отправке</div>
+  </div>
+  <div class="stat-card sc-sent" data-filter-status="sent_to_applicant">
+    <div class="sc-num" id="sc-sent_to_applicant">—</div><div class="sc-lbl"><i class="bi bi-send-check"></i> Отправлено</div>
+  </div>
+  <div class="stat-card sc-closed" data-filter-status="closed">
+    <div class="sc-num" id="sc-closed">—</div><div class="sc-lbl"><i class="bi bi-check2-circle"></i> Закрыто</div>
+  </div>
   <div class="stat-card sc-over" data-filter-status="__overdue__">
     <div class="sc-num" id="sc-overdue">—</div><div class="sc-lbl"><i class="bi bi-exclamation-triangle"></i> Просрочено</div>
   </div>
@@ -149,7 +163,7 @@
         <option value="registered">Зарегистрировано</option>
         <option value="in_progress">В работе</option>
         <option value="under_review">На проверке</option>
-        <option value="ready_to_send">Готово</option>
+        <option value="ready_to_send">Готово к отправке</option>
         <option value="sent_to_applicant">Отправлено</option>
         <option value="closed">Закрыто</option>
       </select>
@@ -226,13 +240,13 @@ const IS_ADMIN = {{ 'true' if session.get('role')=='admin' else 'false' }};
 const USER_ID  = {{ session.get('user_id', 0) }};
 
 const STATUS_MAP = {
-  draft:             { text:'Черновик',         cls:'status-draft' },
-  registered:        { text:'Зарегистрировано', cls:'status-registered' },
-  in_progress:       { text:'В работе',         cls:'status-in_progress' },
-  under_review:      { text:'На проверке',      cls:'status-under_review' },
-  ready_to_send:     { text:'Готово',           cls:'status-ready_to_send' },
-  sent_to_applicant: { text:'Отправлено',       cls:'status-sent_to_applicant' },
-  closed:            { text:'Закрыто',          cls:'status-closed' },
+  draft:             { text:'Черновик',            cls:'status-draft' },
+  registered:        { text:'Зарегистрировано',    cls:'status-registered' },
+  in_progress:       { text:'В работе',            cls:'status-in_progress' },
+  under_review:      { text:'На проверке',         cls:'status-under_review' },
+  ready_to_send:     { text:'Готово к отправке',   cls:'status-ready_to_send' },
+  sent_to_applicant: { text:'Отправлено',          cls:'status-sent_to_applicant' },
+  closed:            { text:'Закрыто',             cls:'status-closed' },
 };
 
 const state = {
@@ -459,7 +473,8 @@ table.on('dataSorted', function(sorters) {
 
 function updateStatCards(stats) {
   if (!stats) return;
-  ['all','draft','registered','in_progress','under_review','overdue'].forEach(k => {
+  ['all','draft','registered','in_progress','under_review',
+   'ready_to_send','sent_to_applicant','closed','overdue'].forEach(k => {
     const el = document.getElementById('sc-' + k);
     if (el) el.textContent = stats[k] ?? '—';
   });
@@ -548,17 +563,14 @@ document.querySelectorAll('.stat-card').forEach(card=>{
     document.querySelectorAll('.stat-card').forEach(c=>c.classList.remove('active'));
     this.classList.add('active');
     if (val === '__overdue__') {
-      // Просроченные: включаем overdue, сбрасываем статус
       state.overdue = true;
       state.status  = '';
       document.getElementById('fStatus').value = '';
     } else {
-      // Обычный статус: сбрасываем overdue
       state.overdue = false;
       state.status  = val || '';
       document.getElementById('fStatus').value = state.status;
     }
-    // employee, dateFrom, dateTo, dateChip — не трогаем
     applyFilters();
   });
 });
