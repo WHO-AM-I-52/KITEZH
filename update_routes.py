@@ -5,6 +5,8 @@
 # ║  v1.1.0: /api/update/schedule — запланированное обновление   ║
 # ║           /api/update/pre-status — статус для глобального    ║
 # ║           поллера всех страниц                               ║
+# ║  v1.1.1: pre-status добавляет fire_at_ts для точного      ║
+# ║           обратного отсчёта в баннере                        ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, jsonify, request as flask_request, session
@@ -49,7 +51,7 @@ def _clear_pre_update():
         pass
 
 
-# ─── Проверка обновлений ───────────────────────────────────────────────────────
+# ─── Проверка обновлений ─────────────────────────────────────────────────────────
 
 @update_bp.route('/api/update/check')
 def api_update_check():
@@ -116,7 +118,7 @@ def api_update_check():
                         'has_update': False, 'local_sha': _read_local_sha()}), 200
 
 
-# ─── Немедленное применение обновления ────────────────────────────────────────
+# ─── Немедленное применение обновления ──────────────────────────────────────────
 
 @update_bp.route('/api/update/apply', methods=['POST'])
 def api_update_apply():
@@ -273,7 +275,7 @@ def api_update_schedule():
     })
 
 
-# ─── Отмена запланированного обновления ───────────────────────────────────────
+# ─── Отмена запланированного обновления ───────────────────────────────────────────
 
 @update_bp.route('/api/update/schedule/cancel', methods=['POST'])
 def api_update_schedule_cancel():
@@ -301,6 +303,7 @@ def api_update_schedule_cancel():
 def api_update_pre_status():
     """Возвращает статус запланированного обновления для глобального поллера.
     Доступен всем авторизованным пользователям — не только admin.
+    v1.1.1: добавляет fire_at_ts для точного отсчёта в баннере (update_banner.js).
     """
     if 'user_id' not in session:
         return jsonify({'scheduled': False}), 200
@@ -311,10 +314,12 @@ def api_update_pre_status():
     try:
         with open(_PRE_UPDATE_FILE, 'r', encoding='utf-8') as f:
             data = json.load(f)
-        seconds_left = max(0, int(data['fire_at_ts'] - time.time()))
+        fire_at_ts   = data['fire_at_ts']
+        seconds_left = max(0, int(fire_at_ts - time.time()))
         return jsonify({
             'scheduled':    True,
             'seconds_left': seconds_left,
+            'fire_at_ts':   fire_at_ts,          # новое поле — для update_banner.js
             'scheduled_by': data.get('scheduled_by', ''),
             'scheduled_at': data.get('scheduled_at', ''),
         })
