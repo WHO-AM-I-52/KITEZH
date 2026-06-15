@@ -8,6 +8,7 @@
 # ║      feat: errorhandler(500) → tray.notify_error()          ║
 # ║      feat: admin_sql_bp — SQL-консоль админа               ║
 # ║      fix #15 — админ проходит сквозь режим ТО              ║
+# ║      fix #15 — /login и /change-password доступны в ТО     ║
 # ╚═══════════════════════════════════════════════════════════════╝
 
 import os
@@ -83,11 +84,13 @@ def health():
 def check_maintenance():
     """Если .maintenance существует — отдаём страницу ТО для всех запросов.
     Исключения:
-      role == admin — админ всегда проходит (управляет режимом ТО)
-      /health       — JS-пуллер на странице ТО
-      /static/      — статика (CSS, JS, шрифты)
-      /maintenance/ — роуты управления ТО (авторизация внутри)
-      /ping         — хеартбит онлайн-присутствия
+      role == admin  — админ всегда проходит (управляет режимом ТО)
+      /health        — JS-пуллер на странице ТО
+      /static/       — статика (CSS, JS, шрифты)
+      /maintenance/  — роуты управления ТО (авторизация внутри)
+      /ping          — хеартбит онлайн-присутствия
+      /login         — точка входа (форма авторизации)
+      /change-password — смена пароля при первом входе
     """
     if not os.path.exists(_MAINTENANCE_FLAG):
         return
@@ -97,7 +100,9 @@ def check_maintenance():
     if (path == '/health'
             or path.startswith('/static/')
             or path.startswith('/maintenance/')
-            or path == '/ping'):
+            or path == '/ping'
+            or path == '/login'
+            or path == '/change-password'):
         return
     return render_template('maintenance.html'), 503
 
