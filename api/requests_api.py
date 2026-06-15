@@ -24,7 +24,7 @@ from db import get_db
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
 
-# ─── Декоратор ─────────────────────────────────────────────────────────────────────
+# ─── Декоратор ─────────────────────────────────────────────────────────────────────────────
 def login_required_api(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -34,7 +34,7 @@ def login_required_api(f):
     return decorated
 
 
-# ─── Белые поля для сортировки (защита от SQL-инъекции) ──────────────────────
+# ─── Белые поля для сортировки (защита от SQL-инъекции) ────────────
 _ALLOWED_SORT = {
     'id':             'r.id',
     'number':         'r.request_number',
@@ -82,9 +82,9 @@ def _date_range(chip):
     return None, None
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────────────────────────────────────
 # GET /api/requests
-# ─────────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
 @api_bp.route('/requests')
 @login_required_api
 def get_requests():
@@ -231,27 +231,33 @@ def get_requests():
 
     stats_rows = db.execute(f"""
         SELECT
-            COUNT(*)                                                       AS total,
-            SUM(CASE WHEN r.status='draft'             THEN 1 ELSE 0 END) AS draft,
-            SUM(CASE WHEN r.status='registered'        THEN 1 ELSE 0 END) AS registered,
-            SUM(CASE WHEN r.status='in_progress'       THEN 1 ELSE 0 END) AS in_progress,
-            SUM(CASE WHEN r.status='under_review'      THEN 1 ELSE 0 END) AS under_review,
+            COUNT(*)                                                            AS total,
+            SUM(CASE WHEN r.status='draft'             THEN 1 ELSE 0 END)      AS draft,
+            SUM(CASE WHEN r.status='registered'        THEN 1 ELSE 0 END)      AS registered,
+            SUM(CASE WHEN r.status='in_progress'       THEN 1 ELSE 0 END)      AS in_progress,
+            SUM(CASE WHEN r.status='under_review'      THEN 1 ELSE 0 END)      AS under_review,
+            SUM(CASE WHEN r.status='ready_to_send'     THEN 1 ELSE 0 END)      AS ready_to_send,
+            SUM(CASE WHEN r.status='sent_to_applicant' THEN 1 ELSE 0 END)      AS sent_to_applicant,
+            SUM(CASE WHEN r.status='closed'            THEN 1 ELSE 0 END)      AS closed,
             SUM(CASE
                     WHEN r.status NOT IN ('closed','draft','sent_to_applicant')
                      AND r.review_deadline IS NOT NULL
                      AND r.review_deadline < date('now')
-                    THEN 1 ELSE 0 END)                                     AS overdue
+                    THEN 1 ELSE 0 END)                                          AS overdue
         FROM requests r
         {stats_where}
     """, stats_params).fetchone()
 
     stats = {
-        'all':          stats_rows['total']        or 0,
-        'draft':        stats_rows['draft']        or 0,
-        'registered':   stats_rows['registered']   or 0,
-        'in_progress':  stats_rows['in_progress']  or 0,
-        'under_review': stats_rows['under_review'] or 0,
-        'overdue':      stats_rows['overdue']      or 0,
+        'all':               stats_rows['total']             or 0,
+        'draft':             stats_rows['draft']             or 0,
+        'registered':        stats_rows['registered']        or 0,
+        'in_progress':       stats_rows['in_progress']       or 0,
+        'under_review':      stats_rows['under_review']      or 0,
+        'ready_to_send':     stats_rows['ready_to_send']     or 0,
+        'sent_to_applicant': stats_rows['sent_to_applicant'] or 0,
+        'closed':            stats_rows['closed']            or 0,
+        'overdue':           stats_rows['overdue']           or 0,
     }
 
     db.close()
@@ -287,10 +293,10 @@ def get_requests():
     })
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
 # POST /api/request/<id>/favorite  — тоггл избранного
 # Ответ: { "favorite": true|false }
-# ─────────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
 @api_bp.route('/request/<int:request_id>/favorite', methods=['POST'])
 @login_required_api
 def toggle_favorite(request_id):
@@ -320,11 +326,11 @@ def toggle_favorite(request_id):
     return jsonify({'favorite': is_fav})
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
 # POST /api/check-duplicate — проверка дублей обращений
 # Тело: { "name": "...", "inn": "..." }
 # Ответ: { duplicates: [{id, name, inn, score}], method: "inn"|"fuzzy" }
-# ─────────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
 @api_bp.route('/check-duplicate', methods=['POST'])
 @login_required_api
 def check_duplicate():
