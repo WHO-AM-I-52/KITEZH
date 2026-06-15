@@ -60,7 +60,7 @@ def _table_exists(conn, table: str) -> bool:
 def _ensure_prefixes(conn):
     """
     Идемпотентно заполняет reg_prefix для записей где он ещё NULL.
-    Вызывается при каждом старте — безопасно, уже заполненные не трогает.
+    Вызывается при каждом старте — безопасно, уже заполненные не трогают.
     """
     if not _has_column(conn, 'subject_types', 'reg_prefix'):
         return
@@ -431,6 +431,29 @@ def _migrate(conn):
             INSERT OR IGNORE INTO classifiers (category, value, sort_order)
             VALUES ('tray_notify_level', 'critical', 1)
         """)
+
+    # ════════════════════════════════════════════════════════════════
+    # Цепочка согласования (review_chain)
+    # Последовательное согласование до 5 проверяющих.
+    # step_order=1 — первый, уведомляется сразу при переходе under_review.
+    # Следующий уведомляется только после approved предыдущего.
+    # При rejected — цепочка прерывается, статус → in_progress.
+    # ════════════════════════════════════════════════════════════════
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS review_chain (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            request_id    INTEGER NOT NULL REFERENCES requests(id) ON DELETE CASCADE,
+            user_id       INTEGER REFERENCES users(id),
+            external_name TEXT,
+            step_order    INTEGER NOT NULL,
+            decision      TEXT,
+            comment       TEXT,
+            decided_at    TEXT
+        )
+    """)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_review_chain_req ON review_chain(request_id)"
+    )
 
     conn.commit()
 
