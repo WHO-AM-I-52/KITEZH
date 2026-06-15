@@ -12,10 +12,6 @@
       color: #e2e8f0;
       font-family: 'Segoe UI', system-ui, sans-serif;
       min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
       overflow: hidden;
       position: relative;
     }
@@ -28,53 +24,29 @@
       cursor: none;
     }
 
-    .overlay {
-      position: relative;
-      z-index: 10;
-      text-align: center;
-      padding: 40px 32px;
-      background: rgba(15, 17, 23, 0.82);
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 20px;
-      backdrop-filter: blur(12px);
-      max-width: 480px;
-      width: 90%;
-      box-shadow: 0 8px 40px rgba(0,0,0,0.5);
-    }
-
-    .icon-wrap {
-      font-size: 52px;
-      margin-bottom: 16px;
-      animation: pulse 2s ease-in-out infinite;
-    }
-
-    @keyframes pulse {
-      0%, 100% { transform: scale(1); opacity: 1; }
-      50%       { transform: scale(1.08); opacity: 0.85; }
-    }
-
-    h1 {
-      font-size: 22px;
-      font-weight: 700;
-      color: #f0f4ff;
-      margin-bottom: 10px;
-      letter-spacing: -0.3px;
-    }
-
-    .subtitle {
-      font-size: 14px;
-      color: #94a3b8;
-      line-height: 1.6;
-      margin-bottom: 24px;
-    }
-
-    .status-line {
+    /* ===================== ТОПБАР ===================== */
+    #topbar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 44px;
+      background: rgba(15, 17, 23, 0.88);
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+      backdrop-filter: blur(14px);
+      z-index: 100;
       display: flex;
       align-items: center;
-      justify-content: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      gap: 12px;
+    }
+
+    .topbar-left {
+      display: flex;
+      align-items: center;
       gap: 8px;
       font-size: 13px;
-      color: #64748b;
+      color: #94a3b8;
+      flex-shrink: 0;
     }
 
     .dot {
@@ -84,23 +56,145 @@
       animation: blink 1.2s ease-in-out infinite;
       flex-shrink: 0;
     }
-
-    .dot.connected { background: #22c55e; animation: none; }
+    .dot.online  { background: #22c55e; animation: none; }
+    .dot.offline { background: #ef4444; animation: blink 1.2s ease-in-out infinite; }
 
     @keyframes blink {
       0%, 100% { opacity: 1; }
       50%       { opacity: 0.25; }
     }
 
-    .attempt-count {
-      font-size: 11px;
-      color: #475569;
-      margin-top: 10px;
+    #statusText { font-size: 13px; color: #94a3b8; }
+
+    #attemptCount { font-size: 11px; color: #475569; }
+
+    #returnBtn {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 14px;
+      background: #22c55e;
+      color: #0a1a0f;
+      font-size: 12px;
+      font-weight: 600;
+      border: none;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+      flex-shrink: 0;
+    }
+    #returnBtn:hover  { background: #16a34a; }
+    #returnBtn:active { transform: scale(0.96); }
+
+    /* ===================== ОБЛАКО-ТОСТ ===================== */
+    #toast {
+      position: fixed;
+      top: 60px;
+      left: 50%;
+      transform: translateX(-50%) translateY(-8px);
+      background: rgba(22, 163, 74, 0.95);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 500;
+      padding: 10px 20px 10px 16px;
+      border-radius: 22px;
+      box-shadow: 0 4px 24px rgba(34,197,94,0.35);
+      z-index: 200;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.4s ease, transform 0.4s ease;
+      white-space: nowrap;
+    }
+    #toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+    /* хвостик облака */
+    #toast::before {
+      content: '';
+      position: absolute;
+      top: -7px;
+      left: 50%;
+      transform: translateX(-50%);
+      border: 7px solid transparent;
+      border-bottom-color: rgba(22, 163, 74, 0.95);
+      border-top: none;
     }
 
+    /* ===================== МОДАЛКА ===================== */
+    #modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(4px);
+      z-index: 300;
+      align-items: center;
+      justify-content: center;
+    }
+    #modal-backdrop.show { display: flex; }
+
+    #modal {
+      background: #1e2230;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 18px;
+      padding: 32px 28px 24px;
+      max-width: 360px;
+      width: 90%;
+      text-align: center;
+      box-shadow: 0 16px 60px rgba(0,0,0,0.6);
+      animation: modalIn 0.25s ease;
+    }
+    @keyframes modalIn {
+      from { transform: scale(0.92); opacity: 0; }
+      to   { transform: scale(1);    opacity: 1; }
+    }
+
+    #modal .modal-icon { font-size: 40px; margin-bottom: 14px; }
+    #modal h2 { font-size: 17px; font-weight: 700; color: #f0f4ff; margin-bottom: 8px; }
+    #modal p  { font-size: 13px; color: #94a3b8; line-height: 1.6; margin-bottom: 22px; }
+
+    .modal-timer {
+      font-size: 11px;
+      color: #475569;
+      margin-bottom: 18px;
+    }
+
+    .modal-btns {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+    }
+    .btn-yes {
+      padding: 9px 24px;
+      background: #22c55e;
+      color: #0a1a0f;
+      font-size: 13px;
+      font-weight: 700;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-yes:hover { background: #16a34a; }
+    .btn-no {
+      padding: 9px 24px;
+      background: rgba(255,255,255,0.07);
+      color: #94a3b8;
+      font-size: 13px;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-no:hover { background: rgba(255,255,255,0.12); }
+
+    /* ===================== ПОДСКАЗКА ===================== */
     .hint {
       position: fixed;
       bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
       font-size: 11px;
       color: #334155;
       z-index: 10;
@@ -112,19 +206,31 @@
 
 <canvas id="c"></canvas>
 
-<div class="overlay">
-  <div class="icon-wrap">🔧</div>
-  <h1>Технические работы</h1>
-  <p class="subtitle">
-    Система временно недоступна.<br>
-    Мы уже работаем над улучшениями.<br>
-    <span style="color:#64748b;font-size:13px">Страница обновится автоматически.</span>
-  </p>
-  <div class="status-line">
+<!-- ТОПБАР -->
+<div id="topbar">
+  <div class="topbar-left">
     <div class="dot" id="statusDot"></div>
-    <span id="statusText">Ожидаем восстановления сервера…</span>
+    <span id="statusText">Технические работы…</span>
+    <span id="attemptCount"></span>
   </div>
-  <div class="attempt-count" id="attemptCount"></div>
+  <button id="returnBtn" onclick="goBack()">✅ Вернуться в KITEZH</button>
+</div>
+
+<!-- ОБЛАКО-ТОСТ -->
+<div id="toast">☁️ Сервер снова доступен!</div>
+
+<!-- МОДАЛКА -->
+<div id="modal-backdrop">
+  <div id="modal">
+    <div class="modal-icon">🏠</div>
+    <h2>Сервер доступен</h2>
+    <p>KITEZH готов к работе.<br>Вернуться в систему?</p>
+    <div class="modal-timer" id="modalTimer"></div>
+    <div class="modal-btns">
+      <button class="btn-yes" onclick="goBack()">Да, вернуться</button>
+      <button class="btn-no"  onclick="dismissModal()">Нет, играть дальше</button>
+    </div>
+  </div>
 </div>
 
 <div class="hint">🦎 Подвигай мышку — кликай!</div>
@@ -132,7 +238,6 @@
 <script>
 // ==================================================================
 //  Interactive Reptile — canvas-анимация
-//  Рептилия следит за мышкой и реагирует на клики
 // ==================================================================
 (function() {
   var canvas = document.getElementById('c');
@@ -146,21 +251,18 @@
   resize();
   window.addEventListener('resize', resize);
 
-  // Позиция мышки
   var mouse = { x: W / 2, y: H / 2 };
   window.addEventListener('mousemove', function(e) {
     mouse.x = e.clientX;
     mouse.y = e.clientY;
   });
 
-  // Сегмент цепочки тела
-  var SEGMENTS   = 20;   // количество сегментов тела
-  var SEG_LEN    = 18;   // длина сегмента
-  var HEAD_R     = 14;   // радиус головы
-  var SPEED      = 4.5;  // скорость движения к мыши
-  var TONGUE_SPD = 0.18; // скорость языка
+  var SEGMENTS   = 20;
+  var SEG_LEN    = 18;
+  var HEAD_R     = 14;
+  var SPEED      = 4.5;
+  var TONGUE_SPD = 0.18;
 
-  // Цвета рептилии
   var COLORS = {
     body:    '#2d9e6b',
     bodyDark:'#1e7a50',
@@ -172,19 +274,18 @@
     shadow:  'rgba(0,0,0,0.25)',
   };
 
-  // Инициализация сегментов
   var segs = [];
   for (var i = 0; i < SEGMENTS; i++) {
     segs.push({ x: W / 2, y: H / 2 + i * SEG_LEN });
   }
 
-  var tongueOut  = 0;    // 0..1 — выставленность языка
-  var tongueDir  = 1;    // +1 выставляется / -1 убирается
-  var tongueTick = 0;    // контроль паузы между движениями
+  var tongueOut  = 0;
+  var tongueDir  = 1;
+  var tongueTick = 0;
 
-  // Частицы при клике
   var sparks = [];
   window.addEventListener('click', function(e) {
+    if (e.target.closest('#topbar') || e.target.closest('#modal-backdrop')) return;
     for (var i = 0; i < 12; i++) {
       var angle = (Math.PI * 2 / 12) * i + Math.random() * 0.3;
       sparks.push({
@@ -198,7 +299,6 @@
     }
   });
 
-  // Цветовые точки фона
   var dots = [];
   for (var d = 0; d < 60; d++) {
     dots.push({
@@ -221,13 +321,11 @@
   }
 
   function segRadius(i) {
-    // радиус сегмента: шире посередине, сужается к хвосту
     var t = i / (SEGMENTS - 1);
     return HEAD_R * (1 - t * 0.72);
   }
 
   function drawBody() {
-    // Тень под телом
     for (var i = SEGMENTS - 1; i >= 1; i--) {
       var r = segRadius(i);
       ctx.beginPath();
@@ -235,12 +333,8 @@
       ctx.fillStyle = COLORS.shadow;
       ctx.fill();
     }
-
-    // Сегменты тела (с хвоста к голове)
     for (var i = SEGMENTS - 1; i >= 1; i--) {
-      var r  = segRadius(i);
-      var t  = i / (SEGMENTS - 1);
-      // чередование: чётные сегменты темнее
+      var r   = segRadius(i);
       var col = (i % 2 === 0) ? COLORS.body : COLORS.bodyDark;
       var grad = ctx.createRadialGradient(
         segs[i].x - r * 0.3, segs[i].y - r * 0.3, r * 0.1,
@@ -252,8 +346,6 @@
       ctx.arc(segs[i].x, segs[i].y, r, 0, Math.PI * 2);
       ctx.fillStyle = grad;
       ctx.fill();
-
-      // Брюшко брюха
       ctx.beginPath();
       ctx.arc(segs[i].x, segs[i].y, r * 0.55, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(168,230,200,0.18)';
@@ -262,21 +354,19 @@
   }
 
   function drawHead() {
-    var h   = segs[0];
-    var h2  = segs[1];
+    var h     = segs[0];
+    var h2    = segs[1];
     var angle = Math.atan2(h.y - h2.y, h.x - h2.x);
 
     ctx.save();
     ctx.translate(h.x, h.y);
     ctx.rotate(angle);
 
-    // Тень головы
     ctx.beginPath();
     ctx.ellipse(2, 3, HEAD_R * 1.3, HEAD_R * 1.0, 0, 0, Math.PI * 2);
     ctx.fillStyle = COLORS.shadow;
     ctx.fill();
 
-    // Голова
     var headGrad = ctx.createRadialGradient(-HEAD_R * 0.3, -HEAD_R * 0.3, 1, 0, 0, HEAD_R * 1.3);
     headGrad.addColorStop(0, '#34d399');
     headGrad.addColorStop(1, COLORS.head);
@@ -285,23 +375,19 @@
     ctx.fillStyle = headGrad;
     ctx.fill();
 
-    // Ноздри
     ctx.beginPath();
     ctx.arc(HEAD_R * 0.8, -HEAD_R * 0.25, 2.5, 0, Math.PI * 2);
     ctx.arc(HEAD_R * 0.8,  HEAD_R * 0.25, 2.5, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(0,0,0,0.4)';
     ctx.fill();
 
-    // Глаза
     var eyePositions = [{ ex: HEAD_R * 0.1, ey: -HEAD_R * 0.7 },
                         { ex: HEAD_R * 0.1, ey:  HEAD_R * 0.7 }];
     eyePositions.forEach(function(ep) {
-      // Белок глаза
       ctx.beginPath();
       ctx.arc(ep.ex, ep.ey, 5, 0, Math.PI * 2);
       ctx.fillStyle = COLORS.eye;
       ctx.fill();
-      // Зрачок (смотрит в сторону мыши в мировых координатах)
       var wx = h.x + ep.ex * Math.cos(angle) - ep.ey * Math.sin(angle);
       var wy = h.y + ep.ex * Math.sin(angle) + ep.ey * Math.cos(angle);
       var da = Math.atan2(mouse.y - wy, mouse.x - wx) - angle;
@@ -309,26 +395,22 @@
       ctx.arc(ep.ex + Math.cos(da) * 2, ep.ey + Math.sin(da) * 2, 2.8, 0, Math.PI * 2);
       ctx.fillStyle = COLORS.pupil;
       ctx.fill();
-      // Блик
       ctx.beginPath();
       ctx.arc(ep.ex - 1.5, ep.ey - 1.5, 1.2, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(255,255,255,0.8)';
       ctx.fill();
     });
 
-    // Язык
     if (tongueOut > 0.05) {
       var tLen = HEAD_R * 1.8 * tongueOut;
       ctx.save();
       ctx.strokeStyle = COLORS.tongue;
       ctx.lineWidth   = 2;
       ctx.lineCap     = 'round';
-      // Основание языка
       ctx.beginPath();
       ctx.moveTo(HEAD_R * 1.1, 0);
       ctx.lineTo(HEAD_R * 1.1 + tLen * 0.6, 0);
       ctx.stroke();
-      // Раздвоение
       ctx.beginPath();
       ctx.moveTo(HEAD_R * 1.1 + tLen * 0.6, 0);
       ctx.lineTo(HEAD_R * 1.1 + tLen, -tLen * 0.35);
@@ -353,16 +435,13 @@
   }
 
   function update() {
-    // Движение головы к мышке
-    var dx = mouse.x - segs[0].x;
-    var dy = mouse.y - segs[0].y;
+    var dx   = mouse.x - segs[0].x;
+    var dy   = mouse.y - segs[0].y;
     var dist = Math.sqrt(dx * dx + dy * dy);
     if (dist > SPEED) {
       segs[0].x += (dx / dist) * SPEED;
       segs[0].y += (dy / dist) * SPEED;
     }
-
-    // Цепная кинематика (каждый сегмент тянется за предыдущим)
     for (var i = 1; i < SEGMENTS; i++) {
       var ddx = segs[i].x - segs[i-1].x;
       var ddy = segs[i].y - segs[i-1].y;
@@ -372,16 +451,12 @@
         segs[i].y = segs[i-1].y + (ddy / dd) * SEG_LEN;
       }
     }
-
-    // Анимация языка
     tongueTick++;
     if (tongueTick > 40) {
       tongueOut += tongueDir * TONGUE_SPD;
       if (tongueOut >= 1) { tongueDir = -1; }
       if (tongueOut <= 0) { tongueDir = 1; tongueOut = 0; tongueTick = 0; }
     }
-
-    // Частицы
     sparks = sparks.filter(function(s) {
       s.x  += s.vx;
       s.y  += s.vy;
@@ -403,36 +478,102 @@
 })();
 
 // ==================================================================
-//  Health poller — auto-reload when server is back
+//  Health poller + UI-логика
 // ==================================================================
 (function() {
-  var dot     = document.getElementById('statusDot');
-  var txt     = document.getElementById('statusText');
-  var counter = document.getElementById('attemptCount');
-  var attempts = 0;
-  var INTERVAL = 5000;
+  var dot          = document.getElementById('statusDot');
+  var txt          = document.getElementById('statusText');
+  var counter      = document.getElementById('attemptCount');
+  var returnBtn    = document.getElementById('returnBtn');
+  var toast        = document.getElementById('toast');
+  var modalBackdrop= document.getElementById('modal-backdrop');
+  var modalTimer   = document.getElementById('modalTimer');
 
+  var attempts     = 0;
+  var POLL_MS      = 10000;   // пинг каждые 10 сек
+  var serverOnline = false;
+  var returnTimer  = null;    // таймер 60 сек до модалки
+  var modalCountdown = null;
+
+  /* ---------- переход обратно ---------- */
+  window.goBack = function() {
+    clearTimeout(returnTimer);
+    clearInterval(modalCountdown);
+    location.href = '/';
+  };
+
+  /* ---------- закрыть модалку ---------- */
+  window.dismissModal = function() {
+    clearInterval(modalCountdown);
+    modalBackdrop.classList.remove('show');
+    // сбросить таймер — не показывать модалку повторно пока сервер онлайн
+  };
+
+  /* ---------- облако-тост ---------- */
+  function showToast() {
+    toast.classList.add('show');
+    setTimeout(function() {
+      toast.classList.remove('show');
+    }, 10000);
+  }
+
+  /* ---------- модалка с обратным отсчётом ---------- */
+  function showModal() {
+    var sec = 30; // обратный отсчёт внутри модалки
+    modalTimer.textContent = 'Автопереход через ' + sec + ' сек…';
+    modalBackdrop.classList.add('show');
+    modalCountdown = setInterval(function() {
+      sec--;
+      if (sec <= 0) {
+        clearInterval(modalCountdown);
+        goBack();
+      } else {
+        modalTimer.textContent = 'Автопереход через ' + sec + ' сек…';
+      }
+    }, 1000);
+  }
+
+  /* ---------- обработка онлайн-статуса ---------- */
+  function onServerOnline() {
+    if (serverOnline) return; // не дублировать
+    serverOnline = true;
+
+    dot.className = 'dot online';
+    txt.textContent = 'Сервер онлайн';
+    counter.textContent = '';
+    returnBtn.style.display = 'flex';
+
+    showToast();
+
+    // через 60 сек показать модалку
+    returnTimer = setTimeout(showModal, 60000);
+  }
+
+  /* ---------- пинг ---------- */
   function poll() {
     attempts++;
-    counter.textContent = 'Попытка ' + attempts;
+    if (!serverOnline) {
+      counter.textContent = 'Попытка ' + attempts;
+    }
 
     fetch('/health', { cache: 'no-store' })
       .then(function(r) {
         if (r.ok) {
-          dot.classList.add('connected');
-          txt.textContent = 'Сервер восстановлен! Перезагрузка…';
-          counter.textContent = '';
-          setTimeout(function() { location.reload(); }, 800);
+          onServerOnline();
         } else {
-          setTimeout(poll, INTERVAL);
+          dot.className = 'dot offline';
+          txt.textContent = 'Сервер недоступен…';
+          if (!serverOnline) setTimeout(poll, POLL_MS);
         }
       })
       .catch(function() {
-        setTimeout(poll, INTERVAL);
+        dot.className = 'dot offline';
+        txt.textContent = 'Нет соединения…';
+        if (!serverOnline) setTimeout(poll, POLL_MS);
       });
   }
 
-  setTimeout(poll, INTERVAL);
+  setTimeout(poll, POLL_MS);
 })();
 </script>
 </body>
