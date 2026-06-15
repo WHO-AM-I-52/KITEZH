@@ -8,6 +8,7 @@
 # ║           delete_selected, delete_read)                      ║
 # ║  v2.6.0: /maintenance/on|off|status — ручное и авто ТО       ║
 # ║  v2.7.0: /api/tray/notify-level — уровень уведомлений трея    ║
+# ║  v2.8.0: /api/online возвращает users[] для tooltip          ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, render_template, session, jsonify, request as flask_request, redirect, url_for
@@ -139,18 +140,20 @@ def ping():
 @misc_bp.route('/api/online')
 @login_required
 def api_online():
-    """Возвращает число уникальных пользователей активных за последние 5 минут."""
+    """Возвращает число и список пользователей активных за последние 5 минут."""
     conn = get_db()
-    row = conn.execute(
+    rows = conn.execute(
         """
-        SELECT COUNT(DISTINCT user_id) AS cnt
-        FROM online_presence
-        WHERE last_seen >= datetime('now', '-5 minutes')
+        SELECT u.full_name
+        FROM online_presence op
+        JOIN users u ON u.id = op.user_id
+        WHERE op.last_seen >= datetime('now', '-5 minutes')
+        ORDER BY op.last_seen DESC
         """
-    ).fetchone()
+    ).fetchall()
     conn.close()
-    count = row['cnt'] if row else 0
-    return jsonify({'online': count})
+    users = [r['full_name'] for r in rows if r['full_name']]
+    return jsonify({'online': len(users), 'users': users})
 
 
 # ─── Управление режимом ТО ──────────────────────────────────────────────────────────────
