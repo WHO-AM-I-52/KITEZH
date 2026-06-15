@@ -14,6 +14,25 @@ ACTIVE_STATUSES = ('draft', 'registered', 'in_progress', 'under_review', 'ready_
 CLOSED_STATUS = 'closed'
 
 
+def _bucket_query(conn, field_min, field_max, buckets, pw_sql, pw_params):
+    """One SELECT with CASE WHEN for all buckets.
+    Uses COALESCE(field_min, field_max) so records with only _max are counted.
+    """
+    cases = ' '.join(
+        f"SUM(CASE WHEN COALESCE({field_min},{field_max})>={lo} "
+        f"AND COALESCE({field_min},{field_max})<{hi} THEN 1 ELSE 0 END)"
+        for _, lo, hi in buckets
+    )
+    row = conn.execute(
+        f"SELECT {cases} FROM requests r WHERE "
+        f"(({field_min} IS NOT NULL AND {field_min}!='') "
+        f"OR ({field_max} IS NOT NULL AND {field_max}!=''))"
+        f"{pw_sql}",
+        pw_params
+    ).fetchone()
+    return [{'label': lbl, 'count': (row[i] or 0)} for i, (lbl, _, __) in enumerate(buckets)]
+
+
 def build_dash(conn, period):
     today = date.today()
 
@@ -174,6 +193,8 @@ def build_dash(conn, period):
     ).fetchone()[0]
 
     # ─── РАСПРЕДЕЛЕНИЕ ПО ПЛОЩАДИ ────────────────────────
+    # Один SELECT с CASE WHEN вместо 7 отдельных; COALESCE(_min,_max) учитывает записи
+    # где заполнено только одно из полей
     area_buckets = [
         ('<0.1 га', 0, .1), ('0.1–0.5', .1, .5), ('0.5–1', .5, 1),
         ('1–2', 1, 2), ('2–5', 2, 5), ('5–10', 5, 10), ('>10', 10, 999999)
@@ -184,23 +205,8 @@ def build_dash(conn, period):
         ('3000–5000', 3000, 5000), ('>5000', 5000, 999999)
     ]
 
-    area_data = [{
-        'label': lbl,
-        'count': conn.execute(
-            f"SELECT COUNT(*) FROM requests r "
-            f"WHERE site_area_ha_min>=? AND site_area_ha_min<?{pw_sql}",
-            [lo, hi] + pw_params
-        ).fetchone()[0]
-    } for lbl, lo, hi in area_buckets]
-
-    build_data = [{
-        'label': lbl,
-        'count': conn.execute(
-            f"SELECT COUNT(*) FROM requests r "
-            f"WHERE site_build_area_m2_min>=? AND site_build_area_m2_min<?{pw_sql}",
-            [lo, hi] + pw_params
-        ).fetchone()[0]
-    } for lbl, lo, hi in build_buckets]
+    area_data  = _bucket_query(conn, 'site_area_ha_min',       'site_area_ha_max',       area_buckets,  pw_sql, pw_params)
+    build_data = _bucket_query(conn, 'site_build_area_m2_min', 'site_build_area_m2_max', build_buckets, pw_sql, pw_params)
 
     # ─── ИСТОЧНИКИ ОБРАЩЕНИЙ ──────────────────────────
     src_rows = conn.execute(
