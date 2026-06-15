@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block content %}
 
-{# ── Карта кодов статусов #53 ─────────────────────────────────────────── #}
+{# ── Карта кодов статусов #53 ──────────────────────────────────── #}
 {%- set STATUS_MAP = {
   'draft':            ('bi-pencil-square',    'Черновик'),
   'registered':       ('bi-hash',             'Зарегистрировано'),
@@ -12,7 +12,7 @@
   'closed':           ('bi-archive',          'Закрыто'),
 } -%}
 
-{# ── Флаг права удаления ─────────────────────────────────────────────── #}
+{# ── Флаг права удаления ─────────────────────────────────────────── #}
 {%- set can_delete = (session.role == 'admin' or session.perm_can_delete) -%}
 
 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -22,27 +22,54 @@
   </a>
 </div>
 
-{# ===== МИНИ-KPI СТРОКА (#53) ===== #}
+{# ===== МИНИ-KPI СТРОКА — 8 панелекей: Всего + 7 статусов + Просрочено ===== #}
 <div class="row g-2 mb-3">
-  {% for label,val,color,icon in [
-    ('Всего',          dash.total,           '#1B5E7B', 'bi-inbox'),
-    ('Черновик',       dash.draft,           '#6c757d', 'bi-pencil-square'),
-    ('Зарегистрировано',dash.registered,     '#0dcaf0', 'bi-hash'),
-    ('В работе',       dash.in_progress,     '#0d6efd', 'bi-person-workspace'),
-    ('На проверке',    dash.under_review,    '#fd7e14', 'bi-search'),
-    ('Просрочено',     dash.kpi.overdue_active,'#dc3545','bi-exclamation-triangle')] %}
-  <div class="col-6 col-sm-4 col-md-2">
-    <div class="card py-2 px-3" style="border-left:4px solid {{color}}">
+  {# Всего #}
+  <div class="col-6 col-sm-4 col-md">
+    <div class="card py-2 px-3" style="border-left:4px solid #1B5E7B">
       <div class="d-flex align-items-center gap-2">
-        <i class="bi {{icon}}" style="font-size:1.2rem;color:{{color}}"></i>
+        <i class="bi bi-inbox" style="font-size:1.2rem;color:#1B5E7B"></i>
         <div>
-          <div class="fw-bold fs-5" style="color:{{color}};line-height:1">{{val}}</div>
-          <div class="text-muted" style="font-size:10px">{{label}}</div>
+          <div class="fw-bold fs-5" style="color:#1B5E7B;line-height:1">{{ dash.total }}</div>
+          <div class="text-muted" style="font-size:10px">Всего</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  {# 7 статусов #}
+  {% for status, val, color, icon, label in [
+    ('draft',             dash.draft,              '#6c757d', 'bi-pencil-square',    'Черновик'),
+    ('registered',        dash.registered,         '#0dcaf0', 'bi-hash',             'Зарег.'),
+    ('in_progress',       dash.in_progress,        '#0d6efd', 'bi-person-workspace', 'В работе'),
+    ('under_review',      dash.under_review,       '#fd7e14', 'bi-search',           'На пров.'),
+    ('ready_to_send',     dash.ready_to_send,      '#198754', 'bi-check2-circle',    'Готово'),
+    ('sent_to_applicant', dash.sent_to_applicant,  '#20c997', 'bi-envelope-check',   'Отправлено'),
+    ('closed',            dash.closed,             '#212529', 'bi-archive',          'Закрыто'),
+  ] %}
+  <div class="col-6 col-sm-4 col-md">
+    <div class="card py-2 px-3" style="border-left:4px solid {{ color }}">
+      <div class="d-flex align-items-center gap-2">
+        <i class="bi {{ icon }}" style="font-size:1.2rem;color:{{ color }}"></i>
+        <div>
+          <div class="fw-bold fs-5" style="color:{{ color }};line-height:1">{{ val }}</div>
+          <div class="text-muted" style="font-size:10px">{{ label }}</div>
         </div>
       </div>
     </div>
   </div>
   {% endfor %}
+  {# Просрочено #}
+  <div class="col-6 col-sm-4 col-md">
+    <div class="card py-2 px-3" style="border-left:4px solid #dc3545">
+      <div class="d-flex align-items-center gap-2">
+        <i class="bi bi-exclamation-triangle" style="font-size:1.2rem;color:#dc3545"></i>
+        <div>
+          <div class="fw-bold fs-5" style="color:#dc3545;line-height:1">{{ dash.kpi.overdue_active }}</div>
+          <div class="text-muted" style="font-size:10px">Просрочено</div>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 {# ===== БЫСТРЫЕ ФИЛЬТРЫ (saved) ===== #}
