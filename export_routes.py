@@ -1,6 +1,6 @@
 # ╔═════════════════════════════════════════════════════════════════════════════╗
 # ║                       export_routes.py                                       ║
-# ║  v3.5: валидация площадок ГИС НСИ (БАГ-2,6,7,8,10,13,14)                   ║
+# ║  v3.6: алиас /export/excel/base → export_full (фикс 404)                    ║
 # ╚═════════════════════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, request, send_file, jsonify, session
@@ -529,6 +529,7 @@ def report_minek():
 # ─── ПОЛНАЯ ВЫГРУЗКА БАЗЫ ─────────────────────────────────────────────────────────────────────────
 
 @report_bp.route('/export/full')
+@report_bp.route('/export/excel/base')  # алиас для обратной совместимости
 @login_required
 def export_full():
     if not get_user_perm('can_export_full'):
