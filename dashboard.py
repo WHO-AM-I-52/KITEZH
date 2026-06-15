@@ -18,7 +18,7 @@ def _bucket_query(conn, field_min, field_max, buckets, pw_sql, pw_params):
     """One SELECT with CASE WHEN for all buckets.
     Uses COALESCE(field_min, field_max) so records with only _max are counted.
     """
-    cases = ' '.join(
+    cases = ', '.join(
         f"SUM(CASE WHEN COALESCE({field_min},{field_max})>={lo} "
         f"AND COALESCE({field_min},{field_max})<{hi} THEN 1 ELSE 0 END)"
         for _, lo, hi in buckets
