@@ -201,7 +201,7 @@
         status=filters.get('status','')) }}"
      class="btn btn-sm btn-success"
      title="Стандартный отчёт по текущим фильтрам">
-    <i class="bi bi-file-earmark-excel me-1"></i>Выгрузить Excel
+    <i class="bi bi-file-earmark-excel me-1"></i>Выгрузить Excel (по фильтру)
   </a>
   {% if session.perm_can_export_full or session.role == 'admin' %}
   <a href="{{ url_for('report.export_full') }}"
