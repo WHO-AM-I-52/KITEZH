@@ -1,0 +1,143 @@
+{% extends 'base.html' %}
+{% block title %}Консоль SQL{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3" style="max-width:1100px">
+
+  <div class="d-flex align-items-center mb-3 gap-2">
+    <i class="bi bi-terminal fs-4 text-primary"></i>
+    <h5 class="mb-0 fw-bold">Консоль SQL</h5>
+    <span class="badge bg-danger ms-2">Только для администратора</span>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-body">
+      <textarea id="sqlInput" class="form-control font-monospace mb-2"
+                rows="6"
+                placeholder="SELECT * FROM requests WHERE status = 'in_progress' LIMIT 20;"
+                style="font-size:13px;resize:vertical"></textarea>
+      <div class="d-flex gap-2 align-items-center">
+        <button class="btn btn-primary btn-sm" onclick="runQuery()">
+          <i class="bi bi-play-fill me-1"></i>Выполнить
+        </button>
+        <button class="btn btn-outline-secondary btn-sm" onclick="clearAll()">
+          <i class="bi bi-x-lg me-1"></i>Очистить
+        </button>
+        <span id="statusMsg" class="small ms-2"></span>
+      </div>
+    </div>
+  </div>
+
+  {# Быстрые пресеты #}
+  <div class="mb-3 d-flex flex-wrap gap-2">
+    {% for label, sql in [
+      ('Статусы обращений',   "SELECT status, COUNT(*) as cnt FROM requests GROUP BY status ORDER BY cnt DESC;"),
+      ('Без дедлайна',         "SELECT id, request_number, status, request_date FROM requests WHERE (review_deadline IS NULL OR review_deadline='') AND status NOT IN ('draft','closed') LIMIT 50;"),
+      ('Последние 10 логов',    "SELECT * FROM admin_sql_log ORDER BY id DESC LIMIT 10;"),
+      ('Пользователи',           "SELECT id, username, role, is_active FROM users ORDER BY id;"),
+    ] %}
+    <button class="btn btn-outline-secondary btn-sm"
+            onclick="setQuery({{ sql|tojson }})">{{ label }}</button>
+    {% endfor %}
+  </div>
+
+  {# Результат #}
+  <div id="resultWrap" style="display:none">
+    <div class="card">
+      <div class="card-header py-2 d-flex justify-content-between align-items-center"
+           style="font-size:12px;background:#f8f9fa">
+        <span id="resultMeta"></span>
+        <button class="btn btn-outline-secondary btn-sm py-0" onclick="copyCSV()">
+          <i class="bi bi-clipboard me-1"></i>CSV
+        </button>
+      </div>
+      <div class="card-body p-0" style="overflow-x:auto;max-height:500px;overflow-y:auto">
+        <table class="table table-sm table-striped table-hover mb-0 font-monospace"
+               style="font-size:12px" id="resultTable">
+          <thead id="resultHead" class="table-dark sticky-top"></thead>
+          <tbody id="resultBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="errorBox" class="alert alert-danger mt-3" style="display:none;font-size:13px"></div>
+
+</div>
+
+<script>
+function setQuery(sql) {
+  document.getElementById('sqlInput').value = sql;
+}
+
+function clearAll() {
+  document.getElementById('sqlInput').value = '';
+  document.getElementById('resultWrap').style.display = 'none';
+  document.getElementById('errorBox').style.display   = 'none';
+  document.getElementById('statusMsg').textContent     = '';
+}
+
+async function runQuery() {
+  const query = document.getElementById('sqlInput').value.trim();
+  if (!query) return;
+
+  const btn = document.querySelector('button[onclick="runQuery()"]');
+  btn.disabled = true;
+  document.getElementById('statusMsg').textContent = 'Выполняется...';
+  document.getElementById('errorBox').style.display = 'none';
+  document.getElementById('resultWrap').style.display = 'none';
+
+  try {
+    const res  = await fetch('/admin/sql/', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({query})
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      document.getElementById('errorBox').textContent = data.error || 'Ошибка';
+      document.getElementById('errorBox').style.display = 'block';
+      document.getElementById('statusMsg').textContent = '';
+      return;
+    }
+
+    if (data.is_select) {
+      // Заполняем таблицу
+      const head = document.getElementById('resultHead');
+      const body = document.getElementById('resultBody');
+      head.innerHTML = '<tr>' + data.columns.map(c => `<th>${c}</th>`).join('') + '</tr>';
+      body.innerHTML = data.rows.map(row =>
+        '<tr>' + row.map(cell => `<td>${cell ?? '<em class="text-muted">NULL</em>'}</td>`).join('') + '</tr>'
+      ).join('');
+      document.getElementById('resultMeta').textContent =
+        `Строк: ${data.rows.length}`;
+      document.getElementById('resultWrap').style.display = 'block';
+      document.getElementById('statusMsg').textContent = `✓ ${data.rows.length} стр.`;
+    } else {
+      document.getElementById('statusMsg').textContent =
+        `✓ Изменено строк: ${data.rows_affected}`;
+    }
+  } catch(e) {
+    document.getElementById('errorBox').textContent = 'Ошибка сети: ' + e.message;
+    document.getElementById('errorBox').style.display = 'block';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function copyCSV() {
+  const cols = [...document.querySelectorAll('#resultHead th')].map(t => t.textContent);
+  const rows = [...document.querySelectorAll('#resultBody tr')].map(tr =>
+    [...tr.querySelectorAll('td')].map(td => td.textContent)
+  );
+  const csv = [cols, ...rows].map(r => r.join('\t')).join('\n');
+  navigator.clipboard.writeText(csv);
+}
+
+// Ctrl+Enter → выполнить
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') runQuery();
+});
+</script>
+{% endblock %}
