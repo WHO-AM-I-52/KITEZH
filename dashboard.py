@@ -131,13 +131,16 @@ def build_dash(conn, period):
             " GROUP BY 1 ORDER BY 1", pw_params
         ).fetchall()
 
-    # ─── ТОП СОТРУДНИКОВ И РАЙОНЫ ────────────────────
+    # ─── ТОП СОТРУДНИКОВ ─────────────────────────────────────────
+    # GROUP BY по обоим полям — исключает слияние разных людей с одинаковым именем
+    # LIMIT 20 — покрывает все возможные назначения (у нас 12 сотрудников)
     emp_rows = conn.execute(
         f"SELECT COALESCE(u.full_name,'Не назначен'),COUNT(*) FROM requests r "
         f"LEFT JOIN users u ON r.assigned_to=u.id WHERE 1=1{pw_sql} "
-        f"GROUP BY r.assigned_to ORDER BY 2 DESC LIMIT 10", pw_params
+        f"GROUP BY r.assigned_to, u.full_name ORDER BY 2 DESC LIMIT 20", pw_params
     ).fetchall()
 
+    # ─── РАЙОНЫ ──────────────────────────────────────────────────
     dist_rows = conn.execute(
         f"SELECT preferred_districts,COUNT(*) FROM requests r "
         f"WHERE preferred_districts IS NOT NULL AND preferred_districts!=''{pw_sql} "
