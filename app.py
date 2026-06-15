@@ -1,4 +1,4 @@
-# ╔══════════════════════════════════════════════════════════════╗
+# ╔═══════════════════════════════════════════════════════════════╗
 # ║ app.py                                                        ║
 # ║ v3.0: quality_bp подключён                                   ║
 # ║      fix #64 — ai_bp подключён                          ║
@@ -7,13 +7,14 @@
 # ║      feat: maintenance mode (.maintenance флаг)              ║
 # ║      feat: errorhandler(500) → tray.notify_error()          ║
 # ║      feat: admin_sql_bp — SQL-консоль админа               ║
-# ╚══════════════════════════════════════════════════════════════╝
+# ║      fix #15 — админ проходит сквозь режим ТО              ║
+# ╚═══════════════════════════════════════════════════════════════╝
 
 import os
 import traceback
 from datetime import timedelta, datetime, date
 
-from flask import Flask, jsonify, render_template, request as flask_request
+from flask import Flask, jsonify, render_template, request as flask_request, session
 
 from db import BASE_DIR, run_migrations
 from migrations import init_db, migrate_db, migrate_districts
@@ -21,10 +22,10 @@ from context_processors import inject_globals
 
 app = Flask(__name__)
 
-# ─── MAINTENANCE FLAG ──────────────────────────────────────────────────────────────────────────
+# ─── MAINTENANCE FLAG ──────────────────────────────────────────────────────────────────────────────────
 _MAINTENANCE_FLAG = os.path.join(BASE_DIR, '.maintenance')
 
-# ─── SECRET_KEY ─────────────────────────────────────────────────────────────────────────────────
+# ─── SECRET_KEY ──────────────────────────────────────────────────────────────────────────────────────
 from limiter import limiter
 import secrets as _secrets
 _KEY_FILE = os.path.join(BASE_DIR, '_secret.key')
@@ -43,14 +44,14 @@ else:
             pass
         app.secret_key = _new_key
 
-# ─── Настройки сессий ─────────────────────────────────────────────────────────────────────────────────────
+# ─── Настройки сессий ───────────────────────────────────────────────────────────────────────────────────────────────
 app.config['PERMANENT_SESSION_LIFETIME']   = timedelta(minutes=15)
 app.config['SESSION_REFRESH_EACH_REQUEST'] = True
 
-# ─── LIMITER ────────────────────────────────────────────────────────────────────────────────────────
+# ─── LIMITER ──────────────────────────────────────────────────────────────────────────────────────────────
 limiter.init_app(app)
 
-# ─── JINJA ФИЛЬТРЫ ──────────────────────────────────────────────────────────────────────────────────
+# ─── JINJA ФИЛЬТРЫ ──────────────────────────────────────────────────────────────────────────────────────
 @app.template_filter('todatetime')
 def todatetime_filter(value):
     """Преобразует 'YYYY-MM-DD' в datetime.date.
@@ -66,10 +67,10 @@ def todatetime_filter(value):
         return date.today()
 
 
-# ─── CONTEXT PROCESSOR ─────────────────────────────────────────────────────────────────────────────────
+# ─── CONTEXT PROCESSOR ──────────────────────────────────────────────────────────────────────────────────────────
 app.context_processor(inject_globals)
 
-# ─── MAINTENANCE MODE ──────────────────────────────────────────────────────────────────────────────
+# ─── MAINTENANCE MODE ──────────────────────────────────────────────────────────────────────────────────
 @app.route('/health')
 def health():
     """Эндпойнт для проверки доступности сервера.
@@ -82,12 +83,15 @@ def health():
 def check_maintenance():
     """Если .maintenance существует — отдаём страницу ТО для всех запросов.
     Исключения:
-      /health      — JS-пуллер на странице ТО
-      /static/     — статика (CSS, JS, шрифты)
+      role == admin — админ всегда проходит (управляет режимом ТО)
+      /health       — JS-пуллер на странице ТО
+      /static/      — статика (CSS, JS, шрифты)
       /maintenance/ — роуты управления ТО (авторизация внутри)
-      /ping        — хеартбит онлайн-присутствия
+      /ping         — хеартбит онлайн-присутствия
     """
     if not os.path.exists(_MAINTENANCE_FLAG):
+        return
+    if session.get('role') == 'admin':
         return
     path = flask_request.path
     if (path == '/health'
@@ -98,7 +102,7 @@ def check_maintenance():
     return render_template('maintenance.html'), 503
 
 
-# ─── BLUEPRINTS ──────────────────────────────────────────────────────────────────────────────────────
+# ─── BLUEPRINTS ────────────────────────────────────────────────────────────────────────────────────────────
 from phonebook_routes  import phonebook_bp
 from search_routes     import search_bp
 from login_routes      import auth_bp
@@ -133,7 +137,7 @@ for bp in [
     app.register_blueprint(bp)
 
 
-# ─── ОБРАБОТЧИК ОШИБОК ───────────────────────────────────────────────────────────────────────
+# ─── ОБРАБОТЧИК ОШИБОК ──────────────────────────────────────────────────────────────────────────────────
 @app.errorhandler(500)
 def handle_500(exc):
     """
@@ -156,7 +160,7 @@ def handle_500(exc):
     return render_template('500.html'), 500
 
 
-# ─── ИНИЦИАЛИЗАЦИЯ БД И ПЛАНИРОВЩИКА ────────────────────────────────────────────────────────
+# ─── ИНИЦИАЛИЗАЦИЯ БД И ПЛАНИРОВЩИКА ────────────────────────────────────────────────────────────────────
 def _startup():
     if os.path.exists(_MAINTENANCE_FLAG):
         try:
@@ -173,7 +177,7 @@ def _startup():
 _startup()
 
 
-# ─── ТОЧКА ВХОДА ────────────────────────────────────────────────────────────────────────────────────────
+# ─── ТОЧКА ВХОДА ────────────────────────────────────────────────────────────────────────────────────────────────────────
 if __name__ == '__main__':
     app_debug  = os.getenv('APP_DEBUG', '0')
     debug_flag = app_debug == '1'
