@@ -1,16 +1,21 @@
 {% extends 'base.html' %}
 {% block content %}
+
+{# Метка активного периода — подставляется в заголовках графиков, зависящих от периода #}
+{% set period_labels = {'today':'Сегодня','week':'Неделя','month':'Месяц','quarter':'Квартал','year':'Год','all':'Всё время'} %}
+{% set pl = period_labels[dash.period] | default('Период') %}
+
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h5 class="mb-0" style="color:#1B5E7B">
     <i class="bi bi-bar-chart-line me-1"></i>Дашборд
   </h5>
   <div class="d-flex align-items-center gap-2 flex-wrap">
     <span class="text-muted small fw-bold">Период:</span>
-    {% for pk,pl in [('today','Сегодня'),('week','Неделя'),('month','Месяц'),
+    {% for pk,pl_btn in [('today','Сегодня'),('week','Неделя'),('month','Месяц'),
                  ('quarter','Квартал'),('year','Год'),('all','Всё время')] %}
     <a href="{{ url_for('misc.dashboard', period=pk) }}"
        class="btn btn-sm {{ 'btn-primary' if dash.period==pk else 'btn-outline-secondary' }}">
-      {{ pl }}
+      {{ pl_btn }}
     </a>
     {% endfor %}
   </div>
@@ -101,7 +106,7 @@
   </div>
 </div>
 
-{# ===== ROW 4: ИСТОЧНИКИ ОБРАЩЕНИЙ ===== #}
+{# ===== ROW 4: ИСТОЧНИКИ + СОТРУДНИКИ ===== #}
 <div class="row g-3 mb-3">
   <div class="col-md-5">
     <div class="card p-3 h-100">
@@ -117,9 +122,12 @@
   </div>
   <div class="col-md-7">
     <div class="card p-3 h-100">
-      <p class="mb-1 fw-bold" style="font-size:12px;color:#1B5E7B">
-        <i class="bi bi-people me-1"></i>По ответственным сотрудникам
-      </p>
+      <div class="d-flex justify-content-between align-items-center mb-1">
+        <p class="mb-0 fw-bold" style="font-size:12px;color:#1B5E7B">
+          <i class="bi bi-people me-1"></i>По ответственным сотрудникам
+        </p>
+        <span class="badge bg-secondary" style="font-size:10px">за период: {{ pl }}</span>
+      </div>
       {% if dash.emp_chart.labels %}
       <canvas id="chartEmp" height="140"></canvas>
       {% else %}
@@ -133,9 +141,12 @@
 <div class="row g-3 mb-3">
   <div class="col-12">
     <div class="card p-3">
-      <p class="mb-1 fw-bold" style="font-size:12px;color:#1B5E7B">
-        <i class="bi bi-geo-alt me-1"></i>По районам (топ-12)
-      </p>
+      <div class="d-flex justify-content-between align-items-center mb-1">
+        <p class="mb-0 fw-bold" style="font-size:12px;color:#1B5E7B">
+          <i class="bi bi-geo-alt me-1"></i>По районам (топ-12)
+        </p>
+        <span class="badge bg-secondary" style="font-size:10px">за период: {{ pl }}</span>
+      </div>
       {% if dash.dist_chart.labels %}
       <canvas id="chartDist" height="80"></canvas>
       {% else %}
@@ -149,17 +160,23 @@
 <div class="row g-3 mb-3">
   <div class="col-md-6">
     <div class="card p-3 h-100">
-      <p class="mb-1 fw-bold" style="font-size:12px;color:#1B5E7B">
-        <i class="bi bi-arrows-angle-expand me-1"></i>Площадь участка (га)
-      </p>
+      <div class="d-flex justify-content-between align-items-center mb-1">
+        <p class="mb-0 fw-bold" style="font-size:12px;color:#1B5E7B">
+          <i class="bi bi-arrows-angle-expand me-1"></i>Площадь участка (га)
+        </p>
+        <span class="badge bg-secondary" style="font-size:10px">за период: {{ pl }}</span>
+      </div>
       <canvas id="chartArea" height="120"></canvas>
     </div>
   </div>
   <div class="col-md-6">
     <div class="card p-3 h-100">
-      <p class="mb-1 fw-bold" style="font-size:12px;color:#1B5E7B">
-        <i class="bi bi-building me-1"></i>Площадь застройки (м²)
-      </p>
+      <div class="d-flex justify-content-between align-items-center mb-1">
+        <p class="mb-0 fw-bold" style="font-size:12px;color:#1B5E7B">
+          <i class="bi bi-building me-1"></i>Площадь застройки (м²)
+        </p>
+        <span class="badge bg-secondary" style="font-size:10px">за период: {{ pl }}</span>
+      </div>
       <canvas id="chartBuild" height="120"></canvas>
     </div>
   </div>
@@ -232,7 +249,7 @@ if(document.getElementById('chartEmp') && empData.labels.length){
     type:'bar',
     data:{labels:empData.labels,datasets:[{data:empData.values,
       backgroundColor:empData.labels.map((_,i)=>COLORS[i%COLORS.length]),borderRadius:4}]},
-    options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{beginAtZero:true,ticks:{stepSize:1}}},responsive:true,maintainAspectRatio:true}
+    options:{indexAxis:'y',plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.raw+' обр.'}}},scales:{x:{beginAtZero:true,ticks:{stepSize:1}}},responsive:true,maintainAspectRatio:true}
   });
 }
 
@@ -240,7 +257,7 @@ if(document.getElementById('chartDist') && distData.labels.length){
   new Chart(document.getElementById('chartDist'),{
     type:'bar',
     data:{labels:distData.labels,datasets:[{data:distData.values,backgroundColor:'#1B5E7B',borderRadius:4}]},
-    options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{beginAtZero:true,ticks:{stepSize:1}}},responsive:true,maintainAspectRatio:true}
+    options:{indexAxis:'y',plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.raw+' обр.'}}},scales:{x:{beginAtZero:true,ticks:{stepSize:1}}},responsive:true,maintainAspectRatio:true}
   });
 }
 
