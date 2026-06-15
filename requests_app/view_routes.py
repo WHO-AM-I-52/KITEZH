@@ -8,7 +8,7 @@ from activity_log import log_action
 from form_utils import denormalize_from_base, FIELD_UNIT_KEY
 from . import requests_bp
 
-# ─── Issue #48: поля, которые денормализуются в карточке ─────────────────────
+# ─── Issue #48: поля, которые денормализуются в карточке ──────────────────
 # Формат: (поле_значения, поле_unit, ключ_в_UNIT_FACTORS)
 _INFRA_DISPLAY_FIELDS = [
     ('water_household',   'water_unit',  'water_unit'),
@@ -94,6 +94,17 @@ def view_request(rid):
         "SELECT id, full_name, role FROM users WHERE is_active=1 ORDER BY full_name"
     ).fetchall()
 
+    # ─ Цепочка согласования для текущего обращения
+    review_chain = conn.execute(
+        "SELECT rc.id, rc.step_order, rc.decision, rc.comment, rc.decided_at, "
+        "rc.user_id, rc.external_name, u.full_name AS reviewer_full_name "
+        "FROM review_chain rc "
+        "LEFT JOIN users u ON rc.user_id = u.id "
+        "WHERE rc.request_id = ? "
+        "ORDER BY rc.step_order",
+        (rid,)
+    ).fetchall()
+
     conn.close()
 
     display_vals = _build_display_vals(req)
@@ -106,6 +117,7 @@ def view_request(rid):
         display_vals=display_vals,
         result_types=result_types,
         all_users=all_users,
+        review_chain=review_chain,
         today_str=str(date.today()),
     )
 
