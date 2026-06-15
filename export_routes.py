@@ -1,6 +1,6 @@
 # ╔═════════════════════════════════════════════════════════════════════════════╗
 # ║                       export_routes.py                                       ║
-# ║  v3.6: алиас /export/excel/base → export_full (фикс 404)                    ║
+# ║  v3.7: алиасы /export/excel → report, /export/excel/upload → import_full    ║
 # ╚═════════════════════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, request, send_file, jsonify, session
@@ -215,6 +215,7 @@ def _gen_request_number(new_id: int) -> str:
 # ─── СТАНДАРТНАЯ ВЫГРУЗКА ─────────────────────────────────────────────────────────────────────
 
 @report_bp.route('/report')
+@report_bp.route('/export/excel')  # алиас для фронта (фикс 404)
 @login_required
 def report():
     df = request.args.get('date_from', '')
@@ -648,6 +649,7 @@ STATUS_IMPORT_MAP = {
 
 
 @report_bp.route('/import/full', methods=['POST'])
+@report_bp.route('/export/excel/upload', methods=['POST'])  # алиас для фронта (фикс 404)
 @login_required
 def import_full():
     if not get_user_perm('can_import_full'):
