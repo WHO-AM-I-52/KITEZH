@@ -218,12 +218,60 @@ def change_status(rid):
         upd_fields.append('registered_at=?')
         upd_vals.append(now[:10])
 
+    # ── Загрузка файлов для проверяющего (статус under_review) ─────────────
+    if ns == 'under_review':
+        import os
+        from werkzeug.utils import secure_filename
+        from db import UPLOADS_DIR
+        from validators import allowed_file
+
+        uploaded_files = request.files.getlist('review_files')
+        saved_names = []
+
+        # Берём уже существующие файлы ответа, чтобы не затереть их
+        existing_row = conn.execute(
+            "SELECT answer_file FROM requests WHERE id=?", (rid,)
+        ).fetchone()
+        if existing_row and existing_row['answer_file']:
+            saved_names = [
+                fn.strip()
+                for fn in existing_row['answer_file'].split(',')
+                if fn.strip()
+            ]
+
+        new_count = 0
+        for f in uploaded_files:
+            if f and f.filename and allowed_file(f.filename):
+                fn = secure_filename(f.filename)
+                f.save(os.path.join(UPLOADS_DIR, fn))
+                if fn not in saved_names:
+                    saved_names.append(fn)
+                new_count += 1
+
+        # Ограничение: не более 3 новых файлов за раз (дополнительная защита)
+        if new_count > 3:
+            conn.close()
+            flash('Можно прикрепить не более 3 файлов', 'error')
+            return redirect(url_for('requests.view_request', rid=rid))
+
+        if saved_names:
+            upd_fields.append('answer_file=?')
+            upd_vals.append(','.join(saved_names))
+    # ────────────────────────────────────────────────────────────────────────
+
     upd_vals.append(rid)
     conn.execute(
         f"UPDATE requests SET {', '.join(upd_fields)} WHERE id=?",
         upd_vals
     )
-    log_action(conn, session['user_id'], 'status', rid, f'Новый статус: {ns}')
+
+    # Лог с деталями загруженных файлов
+    if ns == 'under_review' and 'new_count' in dir() and new_count > 0:
+        log_action(conn, session['user_id'], 'status', rid,
+                   f'Новый статус: {ns}. Загружено файлов: {new_count}')
+    else:
+        log_action(conn, session['user_id'], 'status', rid, f'Новый статус: {ns}')
+
     conn.commit()
     conn.close()
     return redirect(url_for('requests.view_request', rid=rid))
