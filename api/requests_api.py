@@ -9,6 +9,7 @@
 # ║   sort, dir          — сортировка (field, asc|desc)        ║
 # ║   filter[*]          — значение фильтра                  ║
 # ║   filter_type[field] — like|starts|ends|=|empty|regex       ║
+# ║   filter[overdue]=1  — только просроченные               ║
 # ║                                                               ║
 # ║ Ответ GET: { data:[], total, page, pages, stats:{} }    ║
 # ║ Ответ POST favorite: { favorite: true|false }           ║
@@ -162,6 +163,14 @@ def get_requests():
     if date_to:
         where.append('r.request_date <= ?')
         params.append(date_to)
+
+    # ── Просроченные: незакрытые с review_deadline < сегодня
+    if request.args.get('filter[overdue]', '').strip() == '1':
+        where.append(
+            "r.status NOT IN ('closed','draft','sent_to_applicant') "
+            "AND r.review_deadline IS NOT NULL "
+            "AND r.review_deadline < date('now')"
+        )
 
     # ── SQL
     where_sql = ('WHERE ' + ' AND '.join(where)) if where else ''

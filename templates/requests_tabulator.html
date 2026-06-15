@@ -5,6 +5,8 @@
  ║  Список обращений на Tabulator 6.x + JSON API                ║
  ║  v1.4: fix links — /view/<id> просмотр, /request/<id> ред.  ║
  ║  v1.5: bulk delete — чекбоксы + кнопка «Удалить выбранные»  ║
+ ║  v1.6: overdue filter — карточка «Просрочено», убраны        ║
+ ║         дублирующие чипы статуса                              ║
  ╚══════════════════════════════════════════════════════════════╝
 #}
 
@@ -167,15 +169,6 @@
   </div>
 
   <div class="chip-bar">
-    <span class="chip-bar-label"><i class="bi bi-circle-half me-1"></i>Статус:</span>
-    <span class="chip" data-chip-type="status" data-chip-val="draft"><i class="bi bi-pencil-square"></i>Черновик</span>
-    <span class="chip" data-chip-type="status" data-chip-val="registered"><i class="bi bi-hash"></i>Зарег.</span>
-    <span class="chip" data-chip-type="status" data-chip-val="in_progress"><i class="bi bi-person-workspace"></i>В работе</span>
-    <span class="chip" data-chip-type="status" data-chip-val="under_review"><i class="bi bi-search"></i>На проверке</span>
-    <span class="chip" data-chip-type="status" data-chip-val="ready_to_send"><i class="bi bi-check2-circle"></i>Готово</span>
-    <span class="chip" data-chip-type="status" data-chip-val="sent_to_applicant"><i class="bi bi-send"></i>Отправлено</span>
-    <span class="chip" data-chip-type="status" data-chip-val="closed"><i class="bi bi-archive"></i>Закрыто</span>
-    <span style="width:1px; background:var(--border); height:18px; margin:0 4px;"></span>
     <span class="chip-bar-label"><i class="bi bi-calendar3 me-1"></i>Дата:</span>
     <span class="chip" data-chip-type="date" data-chip-val="today">Сегодня</span>
     <span class="chip" data-chip-type="date" data-chip-val="week">Неделя</span>
@@ -245,6 +238,7 @@ const STATUS_MAP = {
 const state = {
   status: '', dateFrom: '', dateTo: '', applicant: '',
   search: '', employee: null, favorite: false, dateChip: '',
+  overdue: false,
   sort: '', dir: 'desc',
 };
 
@@ -262,6 +256,7 @@ function buildParams(page, size) {
   if (state.employee)  p.set('filter[employee]',  state.employee);
   if (state.favorite)  p.set('filter[favorite]',  '1');
   if (state.dateChip)  p.set('filter[date_chip]', state.dateChip);
+  if (state.overdue)   p.set('filter[overdue]',   '1');
   return p.toString();
 }
 
@@ -474,7 +469,8 @@ function applyFilters() { table.replaceData(); }
 
 function resetAll() {
   Object.assign(state, { status:'', dateFrom:'', dateTo:'', applicant:'',
-    search:'', employee:null, favorite:false, dateChip:'', sort:'', dir:'desc' });
+    search:'', employee:null, favorite:false, dateChip:'', overdue:false,
+    sort:'', dir:'desc' });
   document.getElementById('fDateFrom').value  = '';
   document.getElementById('fDateTo').value    = '';
   document.getElementById('fStatus').value    = '';
@@ -511,22 +507,13 @@ document.getElementById('btnResetAll').addEventListener('click', resetAll);
   });
 });
 document.getElementById('fStatus').addEventListener('change', function(){
-  state.status = this.value;
-  document.querySelectorAll('.chip[data-chip-type="status"]').forEach(c=>{
-    c.classList.toggle('active', c.dataset.chipVal===this.value);
-  });
+  state.status  = this.value;
+  state.overdue = false;
+  document.querySelectorAll('.stat-card').forEach(c=>c.classList.remove('active'));
+  const matchCard = document.querySelector(`.stat-card[data-filter-status="${this.value}"]`);
+  if (matchCard) matchCard.classList.add('active');
+  else document.querySelector('.stat-card.sc-all').classList.add('active');
   applyFilters();
-});
-
-document.querySelectorAll('.chip[data-chip-type="status"]').forEach(chip=>{
-  chip.addEventListener('click', function(){
-    const val = this.dataset.chipVal, isActive = this.classList.contains('active');
-    document.querySelectorAll('.chip[data-chip-type="status"]').forEach(c=>c.classList.remove('active'));
-    state.status = isActive ? '' : val;
-    if (!isActive) this.classList.add('active');
-    document.getElementById('fStatus').value = state.status;
-    applyFilters();
-  });
 });
 
 document.querySelectorAll('.chip[data-chip-type="date"]').forEach(chip=>{
@@ -560,11 +547,18 @@ document.querySelectorAll('.stat-card').forEach(card=>{
     const val = this.dataset.filterStatus;
     document.querySelectorAll('.stat-card').forEach(c=>c.classList.remove('active'));
     this.classList.add('active');
-    state.status = (val==='__overdue__') ? '' : val;
-    document.getElementById('fStatus').value = state.status;
-    document.querySelectorAll('.chip[data-chip-type="status"]').forEach(c=>{
-      c.classList.toggle('active', c.dataset.chipVal===state.status);
-    });
+    if (val === '__overdue__') {
+      // Просроченные: включаем overdue, сбрасываем статус
+      state.overdue = true;
+      state.status  = '';
+      document.getElementById('fStatus').value = '';
+    } else {
+      // Обычный статус: сбрасываем overdue
+      state.overdue = false;
+      state.status  = val || '';
+      document.getElementById('fStatus').value = state.status;
+    }
+    // employee, dateFrom, dateTo, dateChip — не трогаем
     applyFilters();
   });
 });
