@@ -5,8 +5,9 @@
 
 import sqlite3
 import os
+from datetime import date, timedelta
 
-# ─── ПУТИ ────────────────────────────────────────────────────────────────────────────
+# ─── ПУТИ ────────────────────────────────────────────────────────────────────────────────────
 
 BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
 DB_PATH     = os.path.join(BASE_DIR, 'db', 'database.db')
@@ -20,7 +21,7 @@ os.makedirs(UPLOADS_TMP, exist_ok=True)
 os.makedirs(REPORTS_DIR, exist_ok=True)
 
 
-# ─── МИГРАЦИЯ ────────────────────────────────────────────────────────────────────────────
+# ─── МИГРАЦИЯ ────────────────────────────────────────────────────────────────────────────────────
 
 # Маппинг названий предметов → префиксы рег. номеров.
 # Сравнение нечувствительно к регистру (LOWER).
@@ -68,6 +69,45 @@ def _ensure_prefixes(conn):
             "UPDATE subject_types SET reg_prefix=? WHERE LOWER(name)=LOWER(?) AND (reg_prefix IS NULL OR reg_prefix='')",
             (prefix, name)
         )
+
+
+def _add_workdays(start: date, days: int) -> date:
+    """Добавляет `days` рабочих дней (Пн-Пт) к дате `start`."""
+    current, added = start, 0
+    while added < days:
+        current += timedelta(days=1)
+        if current.weekday() < 5:  # 0=Пн, 4=Пт
+            added += 1
+    return current
+
+
+def _backfill_review_deadline(conn):
+    """
+    Бэкфилл: вычисляет review_deadline для всех существующих обращений
+    где review_deadline IS NULL и статус не в (draft, closed).
+    Идемпотентно: никогда не перезаписывает уже заполненные значения.
+    """
+    if not _has_column(conn, 'requests', 'review_deadline'):
+        return
+    rows = conn.execute("""
+        SELECT id, request_date,
+               COALESCE(review_days, 7) AS review_days
+        FROM requests
+        WHERE (review_deadline IS NULL OR review_deadline = '')
+          AND status NOT IN ('draft', 'closed')
+          AND request_date IS NOT NULL
+          AND request_date != ''
+    """).fetchall()
+    for row in rows:
+        try:
+            start = date.fromisoformat(row['request_date'])
+            deadline = _add_workdays(start, int(row['review_days']))
+            conn.execute(
+                "UPDATE requests SET review_deadline=? WHERE id=?",
+                (deadline.isoformat(), row['id'])
+            )
+        except (ValueError, TypeError):
+            pass  # некорректная дата — пропускаем
 
 
 def _migrate(conn):
@@ -251,6 +291,9 @@ def _migrate(conn):
     conn.execute("UPDATE requests SET status='in_progress'       WHERE status='accepted'")
     conn.execute("UPDATE requests SET status='sent_to_applicant' WHERE status='answered'")
 
+    # ─ Бэкфилл review_deadline для устаревших записей (fix #overdue-backfill)
+    _backfill_review_deadline(conn)
+
     # ════════════════════════════════════════════════════════════════
     # Инициализация счётчиков reg_number_sequences по номерам
     # формата PREFIX-YYYY-NNN (4-значный год). Идемпотентно.
@@ -392,7 +435,7 @@ def _migrate(conn):
     conn.commit()
 
 
-# ─── ПОДКЛЮЧЕНИЕ К БД ─────────────────────────────────────────────────────────────────────
+# ─── ПОДКЛЮЧЕНИЕ К БД ────────────────────────────────────────────────────────────────────────────────────
 
 def get_db():
     """
