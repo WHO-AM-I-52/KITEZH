@@ -16,8 +16,16 @@
     <div class="col-md-3">
       <label class="form-label fw-bold" style="font-size:12px">Статус</label>
       <select name="status" class="form-select form-select-sm">
-        {% for v,l in [('draft','Черновик'),('review','На проверке'),
-                       ('accepted','В работе'),('answered','Отвечено')] %}
+        {# Значения должны строго совпадать с _VALID_STATUSES в action_routes.py #}
+        {% for v,l in [
+          ('draft',             'Черновик'),
+          ('registered',        'Зарегистрировано'),
+          ('in_progress',       'В работе'),
+          ('under_review',      'На проверке'),
+          ('ready_to_send',     'Готово к отправке'),
+          ('sent_to_applicant', 'Документы отправлены'),
+          ('closed',            'Обращение закрыто')
+        ] %}
         <option value="{{ v }}" {{ 'selected' if req and req.status==v else ('selected' if not req and v=='draft' else '') }}>
           {{ l }}
         </option>
