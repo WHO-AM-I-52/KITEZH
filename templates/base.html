@@ -3,6 +3,7 @@
 {# ║                        base.html                            ║ #}
 {# ║  Базовый шаблон приложения "Подбор ЗУ — НО"                 ║ #}
 {# ║  v2.23.2: tooltip с именами онлайн-пользователей            ║ #}
+{# ║  v2.24.0: глобальный баннер запланированного обновления     ║ #}
 {# ╚══════════════════════════════════════════════════════════════╝ #}
 <html lang="ru">
 <head>
@@ -182,6 +183,22 @@
     body[data-theme="zone"] .sb-online-tooltip { background:rgba(10,10,8,.97); border-color:rgba(200,168,75,.2); }
     body[data-theme="zone"] .sb-online-tooltip-item i { color:#c8a84b; }
 
+    /* ─── Баннер запланированного обновления ──────────────────────────── */
+    #updBanner{display:none;position:fixed;top:var(--topbar-h);left:0;right:0;z-index:1049;background:linear-gradient(135deg,#92400e,#b45309);color:#fff;padding:0;box-shadow:0 4px 16px rgba(0,0,0,.35);animation:updBannerIn .4s ease}
+    @keyframes updBannerIn{from{opacity:0;transform:translateY(-10px);}to{opacity:1;transform:translateY(0);}}
+    #updBanner .ub-inner{display:flex;align-items:center;justify-content:center;gap:12px;padding:10px 20px;flex-wrap:wrap;text-align:center}
+    #updBanner .ub-icon{font-size:20px;animation:obPulse 1.5s infinite}
+    #updBanner .ub-text{font-size:14px;font-weight:700}
+    #updBanner .ub-by{font-size:11px;opacity:.8}
+    #updBanner .ub-actions{display:flex;gap:8px;align-items:center;flex-shrink:0}
+    #updBanner .ub-btn{font-size:12px;padding:4px 12px;border-radius:6px;border:1px solid rgba(255,255,255,.5);background:rgba(255,255,255,.15);color:#fff;cursor:pointer;transition:background .15s}
+    #updBanner .ub-btn:hover{background:rgba(255,255,255,.3)}
+    #updBanner .ub-btn-cancel{background:rgba(220,38,38,.4);border-color:rgba(220,38,38,.7)}
+    #updBanner .ub-btn-cancel:hover{background:rgba(220,38,38,.65)}
+    body[data-theme="zone"] #updBanner{background:linear-gradient(135deg,#3a2800,#6b4800)}
+    /* сдвигаем page-wrap вниз когда баннер видим */
+    body.upd-banner-visible .page-wrap{margin-top:calc(var(--topbar-h) + 44px)}
+
     /* ─── CSS-переменные тем ───────────────────────────────────────────────────────── */
     :root {
       --bg:#f4f7fa; --surface:#fff; --surface2:#f0f4f8;
@@ -359,7 +376,43 @@
 
   {% block extra_head %}{% endblock %}
 </head>
-<body>
+<body data-is-admin="{{ '1' if session.get('role')=='admin' else '0' }}">
+
+{# ─── Баннер запланированного обновления (для всех авторизованных) ─── #}
+{% if 'user_id' in session %}
+<div id="updBanner">
+  <div class="ub-inner">
+    <span class="ub-icon">⬆️</span>
+    <div>
+      <div class="ub-text" id="updBannerText">Обновление запланировано…</div>
+      <div class="ub-by" id="updBannerBy"></div>
+    </div>
+    <div class="ub-actions">
+      <button class="ub-btn ub-btn-cancel" id="updBannerCancel" style="display:none">✕ Отменить</button>
+      <button class="ub-btn" id="updBannerNow" style="display:none">⚡ Сейчас</button>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# ─── Модалка «Обновление завершено» (только admin) ─── #}
+{% if session.get('role') == 'admin' %}
+<div class="modal fade" id="updDoneModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header border-0">
+        <h5 class="modal-title">✅ Обновление установлено</h5>
+      </div>
+      <div class="modal-body">
+        Сервер перезапустился. Перезагрузите страницу, чтобы применить новую версию.
+      </div>
+      <div class="modal-footer border-0">
+        <button class="btn btn-primary" id="updDoneReload">🔄 Обновить страницу</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
 
 <div id="offlineBanner">
   <div class="ob-inner">
@@ -928,6 +981,11 @@
   setInterval(doCheck, INTERVAL);
 })();
 </script>
+{% endif %}
+
+{# ── Глобальный баннер обновления (для всех авторизованных) ── #}
+{% if 'user_id' in session %}
+<script src="{{ url_for('static', filename='js/update_banner.js') }}"></script>
 {% endif %}
 
 </body>
