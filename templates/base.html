@@ -2,7 +2,7 @@
 {# ╔══════════════════════════════════════════════════════════════╗ #}
 {# ║                        base.html                            ║ #}
 {# ║  Базовый шаблон приложения "Подбор ЗУ — НО"                 ║ #}
-{# ║  v2.23.1: ссылка /admin в сайдбаре                         ║ #}
+{# ║  v2.23.2: tooltip с именами онлайн-пользователей            ║ #}
 {# ╚══════════════════════════════════════════════════════════════╝ #}
 <html lang="ru">
 <head>
@@ -141,13 +141,46 @@
       .gs-wrap { max-width:140px; }
     }
 
-    .sb-online { padding:10px 16px 12px; border-top:1px solid rgba(255,255,255,.1); display:flex; align-items:center; gap:8px; white-space:nowrap; overflow:hidden; }
+    /* ─── Онлайн-виджет + tooltip ──────────────────────────────────────── */
+    .sb-online { position:relative; padding:10px 16px 12px; border-top:1px solid rgba(255,255,255,.1); display:flex; align-items:center; gap:8px; white-space:nowrap; overflow:visible; cursor:default; }
     .sb-online-dot { width:8px; height:8px; border-radius:50%; background:#4ade80; flex-shrink:0; box-shadow:0 0 0 0 rgba(74,222,128,.6); animation:onlinePulse 2.5s infinite; }
     @keyframes onlinePulse { 0%{box-shadow:0 0 0 0 rgba(74,222,128,.6);} 70%{box-shadow:0 0 0 6px rgba(74,222,128,0);} 100%{box-shadow:0 0 0 0 rgba(74,222,128,0);} }
     .sb-online-text { font-size:12px; color:rgba(255,255,255,.7); transition:opacity .2s; }
     body.sb-col .sb-online-text { opacity:0; pointer-events:none; }
     .sb-online-num { font-weight:700; color:#4ade80; transition:transform .3s, color .3s; }
     .sb-online-num.bump { transform:scale(1.4); color:#86efac; }
+
+    .sb-online-tooltip {
+      display:none;
+      position:absolute;
+      bottom:calc(100% + 8px);
+      left:8px;
+      min-width:180px;
+      max-width:240px;
+      background:rgba(15,20,30,.95);
+      border:1px solid rgba(255,255,255,.12);
+      border-radius:8px;
+      padding:8px 0;
+      z-index:2000;
+      box-shadow:0 4px 20px rgba(0,0,0,.5);
+      pointer-events:none;
+    }
+    .sb-online-tooltip.visible { display:block; }
+    .sb-online-tooltip-title {
+      font-size:10px; font-weight:700; letter-spacing:1px; text-transform:uppercase;
+      color:rgba(255,255,255,.35); padding:0 12px 6px; border-bottom:1px solid rgba(255,255,255,.08);
+      margin-bottom:4px;
+    }
+    .sb-online-tooltip-item {
+      display:flex; align-items:center; gap:7px;
+      padding:4px 12px; font-size:12px; color:rgba(255,255,255,.85);
+    }
+    .sb-online-tooltip-item i { color:#4ade80; font-size:11px; flex-shrink:0; }
+    .sb-online-tooltip-empty {
+      padding:6px 12px; font-size:12px; color:rgba(255,255,255,.4); font-style:italic;
+    }
+    body[data-theme="zone"] .sb-online-tooltip { background:rgba(10,10,8,.97); border-color:rgba(200,168,75,.2); }
+    body[data-theme="zone"] .sb-online-tooltip-item i { color:#c8a84b; }
 
     /* ─── CSS-переменные тем ───────────────────────────────────────────────────────── */
     :root {
@@ -518,9 +551,13 @@
     </div>
 
   </nav>
-  <div class="sb-online" title="Пользователи онлайн за последние 5 минут">
+  <div class="sb-online" id="sbOnlineWidget">
     <span class="sb-online-dot"></span>
     <span class="sb-online-text">Онлайн: <span class="sb-online-num" id="onlineCount">…</span></span>
+    <div class="sb-online-tooltip" id="sbOnlineTooltip">
+      <div class="sb-online-tooltip-title">Сейчас онлайн</div>
+      <div id="sbOnlineTooltipBody"></div>
+    </div>
   </div>
 </aside>
 {% endif %}
@@ -681,9 +718,26 @@
 
 <script>
 (function(){
-  var el = document.getElementById('onlineCount');
-  var prevVal = null;
+  var el        = document.getElementById('onlineCount');
+  var tooltip   = document.getElementById('sbOnlineTooltip');
+  var body      = document.getElementById('sbOnlineTooltipBody');
+  var widget    = document.getElementById('sbOnlineWidget');
+  var prevVal   = null;
+  var lastUsers = [];
   if (!el) return;
+
+  function renderTooltip() {
+    if (!body) return;
+    if (!lastUsers.length) {
+      body.innerHTML = '<div class="sb-online-tooltip-empty">Нет данных</div>';
+      return;
+    }
+    body.innerHTML = lastUsers.map(function(name){
+      return '<div class="sb-online-tooltip-item"><i class="bi bi-person-fill"></i>' +
+             name.replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</div>';
+    }).join('');
+  }
+
   function fetchOnline(){
     fetch('/api/online', {cache:'no-store', credentials:'same-origin'})
       .then(function(r){ return r.ok ? r.json() : null; })
@@ -696,8 +750,20 @@
           setTimeout(function(){ el.classList.remove('bump'); }, 400);
         }
         prevVal = n;
+        lastUsers = Array.isArray(data.users) ? data.users : [];
       }).catch(function(){});
   }
+
+  if (widget && tooltip) {
+    widget.addEventListener('mouseenter', function(){
+      renderTooltip();
+      tooltip.classList.add('visible');
+    });
+    widget.addEventListener('mouseleave', function(){
+      tooltip.classList.remove('visible');
+    });
+  }
+
   setTimeout(function(){ fetchOnline(); setInterval(fetchOnline, 60000); }, 2000);
 })();
 </script>
