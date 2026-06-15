@@ -8,17 +8,14 @@ from werkzeug.utils import secure_filename
 
 from db import get_db, UPLOADS_DIR, UPLOADS_TMP
 from auth_utils import login_required
-from form_utils import build_values, get_classifiers, ALL_FIELDS, REQUIRED_FIELDS
+from form_utils import build_values, get_classifiers, ALL_FIELDS, REQUIRED_FIELDS, add_workdays
 from validators import allowed_file, validate_inn
 from activity_log import log_action
 from ocr_utils import extract_anketa_fields
 from request_history import save_history
-from phonebook_routes import sync_request_to_phonebook  # Issue #PB-1
+from phonebook_routes import sync_request_to_phonebook
 from . import requests_bp
 
-# Поля issue #53, которых нет в форме редактирования form.html.
-# При UPDATE их значение берётся из текущей записи БД, чтобы не затреть
-# NOT NULL-колонки (например review_days INTEGER NOT NULL DEFAULT 7).
 _PRESERVE_FIELDS = [
     'review_days',
     'responsible_id',
@@ -35,7 +32,6 @@ _PRESERVE_FIELDS = [
 
 
 def _sha256(path: str) -> str:
-    """SHA-256 файла чанками по 8 КБ — не нагружает память."""
     h = hashlib.sha256()
     with open(path, 'rb') as f:
         for chunk in iter(lambda: f.read(8192), b''):
@@ -44,28 +40,16 @@ def _sha256(path: str) -> str:
 
 
 def _unique_filename(original: str) -> str:
-    """
-    fix #62: добавляет timestamp-префикс чтобы избежать перезаписи
-    одноимённых файлов в uploads/.
-    Пример: contract.pdf → 20260608_173045_contract.pdf
-    """
-    ts = datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:19]  # точность до секунды
+    ts = datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:19]
     return f"{ts}_{secure_filename(original)}"
 
 
 def _save_files_transactional(file_list):
-    """
-    1. Сохраняет каждый файл во временную папку uploads/tmp/.
-    2. Считывает SHA-256.
-    3. Возвращает список (filename, tmp_path, sha256).
-       Перемещение tmp → UPLOADS_DIR делается вне функции,
-       только после успешного conn.commit().
-    """
     pending = []
     for uf in file_list:
         if not (uf and uf.filename and allowed_file(uf.filename)):
             continue
-        fn  = _unique_filename(uf.filename)  # fix #62: уникальное имя
+        fn  = _unique_filename(uf.filename)
         tmp = os.path.join(UPLOADS_TMP, fn)
         uf.save(tmp)
         digest = _sha256(tmp)
@@ -74,10 +58,6 @@ def _save_files_transactional(file_list):
 
 
 def _commit_files(conn, pending, request_id):
-    """
-    fix #60: все INSERT в одной транзакции — без промежуточного commit.
-    Порядок: INSERT хэшей без commit → shutil.move() — после commit внешнего кода.
-    """
     if not pending:
         return
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -87,20 +67,32 @@ def _commit_files(conn, pending, request_id):
             "VALUES (?, ?, ?, ?)",
             (request_id, fn, digest, now)
         )
-    # НЕ делаем conn.commit() здесь — commit один раз вызывается внешним кодом
     for fn, tmp, digest in pending:
         dst = os.path.join(UPLOADS_DIR, fn)
         shutil.move(tmp, dst)
 
 
 def _cleanup_tmp(pending):
-    """Удаляет временные файлы если commit упал."""
     for fn, tmp, _ in pending:
         try:
             if os.path.exists(tmp):
                 os.remove(tmp)
         except Exception:
             pass
+
+
+def _compute_review_deadline(form_date_str: str) -> str | None:
+    """
+    Вычисляет review_deadline = request_date + 7 рабочих дней.
+    Возвращает ISO-строку 'YYYY-MM-DD' или None если дата не задана.
+    """
+    if not form_date_str:
+        return None
+    try:
+        d = date.fromisoformat(form_date_str.strip())
+        return add_workdays(d, 7).isoformat()
+    except (ValueError, TypeError):
+        return None
 
 
 @requests_bp.route('/request/new', methods=['GET', 'POST'])
@@ -198,24 +190,32 @@ def new_request():
                 vals + [session['user_id'], now, now]
             )
             new_id = cursor.lastrowid
+
+            # ── Автоматически проставляем review_deadline = request_date + 7 раб. дней
+            deadline = _compute_review_deadline(request.form.get('request_date', ''))
+            if deadline:
+                conn.execute(
+                    "UPDATE requests SET review_deadline=? WHERE id=?",
+                    (deadline, new_id)
+                )
+
             applicant = (
                 request.form.get('applicant_short_name', '') or
                 request.form.get('applicant_full_name', '') or
                 f'ID:{new_id}'
             )
             log_action(conn, session['user_id'], 'create', new_id,
-                       f'Создано обращение: {applicant}')
-            # fix #60: сначала INSERT хэшей, потом единый commit, затем move
+                       f'Создано обращение: {applicant}'
+                       + (f', deadline={deadline}' if deadline else ''))
             _commit_files(conn, pending, new_id)
             conn.commit()
             for fn, tmp, _ in pending:
                 dst = os.path.join(UPLOADS_DIR, fn)
                 if os.path.exists(tmp) and not os.path.exists(dst):
                     shutil.move(tmp, dst)
-            # ── Issue #PB-1: синхронизация в справочник ─────────────────────────
             if request.form.get('sync_to_phonebook') == '1':
                 sync_request_to_phonebook(conn, request.form, new_id, session['user_id'])
-                conn.commit()  # отдельный commit только для phonebook-записей
+                conn.commit()
         except Exception:
             _cleanup_tmp(pending)
             conn.close()
@@ -271,7 +271,7 @@ def edit_request(rid):
         af   = req['answer_file']
         file = request.files.get('answer_file')
         if file and file.filename and allowed_file(file.filename):
-            fn2 = _unique_filename(file.filename)  # fix #62
+            fn2 = _unique_filename(file.filename)
             file.save(os.path.join(UPLOADS_DIR, fn2))
             af = fn2
 
@@ -286,12 +286,19 @@ def edit_request(rid):
         edit_reason = request.form.get('edit_reason', '').strip()
         updated_by  = session.get('user_id')
 
+        # ── Пересчитываем deadline если пользователь изменил request_date
+        new_date_str = request.form.get('request_date', '').strip()
+        if new_date_str and new_date_str != (req['request_date'] or ''):
+            new_deadline = _compute_review_deadline(new_date_str)
+        else:
+            new_deadline = req['review_deadline']  # сохраняем старый
+
         set_clause = ', '.join([f"{f}=?" for f in ALL_FIELDS])
         try:
             conn.execute(
                 f"UPDATE requests SET {set_clause}, updated_at=?, updated_by=?, "
-                f"edit_reason=?, answer_file=? WHERE id=?",
-                vals + [now, updated_by, edit_reason, af, rid]
+                f"edit_reason=?, answer_file=?, review_deadline=? WHERE id=?",
+                vals + [now, updated_by, edit_reason, af, new_deadline, rid]
             )
             new_req = conn.execute("SELECT * FROM requests WHERE id=?", (rid,)).fetchone()
             save_history(conn, rid, session['user_id'], old_req, new_req)
@@ -299,7 +306,6 @@ def edit_request(rid):
             reason_str = f' | Причина: {edit_reason}' if edit_reason else ''
             log_action(conn, session['user_id'], 'edit', rid,
                        f'Обращение {num}{reason_str}')
-            # fix #60: INSERT хэшей без commit, потом единый commit, затем move
             if pending:
                 _commit_files(conn, pending, rid)
             conn.commit()
@@ -308,10 +314,9 @@ def edit_request(rid):
                     dst = os.path.join(UPLOADS_DIR, fn)
                     if os.path.exists(tmp) and not os.path.exists(dst):
                         shutil.move(tmp, dst)
-            # ── Issue #PB-1: синхронизация в справочник ─────────────────────────
             if request.form.get('sync_to_phonebook') == '1':
                 sync_request_to_phonebook(conn, request.form, rid, session['user_id'])
-                conn.commit()  # отдельный commit только для phonebook-записей
+                conn.commit()
         except Exception:
             _cleanup_tmp(pending)
             conn.close()

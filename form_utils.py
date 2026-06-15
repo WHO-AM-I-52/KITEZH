@@ -3,46 +3,55 @@
 # ║  Работа с формой обращения: поля, приведение типов,          ║
 # ║  классификаторы                                              ║
 # ║  v2.6: contact_position добавлен после contact_email         ║
+# ║  v2.7: add_workdays() — +N рабочих дней (сб/вс — выходные) ║
 # ╚══════════════════════════════════════════════════════════════╝
 
+from datetime import date, timedelta
 from validators import _int, _flt
 
 
-# ───────────────────────────────────────────────────────────────────────────────
-# Issue #48: Коэффициенты перевода в базовые единицы
-#
-# Базовые единицы (в которых всё хранится в БД):
-#   электро: кВт  | тепло: Гкал/ч  | газ: м³/ч и м³/год  | вода: м³/сут
-#
-# UNIT_FACTORS[поле_unit][единица] = коэффициент, на который умножается
-# введённое значение для получения базового.
-# Пример: 5 МВт * 1000 = 5000 кВт (база)
-# ───────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+def add_workdays(start: date, days: int) -> date:
+    """
+    Возвращает дату = start + days рабочих дней.
+    Суббота (weekday==5) и воскресенье (weekday==6) — выходные.
+    Праздники РФ также считаются выходными (offcalendar).
+    Текущая реализация учитывает только сб/вс.
+    """
+    current = start
+    counted = 0
+    while counted < days:
+        current += timedelta(days=1)
+        if current.weekday() < 5:  # 0=Пн … 4=Пт
+            counted += 1
+    return current
+
+
+# ─── Issue #48: Коэффициенты перевода в базовые единицы ────────────────────
 UNIT_FACTORS = {
     'elec_unit': {
-        'кВт':  1.0,          # базовая
-        'МВт':  1000.0,       # 1 МВт = 1000 кВт
+        'кВт':  1.0,
+        'МВт':  1000.0,
     },
     'heat_unit': {
-        'Гкал/ч': 1.0,         # базовая
-        'МВт':   1.163,       # 1 МВт = 1.163 Гкал/ч
-        'кДж/ч':  1 / 4186.8,  # 1 кДЖ/ч = 0.000239 Гкал/ч
+        'Гкал/ч': 1.0,
+        'МВт':   1.163,
+        'кДж/ч':  1 / 4186.8,
     },
     'gas_unit_h': {
-        'м³/ч':      1.0,     # базовая
-        'тыс.м³/ч': 1000.0,  # 1 тыс.м³/ч = 1000 м³/ч
+        'м³/ч':      1.0,
+        'тыс.м³/ч': 1000.0,
     },
     'gas_unit_y': {
-        'м³/год':      1.0,     # базовая
-        'тыс.м³/год': 1000.0,  # 1 тыс.м³/год = 1000 м³/год
+        'м³/год':      1.0,
+        'тыс.м³/год': 1000.0,
     },
     'water_unit': {
-        'м³/сут': 1.0,   # базовая
-        'м³/ч':  24.0,   # 1 м³/ч = 24 м³/сут
+        'м³/сут': 1.0,
+        'м³/ч':  24.0,
     },
 }
 
-# Соответствие: поле → какой unit-ключ ему соответствует
 FIELD_UNIT_KEY = {
     'electricity_total': 'elec_unit',
     'electricity_cat1':  'elec_unit',
@@ -59,12 +68,6 @@ FIELD_UNIT_KEY = {
 
 
 def normalize_to_base(value, unit_key, unit_value):
-    """
-    Нормализует значение в базовые единицы.
-    value     — float | None, введённое пользователем значение
-    unit_key  — str, ключ в UNIT_FACTORS (напр., 'elec_unit')
-    unit_value— str, выбранная единица (напр., 'МВт')
-    """
     if value is None:
         return None
     factor = UNIT_FACTORS.get(unit_key, {}).get(unit_value, 1.0)
@@ -72,27 +75,15 @@ def normalize_to_base(value, unit_key, unit_value):
 
 
 def denormalize_from_base(value, unit_key, unit_value):
-    """
-    Обратный пересчёт: базовая единица → единица пользователя.
-    Используется для подстановки в форму редактирования числа,
-    которое пользователь видел при вводе.
-    """
     if value is None:
         return None
     factor = UNIT_FACTORS.get(unit_key, {}).get(unit_value, 1.0)
     if factor == 0:
         return None
-    result = value / factor
-    # Округляем до 6 знаков, убираем незначимые нули
-    return round(result, 6)
+    return round(value / factor, 6)
 
 
-# ───────────────────────────────────────────────────────────────────────────────
-# Поля формы обращения (используются для массового чтения/записи)
-# ВАЖНО: порядок элементов должен строго совпадать с порядком колонок
-# в INSERT/UPDATE запросах (form_routes.py использует позиционный маппинг).
-# contact_position добавлен СРАЗУ ПОСЛЕ contact_email.
-# ───────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
 ALL_FIELDS = [
     "request_date", "status", "consent_disclosure",
     "source_type",
@@ -100,7 +91,7 @@ ALL_FIELDS = [
     "applicant_inn", "applicant_msp_category", "applicant_okved_main",
     "postal_address", "legal_address", "project_name",
     "contact_person", "contact_phone", "contact_email",
-    "contact_position",   # ← Должность уполномоченного лица (phonebook sync)
+    "contact_position",
     "jobs_total", "jobs_foreign",
     "investment_total", "investment_borrowed",
     "construction_stages", "construction_start", "operation_start",
@@ -118,17 +109,13 @@ ALL_FIELDS = [
     "staff_management", "staff_workers", "staff_other", "staff_it", "staff_admin",
     "raw_materials", "raw_extra", "additional_info",
     "assigned_to",
-    # ─ Сведения об ответе ────────────────────────────────────────────────────────────
     "answer_date", "answer_method", "answer_method_other", "answer_notes", "answer_file",
     "request_files",
     "edit_reason",
-    # ─ МинЭК: новые поля (добавлены через миграцию db.py) ───────
-    "subject_type_id",   # Предмет обращения (FK → subject_types)
-    "feedback_date",     # Дата получения обратной связи
-    "result_type_id",    # Итоги работы по обращению (FK → result_types)
-    # ─ Входящий номер (Directum / СЭДО) ─────────────────────────
+    "subject_type_id",
+    "feedback_date",
+    "result_type_id",
     "incoming_number",
-    # ─ Issue #53: новая логика статусов ────────────────────────────────
     "review_days",
     "responsible_id",
     "responsible_not_in_system",
@@ -140,7 +127,6 @@ ALL_FIELDS = [
     "send_method",
     "applicant_feedback",
     "applicant_feedback_at",
-    # ─ Issue #48: единицы измерения инфраструктуры ───────────────────
     "elec_unit",
     "heat_unit",
     "gas_unit_h",
@@ -148,7 +134,6 @@ ALL_FIELDS = [
     "water_unit",
 ]
 
-# Наборы полей по типу
 BOOL_F = {
     "consent_disclosure", "site_type_free", "site_type_existing",
     "site_area_expansion", "railway_needed", "distance_nn_matters",
@@ -171,7 +156,6 @@ FLOAT_F = {
     "road_local_dist", "road_private_dist", "railway_dist", "railway_cargo", "distance_nn_max"
 }
 
-# Обязательные поля и их подписи для уведомлений
 REQUIRED_FIELDS = {
     "request_date":        "Дата обращения",
     "source_type":         "Источник обращения",
@@ -184,16 +168,6 @@ REQUIRED_FIELDS = {
 
 
 def get_classifiers(conn):
-    """
-    Возвращает справочники:
-    - список правовых форм,
-    - список районов,
-    - список источников обращений,
-    - список сотрудников,
-    - справочник предметов обращений (subject_types),
-    - справочник итогов работы (result_types),
-    - список пользователей (#53).
-    """
     lf  = [r['value'] for r in conn.execute(
         "SELECT value FROM classifiers WHERE category='legal_form' "
         "ORDER BY sort_order,value"
@@ -224,19 +198,6 @@ def get_classifiers(conn):
 
 
 def build_values(form):
-    """
-    Собирает значения из формы Flask-WTF / request.form
-    в том порядке, который соответствует ALL_FIELDS.
-    Приводит типы чисел и булевых значений.
-
-    Текстовые поля: пустой ввод сохраняется как '' (не NULL),
-    чтобы избежать накопления NULL в БД при редактировании форм.
-    NULL остаётся только для числовых и FK-полей (INT_F, FLOAT_F).
-
-    Issue #48: числовые инфраструктурные поля нормализуются перед
-    записью в базовые единицы (см. normalize_to_base).
-    """
-    # Сначала извлекаем единицы, чтобы использовать при нормализации
     units = {
         uk: (form.get(uk, '') or '').strip() or list(UNIT_FACTORS[uk].keys())[0]
         for uk in UNIT_FACTORS
@@ -252,7 +213,6 @@ def build_values(form):
             selected = form.getlist('preferred_districts')
             vals.append(', '.join(selected) if selected else None)
             continue
-        # #47: множественный выбор права пользования
         if f == 'site_right':
             selected = form.getlist('site_right')
             vals.append(', '.join(selected) if selected else None)
@@ -263,13 +223,11 @@ def build_values(form):
         elif f in INT_F:
             vals.append(_int(v))
         elif f in FLOAT_F:
-            # #48: нормализация если поле привязано к единице
             raw = _flt(v)
             unit_key = FIELD_UNIT_KEY.get(f)
             if unit_key and raw is not None:
                 raw = normalize_to_base(raw, unit_key, units[unit_key])
             vals.append(raw)
         else:
-            # Текстовые поля: '' вместо NULL — не затираем данные при редактировании
             vals.append(v.strip() if v else '')
     return vals
