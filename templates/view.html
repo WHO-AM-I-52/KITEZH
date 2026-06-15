@@ -207,7 +207,7 @@
     <i class="bi bi-search me-1"></i> Отправить на проверку
   </div>
   <div class="card-body">
-    <p class="text-muted small mb-2">Загрузите файл подбора в разделе «Ответ» и укажите проверяющего.</p>
+    <p class="text-muted small mb-2">Укажите проверяющего и при необходимости приложите файлы для проверки.</p>
     <button class="btn btn-info text-white"
             data-bs-toggle="modal" data-bs-target="#reviewerModal">
       <i class="bi bi-send me-1"></i> Направить на проверку
@@ -583,10 +583,14 @@
       <tr>
         <td class="text-muted" style="width:45%">Файл ответа</td>
         <td>
-          <a href="{{ url_for('requests.uploaded_file', filename=req.answer_file) }}"
-             class="btn btn-sm btn-outline-primary" target="_blank">
-            <i class="bi bi-download me-1"></i>{{ req.answer_file }}
-          </a>
+          {% for fn in req.answer_file.split(',') %}
+            {% if fn.strip() %}
+            <a href="{{ url_for('requests.uploaded_file', filename=fn.strip()) }}"
+               class="btn btn-sm btn-outline-primary me-1 mb-1" target="_blank">
+              <i class="bi bi-download me-1"></i>{{ fn.strip() }}
+            </a>
+            {% endif %}
+          {% endfor %}
         </td>
       </tr>
       {% endif %}
@@ -636,15 +640,44 @@
         </h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
-      <form method="post" action="{{ url_for('requests.change_status', rid=req.id) }}">
+      <form method="post" action="{{ url_for('requests.change_status', rid=req.id) }}"
+            enctype="multipart/form-data">
         <input type="hidden" name="status" value="under_review">
         <div class="modal-body">
-          {% if not req.answer_file %}
-          <div class="alert alert-warning d-flex align-items-center gap-2 py-2 mb-3">
-            <i class="bi bi-exclamation-triangle-fill"></i>
-            <span>Загрузите файл подбора в разделе «Ответ» перед отправкой на проверку.</span>
+
+          {# — Блок загрузки файлов для проверяющего — #}
+          <div class="mb-3">
+            <label class="form-label fw-semibold">
+              <i class="bi bi-paperclip me-1"></i>Файлы для проверяющего
+              <span class="text-muted fw-normal">(до 3 файлов, необязательно)</span>
+            </label>
+            {% if req.answer_file %}
+            <div class="mb-2">
+              {% for fn in req.answer_file.split(',') %}
+                {% if fn.strip() %}
+                <a href="{{ url_for('requests.uploaded_file', filename=fn.strip()) }}"
+                   class="btn btn-sm btn-outline-success me-1 mb-1" target="_blank">
+                  <i class="bi bi-file-earmark-check me-1"></i>{{ fn.strip() }}
+                </a>
+                {% endif %}
+              {% endfor %}
+              <div class="text-muted small mt-1">
+                <i class="bi bi-info-circle me-1"></i>Уже загружен файл ответа. Можете добавить дополнительные файлы ниже.
+              </div>
+            </div>
+            {% endif %}
+            <input type="file" class="form-control" name="review_files" id="reviewFilesInput"
+                   multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
+                   onchange="validateReviewFiles(this)">
+            <div id="reviewFilesHelp" class="form-text text-muted">
+              Поддерживаемые форматы: PDF, Word, Excel, изображения
+            </div>
+            <div id="reviewFilesError" class="text-danger small mt-1" style="display:none">
+              <i class="bi bi-exclamation-triangle me-1"></i>Можно прикрепить не более 3 файлов
+            </div>
           </div>
-          {% endif %}
+
+          {# — Выбор проверяющего — #}
           <div class="mb-3">
             <label class="form-label fw-semibold">Проверяющий площадки <span class="text-danger">*</span></label>
             <div class="form-check mb-2">
@@ -670,7 +703,7 @@
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
-          <button type="submit" class="btn btn-info text-white" {% if not req.answer_file %}disabled{% endif %}>
+          <button type="submit" class="btn btn-info text-white" id="reviewSubmitBtn">
             <i class="bi bi-send me-1"></i> Направить на проверку
           </button>
         </div>
@@ -691,6 +724,26 @@ function toggleReviewer() {
 document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('revSelect').required = true;
 });
+
+function validateReviewFiles(input) {
+  const errorEl = document.getElementById('reviewFilesError');
+  const helpEl  = document.getElementById('reviewFilesHelp');
+  const submitBtn = document.getElementById('reviewSubmitBtn');
+  if (input.files.length > 3) {
+    errorEl.style.display = 'block';
+    helpEl.style.display  = 'none';
+    submitBtn.disabled    = true;
+  } else {
+    errorEl.style.display = 'none';
+    helpEl.style.display  = 'block';
+    submitBtn.disabled    = false;
+    if (input.files.length > 0) {
+      helpEl.textContent = 'Выбрано файлов: ' + input.files.length + ' из 3';
+    } else {
+      helpEl.textContent = 'Поддерживаемые форматы: PDF, Word, Excel, изображения';
+    }
+  }
+}
 </script>
 
 {% endblock %}
