@@ -1,143 +1,402 @@
 {% extends 'base.html' %}
 {% block title %}Консоль SQL{% endblock %}
 
+{# CodeMirror — подсветка SQL #}
+{% block head_extra %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/monokai.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/sql/sql.min.js"></script>
+{# SheetJS — экспорт Excel #}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  .CodeMirror { height: 140px; font-size: 13px; border: 1px solid #dee2e6; border-radius: 4px; }
+  .CodeMirror-scroll { min-height: 80px; }
+  #schemaPanel { max-height: 320px; overflow-y: auto; font-size: 12px; }
+  #schemaPanel .table-name { font-weight:600; cursor:pointer; color:#1B5E7B; }
+  #schemaPanel .table-name:hover { text-decoration: underline; }
+  #schemaPanel .col-name { color:#555; padding-left:16px; cursor:pointer; }
+  #schemaPanel .col-name:hover { color:#000; }
+  .bookmark-btn { font-size:11px; }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="container-fluid py-3" style="max-width:1100px">
+<div class="container-fluid py-3" style="max-width:1200px">
 
   <div class="d-flex align-items-center mb-3 gap-2">
-    <i class="bi bi-terminal fs-4 text-primary"></i>
+    <i class="bi bi-terminal fs-4 text-danger"></i>
     <h5 class="mb-0 fw-bold">Консоль SQL</h5>
     <span class="badge bg-danger ms-2">Только для администратора</span>
   </div>
 
-  <div class="card mb-3">
-    <div class="card-body">
-      <textarea id="sqlInput" class="form-control font-monospace mb-2"
-                rows="6"
-                placeholder="SELECT * FROM requests WHERE status = 'in_progress' LIMIT 20;"
-                style="font-size:13px;resize:vertical"></textarea>
-      <div class="d-flex gap-2 align-items-center">
-        <button class="btn btn-primary btn-sm" onclick="runQuery()">
-          <i class="bi bi-play-fill me-1"></i>Выполнить
-        </button>
-        <button class="btn btn-outline-secondary btn-sm" onclick="clearAll()">
-          <i class="bi bi-x-lg me-1"></i>Очистить
-        </button>
-        <span id="statusMsg" class="small ms-2"></span>
+  <div class="row g-3">
+
+    {# Левая панель — редактор + кнопки #}
+    <div class="col-lg-8">
+      <div class="card mb-2">
+        <div class="card-body pb-2">
+          <textarea id="sqlInput" style="display:none"></textarea>
+          <div id="cmWrapper"></div>
+          <div class="d-flex gap-2 align-items-center mt-2 flex-wrap">
+            <button class="btn btn-danger btn-sm" id="runBtn" onclick="runQuery()">
+              <i class="bi bi-play-fill me-1"></i>Выполнить
+            </button>
+            <button class="btn btn-outline-secondary btn-sm" onclick="clearAll()">
+              <i class="bi bi-x-lg me-1"></i>Очистить
+            </button>
+            <button class="btn btn-outline-primary btn-sm" onclick="exportXLSX()" id="xlsxBtn" style="display:none">
+              <i class="bi bi-file-earmark-excel me-1"></i>Excel
+            </button>
+            <button class="btn btn-outline-secondary btn-sm" onclick="copyCSV()" id="csvBtn" style="display:none">
+              <i class="bi bi-clipboard me-1"></i>CSV
+            </button>
+            <button class="btn btn-outline-warning btn-sm bookmark-btn" onclick="saveBookmark()">
+              <i class="bi bi-bookmark-plus me-1"></i>Закладка
+            </button>
+            <span id="statusMsg" class="small ms-1 text-muted"></span>
+          </div>
+        </div>
+      </div>
+
+      {# Быстрые пресеты #}
+      <div class="mb-2 d-flex flex-wrap gap-1">
+        {% for label, sql in [
+          ('Статусы',   "SELECT status, COUNT(*) as cnt FROM requests GROUP BY status ORDER BY cnt DESC;"),
+          ('Без дедлайна', "SELECT id, request_number, status, request_date FROM requests WHERE (review_deadline IS NULL OR review_deadline='') AND status NOT IN ('draft','closed') LIMIT 50;"),
+          ('Логи',    "SELECT * FROM admin_sql_log ORDER BY id DESC LIMIT 10;"),
+          ('Пользователи', "SELECT id, username, role, is_active FROM users ORDER BY id;"),
+        ] %}
+        <button class="btn btn-outline-secondary btn-sm py-0"
+                onclick="setQuery({{ sql|tojson }})">{{ label }}</button>
+        {% endfor %}
+      </div>
+
+      {# Результат #}
+      <div id="resultWrap" style="display:none">
+        <div class="card">
+          <div class="card-header py-1 d-flex justify-content-between align-items-center"
+               style="font-size:12px;background:#f8f9fa">
+            <span id="resultMeta" class="text-muted"></span>
+            <span id="execTime" class="text-muted ms-3"></span>
+          </div>
+          <div class="card-body p-0" style="overflow-x:auto;max-height:480px;overflow-y:auto">
+            <table class="table table-sm table-striped table-hover mb-0 font-monospace"
+                   style="font-size:12px" id="resultTable">
+              <thead id="resultHead" class="table-dark sticky-top"></thead>
+              <tbody id="resultBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div id="errorBox" class="alert alert-danger mt-2" style="display:none;font-size:13px"></div>
+    </div>
+
+    {# Правая панель — схема + закладки + история #}
+    <div class="col-lg-4">
+
+      {# Схема БД #}
+      <div class="card mb-2">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center"
+             style="font-size:12px;background:#f8f9fa">
+          <span><i class="bi bi-diagram-3 me-1"></i><strong>Схема БД</strong></span>
+          <button class="btn btn-outline-secondary btn-sm py-0" onclick="loadSchema()" id="schemaBtn">
+            <i class="bi bi-arrow-clockwise"></i>
+          </button>
+        </div>
+        <div class="card-body p-2">
+          <div id="schemaPanel">
+            <span class="text-muted" style="font-size:12px">Нажмите бнопку → для загрузки</span>
+          </div>
+        </div>
+      </div>
+
+      {# Закладки #}
+      <div class="card mb-2">
+        <div class="card-header py-2" style="font-size:12px;background:#f8f9fa">
+          <i class="bi bi-bookmarks me-1"></i><strong>Закладки</strong>
+        </div>
+        <div class="card-body p-2">
+          <div id="bookmarkList"><span class="text-muted" style="font-size:12px">Пока пусто</span></div>
+        </div>
+      </div>
+
+      {# История запросов #}
+      <div class="card">
+        <div class="card-header py-2" style="font-size:12px;background:#f8f9fa">
+          <i class="bi bi-clock-history me-1"></i><strong>История</strong>
+          <span class="text-muted ms-1">(10 последних)</span>
+        </div>
+        <div class="card-body p-2">
+          <div id="historyList"><span class="text-muted" style="font-size:12px">Пока пусто</span></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+{# Модал подтверждения UPDATE/DELETE/INSERT #}
+<div class="modal fade" id="confirmModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-danger">
+      <div class="modal-header bg-danger text-white py-2">
+        <h6 class="modal-title mb-0"><i class="bi bi-exclamation-triangle-fill me-2"></i>Изменение данных</h6>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p id="confirmMsg" class="mb-2"></p>
+        <pre id="confirmQuery" class="bg-light p-2 rounded" style="font-size:11px;max-height:120px;overflow:auto"></pre>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Отмена</button>
+        <button type="button" class="btn btn-danger btn-sm" id="confirmOkBtn">Да, выполнить</button>
       </div>
     </div>
   </div>
-
-  {# Быстрые пресеты #}
-  <div class="mb-3 d-flex flex-wrap gap-2">
-    {% for label, sql in [
-      ('Статусы обращений',   "SELECT status, COUNT(*) as cnt FROM requests GROUP BY status ORDER BY cnt DESC;"),
-      ('Без дедлайна',         "SELECT id, request_number, status, request_date FROM requests WHERE (review_deadline IS NULL OR review_deadline='') AND status NOT IN ('draft','closed') LIMIT 50;"),
-      ('Последние 10 логов',    "SELECT * FROM admin_sql_log ORDER BY id DESC LIMIT 10;"),
-      ('Пользователи',           "SELECT id, username, role, is_active FROM users ORDER BY id;"),
-    ] %}
-    <button class="btn btn-outline-secondary btn-sm"
-            onclick="setQuery({{ sql|tojson }})">{{ label }}</button>
-    {% endfor %}
-  </div>
-
-  {# Результат #}
-  <div id="resultWrap" style="display:none">
-    <div class="card">
-      <div class="card-header py-2 d-flex justify-content-between align-items-center"
-           style="font-size:12px;background:#f8f9fa">
-        <span id="resultMeta"></span>
-        <button class="btn btn-outline-secondary btn-sm py-0" onclick="copyCSV()">
-          <i class="bi bi-clipboard me-1"></i>CSV
-        </button>
-      </div>
-      <div class="card-body p-0" style="overflow-x:auto;max-height:500px;overflow-y:auto">
-        <table class="table table-sm table-striped table-hover mb-0 font-monospace"
-               style="font-size:12px" id="resultTable">
-          <thead id="resultHead" class="table-dark sticky-top"></thead>
-          <tbody id="resultBody"></tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-
-  <div id="errorBox" class="alert alert-danger mt-3" style="display:none;font-size:13px"></div>
-
 </div>
 
 <script>
+// ─── CodeMirror ───────────────────────────────────────────────────
+const cm = CodeMirror(document.getElementById('cmWrapper'), {
+  mode: 'text/x-sql',
+  theme: 'monokai',
+  lineNumbers: true,
+  autofocus: true,
+  extraKeys: {
+    'Ctrl-Enter': runQuery,
+    'Cmd-Enter':  runQuery,
+    'Up': (cm) => { if (cm.getCursor().line === 0) historyNav(-1); else CodeMirror.Pass; },
+    'Down': (cm) => {
+      const last = cm.lastLine();
+      if (cm.getCursor().line === last) historyNav(1); else CodeMirror.Pass;
+    }
+  }
+});
+
+// ─── История запросов ─────────────────────────────────────────────
+let _history = [], _histIdx = -1;
+
+function pushHistory(q) {
+  _history = [q, ..._history.filter(x => x !== q)].slice(0, 10);
+  _histIdx = -1;
+  renderHistory();
+}
+
+function historyNav(dir) {
+  if (!_history.length) return;
+  _histIdx = Math.max(0, Math.min(_history.length - 1, _histIdx + dir));
+  cm.setValue(_history[_histIdx]);
+  cm.execCommand('goDocEnd');
+}
+
+function renderHistory() {
+  const el = document.getElementById('historyList');
+  if (!_history.length) { el.innerHTML = '<span class="text-muted" style="font-size:12px">Пока пусто</span>'; return; }
+  el.innerHTML = _history.map((q, i) =>
+    `<div class="d-flex align-items-start gap-1 mb-1">
+       <button class="btn btn-link p-0 text-start" style="font-size:11px;line-height:1.3;word-break:break-all"
+               onclick="setQuery(${JSON.stringify(q)})">${q.length > 60 ? q.slice(0,60)+'\u2026' : q}</button>
+     </div>`
+  ).join('');
+}
+
+// ─── Закладки (localStorage) ────────────────────────────────────────
+const BM_KEY = 'kitezh_sql_bookmarks';
+
+function loadBookmarks() {
+  try { return JSON.parse(localStorage.getItem(BM_KEY) || '[]'); } catch { return []; }
+}
+
+function saveBookmark() {
+  const q = cm.getValue().trim();
+  if (!q) return;
+  const name = prompt('Название закладки:', q.slice(0, 40));
+  if (!name) return;
+  const bm = loadBookmarks().filter(b => b.name !== name);
+  bm.unshift({name, query: q});
+  localStorage.setItem(BM_KEY, JSON.stringify(bm.slice(0, 20)));
+  renderBookmarks();
+}
+
+function deleteBookmark(name) {
+  const bm = loadBookmarks().filter(b => b.name !== name);
+  localStorage.setItem(BM_KEY, JSON.stringify(bm));
+  renderBookmarks();
+}
+
+function renderBookmarks() {
+  const el  = document.getElementById('bookmarkList');
+  const bm  = loadBookmarks();
+  if (!bm.length) { el.innerHTML = '<span class="text-muted" style="font-size:12px">Пока пусто</span>'; return; }
+  el.innerHTML = bm.map(b =>
+    `<div class="d-flex justify-content-between align-items-center mb-1">
+       <button class="btn btn-link p-0 text-start" style="font-size:11px;max-width:160px;word-break:break-all"
+               onclick="setQuery(${JSON.stringify(b.query)})">${b.name}</button>
+       <button class="btn btn-link p-0 text-danger" style="font-size:11px"
+               onclick="deleteBookmark(${JSON.stringify(b.name)})">×</button>
+     </div>`
+  ).join('');
+}
+
+// ─── Схема БД ────────────────────────────────────────────────────────
+let _schema = null;
+
+async function loadSchema() {
+  const btn = document.getElementById('schemaBtn');
+  btn.disabled = true;
+  const panel = document.getElementById('schemaPanel');
+  panel.innerHTML = '<span class="text-muted" style="font-size:12px">Загрузка...</span>';
+  try {
+    const res  = await fetch('/admin/sql/schema');
+    _schema    = await res.json();
+    const tables = Object.keys(_schema).sort();
+    panel.innerHTML = tables.map(t =>
+      `<div>
+        <div class="table-name" onclick="toggleCols('cols_${t}')">▶ ${t} <small class="text-muted">(${_schema[t].length})</small></div>
+        <div id="cols_${t}" style="display:none">${_schema[t].map(c =>
+          `<div class="col-name" onclick="insertCol('${t}','${c}')">${c}</div>`
+        ).join('')}</div>
+      </div>`
+    ).join('');
+  } catch(e) {
+    panel.innerHTML = '<span class="text-danger" style="font-size:12px">Ошибка загрузки</span>';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function toggleCols(id) {
+  const el = document.getElementById(id);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function insertCol(table, col) {
+  const cur = cm.getValue().trim();
+  if (!cur) cm.setValue(`SELECT ${col} FROM ${table} LIMIT 100;`);
+  else cm.replaceSelection(col);
+  cm.focus();
+}
+
+// ─── Основные функции ────────────────────────────────────────────────
 function setQuery(sql) {
-  document.getElementById('sqlInput').value = sql;
+  cm.setValue(sql);
+  cm.execCommand('goDocEnd');
+  cm.focus();
 }
 
 function clearAll() {
-  document.getElementById('sqlInput').value = '';
+  cm.setValue('');
   document.getElementById('resultWrap').style.display = 'none';
   document.getElementById('errorBox').style.display   = 'none';
   document.getElementById('statusMsg').textContent     = '';
+  document.getElementById('xlsxBtn').style.display    = 'none';
+  document.getElementById('csvBtn').style.display     = 'none';
 }
 
-async function runQuery() {
-  const query = document.getElementById('sqlInput').value.trim();
+let _lastData = null;
+
+async function _doRequest(query, confirmed = false) {
+  const t0  = performance.now();
+  const res = await fetch('/admin/sql/', {
+    method:  'POST',
+    headers: {'Content-Type': 'application/json'},
+    body:    JSON.stringify({query, confirmed})
+  });
+  const ms   = Math.round(performance.now() - t0);
+  const data = await res.json();
+  return {res, data, ms};
+}
+
+async function runQuery(confirmed = false) {
+  const query = cm.getValue().trim();
   if (!query) return;
 
-  const btn = document.querySelector('button[onclick="runQuery()"]');
+  const btn = document.getElementById('runBtn');
   btn.disabled = true;
-  document.getElementById('statusMsg').textContent = 'Выполняется...';
-  document.getElementById('errorBox').style.display = 'none';
+  document.getElementById('statusMsg').textContent     = 'Выполняется...';
+  document.getElementById('errorBox').style.display   = 'none';
   document.getElementById('resultWrap').style.display = 'none';
+  document.getElementById('xlsxBtn').style.display    = 'none';
+  document.getElementById('csvBtn').style.display     = 'none';
 
   try {
-    const res  = await fetch('/admin/sql/', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({query})
-    });
-    const data = await res.json();
+    const {res, data, ms} = await _doRequest(query, confirmed);
 
-    if (!res.ok) {
-      document.getElementById('errorBox').textContent = data.error || 'Ошибка';
-      document.getElementById('errorBox').style.display = 'block';
+    // Требует подтверждения
+    if (data.needs_confirm) {
+      document.getElementById('confirmMsg').textContent   = data.message;
+      document.getElementById('confirmQuery').textContent = query;
+      const modal = new bootstrap.Modal(document.getElementById('confirmModal'));
+      document.getElementById('confirmOkBtn').onclick = () => {
+        modal.hide();
+        runQuery(true);
+      };
+      modal.show();
       document.getElementById('statusMsg').textContent = '';
       return;
     }
 
+    if (!res.ok) {
+      document.getElementById('errorBox').textContent    = data.error || 'Ошибка';
+      document.getElementById('errorBox').style.display  = 'block';
+      document.getElementById('statusMsg').textContent   = '';
+      return;
+    }
+
+    pushHistory(query);
+
     if (data.is_select) {
-      // Заполняем таблицу
+      _lastData = data;
       const head = document.getElementById('resultHead');
       const body = document.getElementById('resultBody');
       head.innerHTML = '<tr>' + data.columns.map(c => `<th>${c}</th>`).join('') + '</tr>';
       body.innerHTML = data.rows.map(row =>
-        '<tr>' + row.map(cell => `<td>${cell ?? '<em class="text-muted">NULL</em>'}</td>`).join('') + '</tr>'
+        '<tr>' + row.map(cell =>
+          `<td>${cell !== null && cell !== undefined ? cell : '<em class="text-muted">NULL</em>'}</td>`
+        ).join('') + '</tr>'
       ).join('');
-      document.getElementById('resultMeta').textContent =
-        `Строк: ${data.rows.length}`;
+      const autoNote = data.auto_limited ? ` <span class="text-warning">(auto LIMIT ${data.limit})</span>` : '';
+      document.getElementById('resultMeta').innerHTML  = `Строк: <strong>${data.rows.length}</strong>${autoNote}`;
+      document.getElementById('execTime').textContent  = `за ${ms} мс`;
       document.getElementById('resultWrap').style.display = 'block';
-      document.getElementById('statusMsg').textContent = `✓ ${data.rows.length} стр.`;
+      document.getElementById('xlsxBtn').style.display    = 'inline-block';
+      document.getElementById('csvBtn').style.display     = 'inline-block';
+      document.getElementById('statusMsg').textContent    = `✓ ${data.rows.length} стр. за ${ms}мс`;
     } else {
-      document.getElementById('statusMsg').textContent =
-        `✓ Изменено строк: ${data.rows_affected}`;
+      document.getElementById('execTime').textContent  = `за ${ms} мс`;
+      document.getElementById('statusMsg').textContent = `✓ Изменено строк: ${data.rows_affected} за ${ms}мс`;
     }
+
   } catch(e) {
-    document.getElementById('errorBox').textContent = 'Ошибка сети: ' + e.message;
+    document.getElementById('errorBox').textContent   = 'Ошибка сети: ' + e.message;
     document.getElementById('errorBox').style.display = 'block';
   } finally {
     btn.disabled = false;
   }
 }
 
+// ─── Экспорт ────────────────────────────────────────────────────────────────
 function copyCSV() {
-  const cols = [...document.querySelectorAll('#resultHead th')].map(t => t.textContent);
-  const rows = [...document.querySelectorAll('#resultBody tr')].map(tr =>
-    [...tr.querySelectorAll('td')].map(td => td.textContent)
-  );
-  const csv = [cols, ...rows].map(r => r.join('\t')).join('\n');
+  if (!_lastData) return;
+  const csv = [_lastData.columns, ..._lastData.rows].map(r => r.join('\t')).join('\n');
   navigator.clipboard.writeText(csv);
+  document.getElementById('statusMsg').textContent = '✓ CSV скопирован';
 }
 
-// Ctrl+Enter → выполнить
-document.addEventListener('keydown', e => {
-  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') runQuery();
+function exportXLSX() {
+  if (!_lastData) return;
+  const ws  = XLSX.utils.aoa_to_sheet([_lastData.columns, ..._lastData.rows]);
+  const wb  = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'SQL');
+  XLSX.writeFile(wb, 'sql_export.xlsx');
+}
+
+// ─── Инициализация ────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  renderBookmarks();
+  loadSchema();
 });
 </script>
 {% endblock %}
