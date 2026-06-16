@@ -161,7 +161,7 @@ def build_dash(conn, period):
 
     # ─── РАЙОНЫ ──────────────────────────────────────────────────
     # preferred_districts может хранить несколько районов через запятую —
-    # разбиваем в Python как source_type, затем берём топ-12
+    # разбиваем в Python, сортируем по убыванию, БЕЗ лимита — показываем все
     dist_raw = conn.execute(
         f"SELECT preferred_districts FROM requests r "
         f"WHERE preferred_districts IS NOT NULL AND preferred_districts!=''{pw_sql}",
@@ -175,7 +175,8 @@ def build_dash(conn, period):
             if d:
                 dist_counts[d] = dist_counts.get(d, 0) + 1
 
-    dist_top = sorted(dist_counts.items(), key=lambda x: x[1], reverse=True)[:12]
+    # Без [:12] — все районы, отсортированные по убыванию
+    dist_top = sorted(dist_counts.items(), key=lambda x: x[1], reverse=True)
 
     # ─── ТИП ПЛОЩАДКИ ──────────────────────────────────────
     st_free = conn.execute(
