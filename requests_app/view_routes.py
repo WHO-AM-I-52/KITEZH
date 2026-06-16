@@ -94,6 +94,11 @@ def view_request(rid):
         "SELECT id, full_name, role FROM users WHERE is_active=1 ORDER BY full_name"
     ).fetchall()
 
+    # ─ Все районы для блока «Предпочтительные районы»
+    all_districts = conn.execute(
+        "SELECT id, name FROM districts WHERE is_active=1 ORDER BY name"
+    ).fetchall()
+
     # ─ Цепочка согласования для текущего обращения
     review_chain = conn.execute(
         "SELECT rc.id, rc.step_order, rc.decision, rc.comment, rc.decided_at, "
@@ -117,6 +122,7 @@ def view_request(rid):
         display_vals=display_vals,
         result_types=result_types,
         all_users=all_users,
+        all_districts=all_districts,
         review_chain=review_chain,
         today_str=str(date.today()),
     )

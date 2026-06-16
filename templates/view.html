@@ -581,7 +581,44 @@
     <table class="table table-sm table-borderless mb-0">
       {{ field('Важно расстояние до Н.Новгорода', 'Да' if req.distance_nn_matters else '') }}
       {{ field('Макс. расстояние до Н.Новгорода, км', req.distance_nn_max) }}
-      {{ field('Предпочтительные районы', req.preferred_districts) }}
+
+      {# ── Предпочтительные районы: все из справочника, выбранные — синие бейджи-ссылки #}
+      <tr>
+        <td class="text-muted" style="width:45%;vertical-align:top">Предпочтительные районы</td>
+        <td>
+          {% set selected = req.preferred_districts.split(',') | map('trim') | list if req.preferred_districts else [] %}
+          {% if all_districts %}
+            {# Сначала — выбранные районы (синие кликабельные бейджи) #}
+            {% set found_any = namespace(val=false) %}
+            {% for d in all_districts %}
+              {% if d.name in selected %}
+                {% set found_any.val = true %}
+                <a href="{{ url_for('requests.index') }}?search={{ d.name | urlencode }}"
+                   class="badge bg-primary text-decoration-none me-1 mb-1"
+                   title="Показать все обращения по этому району"
+                   style="font-size:12px">
+                  <i class="bi bi-funnel me-1"></i>{{ d.name }}
+                </a>
+              {% endif %}
+            {% endfor %}
+            {# Если ни один не выбран — надпись #}
+            {% if not found_any.val %}
+              <span class="text-muted fst-italic" style="font-size:12px">данные отсутствуют</span>
+            {% endif %}
+            {# Затем — невыбранные (серые, полупрозрачные) #}
+            {% for d in all_districts %}
+              {% if d.name not in selected %}
+                <span class="badge bg-light text-muted border me-1 mb-1"
+                      style="font-size:11px;opacity:0.55">{{ d.name }}</span>
+              {% endif %}
+            {% endfor %}
+          {% else %}
+            {# Если справочник районов не передан — fallback на старый вывод #}
+            {{ req.preferred_districts or '—' }}
+          {% endif %}
+        </td>
+      </tr>
+
       {{ field('Прочее (местоположение)', req.location_extra) }}
     </table>
   </div>
