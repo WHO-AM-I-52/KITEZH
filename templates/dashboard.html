@@ -178,8 +178,11 @@
       {{ chart_header('chartDist','По районам','bi-geo-alt', pl,
          [('bar','Гистограмма'),('doughnut','Круг')]) }}
       {% if dash.dist_chart.labels %}
+      <div class="text-muted mb-1" style="font-size:11px">
+        <i class="bi bi-hand-index me-1"></i>Нажмите на район — откроется список обращений с фильтром
+      </div>
       <div style="position:relative">
-        <canvas id="chartDist"></canvas>
+        <canvas id="chartDist" style="cursor:pointer"></canvas>
       </div>
       {% else %}
       <p class="text-muted text-center small mt-3">Нет данных — заполните поле «Районы» в обращениях</p>
@@ -488,7 +491,7 @@ if (document.getElementById('chartEmp') && empData.labels.length) {
   });
 }
 
-/* 5. РАЙОНЫ */
+/* 5. РАЙОНЫ — клик → /requests?preferred_districts=<район> */
 if (document.getElementById('chartDist') && distData.labels.length) {
   var distH = Math.max(80, distData.labels.length * 28);
   document.getElementById('chartDist').parentElement.style.height = distH + 'px';
@@ -498,8 +501,19 @@ if (document.getElementById('chartDist') && distData.labels.length) {
       datasets:[{data:distData.values, backgroundColor:'#1B5E7B', borderRadius:4}]
     },
     scaleX: {beginAtZero:true, ticks:{stepSize:1}}
-  }, 'bar', {indexAxis:'y',
-    plugins:{legend:{display:false}, tooltip:{callbacks:{label:function(ctx){return ctx.raw+' обр.';}}}}
+  }, 'bar', {
+    indexAxis:'y',
+    plugins:{
+      legend:{display:false},
+      tooltip:{callbacks:{label:function(ctx){return ctx.raw+' обр.';}}}
+    },
+    onClick: function(evt, elements) {
+      if (!elements || !elements.length) return;
+      var idx    = elements[0].index;
+      var label  = distData.labels[idx];
+      if (!label) return;
+      window.location.href = '/requests?preferred_districts=' + encodeURIComponent(label);
+    }
   });
 }
 
