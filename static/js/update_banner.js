@@ -2,16 +2,17 @@
    update_banner.js  —  глобальный баннер запланированного обновления
    Подключается в base.html для всех авторизованных пользователей.
    Эндпойнты: /api/update/pre-status, /api/update/schedule/cancel,
-              /api/update/apply, /api/update/status
+                /api/update/schedule, /api/update/status
    v1.0.1: fix — добавляет/убирает класс upd-banner-visible на body
-           чтобы баннер был виден под topbar и page-wrap сдвигался
+   v2.0.0: phase-aware текст (скачивание/отсчёт/применение);
+           кнопка «Сейчас» → /api/update/schedule {delay:1}
    ═══════════════════════════════════════════════════════════════ */
 (function () {
   'use strict';
 
-  var IS_ADMIN      = (document.body.getAttribute('data-is-admin') === '1');
+  var IS_ADMIN       = (document.body.getAttribute('data-is-admin') === '1');
   var POLL_INTERVAL  = 5000;   // мс — опрос pre-status
-  var STATUS_INTERVAL = 3000;  // мс — опрос update/status (только когда in_progress)
+  var STATUS_INTERVAL = 3000;  // мс — опрос update/status (только in_progress)
 
   var banner     = document.getElementById('updBanner');
   var bannerText = document.getElementById('updBannerText');
@@ -27,38 +28,68 @@
   var statusPoller   = null;
   var wasInProgress  = false;
   var fireAtTs       = 0;
+  var _currentPhase  = '';
 
-  /* ── Обратный отсчёт ── */
+  /* ── Обратный отсчёт (только в фазе scheduled) ── */
+  function _tickBanner() {
+    var left = Math.max(0, Math.round(fireAtTs - Date.now() / 1000));
+    if (bannerText) bannerText.textContent = 'Обновление через ' + left + ' сек.';
+  }
+
   function startCountdown() {
     if (countdownTimer) return;
-    countdownTimer = setInterval(function () {
-      var left = Math.max(0, Math.round(fireAtTs - Date.now() / 1000));
-      if (bannerText) bannerText.textContent = 'Обновление через ' + left + ' сек.';
-    }, 1000);
+    _tickBanner();
+    countdownTimer = setInterval(_tickBanner, 1000);
   }
 
   function stopCountdown() {
     if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
   }
 
+  /* ── Текст баннера по фазе ── */
+  function _applyPhaseText(phase, secondsLeft) {
+    stopCountdown();
+    if (phase === 'downloading') {
+      if (bannerText) bannerText.textContent = 'Скачиваем архив обновления…';
+    } else if (phase === 'scheduled') {
+      startCountdown();
+    } else if (phase === 'applying') {
+      if (bannerText) bannerText.textContent = 'Применяем обновление… Сервер скоро перезапустится.';
+    } else {
+      // фаллбэк: обратный отсчёт по secondsLeft
+      fireAtTs = Date.now() / 1000 + (secondsLeft || 0);
+      startCountdown();
+    }
+  }
+
   /* ── Показ / скрытие баннера ── */
   function showBanner(data) {
+    var phase = data.phase || 'scheduled';
+    _currentPhase = phase;
     fireAtTs = data.fire_at_ts || (Date.now() / 1000 + (data.seconds_left || 0));
-    var left = Math.max(0, Math.round(fireAtTs - Date.now() / 1000));
-    if (bannerText) bannerText.textContent = 'Обновление через ' + left + ' сек.';
-    if (bannerBy)   bannerBy.textContent   = data.scheduled_by ? ('Инициировал: ' + data.scheduled_by) : '';
-    if (btnCancel)  btnCancel.style.display = IS_ADMIN ? '' : 'none';
-    if (btnNow)     btnNow.style.display    = IS_ADMIN ? '' : 'none';
+
+    _applyPhaseText(phase, data.seconds_left);
+
+    if (bannerBy) bannerBy.textContent = data.scheduled_by
+      ? ('Инициировал: ' + data.scheduled_by) : '';
+
+    // Кнопка «Отменить»: не показываем при applying
+    if (btnCancel) btnCancel.style.display =
+      (IS_ADMIN && phase !== 'applying') ? '' : 'none';
+    // Кнопка «Сейчас»: не показываем при applying или downloading
+    if (btnNow) btnNow.style.display =
+      (IS_ADMIN && phase === 'scheduled') ? '' : 'none';
+
     banner.style.display = 'block';
-    document.body.classList.add('upd-banner-visible');    // ← FIX: сдвигаем page-wrap вниз
-    startCountdown();
+    document.body.classList.add('upd-banner-visible');
     startStatusPoller();
   }
 
   function hideBanner() {
     banner.style.display = 'none';
-    document.body.classList.remove('upd-banner-visible'); // ← FIX: возвращаем page-wrap на место
+    document.body.classList.remove('upd-banner-visible');
     stopCountdown();
+    _currentPhase = '';
   }
 
   /* ── Поллер pre-status (каждые 5 сек, все пользователи) ── */
@@ -67,16 +98,24 @@
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (data) {
         if (!data) return;
-        if (data.scheduled) { showBanner(data); }
-        else                 { hideBanner(); }
+        if (data.scheduled) {
+          // Обновляем фазу если изменилась
+          if (data.phase && data.phase !== _currentPhase) {
+            showBanner(data);
+          } else if (!_currentPhase) {
+            showBanner(data);
+          }
+        } else {
+          hideBanner();
+        }
       })
       .catch(function () {});
   }
 
   setInterval(pollPreStatus, POLL_INTERVAL);
-  setTimeout(pollPreStatus, 800); // первый опрос быстро после загрузки
+  setTimeout(pollPreStatus, 800);
 
-  /* ── Кнопка «Отменить» (только admin) ── */
+  /* ── Кнопка «Отменить» (only admin) ── */
   if (btnCancel) {
     btnCancel.addEventListener('click', function () {
       btnCancel.disabled = true;
@@ -91,23 +130,33 @@
     });
   }
 
-  /* ── Кнопка «Сейчас» (только admin) ── */
+  /* ── Кнопка «Сейчас» (only admin) — delay=1 через /schedule ── */
   if (btnNow) {
     btnNow.addEventListener('click', function () {
       if (!confirm('Запустить обновление немедленно?')) return;
-      btnNow.disabled = true;
-      fetch('/api/update/apply', {
+      btnNow.disabled   = true;
+      btnCancel.disabled = true;
+      fetch('/api/update/schedule', {
         method: 'POST', credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ delay: 1, force: false })
       })
         .then(function (r) { return r.json(); })
-        .then(function () { hideBanner(); wasInProgress = true; })
+        .then(function (data) {
+          // Не скрываем баннер — pollPreStatus сам обновит фазу
+          if (data.error === 'already_in_progress' || data.error === 'already_scheduled') {
+            // уже бежит — просто ждём
+          }
+        })
         .catch(function () {})
-        .finally(function () { btnNow.disabled = false; });
+        .finally(function () {
+          btnNow.disabled    = false;
+          btnCancel.disabled = false;
+        });
     });
   }
 
-  /* ── Поллер update/status — показывает модалку после рестарта (только admin) ── */
+  /* ── Поллер update/status — модалка после рестарта (only admin) ── */
   function startStatusPoller() {
     if (!IS_ADMIN) return;
     if (statusPoller) return;
