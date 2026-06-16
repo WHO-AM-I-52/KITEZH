@@ -3,28 +3,30 @@
    Подключается в base.html для всех авторизованных пользователей.
    Эндпойнты: /api/update/pre-status, /api/update/schedule/cancel,
               /api/update/apply, /api/update/status
+   v1.0.1: fix — добавляет/убирает класс upd-banner-visible на body
+           чтобы баннер был виден под topbar и page-wrap сдвигался
    ═══════════════════════════════════════════════════════════════ */
 (function () {
   'use strict';
 
-  var IS_ADMIN     = (document.body.getAttribute('data-is-admin') === '1');
-  var POLL_INTERVAL = 5000;   // мс — опрос pre-status
-  var STATUS_INTERVAL = 3000; // мс — опрос update/status (только когда in_progress)
+  var IS_ADMIN      = (document.body.getAttribute('data-is-admin') === '1');
+  var POLL_INTERVAL  = 5000;   // мс — опрос pre-status
+  var STATUS_INTERVAL = 3000;  // мс — опрос update/status (только когда in_progress)
 
-  var banner        = document.getElementById('updBanner');
-  var bannerText    = document.getElementById('updBannerText');
-  var bannerBy      = document.getElementById('updBannerBy');
-  var btnCancel     = document.getElementById('updBannerCancel');
-  var btnNow        = document.getElementById('updBannerNow');
-  var modal         = document.getElementById('updDoneModal');
-  var btnReload     = document.getElementById('updDoneReload');
+  var banner     = document.getElementById('updBanner');
+  var bannerText = document.getElementById('updBannerText');
+  var bannerBy   = document.getElementById('updBannerBy');
+  var btnCancel  = document.getElementById('updBannerCancel');
+  var btnNow     = document.getElementById('updBannerNow');
+  var modal      = document.getElementById('updDoneModal');
+  var btnReload  = document.getElementById('updDoneReload');
 
   if (!banner) return;
 
-  var countdownTimer  = null;
-  var statusPoller    = null;
-  var wasInProgress   = false;
-  var fireAtTs        = 0;
+  var countdownTimer = null;
+  var statusPoller   = null;
+  var wasInProgress  = false;
+  var fireAtTs       = 0;
 
   /* ── Обратный отсчёт ── */
   function startCountdown() {
@@ -48,12 +50,14 @@
     if (btnCancel)  btnCancel.style.display = IS_ADMIN ? '' : 'none';
     if (btnNow)     btnNow.style.display    = IS_ADMIN ? '' : 'none';
     banner.style.display = 'block';
+    document.body.classList.add('upd-banner-visible');    // ← FIX: сдвигаем page-wrap вниз
     startCountdown();
     startStatusPoller();
   }
 
   function hideBanner() {
     banner.style.display = 'none';
+    document.body.classList.remove('upd-banner-visible'); // ← FIX: возвращаем page-wrap на место
     stopCountdown();
   }
 
@@ -116,7 +120,7 @@
             wasInProgress = true;
           } else if (wasInProgress) {
             clearInterval(statusPoller);
-            statusPoller = null;
+            statusPoller  = null;
             wasInProgress = false;
             showDoneModal();
           }
