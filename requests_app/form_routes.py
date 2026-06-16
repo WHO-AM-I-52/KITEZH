@@ -3,6 +3,7 @@ import shutil
 import hashlib
 import logging
 import traceback
+from logging.handlers import TimedRotatingFileHandler
 from datetime import datetime, date
 
 from flask import render_template, request, redirect, url_for, session, flash
@@ -20,9 +21,19 @@ from tray import notify_error
 from . import requests_bp
 
 # ─── Логгер ошибок формы ────────────────────────────────────────────────────
+# Ротация каждые 3 дня, хранит 1 архивный файл, старые удаляются автоматически
+_LOGS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'logs')
+os.makedirs(_LOGS_DIR, exist_ok=True)
+
 _err_logger = logging.getLogger('kitezh.form_errors')
 if not _err_logger.handlers:
-    _h = logging.FileHandler('kitezh_errors.log', encoding='utf-8')
+    _h = TimedRotatingFileHandler(
+        os.path.join(_LOGS_DIR, 'kitezh_errors.log'),
+        when='D',
+        interval=3,
+        backupCount=1,
+        encoding='utf-8',
+    )
     _h.setFormatter(logging.Formatter('%(asctime)s  %(message)s'))
     _err_logger.addHandler(_h)
     _err_logger.setLevel(logging.ERROR)
