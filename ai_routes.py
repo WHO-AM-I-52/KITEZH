@@ -11,6 +11,8 @@
 # ║ feat: _write_ocr_log() — каждый OCR пишется в ocr_log      ║
 # ║ feat: POST /ai/ocr-install — фоновая установка + polling     ║
 # ║ feat: GET  /ai/ocr-install-status — поллинг статуса pip       ║
+# ║ feat: _get_site_requests_full() — полная выгрузка всех полей  ║
+# ║       обращения для ИИ (площадь, ВЭД, районы, коммуникации)  ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 import json
@@ -64,7 +66,15 @@ SYSTEM_PROMPT = (
 )
 
 
+def _safe(val) -> str:
+    """Конвертирует любое значение БД в строку или пустую строку."""
+    if val is None:
+        return ""
+    return str(val).strip()
+
+
 def _get_site_requests():
+    """Краткая выгрузка (устаревшая совместимость) — используйте _get_site_requests_full."""
     conn = get_db()
     try:
         rows = conn.execute(
@@ -85,6 +95,167 @@ def _get_site_requests():
             """
         ).fetchall()
         return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def _get_site_requests_full():
+    """
+    Полная выгрузка всех значимых полей обращения о подборе площадки для ИИ-подбора.
+    Передаёт: параметры инвестора, требования к площади, коммуникации, ВЭД,
+    предпочтительные районы, тип права, инвестиции, рабочие места и т.д.
+    """
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            """
+            SELECT
+                r.id,
+                r.request_number,
+                r.request_date,
+                r.status,
+                COALESCE(r.applicant_short_name, r.applicant_full_name) AS applicant_name,
+                r.applicant_full_name,
+                r.applicant_short_name,
+                r.applicant_inn,
+                r.applicant_legal_form,
+                r.applicant_msp_category,
+                r.applicant_okved_main,
+                r.project_name,
+                r.contact_person,
+                r.contact_phone,
+                r.contact_email,
+                r.contact_position,
+
+                -- Параметры запроса
+                r.investment_total,
+                r.jobs_total,
+                r.site_area_ha_min,
+                r.site_area_ha_max,
+                r.site_build_area_m2_min,
+                r.site_build_area_m2_max,
+                r.site_right,
+                r.preferred_districts,
+                r.location_extra,
+
+                -- Производство и продукция
+                r.product_nomenclature,
+                r.production_description,
+                r.object_composition,
+                r.construction_stages,
+                r.raw_materials,
+                r.raw_extra,
+
+                -- Коммуникации (требования инвестора)
+                r.elec_unit,
+                r.heat_unit,
+                r.gas_unit_h,
+                r.gas_unit_y,
+                r.water_unit,
+                r.heat_source,
+                r.gas_purpose,
+                r.internet,
+                r.engineering_extra,
+                r.road_extra,
+                r.railway_extra,
+                r.transport_extra,
+
+                -- Дополнительно
+                r.hazard_class,
+                r.site_shape,
+                r.site_other,
+                r.source_type,
+                r.additional_info,
+                r.answer_date,
+                r.answer_method,
+                r.answer_notes,
+
+                -- Справочники
+                st.name  AS subject_name,
+                rt.name  AS result_name,
+                ass.full_name AS assigned_to_name
+
+            FROM requests r
+            LEFT JOIN subject_types st  ON r.subject_type_id = st.id
+            LEFT JOIN result_types  rt  ON r.result_type_id  = rt.id
+            LEFT JOIN users         ass ON r.assigned_to     = ass.id
+            WHERE LOWER(COALESCE(st.name, '')) LIKE '%подбор%'
+              AND r.status NOT IN ('closed', 'draft')
+            ORDER BY r.request_date DESC
+            LIMIT 50
+            """
+        ).fetchall()
+
+        result = []
+        for r in rows:
+            rec = {
+                "id":                   r["id"],
+                "request_number":       _safe(r["request_number"]),
+                "request_date":         _safe(r["request_date"]),
+                "status":               _safe(r["status"]),
+                "subject_name":         _safe(r["subject_name"]),
+
+                # Заявитель
+                "applicant_name":       _safe(r["applicant_name"]),
+                "applicant_full_name":  _safe(r["applicant_full_name"]),
+                "applicant_inn":        _safe(r["applicant_inn"]),
+                "applicant_legal_form": _safe(r["applicant_legal_form"]),
+                "applicant_msp":        _safe(r["applicant_msp_category"]),
+                "okved_main":           _safe(r["applicant_okved_main"]),
+
+                # Проект
+                "project_name":         _safe(r["project_name"]),
+                "investment_mln":       r["investment_total"],
+                "jobs_total":           r["jobs_total"],
+
+                # Требования к площади
+                "site_area_ha_min":     r["site_area_ha_min"],
+                "site_area_ha_max":     r["site_area_ha_max"],
+                "site_build_m2_min":    r["site_build_area_m2_min"],
+                "site_build_m2_max":    r["site_build_area_m2_max"],
+                "site_right":           _safe(r["site_right"]),
+
+                # Географические предпочтения
+                "preferred_districts":  _safe(r["preferred_districts"]),
+                "location_extra":       _safe(r["location_extra"]),
+
+                # Производство
+                "product_nomenclature": _safe(r["product_nomenclature"]),
+                "production_desc":      _safe(r["production_description"]),
+                "object_composition":   _safe(r["object_composition"]),
+                "construction_stages":  _safe(r["construction_stages"]),
+                "raw_materials":        _safe(r["raw_materials"]),
+                "raw_extra":            _safe(r["raw_extra"]),
+                "hazard_class":         _safe(r["hazard_class"]),
+
+                # Коммуникации (требования)
+                "engineering_extra":    _safe(r["engineering_extra"]),
+                "heat_source":          _safe(r["heat_source"]),
+                "gas_purpose":          _safe(r["gas_purpose"]),
+                "internet":             _safe(r["internet"]),
+                "road_extra":           _safe(r["road_extra"]),
+                "railway_extra":        _safe(r["railway_extra"]),
+                "transport_extra":      _safe(r["transport_extra"]),
+
+                # Единицы измерения (для понимания масштаба)
+                "elec_unit":            _safe(r["elec_unit"]),
+                "heat_unit":            _safe(r["heat_unit"]),
+                "gas_unit_h":           _safe(r["gas_unit_h"]),
+                "gas_unit_y":           _safe(r["gas_unit_y"]),
+                "water_unit":           _safe(r["water_unit"]),
+
+                # Прочее
+                "source_type":          _safe(r["source_type"]),
+                "additional_info":      _safe(r["additional_info"]),
+                "answer_date":          _safe(r["answer_date"]),
+                "result_name":          _safe(r["result_name"]),
+                "assigned_to":          _safe(r["assigned_to_name"]),
+            }
+            # Убираем пустые строки чтобы не засорять контекст ИИ
+            rec = {k: v for k, v in rec.items() if v not in ("", None)}
+            result.append(rec)
+
+        return result
     finally:
         conn.close()
 
@@ -182,7 +353,8 @@ def match_result():
         "budget":      request.form.get("budget", ""),
         "notes":       request.form.get("notes", ""),
     }
-    site_requests = _get_site_requests()
+    # Используем полную выгрузку всех полей
+    site_requests = _get_site_requests_full()
     if not site_requests:
         return jsonify({"error": "Нет доступных обращений по площадкам"}), 404
 
@@ -197,6 +369,80 @@ def match_result():
     conn.commit()
     conn.close()
     return jsonify(result)
+
+
+# ─── API: получить все обращения для ИИ (JSON) ────────────────────────────────
+
+@ai_bp.route("/site-requests", methods=["GET"])
+@login_required
+def get_site_requests_api():
+    """
+    GET /ai/site-requests — возвращает полный список обращений о подборе
+    площадок со всеми полями. Используется при отправке данных ИИ текстом.
+
+    Query params:
+        limit — макс. кол-во записей (по умолчанию 50)
+        status — фильтр по статусу (опционально)
+    """
+    limit = min(int(request.args.get("limit", 50)), 200)
+    status_filter = request.args.get("status", "")
+
+    conn = get_db()
+    try:
+        q = """
+            SELECT
+                r.id, r.request_number, r.request_date, r.status,
+                COALESCE(r.applicant_short_name, r.applicant_full_name) AS applicant_name,
+                r.applicant_full_name, r.applicant_short_name,
+                r.applicant_inn, r.applicant_legal_form,
+                r.applicant_msp_category, r.applicant_okved_main,
+                r.project_name,
+                r.contact_person, r.contact_phone, r.contact_email, r.contact_position,
+                r.investment_total, r.jobs_total,
+                r.site_area_ha_min, r.site_area_ha_max,
+                r.site_build_area_m2_min, r.site_build_area_m2_max,
+                r.site_right, r.preferred_districts, r.location_extra,
+                r.product_nomenclature, r.production_description,
+                r.object_composition, r.construction_stages,
+                r.raw_materials, r.raw_extra,
+                r.hazard_class, r.site_shape, r.site_other,
+                r.elec_unit, r.heat_unit, r.gas_unit_h, r.gas_unit_y, r.water_unit,
+                r.heat_source, r.gas_purpose, r.internet,
+                r.engineering_extra, r.road_extra, r.railway_extra, r.transport_extra,
+                r.source_type, r.additional_info,
+                r.incoming_number, r.answer_date, r.answer_method, r.answer_notes,
+                r.applicant_feedback, r.taken_under_supervision,
+                st.name  AS subject_name,
+                rt.name  AS result_name,
+                ass.full_name AS assigned_to_name
+            FROM requests r
+            LEFT JOIN subject_types st  ON r.subject_type_id = st.id
+            LEFT JOIN result_types  rt  ON r.result_type_id  = rt.id
+            LEFT JOIN users         ass ON r.assigned_to     = ass.id
+            WHERE LOWER(COALESCE(st.name, '')) LIKE '%подбор%'
+              AND r.status NOT IN ('draft')
+        """
+        params = []
+        if status_filter:
+            q += " AND r.status = ?"
+            params.append(status_filter)
+        q += " ORDER BY r.request_date DESC LIMIT ?"
+        params.append(limit)
+
+        rows = conn.execute(q, params).fetchall()
+        data = []
+        for r in rows:
+            rec = dict(r)
+            # Убираем None для чистоты JSON
+            rec = {k: v for k, v in rec.items() if v not in (None, "")}
+            data.append(rec)
+    finally:
+        conn.close()
+
+    return jsonify({
+        "total": len(data),
+        "requests": data,
+    })
 
 
 # ─── OCR-ЗАГРУЗКА ─────────────────────────────────────────────────────────────────────
