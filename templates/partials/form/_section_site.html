@@ -21,16 +21,30 @@
       </div>
     </div>
 
+    {# Площадь участка: диапазон от/до #}
     <div class="col-md-4">
       <label class="form-label fw-bold" style="font-size:12px">Площадь участка, га</label>
-      <input type="number" step="0.01" name="site_area_ha" class="form-control form-control-sm"
-             value="{{ req.site_area_ha if req else '' }}" placeholder="0.00">
+      <div class="input-group input-group-sm">
+        <span class="input-group-text" style="font-size:11px">от</span>
+        <input type="number" step="0.01" name="site_area_ha_min" class="form-control form-control-sm"
+               value="{{ req.site_area_ha_min if req else '' }}" placeholder="0.00">
+        <span class="input-group-text" style="font-size:11px">до</span>
+        <input type="number" step="0.01" name="site_area_ha_max" class="form-control form-control-sm"
+               value="{{ req.site_area_ha_max if req else '' }}" placeholder="0.00">
+      </div>
     </div>
 
+    {# Площадь застройки: диапазон от/до #}
     <div class="col-md-4">
       <label class="form-label fw-bold" style="font-size:12px">Площадь застройки, м²</label>
-      <input type="number" step="1" name="site_build_area_m2" class="form-control form-control-sm"
-             value="{{ req.site_build_area_m2 if req else '' }}" placeholder="0">
+      <div class="input-group input-group-sm">
+        <span class="input-group-text" style="font-size:11px">от</span>
+        <input type="number" step="1" name="site_build_area_m2_min" class="form-control form-control-sm"
+               value="{{ req.site_build_area_m2_min if req else '' }}" placeholder="0">
+        <span class="input-group-text" style="font-size:11px">до</span>
+        <input type="number" step="1" name="site_build_area_m2_max" class="form-control form-control-sm"
+               value="{{ req.site_build_area_m2_max if req else '' }}" placeholder="0">
+      </div>
     </div>
 
     <div class="col-md-2">
