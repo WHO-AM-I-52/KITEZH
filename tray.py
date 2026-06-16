@@ -4,6 +4,8 @@
 # ║  Запускается из run_server.py если KITEZH_TRAY=1             ║
 # ║  notify_error(title, msg) — Windows-уведомление об ошибке    ║
 # ║  get_notify_level() — читает уровень из classifiers          ║
+# ║  show_console() / hide_console() — публичные, вызываются   ║
+# ║    из /api/console/* в admin_routes.py                       ║
 # ║  pystray/PIL импортируются лениво — не падает               ║
 # ║  если модуль не установлен (сервер без трея)              ║
 # ╚══════════════════════════════════════════════════════════════╝
@@ -23,7 +25,7 @@ ICON_PATH = os.path.join(BASE_DIR, 'static', 'favicon.ico')
 _console_visible = True
 _tray_icon = None
 
-# Флаг: pystray доступен (заполняется при первом вызове run_tray)
+# Флаг: pystray доступен (заполняется при первом вызове)
 _pystray_available = None
 
 
@@ -40,7 +42,7 @@ def _check_pystray() -> bool:
     return _pystray_available
 
 
-# ─── УРОВЕНЬ УВЕДОМЛЕНИЙ ────────────────────────────────────────────────────────────
+# ─── УРОВЕНЬ УВЕДОМЛЕНИЙ ──────────────────────────────────────────────────────────────────────────────
 
 def get_notify_level() -> str:
     """
@@ -76,33 +78,56 @@ def notify_error(title: str, message: str) -> None:
         pass
 
 
-# ─── КОНСОЛЬ ───────────────────────────────────────────────────────────────────────────
+# ─── ПУБЛИЧНЫЕ ФУНКЦИИ КОНСОЛИ ─────────────────────────────────────────────────────────────────
+# Данные функции вызываются из admin_routes.py (роуты /api/console/*)
+# и из меню трея.
 
-def _get_console_hwnd():
-    return ctypes.windll.kernel32.GetConsoleWindow()
+def get_console_visible() -> bool:
+    """True если консоль сейчас видима."""
+    return _console_visible
 
 
-def _show_console():
+def show_console() -> bool:
+    """
+    Показывает консольное окно.
+    Возвращает True если успешно, False если окно не найден
+    (например запущен без консоли или не Windows).
+    """
     global _console_visible
-    hwnd = _get_console_hwnd()
-    if hwnd:
-        ctypes.windll.user32.ShowWindow(hwnd, 9)  # SW_RESTORE
-    _console_visible = True
-    if _tray_icon:
-        _tray_icon.update_menu()
+    try:
+        hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+        if hwnd:
+            ctypes.windll.user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+            _console_visible = True
+            if _tray_icon:
+                _tray_icon.update_menu()
+            return True
+        return False
+    except Exception:
+        return False
 
 
-def _hide_console():
+def hide_console() -> bool:
+    """
+    Скрывает консольное окно.
+    Возвращает True если успешно, False если окно не найден.
+    """
     global _console_visible
-    hwnd = _get_console_hwnd()
-    if hwnd:
-        ctypes.windll.user32.ShowWindow(hwnd, 0)  # SW_HIDE
-    _console_visible = False
-    if _tray_icon:
-        _tray_icon.update_menu()
+    try:
+        hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+        if hwnd:
+            ctypes.windll.user32.ShowWindow(hwnd, 0)  # SW_HIDE
+            _console_visible = False
+            if _tray_icon:
+                _tray_icon.update_menu()
+            return True
+        return False
+    except Exception:
+        return False
 
 
-# ─── МЕНЮ ТРЕЯ ─────────────────────────────────────────────────────────────────────────
+# ─── ВНУТРЕННИЕ ФУНКЦИИ МЕНЮ ТРЕЯ ──────────────────────────────────────────────────────────
+# Внутренние функции меню трея проксируют через публичные.
 
 def _open_browser(icon, item):
     webbrowser.open('http://127.0.0.1:5000')
@@ -110,14 +135,14 @@ def _open_browser(icon, item):
 
 def _toggle_console(icon, item):
     if _console_visible:
-        _hide_console()
+        hide_console()
     else:
-        _show_console()
+        show_console()
 
 
 def _stop_server(icon, item):
     icon.stop()
-    _show_console()
+    show_console()
     os._exit(0)
 
 
@@ -134,15 +159,15 @@ def _make_menu():
     )
 
 
-# ─── ЗАПУСК ────────────────────────────────────────────────────────────────────────────
+# ─── ЗАПУСК ─────────────────────────────────────────────────────────────────────────────────────
 
 def run_tray(hide_on_start: bool = True):
-    """Запускает иконку трея. Блокирует поток до остановки. 
+    """Запускает иконку трея. Блокирует поток до остановки.
     Если pystray недоступен — выходит тихо."""
     global _tray_icon
 
     if not _check_pystray():
-        print('[ПРЕДУПРЕЖДЕНИЕ] Трей недоступен: pystray или Pillow не установлены.')
+        print('[\u041fРЕДУПРЕЖДЕНИЕ] Трей недоступен: pystray или Pillow не установлены.')
         return
 
     import pystray
@@ -160,7 +185,7 @@ def run_tray(hide_on_start: bool = True):
         def _delayed_hide():
             import time
             time.sleep(2)
-            _hide_console()
+            hide_console()
         threading.Thread(target=_delayed_hide, daemon=True).start()
 
     _tray_icon.run()
