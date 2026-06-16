@@ -1,6 +1,7 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║                      auth_utils.py                           ║
 # ║  v2.5: +can_view_phonebook                                   ║
+# ║  v2.6: +ROLE_PERMISSION_PRESETS (шаблоны прав для ролей)    ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 import hashlib
@@ -9,7 +10,7 @@ from flask import session, redirect, url_for, flash
 from werkzeug.security import generate_password_hash, check_password_hash
 
 
-# ─── ХЕШИРОВАНИЕ ─────────────────────────────────────────────────────────────────────
+# ─── ХЕШИРОВАНИЕ ────────────────────────────────────────────────────────────────────────────────────
 
 def hash_pw(p: str) -> str:
     """Хеширует пароль через werkzeug (scrypt или pbkdf2 в зависимости от версии)."""
@@ -35,7 +36,7 @@ def is_legacy_hash(stored: str) -> bool:
     return bool(stored) and not stored.startswith('scrypt:') and not stored.startswith('pbkdf2:')
 
 
-# ─── ПРАВА ──────────────────────────────────────────────────────────────────────────
+# ─── ПРАВА ──────────────────────────────────────────────────────────────────────────────────────
 
 ALL_PERMISSIONS = {
     'can_create':           'Создавать обращения',
@@ -53,7 +54,47 @@ ALL_PERMISSIONS = {
     'can_view_phonebook':   'Просмотр телефонного справочника',
 }
 
+# Все права включены — для роли admin
 ADMIN_PERMISSIONS = {k: 1 for k in ALL_PERMISSIONS}
+
+# Шаблоны прав по ролям
+# Используются при создании/редактировании пользователя — кнопка «Применить шаблон»
+ROLE_PERMISSION_PRESETS = {
+    # Исполнитель: работа со своими обращениями, просмотр справочников и карты
+    'employee': {
+        'can_create':         1,
+        'can_edit_others':    0,
+        'can_confirm':        0,
+        'can_delete':         0,
+        'can_rollback':       0,
+        'can_export':         1,
+        'can_export_full':    0,
+        'can_import_full':    0,
+        'can_classifiers':    0,
+        'can_users':          0,
+        'can_view_all':       0,
+        'can_view_investmap': 1,
+        'can_view_phonebook': 1,
+    },
+    # Руководитель: все обращения, управление ими, полный экспорт
+    'manager': {
+        'can_create':         1,
+        'can_edit_others':    1,
+        'can_confirm':        1,
+        'can_delete':         0,
+        'can_rollback':       0,
+        'can_export':         1,
+        'can_export_full':    1,
+        'can_import_full':    0,
+        'can_classifiers':    0,
+        'can_users':          0,
+        'can_view_all':       1,
+        'can_view_investmap': 1,
+        'can_view_phonebook': 1,
+    },
+    # Администратор: все права
+    'admin': ADMIN_PERMISSIONS,
+}
 
 
 def get_user_perm(key: str) -> bool:
@@ -62,7 +103,7 @@ def get_user_perm(key: str) -> bool:
     return bool(session.get(f'perm_{key}', 0))
 
 
-# ─── ДЕКОРАТОРЫ ───────────────────────────────────────────────────────────────────────
+# ─── ДЕКОРАТОРЫ ────────────────────────────────────────────────────────────────────────────────────
 
 def login_required(f):
     @wraps(f)
