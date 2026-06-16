@@ -3,7 +3,7 @@
 # ║  Оценка заполняемости карточки инвестплощадки               ║
 # ║  Методика: Минэкономразвития РФ, 08.08.2023 №28301-МК/Д28и  ║
 # ║  + публичный светофор invest.gov.ru                         ║
-# ║  Версия алгоритма: 1.5.0                                    ║
+# ║  Версия алгоритма: 1.5.1                                    ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from __future__ import annotations
@@ -157,49 +157,69 @@ BLOCK5_WEIGHT = 0.20
 PORTAL_GREEN = 75
 PORTAL_YELLOW = 60
 
+# ---------------------------------------------------------------------------
+# PORTAL_FIELDS — официальный список 28 полей портала invest.gov.ru
+# Изменение v1.5.1: поля 'Наименование объекта преференциального режима'
+# и 'Наименование объекта инфраструктуры поддержки' теперь ВСЕГДА включаются
+# в знаменатель (портал не делает исключений при 'Отсутствует'/'Без льгот').
+# ---------------------------------------------------------------------------
 PORTAL_FIELDS = [
-    ('Статус', None),
-    ('Преференциальный режим', None),
-    ('Наименование объекта преференциального режима', None),
-    ('Объект инфраструктуры поддержки', None),
-    ('Наименование объекта инфраструктуры поддержки', None),
-    ('Регион', None),
-    ('Муниципальное образование', None),
-    ('Адрес объекта', None),
-    ('Ближайший город', None),
-    ('Формат площадки', None),
-    ('Тип площадки', None),
-    ('Форма собственности', None),
-    ('Форма сделки', None),
-    ('Стоимость объекта', None),
-    ('Сроки аренды', None),
-    ('Порядок определения стоимости', None),
-    ('Свободная площадь ЗУ', 'ЗУ'),
-    ('Свободная площадь здания', 'здание'),
-    ('Варианты разрешенного использования', 'ЗУ'),
-    ('Межевание', 'ЗУ'),
-    ('Категория земель', 'ЗУ'),
-    ('Кадастровый номер ЗУ', 'ЗУ'),
-    ('Кадастровый номер здания', 'здание'),
-    ('Технические характеристики здания', 'здание'),
-    ('Наименование собственника', None),
-    ('Водоснабжение Наличие', None),
-    ('Наличие подъездных путей', None),
-    ('Наличие ж/д', None),
-    ('Наличие парковки', None),
-    ('Описание процедуры подачи заявки', None),
-    ('Перечень документов', None),
-    ('Перечень видов экономической', None),
+    ('Статус',                                              None),
+    ('Преференциальный режим',                              None),
+    ('Наименование объекта преференциального режима',       None),   # v1.5.1: всегда в зачёте
+    ('Объект инфраструктуры поддержки',                     None),
+    ('Наименование объекта инфраструктуры поддержки',       None),   # v1.5.1: всегда в зачёте
+    ('Регион',                                              None),
+    ('Муниципальное образование',                           None),
+    ('Адрес объекта',                                       None),
+    ('Ближайший город',                                     None),
+    ('Формат площадки',                                     None),
+    ('Тип площадки',                                        None),
+    ('Форма собственности',                                 None),
+    ('Форма сделки',                                        None),
+    ('Стоимость объекта',                                   None),
+    ('Сроки аренды',                                        None),
+    ('Порядок определения стоимости',                       None),
+    ('Свободная площадь ЗУ',                                'ЗУ'),
+    ('Свободная площадь здания',                            'здание'),
+    ('Варианты разрешенного использования',                 'ЗУ'),
+    ('Межевание',                                           'ЗУ'),
+    ('Категория земель',                                    'ЗУ'),
+    ('Кадастровый номер ЗУ',                                'ЗУ'),
+    ('Кадастровый номер здания',                            'здание'),
+    ('Технические характеристики здания',                   'здание'),
+    ('Наименование собственника',                           None),
+    ('Водоснабжение Наличие',                               None),
+    ('Наличие подъездных путей',                            None),
+    ('Наличие ж/д',                                         None),
+    ('Наличие парковки',                                    None),
+    ('Описание процедуры подачи заявки',                    None),
+    ('Перечень документов',                                 None),
+    ('Перечень видов экономической',                        None),
 ]
-
-# Значения, при которых поле считается «заполненным отказом» (не пусто, но ресурс недоступен)
-# Используется для «Порядок определения стоимости» = 'отсутствует'
-FILLED_NEGATIVE_VALUES = {'отсутствует', 'не применимо', 'нет', 'н/д'}
 
 # Поля, для которых значение 'не применимо' засчитывается ТОЛЬКО если «Стоимость объекта» заполнена
 CONDITIONAL_NOT_APPLICABLE_KEYS = {
     'Описание процедуры подачи заявки',
     'Перечень документов',
+}
+
+# Словарь для проверки опечаток в ключевых полях
+TYPO_CHECKS = {
+    'Порядок определения стоимости': {
+        'отсутсвует': 'отсутствует',
+        'отсутсвует ': 'отсутствует',
+    },
+    'min и max сроки аренды': {
+        'не примениом': 'не применимо',
+        'не применима': 'не применимо',
+    },
+    'Описание процедуры подачи заявки': {
+        'не применима': 'не применимо',
+    },
+    'Перечень документов': {
+        'не применима': 'не применимо',
+    },
 }
 
 # ---------------------------------------------------------------------------
@@ -265,6 +285,28 @@ def _is_filled(val: str) -> bool:
     return val not in ('ПУСТО', '', None)
 
 
+def _check_typos(data: dict) -> list[str]:
+    """
+    Проверяет ключевые поля на опечатки.
+    Возвращает список строк-предупреждений вида:
+      «Поле X: найдено «опечатка» — возможно, имелось в виду «правильно».»
+    """
+    warnings = []
+    for field_key, typo_map in TYPO_CHECKS.items():
+        val = _find(data, field_key)
+        if not _is_filled(val):
+            continue
+        val_stripped = val.strip()
+        val_lower = val_stripped.lower()
+        for typo, correct in typo_map.items():
+            if val_lower == typo.lower():
+                warnings.append(
+                    f'«{field_key}»: найдено «{val_stripped}» — возможно, имелось в виду «{correct}».'
+                )
+                break
+    return warnings
+
+
 def _is_filled_portal(val: str, key: str, data: dict) -> bool:
     """
     Расширенная проверка заполненности для портального счётчика.
@@ -283,12 +325,10 @@ def _is_filled_portal(val: str, key: str, data: dict) -> bool:
     val_norm = val.lower().strip()
 
     if key == 'Порядок определения стоимости':
-        # 'отсутствует' = осознанный ответ, засчитываем
         return True
 
     if key in CONDITIONAL_NOT_APPLICABLE_KEYS:
-        if val_norm in ('не применимо', 'нет', 'н/д', 'не применяется'):
-            # Засчитываем только при наличии стоимости
+        if val_norm in ('не применимо', 'не применимо.', 'нет', 'н/д', 'не применяется'):
             stoimost = _find(data, 'Стоимость объекта')
             return _is_filled(stoimost)
         return True
@@ -305,9 +345,6 @@ def _presence_factor(val: str) -> float:
     if 'возможно' in v:
         return 0.5
     if 'нет' in v:
-        # «Нет» — это заполненный ответ: ресурс отсутствует физически.
-        # Само поле-наличие засчитываем (factor=0.5 как «есть ответ, но ресурса нет»),
-        # зависимые тарифы и мощности при этом не требуются.
         return 0.5
     return 1.0
 
@@ -370,27 +407,35 @@ def _pluralize_field(n: int) -> str:
     return 'полей'
 
 
-def _build_sms(площадка_id: str, площадка_name: str, total_portal: int, missing_portal: list[str]) -> str | None:
+def _build_sms(площадка_id: str, площадка_name: str, total_portal: int,
+               missing_portal: list[str], typo_warnings: list[str] | None = None) -> str | None:
     """Формирует текст уведомления для копирования в Telegram."""
-    if not missing_portal:
+    if not missing_portal and not typo_warnings:
         return None
 
-    count = len(missing_portal)
-    word = _pluralize_field(count)
-
     lines = ['Добрый день!', '']
-    lines.append(
-        f'По площадке «{площадка_name}» (ID: {площадка_id}) '
-        f'заполняемость на портале invest.gov.ru составляет {total_portal}%.'
-    )
-    lines.append(
-        f'Для повышения показателя просим заполнить {count} {word} — '
-        f'каждое даёт ориентировочно +{PORTAL_FIELD_GAIN}%:'
-    )
-    lines.append('')
 
-    for i, field in enumerate(missing_portal, 1):
-        lines.append(f'{i}. {field} — {_instruction_for_field(field)}.')
+    if missing_portal:
+        count = len(missing_portal)
+        word = _pluralize_field(count)
+        lines.append(
+            f'По площадке «{площадка_name}» (ID: {площадка_id}) '
+            f'заполняемость на портале invest.gov.ru составляет {total_portal}%.'
+        )
+        lines.append(
+            f'Для повышения показателя просим заполнить {count} {word} — '
+            f'каждое даёт ориентировочно +{PORTAL_FIELD_GAIN}%:'
+        )
+        lines.append('')
+        for i, field in enumerate(missing_portal, 1):
+            lines.append(f'{i}. {field} — {_instruction_for_field(field)}.')
+
+    if typo_warnings:
+        lines.append('')
+        lines.append('⚠️ Обнаружены возможные опечатки в данных:')
+        for w in typo_warnings:
+            lines.append(f'   • {w}')
+        lines.append('   Рекомендуем проверить и исправить.')
 
     lines.append('')
     lines.append('После внесения изменений просим сообщить — проверим обновлённый процент.')
@@ -422,6 +467,11 @@ def build_summary_sms(analysis_list: list[dict]) -> str | None:
         if missing:
             for i, field in enumerate(missing, 1):
                 lines.append(f'   {i}. {field} — {_instruction_for_field(field)}.')
+        typos = a.get('typo_warnings') or []
+        if typos:
+            lines.append('   ⚠️ Опечатки:')
+            for w in typos:
+                lines.append(f'      • {w}')
         lines.append('')
 
     lines.append('После внесения изменений просим сообщить — проверим обновлённый процент.')
@@ -434,17 +484,10 @@ def _score_portal(data: dict, fmt: str) -> tuple[int, list[str]]:
     missing = []
 
     for key, only_fmt in PORTAL_FIELDS:
+        # v1.5.1: убраны условные пропуски для преф/инфра полей —
+        # портал всегда включает их в знаменатель.
         if only_fmt is not None and only_fmt != fmt:
             continue
-
-        if key == 'Наименование объекта преференциального режима':
-            parent = _find(data, 'Преференциальный режим').lower().strip()
-            if parent in PREF_INACTIVE_VALUES:
-                continue
-        elif key == 'Наименование объекта инфраструктуры поддержки':
-            parent = _find(data, 'Объект инфраструктуры поддержки').lower().strip()
-            if parent in INFRA_INACTIVE_VALUES:
-                continue
 
         total_count += 1
 
@@ -523,8 +566,6 @@ def _score_block3(data: dict) -> tuple[float, list[str]]:
         factor = _presence_factor(presence_val)
         for field_key, pts in sub_fields:
             if field_key == presence_key:
-                # Само поле наличия: начисляем баллы пропорционально factor.
-                # «Нет» (factor=0.5) = ресурс указан, но недоступен — даём половину баллов.
                 earned += pts * factor
                 if factor == 0:
                     missing.append(field_key)
@@ -533,8 +574,6 @@ def _score_block3(data: dict) -> tuple[float, list[str]]:
                 if _is_filled(val):
                     earned += pts
                 elif factor == 1.0:
-                    # Тарифы и мощности требуются только если ресурс есть (Да).
-                    # При «Возможно создание» (0.5) или «Нет» (0.5) — не требуем.
                     missing.append(field_key)
     score = round(earned / BLOCK3_MAX * 100)
     return score, missing
@@ -586,6 +625,7 @@ def analyze(data: dict) -> dict:
     )
 
     total_portal, missing_portal = _score_portal(data, fmt)
+    typo_warnings = _check_typos(data)
 
     if total_portal >= PORTAL_GREEN:
         category = '🟢 Готова к публикации'
@@ -598,7 +638,7 @@ def analyze(data: dict) -> dict:
         ready = 'нет'
 
     all_missing = m1 + m2 + m3 + m4 + m5
-    sms = _build_sms(площадка_id, площадка_name, total_portal, missing_portal)
+    sms = _build_sms(площадка_id, площадка_name, total_portal, missing_portal, typo_warnings)
 
     return {
         'id': площадка_id,
@@ -618,6 +658,7 @@ def analyze(data: dict) -> dict:
         'ready': ready,
         'all_missing': all_missing,
         'missing_portal': missing_portal,
+        'typo_warnings': typo_warnings,
         'sms': sms,
         'signed': signed,
     }
