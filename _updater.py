@@ -1,10 +1,12 @@
 # ╔════════════════════════════════════════════════════════════════════════╗
 # ║                         _updater.py                                     ║
 # ║  Скачивает обновления KITEZH с GitHub одним zip-архивом (1 API-запрос)   ║
-# ║  Режим --check: сравнивает SHA и выходит без скачивания                 ║
-# ║  Режим --force: перезаписывает ВСЕ файлы, игнорируя сравнение байт      ║
-# ║  Не трогает БД и файлы пользователя.                                    ║
-# ║  get_commits_between: список коммитов для панели обновлений              ║
+# ║  Режим --check:         сравнивает SHA и выходит без скачивания          ║
+# ║  Режим --force:         перезаписывает ВСЕ файлы, игнорируя сравнение байт    ║
+# ║  Режим --download-only: только скачать zip в _kitezh_update.zip        ║
+# ║  Режим --apply-only:    применить уже скачанный _kitezh_update.zip       ║
+# ║  Не трогает БД и файлы пользователя.                               ║
+# ║  get_commits_between: список коммитов для панели обновлений          ║
 # ╚════════════════════════════════════════════════════════════════════════╝
 
 import urllib.request
@@ -23,9 +25,10 @@ BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
 API_BASE      = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}"
 COMMIT_FILE   = os.path.join(BASE_DIR, "_last_commit.txt")
 BRANCH_FILE   = os.path.join(BASE_DIR, "_branch.txt")
+ZIP_PATH      = os.path.join(BASE_DIR, "_kitezh_update.zip")
 FALLBACK_KB   = 600
 
-# ── Читаем активную ветку из _branch.txt (по умолчанию main) ─────────────────────
+# ── Читаем активную ветку из _branch.txt (по умолчанию main) ───────────────────────────────────────────────
 def load_branch() -> str:
     if os.path.exists(BRANCH_FILE):
         try:
@@ -115,7 +118,7 @@ def show_rate_limit(headers):
           (f" (сброс в {reset_str})" if reset_str else ""))
 
 
-# ─── Список коммитов между двумя SHA ────────────────────────────────────────────
+# ─── Список коммитов между двумя SHA ────────────────────────────────────────────────────────────────────────────────────
 
 def get_commits_between(local_sha: str, remote_sha: str) -> list:
     """Возвращает список коммитов между local_sha и remote_sha (до 20 шт.).
@@ -138,7 +141,7 @@ def get_commits_between(local_sha: str, remote_sha: str) -> list:
         return []
 
 
-# ─── Проверка обновлений по SHA ─────────────────────────────────────────────
+# ─── Проверка обновлений по SHA ───────────────────────────────────────────────────────────────────
 
 def get_remote_sha() -> str | None:
     try:
@@ -199,7 +202,7 @@ def check_for_updates() -> int:
         return 1
 
 
-# ─── Размер архива ────────────────────────────────────────────────────────────────────────────
+# ─── Размер архива ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 def get_zip_size_kb() -> int:
     url = f"{API_BASE}/zipball/{BRANCH}"
@@ -314,7 +317,6 @@ def extract_and_apply(zip_path: str, force: bool = False):
                 if os.path.exists(dest):
                     old_content = open(dest, "rb").read()
 
-                # В обычном режиме пропускаем идентичные файлы
                 if not force and new_content == old_content:
                     print(f"  [--] {rel_path_fwd}")
                     unchanged += 1
@@ -423,6 +425,89 @@ def run_sync_changelog():
         print(f"  [Changelog] Ошибка синхронизации: {e}")
 
 
+# ─── Режим --download-only ────────────────────────────────────────────────────────────────────────────────────────────
+# Только скачивает zip-архив в ZIP_PATH; не применяет файлы.
+# Выход: 0 = успех, 1 = ошибка
+def _cmd_download_only():
+    print("  Подключаемся к GitHub...")
+    if TOKEN:
+        print("  Токен найден — лимит 5000 запросов/час")
+    else:
+        print("  Токен не найден — лимит 60 запросов/час")
+    print(f"  Активная ветка: {BRANCH}")
+    try:
+        download_zip(ZIP_PATH)
+        print("  Архив готов к установке.")
+        sys.exit(0)
+    except urllib.error.HTTPError as e:
+        if e.code == 403:
+            reset_ts  = e.headers.get("X-RateLimit-Reset")
+            reset_str = ""
+            if reset_ts:
+                try:
+                    reset_str = datetime.fromtimestamp(int(reset_ts)).strftime("%H:%M")
+                except Exception:
+                    pass
+            print(f"  [ОШИБКА] Rate limit исчерпан." +
+                  (f" Сброс в {reset_str}." if reset_str else " Подожди и повтори."))
+        else:
+            print(f"  [ОШИБКА] HTTP {e.code}: {e}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"  [ОШИБКА] Не удалось скачать архив: {e}")
+        sys.exit(1)
+
+
+# ─── Режим --apply-only ─────────────────────────────────────────────────────────────────────────────────────────────
+# Применяет уже скачанный ZIP_PATH; удаляет архив после установки.
+# Выход: 0 = успех, 1 = ошибка, 2 = успех + обновлён bat (нужен ручной рестарт)
+def _cmd_apply_only(force: bool = False):
+    if not os.path.exists(ZIP_PATH):
+        print(f"  [ОШИБКА] Архив {ZIP_PATH} не найден. Сначала выполни --download-only.")
+        sys.exit(1)
+
+    remote_sha = load_local_sha()  # SHA был сохранён при скачивании нет; читаем с GitHub
+    # Для --apply-only SHA считываем заново (zip уже скачан, но SHA надо сохранить)
+    remote_sha = get_remote_sha()
+
+    apply_ok = False
+    try:
+        updated, unchanged, skipped, bat_updated = extract_and_apply(ZIP_PATH, force=force)
+        apply_ok = True
+    except Exception as e:
+        print(f"  [ОШИБКА] Не удалось применить обновление: {e}")
+        sys.exit(1)
+    finally:
+        if os.path.exists(ZIP_PATH):
+            os.remove(ZIP_PATH)
+            print("  Архив обновления удалён.")
+
+    if apply_ok and remote_sha:
+        save_local_sha(remote_sha)
+        print(f"  Версия сохранена: {remote_sha[:12]}...")
+
+    print()
+    print(f"  Обновлено файлов     : {updated}")
+    print(f"  Без изменений        : {unchanged}")
+    print(f"  Пропущено (защита)   : {skipped}")
+    print()
+
+    ensure_github_release()
+    run_sync_changelog()
+
+    mode_label = " [FORCE]" if force else ""
+    print(f"  Обновление завершено{mode_label} (ветка: {BRANCH}). База данных и файлы пользователей не тронуты.")
+
+    if bat_updated:
+        print()
+        print("  [!] start KITEZH.bat был обновлён.")
+        print("  [!] Требуется перезапуск через start KITEZH.bat.")
+        print()
+        sys.exit(2)
+
+    sys.exit(0)
+
+
 def main():
     force_mode = "--force" in sys.argv
 
@@ -430,6 +515,15 @@ def main():
         code = check_for_updates()
         sys.exit(code)
 
+    if "--download-only" in sys.argv:
+        _cmd_download_only()
+        return  # sys.exit внутри
+
+    if "--apply-only" in sys.argv:
+        _cmd_apply_only(force=force_mode)
+        return  # sys.exit внутри
+
+    # ── Обычный режим: скачать + применить за один запуск ──
     print("  Подключаемся к GitHub...")
     if TOKEN:
         print("  Токен найден — лимит 5000 запросов/час")
@@ -441,10 +535,8 @@ def main():
 
     remote_sha = get_remote_sha()
 
-    zip_path = os.path.join(BASE_DIR, "_kitezh_update.zip")
-
     try:
-        download_zip(zip_path)
+        download_zip(ZIP_PATH)
     except urllib.error.HTTPError as e:
         if e.code == 403:
             reset_ts  = e.headers.get("X-RateLimit-Reset")
@@ -460,19 +552,19 @@ def main():
             print(f"  [ОШИБКА] {e}")
         sys.exit(1)
     except Exception as e:
-        print(f"  [ОШИБКА] Не удалось скачать архив обновления: {e}")
+        print(f"  [ОШИБКа] Не удалось скачать архив обновления: {e}")
         sys.exit(1)
 
     apply_ok = False
     try:
-        updated, unchanged, skipped, bat_updated = extract_and_apply(zip_path, force=force_mode)
+        updated, unchanged, skipped, bat_updated = extract_and_apply(ZIP_PATH, force=force_mode)
         apply_ok = True
     except Exception as e:
         print(f"  [ОШИБКА] Не удалось применить обновление: {e}")
         sys.exit(1)
     finally:
-        if os.path.exists(zip_path):
-            os.remove(zip_path)
+        if os.path.exists(ZIP_PATH):
+            os.remove(ZIP_PATH)
             print("  Архив обновления удалён.")
 
     if apply_ok and remote_sha:
