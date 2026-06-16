@@ -6,6 +6,8 @@
 # ║  v3.1: fix syntax — убран мусор 'raktika:' в classifiers()    ║
 # ║  v3.2: fix deps/check — маппинг import-имён для pip-пакетов    ║
 # ║  v3.3: fix _IMPORT_NAME — убран дубль Pillow, добавлен pystray ║
+# ║  v3.4: fix impersonate — загрузка perm_* цели; rm manager;    ║
+# ║         ADMIN_PERMISSIONS вместо инлайн dict comprehension    ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify
@@ -16,7 +18,10 @@ import subprocess
 import importlib.util
 
 from db import get_db
-from auth_utils import login_required, admin_required, hash_pw, ALL_PERMISSIONS
+from auth_utils import (
+    login_required, admin_required, hash_pw,
+    ALL_PERMISSIONS, ADMIN_PERMISSIONS, load_permissions_to_session,
+)
 from activity_log import get_activity_log, ACTION_LABELS
 
 admin_bp = Blueprint('admin', __name__)
@@ -164,8 +169,9 @@ def api_deps_install():
 def impersonate(uid):
     conn = get_db()
     try:
+        # Читаем все колонки — нужны perm_* для load_permissions_to_session
         target = conn.execute(
-            'SELECT id, username, full_name, role FROM users WHERE id=?', (uid,)
+            'SELECT * FROM users WHERE id=?', (uid,)
         ).fetchone()
     finally:
         conn.close()
@@ -175,15 +181,21 @@ def impersonate(uid):
         return redirect(url_for('requests.index'))
 
     if not session.get('_orig_user_id'):
+        # Сохраняем идентификаторы оригинального admin-пользователя
         session['_orig_user_id']   = session['user_id']
         session['_orig_username']  = session.get('username', '')
         session['_orig_full_name'] = session.get('full_name', '')
         session['_orig_role']      = session.get('role', '')
+        # Сохраняем все perm_* администратора, чтобы восстановить при выходе
+        for key in ALL_PERMISSIONS:
+            session[f'_orig_perm_{key}'] = session.get(f'perm_{key}', 0)
 
     session['user_id']   = target['id']
     session['username']  = target['username']
     session['full_name'] = target['full_name']
     session['role']      = target['role']
+    # Загружаем права целевого пользователя — без этого perm_* остались бы от admin
+    load_permissions_to_session(target)
     session.modified = True
 
     flash(f'Вы вошли как: {target["full_name"]}. Для выхода нажмите «Вернуться в admin».', 'info')
@@ -202,6 +214,9 @@ def impersonate_stop():
     session['username']  = session.pop('_orig_username',  '')
     session['full_name'] = session.pop('_orig_full_name', '')
     session['role']      = session.pop('_orig_role',      'admin')
+    # Восстанавливаем perm_* администратора
+    for key in ALL_PERMISSIONS:
+        session[f'perm_{key}'] = session.pop(f'_orig_perm_{key}', 1)
     session.modified = True
 
     flash('Вы вернулись в свою учётную запись администратора.', 'success')
@@ -458,7 +473,7 @@ def manage_users():
                 if un and pw2 and fn:
                     perms = {k: (1 if request.form.get(k) else 0) for k in ALL_PERMISSIONS}
                     if ro == 'admin':
-                        perms = {k: 1 for k in ALL_PERMISSIONS}
+                        perms = ADMIN_PERMISSIONS.copy()
                     try:
                         conn.execute(
                             f"INSERT INTO users "
@@ -478,7 +493,7 @@ def manage_users():
                 ro  = request.form.get('role', 'employee')
                 perms = {k: (1 if request.form.get(k) else 0) for k in ALL_PERMISSIONS}
                 if ro == 'admin':
-                    perms = {k: 1 for k in ALL_PERMISSIONS}
+                    perms = ADMIN_PERMISSIONS.copy()
                 sets = ', '.join([f"{k}=?" for k in ALL_PERMISSIONS])
                 conn.execute(
                     f"UPDATE users SET role=?, {sets} WHERE id=?",
@@ -663,8 +678,9 @@ def saved_filters():
             "LEFT JOIN users u ON sf.created_by=u.id "
             "ORDER BY sf.sort_order,sf.id"
         ).fetchall()
+        # manager убран — роль не определена в системе прав
         employees = conn.execute(
-            "SELECT id,full_name FROM users WHERE role IN ('employee','admin','manager') "
+            "SELECT id,full_name FROM users WHERE role IN ('employee','admin') "
             "ORDER BY full_name"
         ).fetchall()
         districts = [
