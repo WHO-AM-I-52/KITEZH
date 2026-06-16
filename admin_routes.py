@@ -10,6 +10,7 @@
 # ║         ADMIN_PERMISSIONS вместо инлайн dict comprehension    ║
 # ║  v3.5: audit — log_action('perm_change') в edit_permissions;  ║
 # ║         get_perm_audit() передаётся в users.html              ║
+# ║  v3.6: action edit_name — редактирование ФИО пользователя     ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify
@@ -45,7 +46,7 @@ _IMPORT_NAME = {
 }
 
 
-# ─── /admin дашборд ─────────────────────────────────────────────────────────────────────────────────────
+# ─── /admin дашборд ────────────────────────────────────────────────────────────────────────────────
 @admin_bp.route('/admin')
 @login_required
 @admin_required
@@ -53,7 +54,7 @@ def admin_index():
     return render_template('admin/index.html')
 
 
-# ─── /admin/deps ─────────────────────────────────────────────────────────────────────────────────────
+# ─── /admin/deps ────────────────────────────────────────────────────────────────────────────────
 @admin_bp.route('/admin/deps')
 @login_required
 @admin_required
@@ -61,7 +62,7 @@ def admin_deps():
     return render_template('admin/deps.html')
 
 
-# ─── /api/deps/check ────────────────────────────────────────────────────────────────────────────────
+# ─── /api/deps/check ────────────────────────────────────────────────────────────────────────────
 @admin_bp.route('/api/deps/check')
 @login_required
 @admin_required
@@ -85,8 +86,6 @@ def api_deps_check():
             pkg_name = m.group(1)
             req_ver  = (m.group(2) or '').strip()
 
-            # Определяем реальное import-имя:
-            # если есть в маппинге — берём его, иначе преобразуем дефисные в подчёрки
             import_name = _IMPORT_NAME.get(pkg_name) or pkg_name.replace('-', '_').lower()
 
             installed     = False
@@ -113,7 +112,7 @@ def api_deps_check():
     return jsonify({'packages': packages, 'path': _REQUIREMENTS})
 
 
-# ─── /api/deps/install ─────────────────────────────────────────────────────────────────────────────
+# ─── /api/deps/install ───────────────────────────────────────────────────────────────────────────
 @admin_bp.route('/api/deps/install', methods=['POST'])
 @login_required
 @admin_required
@@ -123,7 +122,6 @@ def api_deps_install():
     """
     data = request.get_json(silent=True) or {}
 
-    # Базовые флаги: без диалогов, совместимо с WinPython
     BASE_FLAGS = [
         '--no-warn-script-location',
         '--disable-pip-version-check',
@@ -164,14 +162,13 @@ def api_deps_install():
         return jsonify({'ok': False, 'error': str(e)})
 
 
-# ─── Войти как (Имперсонация) ───────────────────────────────────────────────────────────────────────
+# ─── Имперсонация ──────────────────────────────────────────────────────────────────────────────────
 @admin_bp.route('/impersonate/<int:uid>')
 @login_required
 @admin_required
 def impersonate(uid):
     conn = get_db()
     try:
-        # Читаем все колонки — нужны perm_* для load_permissions_to_session
         target = conn.execute(
             'SELECT * FROM users WHERE id=?', (uid,)
         ).fetchone()
@@ -183,12 +180,10 @@ def impersonate(uid):
         return redirect(url_for('requests.index'))
 
     if not session.get('_orig_user_id'):
-        # Сохраняем идентификаторы оригинального admin-пользователя
         session['_orig_user_id']   = session['user_id']
         session['_orig_username']  = session.get('username', '')
         session['_orig_full_name'] = session.get('full_name', '')
         session['_orig_role']      = session.get('role', '')
-        # Сохраняем все perm_* администратора, чтобы восстановить при выходе
         for key in ALL_PERMISSIONS:
             session[f'_orig_perm_{key}'] = session.get(f'perm_{key}', 0)
 
@@ -196,7 +191,6 @@ def impersonate(uid):
     session['username']  = target['username']
     session['full_name'] = target['full_name']
     session['role']      = target['role']
-    # Загружаем права целевого пользователя — без этого perm_* остались бы от admin
     load_permissions_to_session(target)
     session.modified = True
 
@@ -216,7 +210,6 @@ def impersonate_stop():
     session['username']  = session.pop('_orig_username',  '')
     session['full_name'] = session.pop('_orig_full_name', '')
     session['role']      = session.pop('_orig_role',      'admin')
-    # Восстанавливаем perm_* администратора
     for key in ALL_PERMISSIONS:
         session[f'perm_{key}'] = session.pop(f'_orig_perm_{key}', 1)
     session.modified = True
@@ -225,7 +218,7 @@ def impersonate_stop():
     return redirect(url_for('requests.index'))
 
 
-# ─── Классификаторы ─────────────────────────────────────────────────────────────────────────────────────
+# ─── Классификаторы ──────────────────────────────────────────────────────────────────────────────────
 @admin_bp.route('/admin/classifiers', methods=['GET', 'POST'])
 @login_required
 @admin_required
@@ -490,11 +483,23 @@ def manage_users():
                         conn.rollback()
                         flash('Логин уже занят', 'error')
 
+            elif action == 'edit_name':
+                uid = request.form.get('user_id')
+                fn  = request.form.get('full_name', '').strip()
+                if uid and fn:
+                    conn.execute(
+                        'UPDATE users SET full_name=? WHERE id=?',
+                        (fn, uid)
+                    )
+                    conn.commit()
+                    flash('ФИО обновлено', 'success')
+                else:
+                    flash('ФИО не может быть пустым', 'error')
+
             elif action == 'edit_permissions':
                 uid = request.form.get('user_id')
                 ro  = request.form.get('role', 'employee')
 
-                # Читаем текущие права ДО изменения — для формирования diff
                 old = conn.execute(
                     f"SELECT role, {','.join(ALL_PERMISSIONS)} FROM users WHERE id=?", (uid,)
                 ).fetchone()
@@ -510,14 +515,12 @@ def manage_users():
                 )
                 conn.commit()
 
-                # Уведомление пользователю
                 conn.execute(
                     "INSERT INTO notifications (user_id, message) VALUES (?, ?)",
                     (uid, '🔐 Ваши права доступа были изменены администратором')
                 )
                 conn.commit()
 
-                # Аудит: формируем строку изменений «было → стало»
                 target_row = conn.execute(
                     "SELECT full_name FROM users WHERE id=?", (uid,)
                 ).fetchone()
@@ -712,7 +715,6 @@ def saved_filters():
             "LEFT JOIN users u ON sf.created_by=u.id "
             "ORDER BY sf.sort_order,sf.id"
         ).fetchall()
-        # manager убран — роль не определена в системе прав
         employees = conn.execute(
             "SELECT id,full_name FROM users WHERE role IN ('employee','admin') "
             "ORDER BY full_name"
