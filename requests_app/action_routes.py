@@ -10,7 +10,7 @@ from datetime import datetime, date
 from flask import request, redirect, url_for, session, flash
 from werkzeug.utils import secure_filename
 
-from db import get_db, UPLOADS_DIR
+from db import get_db, UPLOADS_DIR, STATUS_NORM_DAYS, _add_workdays
 from auth_utils import login_required, permission_required
 from activity_log import log_action
 from validators import allowed_file
@@ -31,14 +31,22 @@ _STATUS_EXTRA_FIELDS = {
 
 _INT_STATUS_FIELDS = {'result_type_id', 'taken_under_supervision'}
 
-# Максимальное количество проверяющих в цепочке
+# Маппинг статуса → поле даты перехода
+_STATUS_AT_FIELD = {
+    'registered':        'at_registered',
+    'in_progress':       'at_in_progress',
+    'under_review':      'at_under_review',
+    'ready_to_send':     'at_ready_to_send',
+    'sent_to_applicant': 'at_sent_to_applicant',
+    'closed':            'at_closed',
+}
+
 _MAX_REVIEWERS = 5
 
 
 # ─── ХЕЛПЕР: уведомление ответственному лицу ──────────────────────────────────
 
 def _notify_responsible(conn, req, message):
-    """Отправляет уведомление ответственному лицу (поль зо assigned_to или responsible_id)."""
     rid = req['id']
     targets = set()
     if req['assigned_to']:
@@ -50,6 +58,22 @@ def _notify_responsible(conn, req, message):
             "INSERT INTO notifications (user_id, message, link) VALUES (?, ?, ?)",
             (uid, message, f'/view/{rid}')
         )
+
+
+def _calc_deadline(status: str, transition_date_str: str) -> str | None:
+    """
+    Рассчитывает review_deadline для текущего этапа:
+    deadline = дата перехода в status + норматив этапа (рабочих дней).
+    Возвращает ISO-строку или None.
+    """
+    norm = STATUS_NORM_DAYS.get(status)
+    if norm is None or not transition_date_str:
+        return None
+    try:
+        start = date.fromisoformat(transition_date_str[:10])
+        return _add_workdays(start, norm).isoformat()
+    except (ValueError, TypeError):
+        return None
 
 
 # ─── СМЕНА СТАТУСА ────────────────────────────────────────────────────────────────────────
@@ -64,6 +88,7 @@ def change_status(rid):
 
     conn = get_db()
     now  = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    today = now[:10]
     req  = conn.execute("SELECT * FROM requests WHERE id=?", (rid,)).fetchone()
     if not req:
         conn.close()
@@ -72,6 +97,22 @@ def change_status(rid):
 
     upd_fields = ['status=?', 'updated_at=?']
     upd_vals   = [ns, now]
+
+    # ── Записываем дату перехода в новый статус
+    at_field = _STATUS_AT_FIELD.get(ns)
+    if at_field:
+        upd_fields.append(f'{at_field}=?')
+        upd_vals.append(today)
+
+    # ── Пересчитываем review_deadline под новый этап
+    deadline = _calc_deadline(ns, today)
+    if deadline and ns not in ('draft', 'closed'):
+        upd_fields.append('review_deadline=?')
+        upd_vals.append(deadline)
+    elif ns in ('closed',):
+        # Закрытое обращение — deadline не нужен
+        upd_fields.append('review_deadline=?')
+        upd_vals.append(None)
 
     for field in _STATUS_EXTRA_FIELDS.get(ns, []):
         val = request.form.get(field)
@@ -98,15 +139,15 @@ def change_status(rid):
         upd_fields.append('taken_under_supervision=?')
         upd_vals.append(0)
 
+    # Совместимость: registered_at = at_registered
     if ns == 'registered':
         upd_fields.append('registered_at=?')
-        upd_vals.append(now[:10])
+        upd_vals.append(today)
 
     # ════════════════════════════════════════════════════════════════
     # under_review: файлы + цепочка согласования
     # ════════════════════════════════════════════════════════════════
     if ns == 'under_review':
-        # ─ Файлы для проверяющего
         uploaded_files = request.files.getlist('review_files')
         saved_names = []
         existing = conn.execute(
@@ -132,7 +173,6 @@ def change_status(rid):
             upd_fields.append('answer_file=?')
             upd_vals.append(','.join(saved_names))
 
-        # ─ Цепочка согласования: парсим reviewer_id_1..5 и ext_name_1..5
         reviewers = []
         for i in range(1, _MAX_REVIEWERS + 1):
             is_ext  = request.form.get(f'reviewer_not_in_system_{i}') == '1'
@@ -151,10 +191,8 @@ def change_status(rid):
             flash('Укажите хотя бы одного проверяющего', 'error')
             return redirect(url_for('requests.view_request', rid=rid))
 
-        # Сбрасываем старую цепочку для этого обращения
         conn.execute("DELETE FROM review_chain WHERE request_id=?", (rid,))
 
-        # Записываем новую цепочку
         for step, rv in enumerate(reviewers, start=1):
             conn.execute(
                 "INSERT INTO review_chain (request_id, user_id, external_name, step_order) "
@@ -162,7 +200,6 @@ def change_status(rid):
                 (rid, rv['user_id'], rv['external_name'], step)
             )
 
-        # Обновляем поле reviewer_id в requests (первый в цепочке)
         first = reviewers[0]
         upd_fields.append('reviewer_id=?')
         upd_vals.append(first['user_id'])
@@ -171,7 +208,6 @@ def change_status(rid):
         upd_fields.append('reviewer_not_in_system=?')
         upd_vals.append(1 if first['user_id'] is None else 0)
 
-        # ─ Уведомление первому проверяющему
         req_num = req['request_number'] or f'ID:{rid}'
         if first['user_id']:
             conn.execute(
@@ -181,7 +217,6 @@ def change_status(rid):
                  f'/view/{rid}')
             )
 
-        # ─ Уведомление ответственному лицу (fix: раньше не отправлялось)
         chain_names = ', '.join(
             rv['external_name'] if rv['external_name'] else str(rv['user_id'])
             for rv in reviewers
@@ -211,12 +246,6 @@ def change_status(rid):
 @requests_bp.route('/request/<int:rid>/reviewer_decision', methods=['POST'])
 @login_required
 def reviewer_decision(rid):
-    """
-    Решение проверяющего.
-    approved: если есть следующий в цепочке → уведомляем его;
-             иначе → ready_to_send + уведомление ответственному.
-    rejected: цепочка прерывается → in_progress + уведомление ответственному.
-    """
     decision = request.form.get('decision')
     comment  = request.form.get('reviewer_comment', '').strip()
     if decision not in ('approved', 'rejected'):
@@ -224,6 +253,7 @@ def reviewer_decision(rid):
         return redirect(url_for('requests.view_request', rid=rid))
 
     now  = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    today = now[:10]
     conn = get_db()
     req  = conn.execute("SELECT * FROM requests WHERE id=?", (rid,)).fetchone()
     if not req:
@@ -233,7 +263,6 @@ def reviewer_decision(rid):
 
     req_num = req['request_number'] or f'ID:{rid}'
 
-    # Фиксируем решение текущего проверяющего в review_chain
     current_step = conn.execute(
         "SELECT * FROM review_chain "
         "WHERE request_id=? AND decision IS NULL "
@@ -248,7 +277,6 @@ def reviewer_decision(rid):
         )
 
     if decision == 'approved':
-        # Ищем следующий в цепочке
         next_step = conn.execute(
             "SELECT * FROM review_chain "
             "WHERE request_id=? AND decision IS NULL "
@@ -257,7 +285,6 @@ def reviewer_decision(rid):
         ).fetchone()
 
         if next_step:
-            # Есть следующий — уведомляем его
             total = conn.execute(
                 "SELECT COUNT(*) FROM review_chain WHERE request_id=?", (rid,)
             ).fetchone()[0]
@@ -269,7 +296,6 @@ def reviewer_decision(rid):
                      f'(шаг {next_step["step_order"]} из {total})',
                      f'/view/{rid}')
                 )
-            # Статус остаётся under_review
             conn.execute(
                 "UPDATE requests SET reviewer_id=?, reviewer_name_external=?, "
                 "reviewer_not_in_system=?, reviewer_decision=NULL, "
@@ -282,10 +308,14 @@ def reviewer_decision(rid):
             log_action(conn, session['user_id'], 'review', rid,
                        f'Одобрено (шаг {current_step["step_order"]}), следующий: шаг {next_step["step_order"]}')
         else:
-            # Цепочка завершена — переводим в ready_to_send
+            # Цепочка завершена → ready_to_send
+            deadline = _calc_deadline('ready_to_send', today)
+            extra_upd = f", at_ready_to_send='{today}'"
+            if deadline:
+                extra_upd += f", review_deadline='{deadline}'"
             conn.execute(
-                "UPDATE requests SET status='ready_to_send', reviewer_decision='approved', "
-                "reviewer_comment=?, reviewer_decision_at=?, updated_at=? WHERE id=?",
+                f"UPDATE requests SET status='ready_to_send', reviewer_decision='approved', "
+                f"reviewer_comment=?, reviewer_decision_at=?, updated_at=?{extra_upd} WHERE id=?",
                 (comment, now, now, rid)
             )
             _notify_responsible(
@@ -295,10 +325,14 @@ def reviewer_decision(rid):
             log_action(conn, session['user_id'], 'review', rid,
                        'Все этапы одобрены, статус → ready_to_send')
     else:
-        # rejected: прерываем цепочку
+        # rejected → in_progress
+        deadline = _calc_deadline('in_progress', today)
+        extra_upd = f", at_in_progress='{today}'"
+        if deadline:
+            extra_upd += f", review_deadline='{deadline}'"
         conn.execute(
-            "UPDATE requests SET status='in_progress', reviewer_decision='rejected', "
-            "reviewer_comment=?, reviewer_decision_at=?, updated_at=? WHERE id=?",
+            f"UPDATE requests SET status='in_progress', reviewer_decision='rejected', "
+            f"reviewer_comment=?, reviewer_decision_at=?, updated_at=?{extra_upd} WHERE id=?",
             (comment, now, now, rid)
         )
         step_num = current_step['step_order'] if current_step else '?'
@@ -323,6 +357,7 @@ def reviewer_decision(rid):
 def answer_request(rid):
     conn   = get_db()
     now    = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    today  = now[:10]
     method = request.form.get('answer_method', '')
     m_other = request.form.get('answer_method_other', '')
     notes  = request.form.get('answer_notes', '')
@@ -339,11 +374,14 @@ def answer_request(rid):
         f.save(os.path.join(UPLOADS_DIR, fn))
         af = fn
 
+    deadline = _calc_deadline('ready_to_send', today)
     conn.execute(
         "UPDATE requests SET status='ready_to_send', answer_date=?, "
         "answer_method=?, answer_method_other=?, answer_notes=?, "
-        "answer_file=?, answer_system_number=?, updated_at=? WHERE id=?",
-        (date.today().isoformat(), method, m_other, notes, af, answer_sys_num, now, rid)
+        "answer_file=?, answer_system_number=?, updated_at=?, "
+        "at_ready_to_send=?, review_deadline=? WHERE id=?",
+        (today, method, m_other, notes, af, answer_sys_num, now,
+         today, deadline, rid)
     )
     log_action(conn, session['user_id'], 'answer', rid,
                f'Подбор загружен, статус → ready_to_send. Способ: {method}'

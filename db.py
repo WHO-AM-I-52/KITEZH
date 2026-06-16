@@ -21,11 +21,38 @@ os.makedirs(UPLOADS_TMP, exist_ok=True)
 os.makedirs(REPORTS_DIR, exist_ok=True)
 
 
-# ─── МИГРАЦИЯ ────────────────────────────────────────────────────────────────────────────────────
+# ─── НОРМАТИВЫ ПО ЭТАПАМ (рабочих дней) ──────────────────────────────────────
+# draft → registered
+NORM_TO_REGISTERED       = 1
+# registered → in_progress
+NORM_TO_IN_PROGRESS      = 1
+# in_progress → under_review
+NORM_TO_UNDER_REVIEW     = 5
+# under_review → ready_to_send
+NORM_TO_READY_TO_SEND    = 2
+# ready_to_send → sent_to_applicant
+NORM_TO_SENT             = 1
+# sent_to_applicant → closed
+NORM_TO_CLOSED           = 12
 
-# Маппинг названий предметов → префиксы рег. номеров.
-# Сравнение нечувствительно к регистру (LOWER).
-# Список охватывает оба варианта написания (старый и новый).
+# Маппинг «в какой статус переходим» → норматив рабочих дней для ЭТОГО этапа
+STATUS_NORM_DAYS = {
+    'registered':        NORM_TO_REGISTERED,
+    'in_progress':       NORM_TO_IN_PROGRESS,
+    'under_review':      NORM_TO_UNDER_REVIEW,
+    'ready_to_send':     NORM_TO_READY_TO_SEND,
+    'sent_to_applicant': NORM_TO_SENT,
+    'closed':            NORM_TO_CLOSED,
+}
+
+# Суммарный норматив полного цикла (для обратной совместимости дашборда)
+NORM_TOTAL_DAYS = (
+    NORM_TO_REGISTERED + NORM_TO_IN_PROGRESS + NORM_TO_UNDER_REVIEW
+    + NORM_TO_READY_TO_SEND + NORM_TO_SENT
+)  # = 10 рабочих дней до отправки заявителю
+
+# ─── МАППИНГ ────────────────────────────────────────────────────────────────────────────────────
+
 _PREFIX_BY_NAME = {
     'подбор з/у':                                   'ПЗУ',
     'подбор зу':                                    'ПЗУ',
@@ -39,12 +66,10 @@ _PREFIX_BY_NAME = {
     'подбор индустриального парка':                 'ПИП',
 }
 
-# fix #57: флаг — миграция выполняется ровно один раз за жизнь процесса
 _migrated = False
 
 
 def _has_column(conn, table: str, column: str) -> bool:
-    """Труе если колонка уже есть в таблице."""
     rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
     return any(r['name'] == column for r in rows)
 
@@ -58,10 +83,6 @@ def _table_exists(conn, table: str) -> bool:
 
 
 def _ensure_prefixes(conn):
-    """
-    Идемпотентно заполняет reg_prefix для записей где он ещё NULL.
-    Вызывается при каждом старте — безопасно, уже заполненные не трогают.
-    """
     if not _has_column(conn, 'subject_types', 'reg_prefix'):
         return
     for name, prefix in _PREFIX_BY_NAME.items():
@@ -72,53 +93,71 @@ def _ensure_prefixes(conn):
 
 
 def _add_workdays(start: date, days: int) -> date:
-    """Добавляет `days` рабочих дней (Пн-Пт) к дате `start`."""
+    """Добавляет `days` рабочих дней (Пн–Пт) к дате `start`."""
     current, added = start, 0
     while added < days:
         current += timedelta(days=1)
-        if current.weekday() < 5:  # 0=Пн, 4=Пт
+        if current.weekday() < 5:
             added += 1
     return current
 
 
 def _backfill_review_deadline(conn):
     """
-    Бэкфилл: вычисляет review_deadline для всех существующих обращений
-    где review_deadline IS NULL и статус не в (draft, closed).
-    Идемпотентно: никогда не перезаписывает уже заполненные значения.
+    Бэкфилл review_deadline по текущему статусу обращения:
+    deadline = дата перехода в текущий статус + норматив этапа (рабочих дней).
+    Если дата перехода неизвестна — используем request_date.
+    Идемпотентно: перезаписывает только записи, где review_deadline IS NULL.
     """
     if not _has_column(conn, 'requests', 'review_deadline'):
         return
+
+    # Нормативы этапов в рабочих днях (сколько дней даётся на текущий этап)
+    stage_norms = STATUS_NORM_DAYS
+
     rows = conn.execute("""
-        SELECT id, request_date,
+        SELECT id, status, request_date,
+               at_registered, at_in_progress, at_under_review,
+               at_ready_to_send, at_sent_to_applicant,
                COALESCE(review_days, 7) AS review_days
         FROM requests
         WHERE (review_deadline IS NULL OR review_deadline = '')
           AND status NOT IN ('draft', 'closed')
           AND request_date IS NOT NULL
           AND request_date != ''
-    """).fetchall()
+    """).fetchall() if _has_column(conn, 'requests', 'at_registered') else []
+
     for row in rows:
         try:
-            start = date.fromisoformat(row['request_date'])
-            deadline = _add_workdays(start, int(row['review_days']))
+            status = row['status']
+            # Определяем дату начала текущего этапа
+            at_field_map = {
+                'registered':        'at_registered',
+                'in_progress':       'at_in_progress',
+                'under_review':      'at_under_review',
+                'ready_to_send':     'at_ready_to_send',
+                'sent_to_applicant': 'at_sent_to_applicant',
+            }
+            at_field = at_field_map.get(status)
+            at_val = row[at_field] if at_field else None
+            start_str = at_val if at_val else row['request_date']
+            start = date.fromisoformat(start_str[:10])
+            norm = stage_norms.get(status, int(row['review_days']))
+            deadline = _add_workdays(start, norm)
             conn.execute(
                 "UPDATE requests SET review_deadline=? WHERE id=?",
                 (deadline.isoformat(), row['id'])
             )
         except (ValueError, TypeError):
-            pass  # некорректная дата — пропускаем
+            pass
 
 
 def _migrate(conn):
     """
     Автоматическое добавление новых таблиц и колонок если они отсутствуют.
-    ВАЖНО: все изменения должны быть идемпотентны — при повторном запуске
-    на уже обновлённой БД ничего не должно ломаться.
     Вызывается ОДИН РАЗ при старте приложения (fix #57).
     """
 
-    # ─ Таблица присутствия онлайн
     conn.execute("""
         CREATE TABLE IF NOT EXISTS online_presence (
             user_id   INTEGER PRIMARY KEY,
@@ -126,17 +165,11 @@ def _migrate(conn):
         )
     """)
 
-    # ─ Колонка action в request_history
     if not _has_column(conn, 'request_history', 'action'):
         conn.execute(
             "ALTER TABLE request_history ADD COLUMN action TEXT DEFAULT 'edit'"
         )
 
-    # ════════════════════════════════════════════════════════════════
-    # МинЭК: справочники и новые поля
-    # ════════════════════════════════════════════════════════════════
-
-    # ─ Справочник «Предмет обращения»
     conn.execute("""
         CREATE TABLE IF NOT EXISTS subject_types (
             id   INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -160,16 +193,13 @@ def _migrate(conn):
             ]
         )
 
-    # ─ Поле reg_prefix в subject_types
     if not _has_column(conn, 'subject_types', 'reg_prefix'):
         conn.execute(
             "ALTER TABLE subject_types ADD COLUMN reg_prefix TEXT"
         )
 
-    # ─ Заполняем reg_prefix всегда (идемпотентно, только NULL-записи)
     _ensure_prefixes(conn)
 
-    # ─ Таблица счётчиков рег. номеров (per-prefix, per-year)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS reg_number_sequences (
             prefix   TEXT    NOT NULL,
@@ -179,7 +209,6 @@ def _migrate(conn):
         )
     """)
 
-    # ─ Справочник «Итоги работы по обращению»
     result_types_exists_before = _table_exists(conn, 'result_types')
     conn.execute("""
         CREATE TABLE IF NOT EXISTS result_types (
@@ -212,7 +241,6 @@ def _migrate(conn):
             default_results
         )
 
-    # ─ Новые поля в таблице requests
     if not _has_column(conn, 'requests', 'subject_type_id'):
         conn.execute(
             "ALTER TABLE requests ADD COLUMN subject_type_id INTEGER REFERENCES subject_types(id)"
@@ -230,10 +258,6 @@ def _migrate(conn):
             "ALTER TABLE requests ADD COLUMN incoming_number TEXT"
         )
 
-    # ════════════════════════════════════════════════════════════════
-    # Права доступа: новые колонки в таблице users
-    # ════════════════════════════════════════════════════════════════
-
     if not _has_column(conn, 'users', 'can_export_full'):
         conn.execute(
             "ALTER TABLE users ADD COLUMN can_export_full INTEGER NOT NULL DEFAULT 0"
@@ -246,10 +270,6 @@ def _migrate(conn):
         conn.execute(
             "ALTER TABLE users ADD COLUMN can_view_investmap INTEGER NOT NULL DEFAULT 0"
         )
-
-    # ════════════════════════════════════════════════════════════════
-    # Issue #53: новая логика статусов обращений
-    # ════════════════════════════════════════════════════════════════
 
     if not _has_column(conn, 'requests', 'review_days'):
         conn.execute("ALTER TABLE requests ADD COLUMN review_days INTEGER NOT NULL DEFAULT 7")
@@ -286,18 +306,40 @@ def _migrate(conn):
     if not _has_column(conn, 'requests', 'taken_under_supervision'):
         conn.execute("ALTER TABLE requests ADD COLUMN taken_under_supervision INTEGER NOT NULL DEFAULT 0")
 
-    # ─ Маппинг старых статусов → новые (идемпотентный)
+    # ════════════════════════════════════════════════════════════════
+    # Даты переходов по этапам (для многоэтапного норматива)
+    # ════════════════════════════════════════════════════════════════
+    stage_date_cols = [
+        'at_registered',
+        'at_in_progress',
+        'at_under_review',
+        'at_ready_to_send',
+        'at_sent_to_applicant',
+        'at_closed',
+    ]
+    for col in stage_date_cols:
+        if not _has_column(conn, 'requests', col):
+            conn.execute(f"ALTER TABLE requests ADD COLUMN {col} TEXT")
+
+    # Бэкфилл: если уже есть registered_at — копируем в at_registered
+    if _has_column(conn, 'requests', 'at_registered'):
+        conn.execute(
+            "UPDATE requests SET at_registered = registered_at "
+            "WHERE at_registered IS NULL AND registered_at IS NOT NULL AND registered_at != ''"
+        )
+    # Бэкфилл sent_to_applicant_at → at_sent_to_applicant
+    if _has_column(conn, 'requests', 'at_sent_to_applicant'):
+        conn.execute(
+            "UPDATE requests SET at_sent_to_applicant = sent_to_applicant_at "
+            "WHERE at_sent_to_applicant IS NULL AND sent_to_applicant_at IS NOT NULL AND sent_to_applicant_at != ''"
+        )
+
     conn.execute("UPDATE requests SET status='registered'        WHERE status='review'")
     conn.execute("UPDATE requests SET status='in_progress'       WHERE status='accepted'")
     conn.execute("UPDATE requests SET status='sent_to_applicant' WHERE status='answered'")
 
-    # ─ Бэкфилл review_deadline для устаревших записей (fix #overdue-backfill)
     _backfill_review_deadline(conn)
 
-    # ════════════════════════════════════════════════════════════════
-    # Инициализация счётчиков reg_number_sequences по номерам
-    # формата PREFIX-YYYY-NNN (4-значный год). Идемпотентно.
-    # ════════════════════════════════════════════════════════════════
     conn.execute("""
         INSERT OR REPLACE INTO reg_number_sequences (prefix, year, last_seq)
         SELECT prefix, year, MAX(seq) AS last_seq
@@ -323,9 +365,6 @@ def _migrate(conn):
         )
     """)
 
-    # ════════════════════════════════════════════════════════════════
-    # Issue #48: единицы измерения инфраструктурных полей
-    # ════════════════════════════════════════════════════════════════
     _unit_cols = [
         ('elec_unit',  'кВт'),
         ('heat_unit',  'Гкал/ч'),
@@ -343,26 +382,17 @@ def _migrate(conn):
             (default,)
         )
 
-    # ════════════════════════════════════════════════════════════════
-    # Phonebook sync (Issue #PB-1): колонка должности уполн. лица
-    # ════════════════════════════════════════════════════════════════
     if not _has_column(conn, 'requests', 'contact_position'):
         conn.execute(
             "ALTER TABLE requests ADD COLUMN contact_position TEXT NOT NULL DEFAULT ''"
         )
 
-    # ════════════════════════════════════════════════════════════════
-    # Индексы — fix #6
-    # ════════════════════════════════════════════════════════════════
     conn.execute("CREATE INDEX IF NOT EXISTS idx_req_status     ON requests(status)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_req_created_by ON requests(created_by)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_req_assigned   ON requests(assigned_to)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_req_date       ON requests(request_date)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_notif_user     ON notifications(user_id, is_read)")
 
-    # ════════════════════════════════════════════════════════════════
-    # Таблица хэшей файлов обращений (SHA-256)
-    # ════════════════════════════════════════════════════════════════
     conn.execute("""
         CREATE TABLE IF NOT EXISTS request_file_hashes (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -376,9 +406,6 @@ def _migrate(conn):
         "CREATE INDEX IF NOT EXISTS idx_file_hashes_req ON request_file_hashes(request_id)"
     )
 
-    # ════════════════════════════════════════════════════════════════
-    # Таблица логов OCR-распознаваний
-    # ════════════════════════════════════════════════════════════════
     conn.execute("""
         CREATE TABLE IF NOT EXISTS ocr_log (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -395,9 +422,6 @@ def _migrate(conn):
         "CREATE INDEX IF NOT EXISTS idx_ocr_log_created ON ocr_log(created_at)"
     )
 
-    # ════════════════════════════════════════════════════════════════
-    # Чистка NULL → '' в текстовых полях таблицы requests.
-    # ════════════════════════════════════════════════════════════════
     _TEXT_FIELDS_TO_CLEAN = [
         'status', 'source_type',
         'applicant_full_name', 'applicant_short_name', 'applicant_legal_form',
@@ -423,22 +447,12 @@ def _migrate(conn):
     set_parts = ', '.join(f"{col}=COALESCE({col}, '')" for col in _TEXT_FIELDS_TO_CLEAN)
     conn.execute(f"UPDATE requests SET {set_parts} WHERE 1=1")
 
-    # ════════════════════════════════════════════════════════════════
-    # Tray: уровень уведомлений (вариант А по умолчанию, переключается админом)
-    # ════════════════════════════════════════════════════════════════
     if _table_exists(conn, 'classifiers'):
         conn.execute("""
             INSERT OR IGNORE INTO classifiers (category, value, sort_order)
             VALUES ('tray_notify_level', 'critical', 1)
         """)
 
-    # ════════════════════════════════════════════════════════════════
-    # Цепочка согласования (review_chain)
-    # Последовательное согласование до 5 проверяющих.
-    # step_order=1 — первый, уведомляется сразу при переходе under_review.
-    # Следующий уведомляется только после approved предыдущего.
-    # При rejected — цепочка прерывается, статус → in_progress.
-    # ════════════════════════════════════════════════════════════════
     conn.execute("""
         CREATE TABLE IF NOT EXISTS review_chain (
             id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -461,12 +475,6 @@ def _migrate(conn):
 # ─── ПОДКЛЮЧЕНИЕ К БД ────────────────────────────────────────────────────────────────────────────────────
 
 def get_db():
-    """
-    Открывает соединение с базой данных SQLite.
-    - row_factory = sqlite3.Row — обращение к полям по имени
-    - WAL-режим — производительность при параллельных запросах
-    - _migrate() — вызывается ОДИН РАЗ при первом подключении (fix #57)
-    """
     global _migrated
     conn = sqlite3.connect(DB_PATH, timeout=15)
     conn.row_factory = sqlite3.Row
@@ -478,10 +486,6 @@ def get_db():
 
 
 def run_migrations():
-    """
-    Явный вызов миграций — для WSGI-старта (gunicorn) и тестов.
-    Вызывать один раз при инициализации приложения (fix #63).
-    """
     global _migrated
     if not _migrated:
         conn = sqlite3.connect(DB_PATH, timeout=15)

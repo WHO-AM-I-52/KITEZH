@@ -4,29 +4,41 @@
 # ║  Актуальные коды статусов:                              ║
 # ║    draft | registered | in_progress | under_review |          ║
 # ║    ready_to_send | sent_to_applicant | closed                  ║
+# ║  Норматив (рабочих дней по этапам):                     ║
+# ║    1 + 1 + 5 + 2 + 1 = 10 до отправки, +12 до закрытия  ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from datetime import date, timedelta
+from db import STATUS_NORM_DAYS
 
-# Статусы, которые считаются «активными» (ещё не закрыты)
 ACTIVE_STATUSES = ('draft', 'registered', 'in_progress', 'under_review', 'ready_to_send', 'sent_to_applicant')
-# Статус, по которому считается среднее время ответа
-CLOSED_STATUS = 'closed'
+CLOSED_STATUS   = 'closed'
+
+# Описание этапов для карточки норматива
+STAGE_NORMS = [
+    {'from': 'Черновик',             'to': 'Зарегистрировано',    'days': STATUS_NORM_DAYS['registered'],        'field': 'at_registered'},
+    {'from': 'Зарегистрировано',     'to': 'В работе',            'days': STATUS_NORM_DAYS['in_progress'],       'field': 'at_in_progress'},
+    {'from': 'В работе',             'to': 'На проверке',         'days': STATUS_NORM_DAYS['under_review'],      'field': 'at_under_review'},
+    {'from': 'На проверке',          'to': 'Готово к отправке',   'days': STATUS_NORM_DAYS['ready_to_send'],     'field': 'at_ready_to_send'},
+    {'from': 'Готово к отправке',    'to': 'Документы отправлены','days': STATUS_NORM_DAYS['sent_to_applicant'], 'field': 'at_sent_to_applicant'},
+    {'from': 'Документы отправлены', 'to': 'Закрыто',             'days': STATUS_NORM_DAYS['closed'],            'field': 'at_closed'},
+]
+NORM_TOTAL_DAYS_TO_SEND = sum(s['days'] for s in STAGE_NORMS if s['field'] != 'at_closed')  # = 10
 
 
 def _bucket_query(conn, field_min, field_max, buckets, pw_sql, pw_params):
     """One SELECT with CASE WHEN for all buckets.
-    Uses COALESCE(field_min, field_max) so records with only _max are counted.
+    CAST AS REAL обязателен — поля хранятся как TEXT в SQLite,
+    без приведения типа числовые сравнения работают лексикографически.
     """
     cases = ', '.join(
-        f"SUM(CASE WHEN COALESCE({field_min},{field_max})>={lo} "
-        f"AND COALESCE({field_min},{field_max})<{hi} THEN 1 ELSE 0 END)"
+        f"SUM(CASE WHEN CAST(COALESCE({field_min},{field_max}) AS REAL)>={lo} "
+        f"AND CAST(COALESCE({field_min},{field_max}) AS REAL)<{hi} THEN 1 ELSE 0 END)"
         for _, lo, hi in buckets
     )
     row = conn.execute(
         f"SELECT {cases} FROM requests r WHERE "
-        f"(({field_min} IS NOT NULL AND {field_min}!='') "
-        f"OR ({field_max} IS NOT NULL AND {field_max}!=''))"
+        f"(CAST({field_min} AS REAL) > 0 OR CAST({field_max} AS REAL) > 0)"
         f"{pw_sql}",
         pw_params
     ).fetchone()
@@ -36,7 +48,6 @@ def _bucket_query(conn, field_min, field_max, buckets, pw_sql, pw_params):
 def build_dash(conn, period):
     today = date.today()
 
-    # ─── ФИЛЬТР ПО ПЕРИОДУ ────────────────────────────────────
     def pw():
         if   period == 'today':
             pf = today.isoformat()
@@ -54,20 +65,13 @@ def build_dash(conn, period):
 
     pw_sql, pw_params = pw()
 
-    # ─── ОБЩЕЕ КОЛИЧЕСТВО ПО СТАТУСАМ ────────────────────
-    # IMPORTANT: total и счётчики считаются БЕЗ фильтра периода,
-    # чтобы карточки на главной всегда показывали все обращения.
     def cnt_all(status=None):
         if status:
             return conn.execute(
-                "SELECT COUNT(*) FROM requests r WHERE r.status=?",
-                [status]
+                "SELECT COUNT(*) FROM requests r WHERE r.status=?", [status]
             ).fetchone()[0]
-        return conn.execute(
-            "SELECT COUNT(*) FROM requests r"
-        ).fetchone()[0]
+        return conn.execute("SELECT COUNT(*) FROM requests r").fetchone()[0]
 
-    # Для графиков и аналитики — с фильтром периода
     def cnt(status=None):
         if status:
             return conn.execute(
@@ -75,93 +79,122 @@ def build_dash(conn, period):
                 [status] + pw_params
             ).fetchone()[0]
         return conn.execute(
-            f"SELECT COUNT(*) FROM requests r WHERE 1=1{pw_sql}",
-            pw_params
+            f"SELECT COUNT(*) FROM requests r WHERE 1=1{pw_sql}", pw_params
         ).fetchone()[0]
 
-    # ─── ПРОСРОЧЕННЫЕ (всегда без фильтра периода) ────────────────
-    active_in = ','.join('?' * len(ACTIVE_STATUSES))
+    # ─── ПРОСРОЧЕННЫЕ (по этапному review_deadline) ───────────────
     overdue_active_all = conn.execute(
-        f"SELECT COUNT(*) FROM requests r "
-        f"WHERE r.status IN ({active_in}) "
-        f"AND julianday('now')-julianday(r.request_date)>7",
-        list(ACTIVE_STATUSES)
+        "SELECT COUNT(*) FROM requests r "
+        "WHERE r.status NOT IN ('closed','draft') "
+        "AND r.review_deadline IS NOT NULL AND r.review_deadline != '' "
+        "AND r.review_deadline < date('now')"
     ).fetchone()[0]
 
-    # ─── СУММАРНЫЕ ПОКАЗАТЕЛИ ───────────────────────────
     sums = conn.execute(
         f"SELECT COALESCE(SUM(investment_total),0), COALESCE(SUM(jobs_total),0) "
         f"FROM requests r WHERE 1=1{pw_sql}", pw_params
     ).fetchone()
 
-    # Среднее время ответа — считаем по закрытым
+    # Среднее время ответа (от регистрации до отправки, в рабочих днях — приближение через календарь)
     avg_row = conn.execute(
         f"SELECT AVG(julianday(sent_to_applicant_at)-julianday(request_date)) "
-        f"FROM requests r WHERE status='{CLOSED_STATUS}' "
-        f"AND sent_to_applicant_at IS NOT NULL{pw_sql}",
+        f"FROM requests r WHERE status IN ('sent_to_applicant','closed') "
+        f"AND sent_to_applicant_at IS NOT NULL AND at_registered IS NOT NULL{pw_sql}",
         pw_params
     ).fetchone()
 
-    # ─── KPI ПО СРОКАМ ────────────────────────────────────────────
-    norm_total = 7
-    active_kpi_in = ','.join('?' * len(ACTIVE_STATUSES))
-    kpi = conn.execute(f"""
-        SELECT COUNT(*),
-        SUM(CASE WHEN julianday(sent_to_applicant_at)-julianday(request_date)<={norm_total} THEN 1 ELSE 0 END),
-        SUM(CASE WHEN julianday(sent_to_applicant_at)-julianday(request_date)>{norm_total}  THEN 1 ELSE 0 END),
-        SUM(CASE WHEN status IN ({active_kpi_in})
-            AND julianday('now')-julianday(request_date)>{norm_total} THEN 1 ELSE 0 END)
-        FROM requests r WHERE status='{CLOSED_STATUS}'{pw_sql}""",
-        list(ACTIVE_STATUSES) + pw_params
+    # ─── KPI ПО СРОКАМ ─────────────────────────────────────────────
+    # Норматив «до отправки» = сумма первых 5 этапов
+    norm_to_send = NORM_TOTAL_DAYS_TO_SEND  # 10 рабочих дней
+
+    # Для уже закрытых: сравниваем фактическое время (calendar days / 7 * 5 ≈ рабочие дни)
+    # Точное сравнение: at_sent_to_applicant - request_date <= norm / 5 * 7
+    # Используем упрощение: 10 рабочих дней ≈ 14 календарных
+    norm_calendar = round(norm_to_send * 7 / 5)
+
+    kpi_rows = conn.execute(
+        f"""
+        SELECT
+            COUNT(*) AS total_sent,
+            SUM(CASE WHEN julianday(at_sent_to_applicant) - julianday(request_date) <= {norm_calendar}
+                     THEN 1 ELSE 0 END) AS in_time,
+            SUM(CASE WHEN julianday(at_sent_to_applicant) - julianday(request_date) > {norm_calendar}
+                     THEN 1 ELSE 0 END) AS overdue_sent
+        FROM requests r
+        WHERE status IN ('sent_to_applicant', 'closed')
+          AND at_sent_to_applicant IS NOT NULL
+          AND at_sent_to_applicant != ''
+          AND request_date IS NOT NULL{pw_sql}
+        """,
+        pw_params
     ).fetchone()
 
+    # Статистика по каждому этапу (среднее время прохождения, дней)
+    stage_stats = []
+    stage_queries = [
+        ('registered',        'request_date',      'at_registered'),
+        ('in_progress',       'at_registered',     'at_in_progress'),
+        ('under_review',      'at_in_progress',    'at_under_review'),
+        ('ready_to_send',     'at_under_review',   'at_ready_to_send'),
+        ('sent_to_applicant', 'at_ready_to_send',  'at_sent_to_applicant'),
+        ('closed',            'at_sent_to_applicant', 'at_closed'),
+    ]
+    for status_key, from_field, to_field in stage_queries:
+        row = conn.execute(
+            f"SELECT ROUND(AVG(julianday({to_field}) - julianday({from_field})), 1) AS avg_days "
+            f"FROM requests r "
+            f"WHERE {to_field} IS NOT NULL AND {to_field} != '' "
+            f"AND {from_field} IS NOT NULL AND {from_field} != ''"
+            f"{pw_sql}",
+            pw_params
+        ).fetchone()
+        stage_stats.append({
+            'status': status_key,
+            'avg_days': row['avg_days'] if row and row['avg_days'] else None,
+            'norm_days': STATUS_NORM_DAYS.get(status_key),
+        })
+
     kpi_data = {
-        'norm_days':      norm_total,
-        'total_answered': kpi[0] or 0,
-        'in_time':        kpi[1] or 0,
-        'overdue':        kpi[2] or 0,
-        'overdue_active': overdue_active_all,
-        'pct':            round(kpi[1] / kpi[0] * 100) if kpi[0] else 0,
+        'norm_days':          norm_to_send,
+        'norm_calendar':      norm_calendar,
+        'norm_stages':        STAGE_NORMS,
+        'total_answered':     (kpi_rows['total_sent']   or 0),
+        'in_time':            (kpi_rows['in_time']      or 0),
+        'overdue':            (kpi_rows['overdue_sent'] or 0),
+        'overdue_active':     overdue_active_all,
+        'pct':                round(kpi_rows['in_time'] / kpi_rows['total_sent'] * 100)
+                              if kpi_rows['total_sent'] else 0,
+        'stage_stats':        stage_stats,
     }
 
-    # ─── ТРЕНД ПО ВРЕМЕНИ ───────────────────────────────────
+    # ─── ТРЕНД ПО ВРЕМЕНИ ───────────────────────────────────────
     if period == 'today':
         tr = conn.execute(
             "SELECT strftime('%H:00',request_date),COUNT(*) "
-            "FROM requests r WHERE 1=1" + pw_sql +
-            " GROUP BY 1 ORDER BY 1", pw_params
+            "FROM requests r WHERE 1=1" + pw_sql + " GROUP BY 1 ORDER BY 1", pw_params
         ).fetchall()
     elif period in ('week', 'month'):
         tr = conn.execute(
-            "SELECT request_date,COUNT(*) "
-            "FROM requests r WHERE 1=1" + pw_sql +
+            "SELECT request_date,COUNT(*) FROM requests r WHERE 1=1" + pw_sql +
             " GROUP BY 1 ORDER BY 1", pw_params
         ).fetchall()
     elif period == 'quarter':
         tr = conn.execute(
             "SELECT strftime('%Y-W%W',request_date),COUNT(*) "
-            "FROM requests r WHERE 1=1" + pw_sql +
-            " GROUP BY 1 ORDER BY 1", pw_params
+            "FROM requests r WHERE 1=1" + pw_sql + " GROUP BY 1 ORDER BY 1", pw_params
         ).fetchall()
     else:
         tr = conn.execute(
             "SELECT strftime('%Y-%m',request_date),COUNT(*) "
-            "FROM requests r WHERE 1=1" + pw_sql +
-            " GROUP BY 1 ORDER BY 1", pw_params
+            "FROM requests r WHERE 1=1" + pw_sql + " GROUP BY 1 ORDER BY 1", pw_params
         ).fetchall()
 
-    # ─── ТОП СОТРУДНИКОВ ─────────────────────────────────────────
-    # GROUP BY по обоим полям — исключает слияние разных людей с одинаковым именем
-    # LIMIT 20 — покрывает все возможные назначения (у нас 12 сотрудников)
     emp_rows = conn.execute(
         f"SELECT COALESCE(u.full_name,'Не назначен'),COUNT(*) FROM requests r "
         f"LEFT JOIN users u ON r.assigned_to=u.id WHERE 1=1{pw_sql} "
         f"GROUP BY r.assigned_to, u.full_name ORDER BY 2 DESC LIMIT 20", pw_params
     ).fetchall()
 
-    # ─── РАЙОНЫ ──────────────────────────────────────────────────
-    # preferred_districts может хранить несколько районов через запятую —
-    # разбиваем в Python, сортируем по убыванию, БЕЗ лимита — показываем все
     dist_raw = conn.execute(
         f"SELECT preferred_districts FROM requests r "
         f"WHERE preferred_districts IS NOT NULL AND preferred_districts!=''{pw_sql}",
@@ -174,28 +207,19 @@ def build_dash(conn, period):
             d = d.strip()
             if d:
                 dist_counts[d] = dist_counts.get(d, 0) + 1
-
-    # Без [:12] — все районы, отсортированные по убыванию
     dist_top = sorted(dist_counts.items(), key=lambda x: x[1], reverse=True)
 
-    # ─── ТИП ПЛОЩАДКИ ──────────────────────────────────────
     st_free = conn.execute(
-        f"SELECT COUNT(*) FROM requests r WHERE site_type_free=1{pw_sql}",
-        pw_params
+        f"SELECT COUNT(*) FROM requests r WHERE site_type_free=1{pw_sql}", pw_params
     ).fetchone()[0]
     st_ex = conn.execute(
-        f"SELECT COUNT(*) FROM requests r WHERE site_type_existing=1{pw_sql}",
-        pw_params
+        f"SELECT COUNT(*) FROM requests r WHERE site_type_existing=1{pw_sql}", pw_params
     ).fetchone()[0]
     st_both = conn.execute(
-        f"SELECT COUNT(*) FROM requests r "
-        f"WHERE site_type_free=1 AND site_type_existing=1{pw_sql}",
+        f"SELECT COUNT(*) FROM requests r WHERE site_type_free=1 AND site_type_existing=1{pw_sql}",
         pw_params
     ).fetchone()[0]
 
-    # ─── РАСПРЕДЕЛЕНИЕ ПО ПЛОЩАДИ ────────────────────────
-    # Один SELECT с CASE WHEN вместо 7 отдельных; COALESCE(_min,_max) учитывает записи
-    # где заполнено только одно из полей
     area_buckets = [
         ('<0.1 га', 0, .1), ('0.1–0.5', .1, .5), ('0.5–1', .5, 1),
         ('1–2', 1, 2), ('2–5', 2, 5), ('5–10', 5, 10), ('>10', 10, 999999)
@@ -209,7 +233,6 @@ def build_dash(conn, period):
     area_data  = _bucket_query(conn, 'site_area_ha_min',       'site_area_ha_max',       area_buckets,  pw_sql, pw_params)
     build_data = _bucket_query(conn, 'site_build_area_m2_min', 'site_build_area_m2_max', build_buckets, pw_sql, pw_params)
 
-    # ─── ИСТОЧНИКИ ОБРАЩЕНИЙ ──────────────────────────
     src_rows = conn.execute(
         f"SELECT source_type,COUNT(*) FROM requests r "
         f"WHERE source_type IS NOT NULL AND source_type!=''{pw_sql} "
@@ -223,10 +246,8 @@ def build_dash(conn, period):
             if s:
                 src_counts[s] = src_counts.get(s, 0) + row[1]
 
-    # ─── ФИНАЛЬНЫЙ НАБОР ДАННЫХ ─────────────────────────────
     return {
         'period':            period,
-        # Счётчики — всегда все записи без фильтра периода
         'total':             cnt_all(),
         'draft':             cnt_all('draft'),
         'registered':        cnt_all('registered'),
@@ -235,9 +256,7 @@ def build_dash(conn, period):
         'ready_to_send':     cnt_all('ready_to_send'),
         'sent_to_applicant': cnt_all('sent_to_applicant'),
         'closed':            cnt_all('closed'),
-        # Активные с просрочкой — всегда без фильтра периода
         'overdue_active':    overdue_active_all,
-        # Аналитика — за выбранный период
         'investment_sum':    float(sums[0]) if sums else 0,
         'jobs_sum':          int(sums[1]) if sums else 0,
         'avg_days':          round(avg_row[0]) if avg_row and avg_row[0] else None,

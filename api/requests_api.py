@@ -4,15 +4,11 @@
 # ║ POST /api/request/<id>/favorite — тоггл избранного         ║
 # ║ POST /api/check-duplicate   — проверка дублей (difflib)      ║
 # ║                                                               ║
-# ║ Параметры GET:                                           ║
-# ║   page, size         — пагинация                           ║
-# ║   sort, dir          — сортировка (field, asc|desc)        ║
-# ║   filter[*]          — значение фильтра                  ║
-# ║   filter_type[field] — like|starts|ends|=|empty|regex       ║
-# ║   filter[overdue]=1  — только просроченные               ║
+# ║ filter[overdue]=1 — просроченные по этапному review_deadline  ║
+# ║   Статусы-участники: все кроме draft и closed               ║
+# ║   Условие: review_deadline < date('now')                    ║
 # ║                                                               ║
 # ║ Ответ GET: { data:[], total, page, pages, stats:{} }    ║
-# ║ Ответ POST favorite: { favorite: true|false }           ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from datetime import date, timedelta
@@ -24,7 +20,6 @@ from db import get_db
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
 
-# ─── Декоратор ─────────────────────────────────────────────────────────────────────────────
 def login_required_api(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -34,7 +29,6 @@ def login_required_api(f):
     return decorated
 
 
-# ─── Белые поля для сортировки (защита от SQL-инъекции) ────────────
 _ALLOWED_SORT = {
     'id':             'r.id',
     'number':         'r.request_number',
@@ -48,11 +42,11 @@ _ALLOWED_SORT = {
     'workplaces':     'r.jobs_total',
     'employee_name':  'u.full_name',
     'source':         'r.source_type',
+    'review_deadline':'r.review_deadline',
 }
 
 
 def _apply_filter(where, params, col, value, ftype):
-    """SQL-фрагмент по типу Tabulator header filter."""
     if ftype == 'empty':
         where.append(f"({col} IS NULL OR {col} = '')")
     elif ftype == '=':
@@ -64,13 +58,12 @@ def _apply_filter(where, params, col, value, ftype):
     elif ftype == 'ends':
         where.append(f"{col} LIKE ?")
         params.append('%' + value)
-    else:  # like / regex (фаллбэк)
+    else:
         where.append(f"{col} LIKE ?")
         params.append('%' + value + '%')
 
 
 def _date_range(chip):
-    """Chip-фильтр дат: today/week/month → (date_from, date_to)."""
     today = date.today()
     if chip == 'today':
         return str(today), str(today)
@@ -82,9 +75,15 @@ def _date_range(chip):
     return None, None
 
 
-# ───────────────────────────────────────────────────────────────────────────────
-# GET /api/requests
-# ──────────────────────────────────────────────────────────────────────────────
+# ─── УСЛОВИЕ ПРОСРОЧКИ ─────────────────────────────────────────────────────────
+# Просроченное = активный статус (не draft, не closed) + review_deadline заполнен + deadline < сегодня
+_OVERDUE_SQL = (
+    "r.status NOT IN ('closed','draft') "
+    "AND r.review_deadline IS NOT NULL AND r.review_deadline != '' "
+    "AND r.review_deadline < date('now')"
+)
+
+
 @api_bp.route('/requests')
 @login_required_api
 def get_requests():
@@ -92,7 +91,6 @@ def get_requests():
     uid  = session['user_id']
     role = session.get('role', '')
 
-    # ── Пагинация
     try:
         page = max(1, int(request.args.get('page', 1)))
         size = min(200, max(1, int(request.args.get('size', 50))))
@@ -100,12 +98,10 @@ def get_requests():
         page, size = 1, 50
     offset = (page - 1) * size
 
-    # ── Сортировка
     raw_sort = request.args.get('sort', 'created_at')
     sort_col = _ALLOWED_SORT.get(raw_sort, 'r.request_date')
     sort_dir = 'asc' if request.args.get('dir', 'desc').lower() == 'asc' else 'desc'
 
-    # ── Фильтры
     where  = []
     params = []
 
@@ -164,15 +160,10 @@ def get_requests():
         where.append('r.request_date <= ?')
         params.append(date_to)
 
-    # ── Просроченные: незакрытые с review_deadline < сегодня
+    # ── Фильтр просрочки по этапному review_deadline
     if request.args.get('filter[overdue]', '').strip() == '1':
-        where.append(
-            "r.status NOT IN ('closed','draft','sent_to_applicant') "
-            "AND r.review_deadline IS NOT NULL "
-            "AND r.review_deadline < date('now')"
-        )
+        where.append(_OVERDUE_SQL)
 
-    # ── SQL
     where_sql = ('WHERE ' + ' AND '.join(where)) if where else ''
 
     base_query = f"""
@@ -194,12 +185,7 @@ def get_requests():
             r.review_deadline,
             r.created_by,
             CASE WHEN fav.id IS NOT NULL THEN 1 ELSE 0 END  AS favorite,
-            CASE
-                WHEN r.status NOT IN ('closed','draft','sent_to_applicant')
-                 AND r.review_deadline IS NOT NULL
-                 AND r.review_deadline < date('now')
-                THEN 1 ELSE 0
-            END AS overdue
+            CASE WHEN {_OVERDUE_SQL} THEN 1 ELSE 0 END      AS overdue
         FROM requests r
         LEFT JOIN users     u   ON u.id  = r.assigned_to
         LEFT JOIN favorites fav ON fav.request_id = r.id
@@ -222,7 +208,7 @@ def get_requests():
         [uid] + params + [size, offset]
     ).fetchall()
 
-    # ── Статистика (всегда по всем записям, без фильтров)
+    # ── Статистика (всегда по всем записям)
     stats_where  = ''
     stats_params = []
     if role != 'admin' and not session.get('perm_can_view_all'):
@@ -231,19 +217,15 @@ def get_requests():
 
     stats_rows = db.execute(f"""
         SELECT
-            COUNT(*)                                                            AS total,
-            SUM(CASE WHEN r.status='draft'             THEN 1 ELSE 0 END)      AS draft,
-            SUM(CASE WHEN r.status='registered'        THEN 1 ELSE 0 END)      AS registered,
-            SUM(CASE WHEN r.status='in_progress'       THEN 1 ELSE 0 END)      AS in_progress,
-            SUM(CASE WHEN r.status='under_review'      THEN 1 ELSE 0 END)      AS under_review,
-            SUM(CASE WHEN r.status='ready_to_send'     THEN 1 ELSE 0 END)      AS ready_to_send,
-            SUM(CASE WHEN r.status='sent_to_applicant' THEN 1 ELSE 0 END)      AS sent_to_applicant,
-            SUM(CASE WHEN r.status='closed'            THEN 1 ELSE 0 END)      AS closed,
-            SUM(CASE
-                    WHEN r.status NOT IN ('closed','draft','sent_to_applicant')
-                     AND r.review_deadline IS NOT NULL
-                     AND r.review_deadline < date('now')
-                    THEN 1 ELSE 0 END)                                          AS overdue
+            COUNT(*)                                                                  AS total,
+            SUM(CASE WHEN r.status='draft'             THEN 1 ELSE 0 END)            AS draft,
+            SUM(CASE WHEN r.status='registered'        THEN 1 ELSE 0 END)            AS registered,
+            SUM(CASE WHEN r.status='in_progress'       THEN 1 ELSE 0 END)            AS in_progress,
+            SUM(CASE WHEN r.status='under_review'      THEN 1 ELSE 0 END)            AS under_review,
+            SUM(CASE WHEN r.status='ready_to_send'     THEN 1 ELSE 0 END)            AS ready_to_send,
+            SUM(CASE WHEN r.status='sent_to_applicant' THEN 1 ELSE 0 END)            AS sent_to_applicant,
+            SUM(CASE WHEN r.status='closed'            THEN 1 ELSE 0 END)            AS closed,
+            SUM(CASE WHEN {_OVERDUE_SQL} THEN 1 ELSE 0 END)                          AS overdue
         FROM requests r
         {stats_where}
     """, stats_params).fetchone()
@@ -277,6 +259,7 @@ def get_requests():
             'workplaces':     r['workplaces'],
             'employee_name':  r['employee_name']  or '',
             'employee_id':    r['employee_id'],
+            'review_deadline':r['review_deadline'] or '',
             'favorite':       bool(r['favorite']),
             'overdue':        bool(r['overdue']),
         }
@@ -293,10 +276,6 @@ def get_requests():
     })
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# POST /api/request/<id>/favorite  — тоггл избранного
-# Ответ: { "favorite": true|false }
-# ──────────────────────────────────────────────────────────────────────────────
 @api_bp.route('/request/<int:request_id>/favorite', methods=['POST'])
 @login_required_api
 def toggle_favorite(request_id):
@@ -326,11 +305,6 @@ def toggle_favorite(request_id):
     return jsonify({'favorite': is_fav})
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# POST /api/check-duplicate — проверка дублей обращений
-# Тело: { "name": "...", "inn": "..." }
-# Ответ: { duplicates: [{id, name, inn, score}], method: "inn"|"fuzzy" }
-# ──────────────────────────────────────────────────────────────────────────────
 @api_bp.route('/check-duplicate', methods=['POST'])
 @login_required_api
 def check_duplicate():
@@ -343,7 +317,6 @@ def check_duplicate():
 
     db = get_db()
 
-    # 1. Точное совпадение по ИНН — приоритет
     if inn:
         rows = db.execute(
             "SELECT id, applicant_short_name, applicant_inn "
@@ -352,12 +325,8 @@ def check_duplicate():
         ).fetchall()
         if rows:
             db.close()
-            return jsonify({
-                'duplicates': [dict(r) for r in rows],
-                'method': 'inn'
-            })
+            return jsonify({'duplicates': [dict(r) for r in rows], 'method': 'inn'})
 
-    # 2. Нечёткое совпадение по названию (через difflib)
     if not name:
         db.close()
         return jsonify({'duplicates': []})
@@ -365,9 +334,7 @@ def check_duplicate():
     prefix = name[:3]
     candidates = db.execute(
         "SELECT id, applicant_short_name, applicant_inn "
-        "FROM requests "
-        "WHERE lower(applicant_short_name) LIKE ? "
-        "LIMIT 200",
+        "FROM requests WHERE lower(applicant_short_name) LIKE ? LIMIT 200",
         (prefix + '%',)
     ).fetchall()
     db.close()
