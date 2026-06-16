@@ -5,6 +5,7 @@
 # ║  v2.6: contact_position добавлен после contact_email         ║
 # ║  v2.7: add_workdays() — +N рабочих дней (сб/вс — выходные) ║
 # ║  v2.8: site_area_ha/site_build_area_m2 → _min/_max (багфикс)   ║
+# ║  v2.9: review_days default=7 если не задан в форме           ║
 # ╚══════════════════════════════════════════════════════════════
 
 from datetime import date, timedelta
@@ -176,6 +177,11 @@ REQUIRED_FIELDS = {
     "jobs_total":          "Количество рабочих мест",
 }
 
+# Поля INT_F с обязательным дефолтом если форма не передала значение
+_INT_DEFAULTS = {
+    "review_days": 7,
+}
+
 
 def get_classifiers(conn):
     lf  = [r['value'] for r in conn.execute(
@@ -231,7 +237,10 @@ def build_values(form):
         if f in BOOL_F:
             vals.append(1 if v in ('1', 'on', 'true', 'yes') else 0)
         elif f in INT_F:
-            vals.append(_int(v))
+            iv = _int(v)
+            if iv is None and f in _INT_DEFAULTS:
+                iv = _INT_DEFAULTS[f]
+            vals.append(iv)
         elif f in FLOAT_F:
             raw = _flt(v)
             unit_key = FIELD_UNIT_KEY.get(f)
