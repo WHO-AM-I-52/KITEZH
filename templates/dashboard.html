@@ -1,10 +1,11 @@
 {% extends 'base.html' %}
 {% block content %}
 
-{# Метка активного периода — подставляется в заголовках графиков, зависящих от периода #}
+{# Метка активного периода #}
 {% set period_labels = {'today':'Сегодня','week':'Неделя','month':'Месяц','quarter':'Квартал','year':'Год','all':'Всё время'} %}
 {% set pl = period_labels[dash.period] | default('Период') %}
 
+{# ===== ШАПКА + ФИЛЬТР ПЕРИОДА ===== #}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h5 class="mb-0" style="color:#1B5E7B">
     <i class="bi bi-bar-chart-line me-1"></i>Дашборд
@@ -22,7 +23,6 @@
 </div>
 
 {# ===== ROW 1: КАРТОЧКИ СТАТУСОВ ===== #}
-{# Отображаются ВСЕ записи без фильтра периода #}
 <div class="row g-2 mb-3">
   {% for label, val, color, icon in [
     ('Всего',              dash.total,             '#1B5E7B', 'bi-inbox'),
@@ -86,50 +86,82 @@
   </div>
 </div>
 
-{# ===== ROW 3: ТРЕНД + ТИПЫ ПЛОЩАДОК ===== #}
-<div class="row g-3 mb-3">
-  <div class="col-md-7">
-    <div class="card p-3 h-100">
-      <p class="mb-1 fw-bold" style="font-size:12px;color:#1B5E7B">
-        <i class="bi bi-graph-up me-1"></i>Динамика поступления обращений
-      </p>
-      <canvas id="chartTrend" height="120"></canvas>
-    </div>
+{# ===== МАКРОС: шапка графика с переключателями типов и кнопкой скачать ===== #}
+{# chartId  — id canvas-элемента                                              #}
+{# title    — заголовок карточки                                              #}
+{# icon     — Bootstrap-иконка (bi-...)                                       #}
+{# badge    — текст бейджа (период), '' если не нужен                         #}
+{# types    — список пар [('bar','Гистограмма'), ...]                          #}
+{% macro chart_header(chartId, title, icon, badge, types) %}
+<div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-1">
+  <p class="mb-0 fw-bold" style="font-size:12px;color:#1B5E7B">
+    <i class="bi {{ icon }} me-1"></i>{{ title }}
+    {% if badge %}<span class="badge bg-secondary ms-1" style="font-size:10px">за период: {{ badge }}</span>{% endif %}
+  </p>
+  <div class="d-flex align-items-center gap-1 flex-wrap">
+    {# Кнопки типов графика #}
+    {% for tval, tlabel in types %}
+    <button type="button"
+            class="btn btn-sm btn-outline-secondary chart-type-btn py-0 px-2"
+            style="font-size:11px"
+            data-chart="{{ chartId }}"
+            data-type="{{ tval }}">{{ tlabel }}</button>
+    {% endfor %}
+    {# Кнопка скачать PNG #}
+    <button type="button"
+            class="btn btn-sm btn-outline-primary py-0 px-2"
+            style="font-size:11px"
+            onclick="downloadChart('{{ chartId }}','{{ title }}')">
+      <i class="bi bi-download"></i> PNG
+    </button>
   </div>
-  <div class="col-md-5">
-    <div class="card p-3 h-100">
-      <p class="mb-1 fw-bold" style="font-size:12px;color:#1B5E7B">
-        <i class="bi bi-pie-chart me-1"></i>Типы запрашиваемых площадок
-      </p>
-      <canvas id="chartSiteType" height="120"></canvas>
+</div>
+{% endmacro %}
+
+{# ===== ГРАФИК 1: ДИНАМИКА ===== #}
+<div class="row g-3 mb-3">
+  <div class="col-12">
+    <div class="card p-3">
+      {{ chart_header('chartTrend','Динамика поступления обращений','bi-graph-up', pl,
+         [('line','График'),('bar','Гистограмма'),('doughnut','Круг')]) }}
+      <canvas id="chartTrend" height="80"></canvas>
     </div>
   </div>
 </div>
 
-{# ===== ROW 4: ИСТОЧНИКИ + СОТРУДНИКИ ===== #}
+{# ===== ГРАФИК 2: ТИПЫ ПЛОЩАДОК ===== #}
 <div class="row g-3 mb-3">
-  <div class="col-md-5">
-    <div class="card p-3 h-100">
-      <p class="mb-1 fw-bold" style="font-size:12px;color:#1B5E7B">
-        <i class="bi bi-funnel me-1"></i>Источники обращений
-      </p>
+  <div class="col-12">
+    <div class="card p-3">
+      {{ chart_header('chartSiteType','Типы запрашиваемых площадок','bi-pie-chart','',
+         [('doughnut','Круг'),('bar','Гистограмма'),('polarArea','Polar')]) }}
+      <canvas id="chartSiteType" height="80"></canvas>
+    </div>
+  </div>
+</div>
+
+{# ===== ГРАФИК 3: ИСТОЧНИКИ ===== #}
+<div class="row g-3 mb-3">
+  <div class="col-12">
+    <div class="card p-3">
+      {{ chart_header('chartSource','Источники обращений','bi-funnel', pl,
+         [('doughnut','Круг'),('bar','Гистограмма'),('polarArea','Polar')]) }}
       {% if dash.source_chart.labels %}
-      <canvas id="chartSource" height="140"></canvas>
+      <canvas id="chartSource" height="80"></canvas>
       {% else %}
       <p class="text-muted text-center small mt-3">Нет данных — заполните поле «Источник» в обращениях</p>
       {% endif %}
     </div>
   </div>
-  <div class="col-md-7">
-    <div class="card p-3 h-100">
-      <div class="d-flex justify-content-between align-items-center mb-1">
-        <p class="mb-0 fw-bold" style="font-size:12px;color:#1B5E7B">
-          <i class="bi bi-people me-1"></i>По ответственным сотрудникам
-        </p>
-        <span class="badge bg-secondary" style="font-size:10px">за период: {{ pl }}</span>
-      </div>
+</div>
+
+{# ===== ГРАФИК 4: ПО СОТРУДНИКАМ ===== #}
+<div class="row g-3 mb-3">
+  <div class="col-12">
+    <div class="card p-3">
+      {{ chart_header('chartEmp','По ответственным сотрудникам','bi-people', pl,
+         [('bar','Гистограмма'),('doughnut','Круг'),('line','График')]) }}
       {% if dash.emp_chart.labels %}
-      {# Высота вычисляется в JS: 30px * кол-во сотрудников, мин 120px #}
       <div style="position:relative">
         <canvas id="chartEmp"></canvas>
       </div>
@@ -140,18 +172,13 @@
   </div>
 </div>
 
-{# ===== ROW 5: ПО РАЙОНАМ ===== #}
+{# ===== ГРАФИК 5: ПО РАЙОНАМ ===== #}
 <div class="row g-3 mb-3">
   <div class="col-12">
     <div class="card p-3">
-      <div class="d-flex justify-content-between align-items-center mb-1">
-        <p class="mb-0 fw-bold" style="font-size:12px;color:#1B5E7B">
-          <i class="bi bi-geo-alt me-1"></i>По районам
-        </p>
-        <span class="badge bg-secondary" style="font-size:10px">за период: {{ pl }}</span>
-      </div>
+      {{ chart_header('chartDist','По районам','bi-geo-alt', pl,
+         [('bar','Гистограмма'),('doughnut','Круг')]) }}
       {% if dash.dist_chart.labels %}
-      {# Высота вычисляется в JS: 28px * кол-во районов, мин 80px #}
       <div style="position:relative">
         <canvas id="chartDist"></canvas>
       </div>
@@ -162,28 +189,24 @@
   </div>
 </div>
 
-{# ===== ROW 6: ПЛОЩАДИ ===== #}
+{# ===== ГРАФИК 6: ПЛОЩАДЬ УЧАСТКА ===== #}
 <div class="row g-3 mb-3">
-  <div class="col-md-6">
-    <div class="card p-3 h-100">
-      <div class="d-flex justify-content-between align-items-center mb-1">
-        <p class="mb-0 fw-bold" style="font-size:12px;color:#1B5E7B">
-          <i class="bi bi-arrows-angle-expand me-1"></i>Площадь участка (га)
-        </p>
-        <span class="badge bg-secondary" style="font-size:10px">за период: {{ pl }}</span>
-      </div>
-      <canvas id="chartArea" height="120"></canvas>
+  <div class="col-12">
+    <div class="card p-3">
+      {{ chart_header('chartArea','Площадь участка (га)','bi-arrows-angle-expand', pl,
+         [('bar','Гистограмма'),('line','График'),('doughnut','Круг')]) }}
+      <canvas id="chartArea" height="80"></canvas>
     </div>
   </div>
-  <div class="col-md-6">
-    <div class="card p-3 h-100">
-      <div class="d-flex justify-content-between align-items-center mb-1">
-        <p class="mb-0 fw-bold" style="font-size:12px;color:#1B5E7B">
-          <i class="bi bi-building me-1"></i>Площадь застройки (м²)
-        </p>
-        <span class="badge bg-secondary" style="font-size:10px">за период: {{ pl }}</span>
-      </div>
-      <canvas id="chartBuild" height="120"></canvas>
+</div>
+
+{# ===== ГРАФИК 7: ПЛОЩАДЬ ЗАСТРОЙКИ ===== #}
+<div class="row g-3 mb-3">
+  <div class="col-12">
+    <div class="card p-3">
+      {{ chart_header('chartBuild','Площадь застройки (м²)','bi-building', pl,
+         [('bar','Гистограмма'),('line','График'),('doughnut','Круг')]) }}
+      <canvas id="chartBuild" height="80"></canvas>
     </div>
   </div>
 </div>
@@ -213,78 +236,233 @@
   </div>
 </div>
 
+{# ===== CHART.JS + ЛОГИКА ===== #}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script>
 var COLORS=['#1B5E7B','#fd7e14','#198754','#0d6efd','#6c757d','#dc3545','#6f42c1','#20c997','#ffc107','#0dcaf0','#d63384','#adb5bd'];
-var trendData   = {{ dash.trend_chart   | tojson }};
-var empData     = {{ dash.emp_chart     | tojson }};
-var distData    = {{ dash.dist_chart    | tojson }};
-var areaData    = {{ dash.area_data     | tojson }};
-var buildData   = {{ dash.build_data    | tojson }};
-var siteType    = {{ dash.site_type     | tojson }};
-var sourceData  = {{ dash.source_chart  | tojson }};
+var trendData  = {{ dash.trend_chart  | tojson }};
+var empData    = {{ dash.emp_chart    | tojson }};
+var distData   = {{ dash.dist_chart   | tojson }};
+var areaData   = {{ dash.area_data    | tojson }};
+var buildData  = {{ dash.build_data   | tojson }};
+var siteType   = {{ dash.site_type    | tojson }};
+var sourceData = {{ dash.source_chart | tojson }};
 
-new Chart(document.getElementById('chartTrend'),{
-  type:'line',
-  data:{labels:trendData.labels,datasets:[{label:'Обращений',data:trendData.values,
-    borderColor:'#1B5E7B',backgroundColor:'rgba(27,94,123,0.1)',
-    tension:0.3,fill:true,pointRadius:4,pointBackgroundColor:'#1B5E7B'}]},
-  options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{stepSize:1}}},responsive:true,maintainAspectRatio:true}
-});
+/* Реестр chart-объектов: id -> Chart instance */
+var CHARTS = {};
 
-new Chart(document.getElementById('chartSiteType'),{
-  type:'doughnut',
-  data:{labels:['Только свободная','Только существующее','Оба варианта'],
-    datasets:[{data:[siteType.only_free,siteType.only_existing,siteType.both],
-      backgroundColor:['#1B5E7B','#fd7e14','#198754'],borderWidth:2}]},
-  options:{plugins:{legend:{position:'bottom',labels:{font:{size:11}}}},responsive:true,maintainAspectRatio:true,cutout:'55%'}
-});
+/**
+ * Создаёт Chart.js-инстанс и привязывает кнопки переключения типа.
+ * defaultType — начальный тип ('line'|'bar'|'doughnut'|...)
+ * extraOpts   — объект, мержится в options (например indexAxis:'y')
+ */
+function makeChart(id, cfg, defaultType, extraOpts) {
+  var canvas = document.getElementById(id);
+  if (!canvas) return null;
+  var baseOpts = {
+    responsive: true,
+    maintainAspectRatio: (id !== 'chartEmp' && id !== 'chartDist'),
+    plugins: { legend: { display: cfg.showLegend || false, position: 'bottom', labels:{font:{size:11}} } },
+    scales: {}
+  };
+  if (cfg.scaleY) baseOpts.scales.y = cfg.scaleY;
+  if (cfg.scaleX) baseOpts.scales.x = cfg.scaleX;
+  if (extraOpts)  Object.assign(baseOpts, extraOpts);
 
-if(document.getElementById('chartSource') && sourceData.labels.length){
-  new Chart(document.getElementById('chartSource'),{
-    type:'doughnut',
-    data:{labels:sourceData.labels,
-      datasets:[{data:sourceData.values,
-        backgroundColor:COLORS.slice(0,sourceData.labels.length),borderWidth:2}]},
-    options:{plugins:{legend:{position:'bottom',labels:{font:{size:11}}}},responsive:true,maintainAspectRatio:true,cutout:'50%'}
+  var chart = new Chart(canvas, {
+    type: defaultType,
+    data: cfg.data,
+    options: baseOpts
+  });
+  CHARTS[id] = chart;
+
+  /* Подсветка активной кнопки при создании */
+  highlightTypeBtn(id, defaultType);
+  return chart;
+}
+
+function highlightTypeBtn(chartId, activeType) {
+  document.querySelectorAll('.chart-type-btn[data-chart="'+chartId+'"]').forEach(function(btn){
+    if (btn.dataset.type === activeType) {
+      btn.classList.replace('btn-outline-secondary','btn-secondary');
+    } else {
+      btn.classList.replace('btn-secondary','btn-outline-secondary');
+    }
   });
 }
 
-if(document.getElementById('chartEmp') && empData.labels.length){
+/* Глобальный обработчик переключения типа */
+document.addEventListener('click', function(e) {
+  var btn = e.target.closest('.chart-type-btn');
+  if (!btn) return;
+  var id   = btn.dataset.chart;
+  var type = btn.dataset.type;
+  var ch   = CHARTS[id];
+  if (!ch) return;
+
+  /* При переключении между осевыми (bar/line) и круговыми (doughnut/polarArea)
+     нужно убрать/вернуть scales, иначе Chart.js выдаёт предупреждения */
+  var circular = ['doughnut','pie','polarArea'];
+  var isCircular = circular.indexOf(type) !== -1;
+  var wasCircular = circular.indexOf(ch.config.type) !== -1;
+
+  ch.config.type = type;
+
+  if (isCircular) {
+    ch.options.scales = {};
+    ch.options.indexAxis = undefined;
+  } else {
+    /* Восстанавливаем оси для конкретного графика */
+    if (id === 'chartEmp' || id === 'chartDist') {
+      ch.options.indexAxis = 'y';
+      ch.options.scales = { x:{beginAtZero:true, ticks:{stepSize:1}} };
+    } else {
+      ch.options.indexAxis = undefined;
+      ch.options.scales = { y:{beginAtZero:true, ticks:{stepSize:1}} };
+    }
+  }
+
+  /* dataset-цвета: для круговых — массив, для осевых — один цвет #1B5E7B */
+  ch.data.datasets.forEach(function(ds, di) {
+    if (isCircular) {
+      ds.backgroundColor = COLORS.slice(0, (ds.data||[]).length);
+      ds.borderWidth = 2;
+    } else {
+      /* Если датасет один — монохром, если несколько — по COLORS */
+      ds.backgroundColor = ch.data.datasets.length === 1
+        ? (id === 'chartBuild' ? '#0d6efd' : COLORS[di])
+        : COLORS[di % COLORS.length];
+      ds.borderWidth = undefined;
+    }
+    /* Для line: borderColor, fill, tension */
+    if (type === 'line') {
+      ds.borderColor = COLORS[di % COLORS.length];
+      ds.backgroundColor = 'rgba(27,94,123,0.1)';
+      ds.tension = 0.3;
+      ds.fill = true;
+      ds.pointRadius = 4;
+      ds.pointBackgroundColor = COLORS[di % COLORS.length];
+    } else {
+      ds.borderColor = undefined;
+      ds.fill = undefined;
+      ds.tension = undefined;
+      ds.pointRadius = undefined;
+    }
+  });
+
+  ch.update();
+  highlightTypeBtn(id, type);
+});
+
+/* Скачивание графика как PNG */
+function downloadChart(chartId, title) {
+  var canvas = document.getElementById(chartId);
+  if (!canvas) return;
+  /* Создаём временный canvas с белым фоном (иначе PNG прозрачный) */
+  var tmp = document.createElement('canvas');
+  tmp.width  = canvas.width;
+  tmp.height = canvas.height;
+  var ctx = tmp.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, tmp.width, tmp.height);
+  ctx.drawImage(canvas, 0, 0);
+  var a = document.createElement('a');
+  a.download = (title || chartId) + '.png';
+  a.href = tmp.toDataURL('image/png');
+  a.click();
+}
+
+/* ── ИНИЦИАЛИЗАЦИЯ ГРАФИКОВ ───────────────────────────── */
+
+/* 1. ТРЕНД */
+makeChart('chartTrend', {
+  data: {
+    labels: trendData.labels,
+    datasets:[{
+      label:'Обращений', data: trendData.values,
+      borderColor:'#1B5E7B', backgroundColor:'rgba(27,94,123,0.1)',
+      tension:0.3, fill:true, pointRadius:4, pointBackgroundColor:'#1B5E7B'
+    }]
+  },
+  scaleY: {beginAtZero:true, ticks:{stepSize:1}}
+}, 'line');
+
+/* 2. ТИПЫ ПЛОЩАДОК */
+makeChart('chartSiteType', {
+  data: {
+    labels:['Только свободная','Только существующее','Оба варианта'],
+    datasets:[{
+      data:[siteType.only_free, siteType.only_existing, siteType.both],
+      backgroundColor:['#1B5E7B','#fd7e14','#198754'], borderWidth:2
+    }]
+  },
+  showLegend: true
+}, 'doughnut');
+
+/* 3. ИСТОЧНИКИ */
+if (document.getElementById('chartSource') && sourceData.labels.length) {
+  makeChart('chartSource', {
+    data: {
+      labels: sourceData.labels,
+      datasets:[{
+        data: sourceData.values,
+        backgroundColor: COLORS.slice(0, sourceData.labels.length), borderWidth:2
+      }]
+    },
+    showLegend: true
+  }, 'doughnut');
+}
+
+/* 4. СОТРУДНИКИ */
+if (document.getElementById('chartEmp') && empData.labels.length) {
   var empH = Math.max(120, empData.labels.length * 30);
   document.getElementById('chartEmp').style.height = empH + 'px';
-  new Chart(document.getElementById('chartEmp'),{
-    type:'bar',
-    data:{labels:empData.labels,datasets:[{data:empData.values,
-      backgroundColor:empData.labels.map((_,i)=>COLORS[i%COLORS.length]),borderRadius:4}]},
-    options:{indexAxis:'y',plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.raw+' обр.'}}},
-      scales:{x:{beginAtZero:true,ticks:{stepSize:1}}},
-      responsive:true,maintainAspectRatio:false}
+  makeChart('chartEmp', {
+    data: {
+      labels: empData.labels,
+      datasets:[{
+        data: empData.values,
+        backgroundColor: empData.labels.map(function(_,i){return COLORS[i%COLORS.length];}),
+        borderRadius:4
+      }]
+    },
+    scaleX: {beginAtZero:true, ticks:{stepSize:1}}
+  }, 'bar', {indexAxis:'y', maintainAspectRatio:false,
+    plugins:{legend:{display:false}, tooltip:{callbacks:{label:function(ctx){return ctx.raw+' обр.';}}}}
   });
 }
 
-if(document.getElementById('chartDist') && distData.labels.length){
+/* 5. РАЙОНЫ */
+if (document.getElementById('chartDist') && distData.labels.length) {
   var distH = Math.max(80, distData.labels.length * 28);
   document.getElementById('chartDist').style.height = distH + 'px';
-  new Chart(document.getElementById('chartDist'),{
-    type:'bar',
-    data:{labels:distData.labels,datasets:[{data:distData.values,backgroundColor:'#1B5E7B',borderRadius:4}]},
-    options:{indexAxis:'y',plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.raw+' обр.'}}},
-      scales:{x:{beginAtZero:true,ticks:{stepSize:1}}},
-      responsive:true,maintainAspectRatio:false}
+  makeChart('chartDist', {
+    data: {
+      labels: distData.labels,
+      datasets:[{data:distData.values, backgroundColor:'#1B5E7B', borderRadius:4}]
+    },
+    scaleX: {beginAtZero:true, ticks:{stepSize:1}}
+  }, 'bar', {indexAxis:'y', maintainAspectRatio:false,
+    plugins:{legend:{display:false}, tooltip:{callbacks:{label:function(ctx){return ctx.raw+' обр.';}}}}
   });
 }
 
-new Chart(document.getElementById('chartArea'),{
-  type:'bar',
-  data:{labels:areaData.map(d=>d.label),datasets:[{data:areaData.map(d=>d.count),backgroundColor:'#1B5E7B',borderRadius:4}]},
-  options:{plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.raw+' запр.'}}},scales:{y:{beginAtZero:true,ticks:{stepSize:1}}},responsive:true,maintainAspectRatio:true}
-});
+/* 6. ПЛОЩАДЬ УЧАСТКА */
+makeChart('chartArea', {
+  data: {
+    labels: areaData.map(function(d){return d.label;}),
+    datasets:[{data:areaData.map(function(d){return d.count;}), backgroundColor:'#1B5E7B', borderRadius:4}]
+  },
+  scaleY: {beginAtZero:true, ticks:{stepSize:1}}
+}, 'bar');
 
-new Chart(document.getElementById('chartBuild'),{
-  type:'bar',
-  data:{labels:buildData.map(d=>d.label),datasets:[{data:buildData.map(d=>d.count),backgroundColor:'#0d6efd',borderRadius:4}]},
-  options:{plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.raw+' запр.'}}},scales:{y:{beginAtZero:true,ticks:{stepSize:1}}},responsive:true,maintainAspectRatio:true}
-});
+/* 7. ПЛОЩАДЬ ЗАСТРОЙКИ */
+makeChart('chartBuild', {
+  data: {
+    labels: buildData.map(function(d){return d.label;}),
+    datasets:[{data:buildData.map(function(d){return d.count;}), backgroundColor:'#0d6efd', borderRadius:4}]
+  },
+  scaleY: {beginAtZero:true, ticks:{stepSize:1}}
+}, 'bar');
 </script>
 {% endblock %}
