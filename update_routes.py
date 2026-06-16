@@ -8,6 +8,7 @@
 # ║  v2.0.0: PID-валидация лока; download-first флоу;         ║
 # ║           delay из запроса; rc=2 → запуск .bat;             ║
 # ║           pre-status отдаёт phase + download_error              ║
+# ║  v2.0.1: алиас /api/update-status → /api/update/status       ║
 # ╚═══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, jsonify, request as flask_request, session
@@ -504,6 +505,7 @@ def api_update_schedule_cancel():
 # ─── Статус текущего обновления ───────────────────────────────────────────────────────────────────────────────
 
 @update_bp.route('/api/update/status')
+@update_bp.route('/api/update-status')  # алиас: обратная совместимость с base.html
 def api_update_status():
     if session.get('role') != 'admin':
         return jsonify({'error': 'forbidden'}), 403
