@@ -43,6 +43,17 @@
         <i class="bi {{ 'bi-star-fill' if req['favorite_flag'] else 'bi-star' }}"></i>
       </button>
     </form>
+    {# ── КНОПКА «ДЛЯ ИИ» ── #}
+    <button type="button" class="btn btn-sm btn-outline-info" id="btnCopyForAI"
+            title="Скопировать все поля обращения текстом для отправки ИИ">
+      <i class="bi bi-clipboard-data me-1"></i>Для ИИ
+    </button>
+    {# ── КНОПКА «АНАЛИЗИРОВАТЬ» ── #}
+    <button type="button" class="btn btn-sm btn-info text-white" id="btnAnalyze"
+            title="Запустить ИИ-анализ: подобрать площадки под это обращение"
+            data-rid="{{ req.id }}">
+      <i class="bi bi-robot me-1"></i>Анализировать
+    </button>
   </div>
 </div>
 
@@ -141,7 +152,6 @@
           <ol class="mb-0 ps-3">
           {% for step in review_chain %}
             <li class="mb-1">
-              {# Имя проверяющего #}
               <span class="fw-semibold">
                 {% if step.reviewer_full_name %}
                   {{ step.reviewer_full_name }}
@@ -152,7 +162,6 @@
                   —
                 {% endif %}
               </span>
-              {# Статус решения #}
               {% if step.decision == 'approved' %}
                 <span class="badge bg-success ms-1">Одобрено</span>
                 {% if step.decided_at %}
@@ -164,14 +173,12 @@
                   <span class="text-muted" style="font-size:0.75rem"> {{ step.decided_at[:10] }}</span>
                 {% endif %}
               {% else %}
-                {# Текущий активный проверяющий #}
                 {% if req.status == 'under_review' and step.step_order == review_chain | selectattr('decision', 'none') | list | first | attr('step_order') %}
                   <span class="badge bg-info text-white ms-1">Ожидает решения</span>
                 {% else %}
                   <span class="badge bg-light text-muted ms-1" style="border:1px solid #dee2e6">Ожидает</span>
                 {% endif %}
               {% endif %}
-              {# Комментарий #}
               {% if step.comment %}
                 <div class="text-muted" style="font-size:0.8rem;margin-left:0.2rem">
                   <i class="bi bi-chat-left-text me-1"></i>{{ step.comment }}
@@ -183,7 +190,6 @@
         </td>
       </tr>
       {% elif req.reviewer_id or req.reviewer_name_external %}
-      {# Обратная совместимость: старые обращения без review_chain #}
       <tr>
         <td class="text-muted">Проверяющий площадки</td>
         <td>
@@ -232,7 +238,6 @@
 
 {# ── БЛОК ДЕЙСТВИЙ ПО СТАТУСУ ────────────────────────── #}
 
-{# — ЧЕРНОВИК: кнопка «Присвоить номер» — #}
 {% if req.status == 'draft' and not req.request_number and session.role in ('admin','employee','manager') %}
 <div class="card mb-3 border-warning">
   <div class="card-header fw-bold" style="background:var(--surface2,#f0f4f8)">
@@ -251,7 +256,6 @@
 </div>
 {% endif %}
 
-{# — В РАБОТЕ: переход на проверку — #}
 {% if req.status == 'in_progress' and session.user_id in [req.responsible_id, req.assigned_to] or (req.status == 'in_progress' and session.role == 'admin') %}
 <div class="card mb-3 border-info">
   <div class="card-header fw-bold" style="background:var(--surface2,#f0f4f8)">
@@ -267,7 +271,6 @@
 </div>
 {% endif %}
 
-{# — НА ПРОВЕРКЕ: кнопки проверяющего — #}
 {% if req.status == 'under_review' and (session.user_id == req.reviewer_id or session.role == 'admin') %}
 <div class="card mb-3 border-primary">
   <div class="card-header fw-bold" style="background:var(--surface2,#f0f4f8)">
@@ -303,7 +306,6 @@
 </div>
 {% endif %}
 
-{# — ГОТОВО К ОТПРАВКЕ: дата + способ — #}
 {% if req.status == 'ready_to_send' and session.role in ('admin','employee','manager') %}
 <div class="card mb-3 border-success">
   <div class="card-header fw-bold" style="background:var(--surface2,#f0f4f8)">
@@ -337,7 +339,6 @@
 </div>
 {% endif %}
 
-{# — ДОКУМЕНТЫ ОТПРАВЛЕНЫ: фиксация ОБ + итоги работы — #}
 {% if req.status == 'sent_to_applicant' and session.role in ('admin','employee','manager') %}
 <div class="card mb-3 border-secondary">
   <div class="card-header fw-bold" style="background:var(--surface2,#f0f4f8)">
@@ -387,7 +388,6 @@
 </div>
 {% endif %}
 
-{# — АДМИН: возврат в черновик — #}
 {% if session.role == 'admin' and req.status != 'draft' %}
 <div class="mb-3">
   <form method="post"
@@ -691,7 +691,7 @@
 </div>
 
 {# ══════════════════════════════════════════════════════════════════════════ #}
-{# МОДАЛЬНОЕ ОКНО: «Направить на проверку» — цепочка до 5 проверяющих       #}
+{# МОДАЛЬНОЕ ОКНО: «Направить на проверку»                                   #}
 {# ══════════════════════════════════════════════════════════════════════════ #}
 <div class="modal fade" id="reviewerModal" tabindex="-1"
      aria-labelledby="reviewerModalLabel" aria-hidden="true">
@@ -707,8 +707,6 @@
             enctype="multipart/form-data" id="reviewerForm">
         <input type="hidden" name="status" value="under_review">
         <div class="modal-body">
-
-          {# — Файлы для проверяющего — #}
           <div class="mb-4">
             <label class="form-label fw-semibold">
               <i class="bi bi-paperclip me-1"></i>Файлы для проверяющего
@@ -741,7 +739,6 @@
             </div>
           </div>
 
-          {# — Цепочка проверяющих — #}
           <div class="mb-2">
             <label class="form-label fw-semibold">
               <i class="bi bi-people me-1"></i>Цепочка проверяющих
@@ -749,7 +746,6 @@
             </label>
           </div>
           <div id="reviewerRows">
-            {# Первый проверяющий — обязателен #}
             <div class="reviewer-row border rounded p-2 mb-2" data-idx="1">
               <div class="d-flex align-items-center justify-content-between mb-2">
                 <span class="badge bg-primary">Шаг 1</span>
@@ -779,14 +775,12 @@
             </div>
           </div>
 
-          {# Кнопка добавления следующего проверяющего #}
           <button type="button" class="btn btn-sm btn-outline-secondary mt-1"
                   id="addReviewerBtn" onclick="addReviewerRow()">
             <i class="bi bi-plus-circle me-1"></i>Добавить проверяющего
           </button>
           <span id="reviewerCountHelp" class="text-muted small ms-2">Добавлено: 1 из 5</span>
-
-        </div>{# /modal-body #}
+        </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-outline-secondary"
                   data-bs-dismiss="modal">Отмена</button>
@@ -799,13 +793,40 @@
   </div>
 </div>
 
+{# ══════════════════════════════════════════════════════════════════════════ #}
+{# МОДАЛЬНОЕ ОКНО: Результат ИИ-анализа                                      #}
+{# ══════════════════════════════════════════════════════════════════════════ #}
+<div class="modal fade" id="aiAnalyzeModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <div class="modal-header" style="background:var(--surface2,#f0f4f8)">
+        <h5 class="modal-title">
+          <i class="bi bi-robot me-2 text-info"></i>ИИ-анализ обращения
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="aiAnalyzeSpinner" class="text-center py-4">
+          <div class="spinner-border text-info" role="status"></div>
+          <div class="mt-2 text-muted small">Модель думает… это может занять до 2 минут</div>
+        </div>
+        <div id="aiAnalyzeResult" style="display:none"></div>
+        <div id="aiAnalyzeError" class="alert alert-danger" style="display:none"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Закрыть</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 {# ── JS ───────────────────────────────────────────────────────────────────── #}
 <script>
 const MAX_REVIEWERS = 5;
 let reviewerCount = 1;
 
 function toggleRevRow(idx) {
-  const cb = document.getElementById('revNotInSystem_' + idx);
+  const cb  = document.getElementById('revNotInSystem_' + idx);
   const sel = document.getElementById('revSelectWrap_' + idx);
   const ext = document.getElementById('revExternalWrap_' + idx);
   if (!cb || !sel || !ext) return;
@@ -848,47 +869,4 @@ function addReviewerRow() {
         <input type="text" name="reviewer_ext_name_${idx}" class="form-control form-control-sm"
                placeholder="Фамилия Имя Отчество">
       </div>
-    </div>`;
-  container.insertAdjacentHTML('beforeend', html);
-  updateReviewerUI();
-}
-
-function removeReviewerRow(idx) {
-  const row = document.getElementById('reviewerRow_' + idx);
-  if (row) row.remove();
-  reviewerCount = document.querySelectorAll('#reviewerRows .reviewer-row').length;
-  updateReviewerUI();
-}
-
-function updateReviewerUI() {
-  document.getElementById('reviewerCountHelp').textContent =
-    'Добавлено: ' + reviewerCount + ' из ' + MAX_REVIEWERS;
-  document.getElementById('addReviewerBtn').disabled = reviewerCount >= MAX_REVIEWERS;
-}
-
-function validateReviewFiles(input) {
-  const errorEl  = document.getElementById('reviewFilesError');
-  const helpEl   = document.getElementById('reviewFilesHelp');
-  const submitBtn = document.getElementById('reviewSubmitBtn');
-  if (input.files.length > 3) {
-    errorEl.style.display = 'block';
-    helpEl.style.display  = 'none';
-    submitBtn.disabled    = true;
-  } else {
-    errorEl.style.display = 'none';
-    helpEl.style.display  = 'block';
-    submitBtn.disabled    = false;
-    helpEl.textContent = input.files.length > 0
-      ? 'Выбрано файлов: ' + input.files.length + ' из 3'
-      : 'Поддерживаемые форматы: PDF, Word, Excel, изображения';
-  }
-}
-
-document.addEventListener('DOMContentLoaded', function () {
-  // Первый проверяющий обязателен по умолчанию
-  const firstSelect = document.querySelector('#revSelectWrap_1 select');
-  if (firstSelect) firstSelect.required = true;
-});
-</script>
-
-{% endblock %}
+ 
