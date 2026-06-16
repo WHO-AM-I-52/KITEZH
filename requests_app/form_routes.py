@@ -1,6 +1,8 @@
 import os
 import shutil
 import hashlib
+import logging
+import traceback
 from datetime import datetime, date
 
 from flask import render_template, request, redirect, url_for, session, flash
@@ -14,7 +16,16 @@ from activity_log import log_action
 from ocr_utils import extract_anketa_fields
 from request_history import save_history
 from phonebook_routes import sync_request_to_phonebook
+from tray import notify_error
 from . import requests_bp
+
+# ─── Логгер ошибок формы ────────────────────────────────────────────────────
+_err_logger = logging.getLogger('kitezh.form_errors')
+if not _err_logger.handlers:
+    _h = logging.FileHandler('kitezh_errors.log', encoding='utf-8')
+    _h.setFormatter(logging.Formatter('%(asctime)s  %(message)s'))
+    _err_logger.addHandler(_h)
+    _err_logger.setLevel(logging.ERROR)
 
 _PRESERVE_FIELDS = [
     'review_days',
@@ -217,6 +228,9 @@ def new_request():
                 sync_request_to_phonebook(conn, request.form, new_id, session['user_id'])
                 conn.commit()
         except Exception:
+            _tb = traceback.format_exc()
+            _err_logger.error('new_request:\n%s', _tb)
+            notify_error('KITEZH: ошибка создания обращения', _tb.splitlines()[-1])
             _cleanup_tmp(pending)
             conn.close()
             flash('Ошибка сохранения обращения. Попробуйте ещё раз.', 'error')
@@ -318,6 +332,9 @@ def edit_request(rid):
                 sync_request_to_phonebook(conn, request.form, rid, session['user_id'])
                 conn.commit()
         except Exception:
+            _tb = traceback.format_exc()
+            _err_logger.error('edit_request rid=%s:\n%s', rid, _tb)
+            notify_error('KITEZH: ошибка сохранения обращения', _tb.splitlines()[-1])
             _cleanup_tmp(pending)
             conn.close()
             flash('Ошибка обновления обращения. Попробуйте ещё раз.', 'error')
