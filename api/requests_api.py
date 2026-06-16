@@ -8,6 +8,8 @@
 # ║   Статусы-участники: все кроме draft и closed               ║
 # ║   Условие: review_deadline < date('now')                    ║
 # ║                                                               ║
+# ║ filter[district]=Борский — фильтр по preferred_districts     ║
+# ║                                                               ║
 # ║ Ответ GET: { data:[], total, page, pages, stats:{} }    ║
 # ╚══════════════════════════════════════════════════════════════╝
 
@@ -131,6 +133,12 @@ def get_requests():
           OR r.request_number        LIKE ?)
         """)
         params.extend([s, s, s, s, s, s])
+
+    # ── Фильтр по району (preferred_districts) ─────────────────────────────────
+    district = request.args.get('filter[district]', '').strip()
+    if district:
+        where.append('r.preferred_districts LIKE ?')
+        params.append('%' + district + '%')
 
     employee = request.args.get('filter[employee]', '').strip()
     if employee:

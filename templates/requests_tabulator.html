@@ -9,6 +9,7 @@
  ║         дублирующие чипы статуса                              ║
  ║  v1.7: добавлены карточки ready_to_send, sent_to_applicant,  ║
  ║         closed — теперь все 7 статусов + Просрочено + Всего  ║
+ ║  v1.8: filter[district] from URL ?preferred_districts=...    ║
  ╚══════════════════════════════════════════════════════════════╝
 #}
 
@@ -65,6 +66,16 @@
 .toolbar-right { margin-left:auto; display:flex; align-items:center; gap:8px; }
 .toolbar .total-badge { font-size:12px; color:var(--text-muted); }
 
+/* ─── Баннер активного фильтра по району ───────────────────── */
+#districtBanner {
+  display:none; align-items:center; gap:8px;
+  background:#e7f3ff; border:1px solid #0d6efd; border-radius:8px;
+  padding:6px 14px; margin-bottom:10px; font-size:13px;
+}
+#districtBanner.show { display:flex; }
+#districtBanner strong { color:#0d6efd; }
+#districtBanner button { background:none; border:none; color:#0d6efd; cursor:pointer; font-size:16px; line-height:1; padding:0; margin-left:auto; }
+
 .tabulator { border:none !important; border-radius:10px !important; overflow:hidden !important;
   box-shadow:var(--card-shadow) !important; background:var(--surface) !important; font-size:13px !important; }
 .tabulator .tabulator-header { background:var(--surface2) !important; border-bottom:2px solid var(--border) !important; }
@@ -113,6 +124,13 @@
 <div class="d-flex align-items-center justify-content-between mb-3">
   <h5 class="mb-0 fw-bold"><i class="bi bi-list-ul me-2"></i>Обращения на подбор ЗУ</h5>
   <a href="/request/new" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>Новое обращение</a>
+</div>
+
+{# ─── Баннер активного фильтра по району ───────────────────────── #}
+<div id="districtBanner">
+  <i class="bi bi-geo-alt-fill" style="color:#0d6efd"></i>
+  Фильтр по району: <strong id="districtBannerName"></strong>
+  <button title="Сбросить фильтр по району" onclick="clearDistrictFilter()">×</button>
 </div>
 
 <div class="stat-cards" id="statCards">
@@ -252,7 +270,7 @@ const STATUS_MAP = {
 const state = {
   status: '', dateFrom: '', dateTo: '', applicant: '',
   search: '', employee: null, favorite: false, dateChip: '',
-  overdue: false,
+  overdue: false, district: '',
   sort: '', dir: 'desc',
 };
 
@@ -271,12 +289,35 @@ function buildParams(page, size) {
   if (state.favorite)  p.set('filter[favorite]',  '1');
   if (state.dateChip)  p.set('filter[date_chip]', state.dateChip);
   if (state.overdue)   p.set('filter[overdue]',   '1');
+  if (state.district)  p.set('filter[district]',  state.district);
   return p.toString();
 }
 
 function fmtNum(v) {
   return (v == null || v === '' || v === 0) ? '<span style="color:var(--text-muted)">—</span>' : v;
 }
+
+// ── Инициализация state из URL-параметров (для перехода с дашборда) ─────────
+function initFromURL() {
+  const params = new URLSearchParams(window.location.search);
+  const district = (params.get('preferred_districts') || '').trim();
+  if (district) {
+    state.district = district;
+    const banner = document.getElementById('districtBanner');
+    document.getElementById('districtBannerName').textContent = district;
+    banner.classList.add('show');
+  }
+}
+
+window.clearDistrictFilter = function() {
+  state.district = '';
+  document.getElementById('districtBanner').classList.remove('show');
+  // Убираем параметр из URL без перезагрузки
+  const url = new URL(window.location.href);
+  url.searchParams.delete('preferred_districts');
+  window.history.replaceState({}, '', url);
+  table.replaceData();
+};
 
 /* ─── Bulk-delete helpers ──────────────────────────────────────── */
 function updateBulkBar() {
@@ -388,6 +429,9 @@ const tableColumns = [
     },
 ];
 
+// ── Читаем URL до создания таблицы ─────────────────────────────
+initFromURL();
+
 const table = new Tabulator('#requestsTable', {
   height: '70vh',
   layout: 'fitColumns',
@@ -485,12 +529,16 @@ function applyFilters() { table.replaceData(); }
 function resetAll() {
   Object.assign(state, { status:'', dateFrom:'', dateTo:'', applicant:'',
     search:'', employee:null, favorite:false, dateChip:'', overdue:false,
-    sort:'', dir:'desc' });
+    district:'', sort:'', dir:'desc' });
   document.getElementById('fDateFrom').value  = '';
   document.getElementById('fDateTo').value    = '';
   document.getElementById('fStatus').value    = '';
   document.getElementById('fApplicant').value = '';
   document.getElementById('fSearch').value    = '';
+  document.getElementById('districtBanner').classList.remove('show');
+  const url = new URL(window.location.href);
+  url.searchParams.delete('preferred_districts');
+  window.history.replaceState({}, '', url);
   document.querySelectorAll('.chip.active').forEach(c=>c.classList.remove('active'));
   document.querySelectorAll('.emp-chip.active').forEach(c=>c.classList.remove('active'));
   document.querySelectorAll('.stat-card').forEach(c=>c.classList.remove('active'));
