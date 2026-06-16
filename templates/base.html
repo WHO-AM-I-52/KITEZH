@@ -856,3 +856,196 @@ document.addEventListener('DOMContentLoaded', function () {
     'sent_to_applicant': {text:'Отправлено',       cls:'status-sent_to_applicant'},
     'closed':            {text:'Закрыто',          cls:'status-closed'}
   };
+
+  function closeDropdown(){ dropdown.classList.remove('show'); dropdown.innerHTML=''; activeIdx=-1; currentItems=[]; }
+  function openDropdown(){ dropdown.classList.add('show'); }
+
+  function renderItems(items, q){
+    if (!items.length){
+      dropdown.innerHTML = '<div class="gs-empty">Ничего не найдено</div>';
+      return;
+    }
+    var html = items.map(function(it, i){
+      var st = STATUS_MAP[it.status] || {text:it.status, cls:''};
+      return '<a class="gs-item" href="/request/'+it.id+'" data-idx="'+i+'">' +
+        '<div class="gs-item-left">' +
+          '<div class="gs-item-num">№ '+it.number+'</div>' +
+          '<div class="gs-item-name">'+escHtml(it.applicant_name)+'</div>' +
+          '<div class="gs-item-meta">'+escHtml(it.municipality||'')+(it.land_number?' · '+escHtml(it.land_number):'')+'</div>' +
+        '</div>' +
+        '<span class="badge '+st.cls+' gs-item-badge">'+st.text+'</span>' +
+      '</a>';
+    }).join('');
+    if (items.length >= 8){
+      html += '<div class="gs-footer" id="gsFooter">Показать все результаты →</div>';
+    }
+    dropdown.innerHTML = html;
+    currentItems = items;
+    dropdown.querySelectorAll('.gs-item').forEach(function(el){
+      el.addEventListener('mouseenter', function(){ setActive(+this.getAttribute('data-idx')); });
+    });
+    var footer = document.getElementById('gsFooter');
+    if (footer){ footer.addEventListener('click', function(){ window.location.href='/?q='+encodeURIComponent(lastQ); }); }
+  }
+
+  function setActive(idx){
+    activeIdx = idx;
+    dropdown.querySelectorAll('.gs-item').forEach(function(el, i){
+      el.classList.toggle('gs-active', i===idx);
+    });
+  }
+
+  function escHtml(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  function doSearch(q){
+    lastQ = q;
+    dropdown.innerHTML = '<div class="gs-loading">Поиск…</div>';
+    openDropdown();
+    fetch('/api/search?q='+encodeURIComponent(q)+'&limit=8', {cache:'no-store', credentials:'same-origin'})
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(data){ if(data) renderItems(data.results||[], q); })
+      .catch(function(){ dropdown.innerHTML='<div class="gs-empty">Ошибка поиска</div>'; });
+  }
+
+  input.addEventListener('input', function(){
+    var q = this.value.trim();
+    clearTimeout(timer);
+    if (q.length < 2){ closeDropdown(); return; }
+    timer = setTimeout(function(){ doSearch(q); }, 280);
+  });
+
+  input.addEventListener('keydown', function(e){
+    if (!dropdown.classList.contains('show')) return;
+    if (e.key==='ArrowDown'){ e.preventDefault(); setActive(Math.min(activeIdx+1, currentItems.length-1)); }
+    else if (e.key==='ArrowUp'){ e.preventDefault(); setActive(Math.max(activeIdx-1, 0)); }
+    else if (e.key==='Enter'){
+      e.preventDefault();
+      if (activeIdx>=0 && currentItems[activeIdx]){ window.location.href='/request/'+currentItems[activeIdx].id; }
+      else if (lastQ.length>=2){ window.location.href='/?q='+encodeURIComponent(lastQ); }
+    }
+    else if (e.key==='Escape'){ closeDropdown(); input.blur(); }
+  });
+
+  document.addEventListener('click', function(e){ if (!e.target.closest('#gsWrap')) closeDropdown(); });
+
+  document.addEventListener('keydown', function(e){
+    if ((e.ctrlKey||e.metaKey) && e.shiftKey && e.key==='F'){ e.preventDefault(); input.focus(); input.select(); }
+  });
+})();
+</script>
+{% endif %}
+
+{# ─── Скрипт управления обновлениями (для admin) ─── #}
+{% if session.get('role') == 'admin' %}
+<script>
+(function(){
+  var banner     = document.getElementById('updBanner');
+  var bannerText = document.getElementById('updBannerText');
+  var bannerBy   = document.getElementById('updBannerBy');
+  var btnCancel  = document.getElementById('updBannerCancel');
+  var btnNow     = document.getElementById('updBannerNow');
+  var updateDot  = document.getElementById('sbUpdateDot');
+  var changelogLink = document.getElementById('sbChangelogLink');
+  if (!banner) return;
+
+  function hideBanner(){
+    banner.style.display='none';
+    document.body.classList.remove('upd-banner-visible');
+    if (btnCancel) btnCancel.style.display='none';
+    if (btnNow)    btnNow.style.display='none';
+  }
+
+  function pollUpdate(){
+    fetch('/api/update-status', {cache:'no-store', credentials:'same-origin'})
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(d){
+        if (!d) return;
+
+        /* ── Точка обновления в сайдбаре ── */
+        if (updateDot && changelogLink){
+          if (d.update_available){
+            updateDot.classList.remove('d-none');
+            changelogLink.title = 'Доступно обновление ' + (d.latest_version||'');
+          } else {
+            updateDot.classList.add('d-none');
+            changelogLink.title = '';
+          }
+        }
+
+        /* ── Баннер запланированного обновления ── */
+        if (d.scheduled){
+          banner.style.display='block';
+          document.body.classList.add('upd-banner-visible');
+          var eta = d.eta_seconds != null ? ' через ' + d.eta_seconds + ' с' : '';
+          bannerText.textContent = 'Обновление до v' + (d.target_version||'?') + eta;
+          bannerBy.textContent   = d.scheduled_by ? 'Запланировал: ' + d.scheduled_by : '';
+          if (btnCancel) btnCancel.style.display='';
+          if (btnNow)    btnNow.style.display='';
+        } else {
+          hideBanner();
+        }
+
+        /* ── Модалка «готово» после перезапуска ── */
+        if (d.just_updated){
+          var modal = document.getElementById('updDoneModal');
+          if (modal && window.bootstrap){
+            new bootstrap.Modal(modal).show();
+            var reloadBtn = document.getElementById('updDoneReload');
+            if (reloadBtn) reloadBtn.addEventListener('click', function(){ location.reload(); });
+          }
+        }
+      }).catch(function(){});
+  }
+
+  if (btnCancel){
+    btnCancel.addEventListener('click', function(){
+      fetch('/api/update-cancel', {method:'POST', credentials:'same-origin'})
+        .then(function(){ hideBanner(); pollUpdate(); }).catch(function(){});
+    });
+  }
+  if (btnNow){
+    btnNow.addEventListener('click', function(){
+      fetch('/api/update-now', {method:'POST', credentials:'same-origin'})
+        .then(function(){ pollUpdate(); }).catch(function(){});
+    });
+  }
+
+  setTimeout(function(){ pollUpdate(); setInterval(pollUpdate, 15000); }, 3000);
+})();
+</script>
+{% endif %}
+
+{# ─── Скрипт баннера для обычных пользователей (не admin) ─── #}
+{% if 'user_id' in session and session.get('role') != 'admin' %}
+<script>
+(function(){
+  var banner     = document.getElementById('updBanner');
+  var bannerText = document.getElementById('updBannerText');
+  var bannerBy   = document.getElementById('updBannerBy');
+  if (!banner) return;
+
+  function pollUpdate(){
+    fetch('/api/update-status', {cache:'no-store', credentials:'same-origin'})
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(d){
+        if (!d) return;
+        if (d.scheduled){
+          banner.style.display='block';
+          document.body.classList.add('upd-banner-visible');
+          var eta = d.eta_seconds != null ? ' через ' + d.eta_seconds + ' с' : '';
+          bannerText.textContent = 'Обновление до v' + (d.target_version||'?') + eta;
+          bannerBy.textContent   = d.scheduled_by ? 'Запланировал: ' + d.scheduled_by : '';
+        } else {
+          banner.style.display='none';
+          document.body.classList.remove('upd-banner-visible');
+        }
+      }).catch(function(){});
+  }
+
+  setTimeout(function(){ pollUpdate(); setInterval(pollUpdate, 30000); }, 5000);
+})();
+</script>
+{% endif %}
+
+</body>
+</html>
