@@ -1,9 +1,7 @@
 import os
 import shutil
 import hashlib
-import logging
 import traceback
-from logging.handlers import TimedRotatingFileHandler
 from datetime import datetime, date
 
 from flask import render_template, request, redirect, url_for, session, flash
@@ -18,25 +16,8 @@ from ocr_utils import extract_anketa_fields
 from request_history import save_history
 from phonebook_routes import sync_request_to_phonebook
 from tray import notify_error
+from kitezh_logger import err_logger
 from . import requests_bp
-
-# ─── Логгер ошибок формы ────────────────────────────────────────────────────
-# Ротация каждые 3 дня, хранит 1 архивный файл, старые удаляются автоматически
-_LOGS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'logs')
-os.makedirs(_LOGS_DIR, exist_ok=True)
-
-_err_logger = logging.getLogger('kitezh.form_errors')
-if not _err_logger.handlers:
-    _h = TimedRotatingFileHandler(
-        os.path.join(_LOGS_DIR, 'kitezh_errors.log'),
-        when='D',
-        interval=3,
-        backupCount=1,
-        encoding='utf-8',
-    )
-    _h.setFormatter(logging.Formatter('%(asctime)s  %(message)s'))
-    _err_logger.addHandler(_h)
-    _err_logger.setLevel(logging.ERROR)
 
 _PRESERVE_FIELDS = [
     'review_days',
@@ -213,7 +194,6 @@ def new_request():
             )
             new_id = cursor.lastrowid
 
-            # ── Автоматически проставляем review_deadline = request_date + 7 раб. дней
             deadline = _compute_review_deadline(request.form.get('request_date', ''))
             if deadline:
                 conn.execute(
@@ -240,7 +220,7 @@ def new_request():
                 conn.commit()
         except Exception:
             _tb = traceback.format_exc()
-            _err_logger.error('new_request:\n%s', _tb)
+            err_logger.error('new_request:\n%s', _tb)
             notify_error('KITEZH: ошибка создания обращения', _tb.splitlines()[-1])
             _cleanup_tmp(pending)
             conn.close()
@@ -311,12 +291,11 @@ def edit_request(rid):
         edit_reason = request.form.get('edit_reason', '').strip()
         updated_by  = session.get('user_id')
 
-        # ── Пересчитываем deadline если пользователь изменил request_date
         new_date_str = request.form.get('request_date', '').strip()
         if new_date_str and new_date_str != (req['request_date'] or ''):
             new_deadline = _compute_review_deadline(new_date_str)
         else:
-            new_deadline = req['review_deadline']  # сохраняем старый
+            new_deadline = req['review_deadline']
 
         set_clause = ', '.join([f"{f}=?" for f in ALL_FIELDS])
         try:
@@ -344,11 +323,11 @@ def edit_request(rid):
                 conn.commit()
         except Exception:
             _tb = traceback.format_exc()
-            _err_logger.error('edit_request rid=%s:\n%s', rid, _tb)
+            err_logger.error('edit_request rid=%s:\n%s', rid, _tb)
             notify_error('KITEZH: ошибка сохранения обращения', _tb.splitlines()[-1])
             _cleanup_tmp(pending)
             conn.close()
-            flash('Ошибка обновления обращения. Попробуйте ещё раз.', 'error')
+            flash('Ошибка обновления обращения. Попробуйте еще раз.', 'error')
             return redirect(url_for('requests.edit_request', rid=rid))
 
         conn.close()
