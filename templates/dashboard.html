@@ -86,81 +86,6 @@
   </div>
 </div>
 
-{# ===== ROW 3: НОРМАТИВ ОТВЕТА ДЕТАЛЬНО ===== #}
-<div class="row g-2 mb-3">
-  <div class="col-12">
-    <div class="card p-3">
-      <p class="mb-2 fw-bold" style="font-size:12px;color:#1B5E7B">
-        <i class="bi bi-clock-history me-1"></i>Норматив ответа по этапам
-        <span class="badge bg-secondary ms-1" style="font-size:10px">итого {{kpi.norm_days}} + 12 = 22 р.д.</span>
-      </p>
-      <div class="table-responsive">
-        <table class="table table-sm mb-0" style="font-size:12px">
-          <thead class="table-light">
-            <tr>
-              <th style="width:5%">#</th>
-              <th>Из статуса</th>
-              <th>В статус</th>
-              <th class="text-center" style="width:10%">Норма (р.д.)</th>
-              <th class="text-center" style="width:15%">Ср. факт (дн.)</th>
-              <th style="width:25%">Выполнение</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% set ns = namespace(total=0) %}
-            {% for stage in kpi.norm_stages %}
-            {% set stat = kpi.stage_stats[loop.index0] if kpi.stage_stats is defined else none %}
-            {% set avg  = stat.avg_days if stat and stat.avg_days else none %}
-            {% set ok   = (avg is not none) and (avg <= stage.days * 7 / 5) %}
-            {% set ns.total = ns.total + stage.days %}
-            <tr>
-              <td class="text-muted">{{ loop.index }}</td>
-              <td>{{ stage.from }}</td>
-              <td>
-                <span class="badge"
-                  style="background:{{
-                    '#6c757d' if stage.to=='Зарегистрировано' else
-                    '#0d6efd' if stage.to=='В работе' else
-                    '#fd7e14' if stage.to=='На проверке' else
-                    '#20c997' if stage.to=='Готово к отправке' else
-                    '#198754' if stage.to=='Документы отправлены' else
-                    '#495057'
-                  }};font-size:10px">{{ stage.to }}</span>
-              </td>
-              <td class="text-center fw-bold">{{ stage.days }}</td>
-              <td class="text-center">
-                {% if avg is not none %}
-                  <span class="{{ 'text-success' if ok else 'text-danger' }}">{{ avg }}</span>
-                {% else %}
-                  <span class="text-muted">—</span>
-                {% endif %}
-              </td>
-              <td>
-                {% if avg is not none %}
-                  {% set pct = [(avg / (stage.days * 7 / 5) * 100)|round(0)|int, 100]|min %}
-                  <div class="progress" style="height:6px">
-                    <div class="progress-bar {{ 'bg-success' if ok else 'bg-danger' }}"
-                         style="width:{{pct}}%"></div>
-                  </div>
-                  <div class="text-muted" style="font-size:10px">{{ avg }} / {{ (stage.days * 7 / 5)|round(1) }} кал.д.</div>
-                {% else %}
-                  <span class="text-muted" style="font-size:10px">нет данных</span>
-                {% endif %}
-              </td>
-            </tr>
-            {% endfor %}
-            <tr class="table-light fw-bold">
-              <td colspan="3" class="text-end">Итого до закрытия:</td>
-              <td class="text-center">22</td>
-              <td colspan="2"></td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-</div>
-
 {# ===== МАКРОС: шапка графика с переключателями типов и кнопкой скачать ===== #}
 {% macro chart_header(chartId, title, icon, badge, types) %}
 <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-1">
@@ -289,9 +214,9 @@
   </div>
 </div>
 
-{# ===== АГРЕГАТЫ ===== #}
-<div class="row g-2 mb-2">
-  <div class="col-md-4">
+{# ===== АГРЕГАТЫ (без карточки "Норматив ответа") ===== #}
+<div class="row g-2 mb-3">
+  <div class="col-md-6">
     <div class="card p-2 text-center">
       <div class="text-muted" style="font-size:11px">Суммарные инвестиции</div>
       <div class="fw-bold fs-5" style="color:#1B5E7B">
@@ -299,17 +224,85 @@
       </div>
     </div>
   </div>
-  <div class="col-md-4">
+  <div class="col-md-6">
     <div class="card p-2 text-center">
       <div class="text-muted" style="font-size:11px">Рабочих мест (план)</div>
       <div class="fw-bold fs-5 text-success">{{ dash.jobs_sum }}</div>
     </div>
   </div>
-  <div class="col-md-4">
-    <div class="card p-2 text-center">
-      <div class="text-muted" style="font-size:11px">Норматив ответа</div>
-      <div class="fw-bold fs-5 text-primary">{{kpi.norm_days}} р.д. до отправки</div>
-      <div style="font-size:10px" class="text-muted">1+1+5+2+1 по этапам, +12 до закрытия</div>
+</div>
+
+{# ===== НОРМАТИВ ОТВЕТА ПО ЭТАПАМ (перемещён в низ) ===== #}
+<div class="row g-2 mb-3">
+  <div class="col-12">
+    <div class="card p-3">
+      <p class="mb-2 fw-bold" style="font-size:12px;color:#1B5E7B">
+        <i class="bi bi-clock-history me-1"></i>Норматив ответа по этапам
+        <span class="badge bg-secondary ms-1" style="font-size:10px">итого {{kpi.norm_days}} + 12 = 22 р.д.</span>
+      </p>
+      <div class="table-responsive">
+        <table class="table table-sm mb-0" style="font-size:12px">
+          <thead class="table-light">
+            <tr>
+              <th style="width:5%">#</th>
+              <th>Из статуса</th>
+              <th>В статус</th>
+              <th class="text-center" style="width:10%">Норма (р.д.)</th>
+              <th class="text-center" style="width:15%">Ср. факт (дн.)</th>
+              <th style="width:25%">Выполнение</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% set ns = namespace(total=0) %}
+            {% for stage in kpi.norm_stages %}
+            {% set stat = kpi.stage_stats[loop.index0] if kpi.stage_stats is defined else none %}
+            {% set avg  = stat.avg_days if stat and stat.avg_days else none %}
+            {% set ok   = (avg is not none) and (avg <= stage.days * 7 / 5) %}
+            {% set ns.total = ns.total + stage.days %}
+            <tr>
+              <td class="text-muted">{{ loop.index }}</td>
+              <td>{{ stage.from }}</td>
+              <td>
+                <span class="badge"
+                  style="background:{{
+                    '#6c757d' if stage.to=='Зарегистрировано' else
+                    '#0d6efd' if stage.to=='В работе' else
+                    '#fd7e14' if stage.to=='На проверке' else
+                    '#20c997' if stage.to=='Готово к отправке' else
+                    '#198754' if stage.to=='Документы отправлены' else
+                    '#495057'
+                  }};font-size:10px">{{ stage.to }}</span>
+              </td>
+              <td class="text-center fw-bold">{{ stage.days }}</td>
+              <td class="text-center">
+                {% if avg is not none %}
+                  <span class="{{ 'text-success' if ok else 'text-danger' }}">{{ avg }}</span>
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if avg is not none %}
+                  {% set pct = [(avg / (stage.days * 7 / 5) * 100)|round(0)|int, 100]|min %}
+                  <div class="progress" style="height:6px">
+                    <div class="progress-bar {{ 'bg-success' if ok else 'bg-danger' }}"
+                         style="width:{{pct}}%"></div>
+                  </div>
+                  <div class="text-muted" style="font-size:10px">{{ avg }} / {{ (stage.days * 7 / 5)|round(1) }} кал.д.</div>
+                {% else %}
+                  <span class="text-muted" style="font-size:10px">нет данных</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+            <tr class="table-light fw-bold">
+              <td colspan="3" class="text-end">Итого до закрытия:</td>
+              <td class="text-center">22</td>
+              <td colspan="2"></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 </div>
