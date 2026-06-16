@@ -2,6 +2,7 @@
 # ║                         _updater.py                                     ║
 # ║  Скачивает обновления KITEZH с GitHub одним zip-архивом (1 API-запрос)   ║
 # ║  Режим --check: сравнивает SHA и выходит без скачивания                 ║
+# ║  Режим --force: перезаписывает ВСЕ файлы, игнорируя сравнение байт      ║
 # ║  Не трогает БД и файлы пользователя.                                    ║
 # ║  get_commits_between: список коммитов для панели обновлений              ║
 # ╚════════════════════════════════════════════════════════════════════════╝
@@ -265,12 +266,17 @@ def download_zip(zip_path: str):
     print(f"  Архив обновления скачан: {size_kb} КБ")
 
 
-def extract_and_apply(zip_path: str):
-    """Распаковывает архив, копирует только изменившиеся файлы."""
+def extract_and_apply(zip_path: str, force: bool = False):
+    """Распаковывает архив, копирует только изменившиеся файлы.
+    force=True — перезаписывает ВСЕ файлы (кроме защищённых), не сравнивая содержимое.
+    """
     updated     = 0
     unchanged   = 0
     skipped     = 0
     bat_updated = False
+
+    if force:
+        print("  [FORCE] Режим принудительного обновления — все файлы будут перезаписаны.")
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         print("  Распаковываем архив обновления...")
@@ -308,7 +314,8 @@ def extract_and_apply(zip_path: str):
                 if os.path.exists(dest):
                     old_content = open(dest, "rb").read()
 
-                if new_content == old_content:
+                # В обычном режиме пропускаем идентичные файлы
+                if not force and new_content == old_content:
                     print(f"  [--] {rel_path_fwd}")
                     unchanged += 1
                     continue
@@ -320,7 +327,8 @@ def extract_and_apply(zip_path: str):
                     bat_updated = True
                     print(f"  [OK] {rel_path_fwd} (ОБНОВЛЕН)")
                 else:
-                    print(f"  [OK] {rel_path_fwd}")
+                    label = "(FORCE)" if force and new_content == old_content else ""
+                    print(f"  [OK] {rel_path_fwd} {label}".rstrip())
 
     return updated, unchanged, skipped, bat_updated
 
@@ -416,6 +424,8 @@ def run_sync_changelog():
 
 
 def main():
+    force_mode = "--force" in sys.argv
+
     if "--check" in sys.argv:
         code = check_for_updates()
         sys.exit(code)
@@ -426,6 +436,8 @@ def main():
     else:
         print("  Токен не найден — лимит 60 запросов/час")
     print(f"  Активная ветка: {BRANCH}")
+    if force_mode:
+        print("  [FORCE] Принудительное обновление: все файлы будут перезаписаны.")
 
     remote_sha = get_remote_sha()
 
@@ -453,7 +465,7 @@ def main():
 
     apply_ok = False
     try:
-        updated, unchanged, skipped, bat_updated = extract_and_apply(zip_path)
+        updated, unchanged, skipped, bat_updated = extract_and_apply(zip_path, force=force_mode)
         apply_ok = True
     except Exception as e:
         print(f"  [ОШИБКА] Не удалось применить обновление: {e}")
@@ -477,7 +489,8 @@ def main():
     run_sync_changelog()
 
     print()
-    print(f"  Обновление завершено (ветка: {BRANCH}). База данных и файлы пользователей не тронуты.")
+    mode_label = " [FORCE]" if force_mode else ""
+    print(f"  Обновление завершено{mode_label} (ветка: {BRANCH}). База данных и файлы пользователей не тронуты.")
 
     if bat_updated:
         print()

@@ -7,6 +7,8 @@
 # ║           поллера всех страниц                               ║
 # ║  v1.1.1: pre-status добавляет fire_at_ts для точного      ║
 # ║           обратного отсчёта в баннере                        ║
+# ║  v1.2.0: /api/update/apply-force — принудительное обновление ║
+# ║           перезаписывает все файлы вне зависимости от SHA    ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, jsonify, request as flask_request, session
@@ -169,6 +171,61 @@ def api_update_apply():
     threading.Thread(target=_worker, daemon=True).start()
     return jsonify({'ok': True,
                     'message': 'Обновление запущено. Сервер перезапустится через ~10–30 сек.'})
+
+
+# ─── Принудительное обновление (force) ──────────────────────────────────────────
+# Перезаписывает ВСЕ файлы из GitHub, игнорируя сравнение байт и _last_commit.txt.
+# Используется когда локальные файлы расходятся с репозиторием без изменения SHA.
+
+@update_bp.route('/api/update/apply-force', methods=['POST'])
+def api_update_apply_force():
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'forbidden'}), 403
+
+    if os.path.exists(_LOCK_FILE):
+        return jsonify({'error': 'already_in_progress',
+                        'message': 'Обновление уже выполняется'}), 409
+
+    if not os.path.exists(_UPDATER):
+        return jsonify({'error': '_updater.py not found'}), 500
+
+    _clear_pre_update()
+
+    try:
+        open(_LOCK_FILE, 'w').close()
+    except Exception:
+        pass
+
+    conn = get_db()
+    log_action(conn, session['user_id'], 'update_apply_force',
+               detail='Запущено ПРИНУДИТЕЛЬНОЕ обновление KITEZH (--force): все файлы перезаписаны')
+    conn.commit()
+    conn.close()
+
+    def _worker():
+        try:
+            open(_MAINTENANCE_FLAG, 'w').close()
+        except Exception:
+            pass
+        try:
+            subprocess.run([sys.executable, _UPDATER, '--force'], timeout=300)
+        except Exception:
+            pass
+        finally:
+            for path in (_FLAG_FILE, _LOCK_FILE):
+                try:
+                    os.remove(path)
+                except Exception:
+                    pass
+        try:
+            open(_RESTART_FLAG, 'w').close()
+        except Exception:
+            pass
+        os._exit(42)
+
+    threading.Thread(target=_worker, daemon=True).start()
+    return jsonify({'ok': True,
+                    'message': 'Принудительное обновление запущено. Все файлы перезаписываются. Сервер перезапустится через ~10–30 сек.'})
 
 
 # ─── Статус текущего обновления ────────────────────────────────────────────────

@@ -149,6 +149,16 @@
     box-shadow: 0 0 0 2px currentColor;
     font-weight: 700;
   }
+
+  /* -- кнопка принудительного обновления -- */
+  #btnForceUpdate {
+    border-color: #dc3545;
+    color: #dc3545;
+  }
+  #btnForceUpdate:hover {
+    background: #dc3545;
+    color: #fff;
+  }
 </style>
 
 {# -- Карточка "О программе" -- #}
@@ -201,12 +211,16 @@
     </div>
 
     <div class="d-flex flex-column align-items-end gap-1 flex-shrink-0">
-      <div class="d-flex gap-2">
+      <div class="d-flex gap-2 flex-wrap justify-content-end">
         <button id="btnCheck" class="btn btn-sm btn-outline-secondary" onclick="updCheck(true)">
           <i class="bi bi-arrow-clockwise"></i> Проверить
         </button>
         <button id="btnUpdate" class="btn btn-sm btn-success d-none" onclick="updApply()">
           <i class="bi bi-cloud-arrow-down-fill"></i> Обновить сейчас
+        </button>
+        <button id="btnForceUpdate" class="btn btn-sm btn-outline-danger" onclick="updApplyForce()"
+                title="Принудительно перезаписать все файлы из GitHub, даже если SHA совпадает">
+          <i class="bi bi-arrow-repeat"></i> Принудительно
         </button>
       </div>
       <div id="nextCheckInfo" class="text-end">
@@ -450,6 +464,7 @@
   var _updStatus   = document.getElementById('updateStatus');
   var _btnUpdate   = document.getElementById('btnUpdate');
   var _btnCheck    = document.getElementById('btnCheck');
+  var _btnForce    = document.getElementById('btnForceUpdate');
   var _logWrap     = document.getElementById('updateLogWrap');
   var _logPre      = document.getElementById('updateLogPre');
   var _countdown   = document.getElementById('nextCheckCountdown');
@@ -621,23 +636,42 @@
       .finally(function() { _btnCheck.disabled = false; });
   }
 
-  // -- Применить обновление --
+  // -- Применить обновление (обычное) --
   function updApply() {
     if (!confirm(
       'Применить обновление?\n\nСервер автоматически перезапустится — пользователи получат кратковременный разрыв (~5-15 сек).'
     )) return;
+    _runUpdate('/api/update/apply', false);
+  }
 
+  // -- Принудительное обновление (force) --
+  function updApplyForce() {
+    if (!confirm(
+      '⚠️ ПРИНУДИТЕЛЬНОЕ обновление\n\n' +
+      'Все файлы системы будут перезаписаны из GitHub,\nдаже если SHA коммита совпадает.\n\n' +
+      'Используй когда локальные файлы расходятся с репозиторием.\n\n' +
+      'Сервер перезапустится автоматически. Продолжить?'
+    )) return;
+    _runUpdate('/api/update/apply-force', true);
+  }
+
+  // -- Общая логика запуска обновления --
+  function _runUpdate(url, isForce) {
     _btnUpdate.disabled = true;
     _btnCheck.disabled  = true;
-    _btnUpdate.innerHTML = '<span class="spin"><i class="bi bi-arrow-repeat"></i></span> Обновляем…';
+    _btnForce.disabled  = true;
+    _btnUpdate.innerHTML = isForce
+      ? '<span class="spin"><i class="bi bi-arrow-repeat"></i></span> Применяем…'
+      : '<span class="spin"><i class="bi bi-arrow-repeat"></i></span> Обновляем…';
     _commitsWrap.classList.add('d-none');
     sessionStorage.removeItem(_UPD_CACHE);
-    _updSetStatus(
-      '<span class="spin"><i class="bi bi-arrow-repeat"></i></span> Скачиваем и применяем обновление… Сервер скоро перезапустится.',
-      'progress'
-    );
 
-    fetch('/api/update/apply', {method: 'POST', credentials: 'same-origin'})
+    var statusMsg = isForce
+      ? '<span class="spin"><i class="bi bi-arrow-repeat"></i></span> Принудительное обновление: перезаписываем все файлы… Сервер скоро перезапустится.'
+      : '<span class="spin"><i class="bi bi-arrow-repeat"></i></span> Скачиваем и применяем обновление… Сервер скоро перезапустится.';
+    _updSetStatus(statusMsg, 'progress');
+
+    fetch(url, {method: 'POST', credentials: 'same-origin'})
       .then(function(r) { return r.json(); })
       .then(function(data) {
         if (data.ok) {
@@ -646,9 +680,9 @@
             'Обновление запущено. Сервер перезапускается, страница обновится автоматически…',
             'ok'
           );
-          var attempts   = 0;
+          var attempts    = 0;
           var maxAttempts = 30;
-          var pollTimer  = setInterval(function() {
+          var pollTimer   = setInterval(function() {
             attempts++;
             fetch('/ping', {cache: 'no-store', credentials: 'same-origin'})
               .then(function(r) {
@@ -670,6 +704,7 @@
               );
               _btnCheck.disabled  = false;
               _btnUpdate.disabled = false;
+              _btnForce.disabled  = false;
               _btnUpdate.innerHTML = '<i class="bi bi-cloud-arrow-down-fill"></i> Обновить сейчас';
             }
           }, 2000);
@@ -680,6 +715,7 @@
             'progress'
           );
           _btnCheck.disabled = false;
+          _btnForce.disabled = false;
         } else {
           _updSetStatus(
             '<i class="bi bi-x-circle-fill me-1 text-danger"></i>Ошибка: ' + (data.error || 'неизвестно'),
@@ -687,6 +723,7 @@
           );
           _btnCheck.disabled  = false;
           _btnUpdate.disabled = false;
+          _btnForce.disabled  = false;
           _btnUpdate.innerHTML = '<i class="bi bi-cloud-arrow-down-fill"></i> Обновить сейчас';
         }
       })
