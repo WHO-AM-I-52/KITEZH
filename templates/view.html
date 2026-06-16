@@ -43,17 +43,6 @@
         <i class="bi {{ 'bi-star-fill' if req['favorite_flag'] else 'bi-star' }}"></i>
       </button>
     </form>
-    {# ── КНОПКА «ДЛЯ ИИ» ── #}
-    <button type="button" class="btn btn-sm btn-outline-info" id="btnCopyForAI"
-            title="Скопировать все поля обращения текстом для отправки ИИ">
-      <i class="bi bi-clipboard-data me-1"></i>Для ИИ
-    </button>
-    {# ── КНОПКА «АНАЛИЗИРОВАТЬ» ── #}
-    <button type="button" class="btn btn-sm btn-info text-white" id="btnAnalyze"
-            title="Запустить ИИ-анализ: подобрать площадки под это обращение"
-            data-rid="{{ req.id }}">
-      <i class="bi bi-robot me-1"></i>Анализировать
-    </button>
   </div>
 </div>
 
@@ -793,33 +782,6 @@
   </div>
 </div>
 
-{# ══════════════════════════════════════════════════════════════════════════ #}
-{# МОДАЛЬНОЕ ОКНО: Результат ИИ-анализа                                      #}
-{# ══════════════════════════════════════════════════════════════════════════ #}
-<div class="modal fade" id="aiAnalyzeModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered modal-lg">
-    <div class="modal-content">
-      <div class="modal-header" style="background:var(--surface2,#f0f4f8)">
-        <h5 class="modal-title">
-          <i class="bi bi-robot me-2 text-info"></i>ИИ-анализ обращения
-        </h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <div id="aiAnalyzeSpinner" class="text-center py-4">
-          <div class="spinner-border text-info" role="status"></div>
-          <div class="mt-2 text-muted small">Модель думает… это может занять до 2 минут</div>
-        </div>
-        <div id="aiAnalyzeResult" style="display:none"></div>
-        <div id="aiAnalyzeError" class="alert alert-danger" style="display:none"></div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Закрыть</button>
-      </div>
-    </div>
-  </div>
-</div>
-
 {# ── JS ───────────────────────────────────────────────────────────────────── #}
 <script>
 const MAX_REVIEWERS = 5;
@@ -895,51 +857,5 @@ function validateReviewFiles(input) {
     err.style.display = 'none';
   }
 }
-
-// ── Кнопка «Для ИИ» ──
-document.getElementById('btnCopyForAI').addEventListener('click', function() {
-  const rows = document.querySelectorAll('table.table td:not(.text-muted)');
-  const labels = document.querySelectorAll('table.table td.text-muted');
-  let text = 'Обращение #{{ req.id }}{% if req.request_number %} ({{ req.request_number }}){% endif %}\n\n';
-  labels.forEach(function(lbl, i) {
-    const val = rows[i] ? rows[i].innerText.trim() : '';
-    if (val) text += lbl.innerText.trim() + ': ' + val + '\n';
-  });
-  navigator.clipboard.writeText(text).then(function() {
-    const btn = document.getElementById('btnCopyForAI');
-    btn.innerHTML = '<i class="bi bi-check2 me-1"></i>Скопировано!';
-    setTimeout(function() {
-      btn.innerHTML = '<i class="bi bi-clipboard-data me-1"></i>Для ИИ';
-    }, 2000);
-  });
-});
-
-// ── Кнопка «Анализировать» ──
-document.getElementById('btnAnalyze').addEventListener('click', function() {
-  const rid = this.dataset.rid;
-  const modal = new bootstrap.Modal(document.getElementById('aiAnalyzeModal'));
-  document.getElementById('aiAnalyzeSpinner').style.display = 'block';
-  document.getElementById('aiAnalyzeResult').style.display  = 'none';
-  document.getElementById('aiAnalyzeError').style.display   = 'none';
-  modal.show();
-  fetch('/api/analyze/' + rid, {method: 'POST'})
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      document.getElementById('aiAnalyzeSpinner').style.display = 'none';
-      if (data.error) {
-        document.getElementById('aiAnalyzeError').textContent = data.error;
-        document.getElementById('aiAnalyzeError').style.display = 'block';
-      } else {
-        const resultEl = document.getElementById('aiAnalyzeResult');
-        resultEl.innerHTML = data.html || ('<pre>' + (data.text || JSON.stringify(data)) + '</pre>');
-        resultEl.style.display = 'block';
-      }
-    })
-    .catch(function(err) {
-      document.getElementById('aiAnalyzeSpinner').style.display = 'none';
-      document.getElementById('aiAnalyzeError').textContent = 'Ошибка запроса: ' + err;
-      document.getElementById('aiAnalyzeError').style.display = 'block';
-    });
-});
 </script>
 {% endblock %}
