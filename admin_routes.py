@@ -8,6 +8,8 @@
 # ║  v3.3: fix _IMPORT_NAME — убран дубль Pillow, добавлен pystray ║
 # ║  v3.4: fix impersonate — загрузка perm_* цели; rm manager;    ║
 # ║         ADMIN_PERMISSIONS вместо инлайн dict comprehension    ║
+# ║  v3.5: audit — log_action('perm_change') в edit_permissions;  ║
+# ║         get_perm_audit() передаётся в users.html              ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify
@@ -22,7 +24,7 @@ from auth_utils import (
     login_required, admin_required, hash_pw,
     ALL_PERMISSIONS, ADMIN_PERMISSIONS, load_permissions_to_session,
 )
-from activity_log import get_activity_log, ACTION_LABELS
+from activity_log import get_activity_log, get_perm_audit, ACTION_LABELS, log_action
 
 admin_bp = Blueprint('admin', __name__)
 
@@ -491,20 +493,49 @@ def manage_users():
             elif action == 'edit_permissions':
                 uid = request.form.get('user_id')
                 ro  = request.form.get('role', 'employee')
-                perms = {k: (1 if request.form.get(k) else 0) for k in ALL_PERMISSIONS}
+
+                # Читаем текущие права ДО изменения — для формирования diff
+                old = conn.execute(
+                    f"SELECT role, {','.join(ALL_PERMISSIONS)} FROM users WHERE id=?", (uid,)
+                ).fetchone()
+
+                new_perms = {k: (1 if request.form.get(k) else 0) for k in ALL_PERMISSIONS}
                 if ro == 'admin':
-                    perms = ADMIN_PERMISSIONS.copy()
+                    new_perms = ADMIN_PERMISSIONS.copy()
+
                 sets = ', '.join([f"{k}=?" for k in ALL_PERMISSIONS])
                 conn.execute(
                     f"UPDATE users SET role=?, {sets} WHERE id=?",
-                    [ro] + [perms[k] for k in ALL_PERMISSIONS] + [uid]
+                    [ro] + [new_perms[k] for k in ALL_PERMISSIONS] + [uid]
                 )
                 conn.commit()
+
+                # Уведомление пользователю
                 conn.execute(
                     "INSERT INTO notifications (user_id, message) VALUES (?, ?)",
                     (uid, '🔐 Ваши права доступа были изменены администратором')
                 )
                 conn.commit()
+
+                # Аудит: формируем строку изменений «было → стало»
+                target_row = conn.execute(
+                    "SELECT full_name FROM users WHERE id=?", (uid,)
+                ).fetchone()
+                target_name = target_row['full_name'] if target_row else f'id={uid}'
+
+                diff_parts = []
+                if old['role'] != ro:
+                    diff_parts.append(f"роль: {old['role']}→{ro}")
+                for k in ALL_PERMISSIONS:
+                    was = int(old[k] or 0)
+                    now = new_perms[k]
+                    if was != now:
+                        diff_parts.append(f"{'+ ' if now else '- '}{k}")
+
+                detail = f"[{target_name}] " + ('; '.join(diff_parts) if diff_parts else 'без изменений')
+                log_action(conn, session['user_id'], 'perm_change', detail=detail)
+                conn.commit()
+
                 flash('Права обновлены', 'success')
 
             elif action == 'delete':
@@ -547,11 +578,14 @@ def manage_users():
             date_from=af_date or None,
         )
 
+        perm_audit = get_perm_audit(limit=200)
+
         return render_template(
             'users.html',
             users=users,
             login_log=login_log,
             activity=activity,
+            perm_audit=perm_audit,
             action_labels=ACTION_LABELS,
             af_user=af_user,
             af_action=af_action,

@@ -3,16 +3,11 @@
 
 {# ╔══════════════════════════════════════════════════════════════╗ #}
 {# ║                       users.html                            ║ #}
-{# ║  Управление пользователями:                                 ║ #}
-{# ║  - Форма добавления нового пользователя                     ║ #}
-{# ║  - Список пользователей с правами                           ║ #}
-{# ║  - Модалки: редактирование прав, смена пароля               ║ #}
-{# ║  - Журнал входов                                            ║ #}
-{# ║  - Журнал действий пользователей (v2.0) с фильтрами (v2.0.1)║ #}
 {# ║  v2.4: +can_view_investmap                                   ║ #}
 {# ║  v2.5: dark-theme — убраны инлайн bg:#f8f9fa → CSS-класс    ║ #}
-{# ║  v2.6: dark/zone — form-switch чекбоксы — повышенная           ║ #}
-{#         специфичность против Bootstrap                     ║ #}
+{# ║  v2.6: dark/zone — form-switch чекбоксы                     ║ #}
+{# ║  v2.7: 3-я вкладка «Изменения прав» (perm_audit)            ║ #}
+{#         JS PRESETS синхронизированы с ROLE_PERMISSION_PRESETS  ║ #}
 {# ╚══════════════════════════════════════════════════════════════╝ #}
 
 <style>
@@ -45,13 +40,10 @@
   }
 
   /* ────────────────────────────────────────────────────────────────────────────────────────── */
-  /* form-switch: Bootstrap 5 рисует трек через background-image c белым SVG-кружком.  */
-  /* Нужно переопределить background-color с более высокой специфичностью.          */
   body[data-theme="dark"]  .form-check.form-switch .form-check-input,
   body[data-theme="zone"]  .form-check.form-switch .form-check-input {
     background-color: var(--input-bg) !important;
     border-color:     var(--input-border) !important;
-    /* кружок рисуется через background-image: оставляем серого */
     background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='%23adb5bd'/%3e%3c/svg%3e") !important;
   }
   body[data-theme="dark"]  .form-check.form-switch .form-check-input:checked,
@@ -60,8 +52,6 @@
     border-color:     var(--accent) !important;
     background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='%23fff'/%3e%3c/svg%3e") !important;
   }
-
-  /* То же для обычных чекбоксов (type=checkbox без form-switch) */
   body[data-theme="dark"]  .form-check-input:not(.form-check-input[type="radio"]):not([role="switch"]),
   body[data-theme="zone"]  .form-check-input:not(.form-check-input[type="radio"]):not([role="switch"]) {
     background-color: var(--input-bg) !important;
@@ -72,6 +62,12 @@
     background-color: var(--accent) !important;
     border-color:     var(--accent) !important;
   }
+
+  /* ── Аудит прав ── */
+  .audit-diff { font-family: monospace; font-size: 11px; line-height: 1.6; }
+  .audit-add  { color: #28a745; }
+  .audit-rem  { color: #dc3545; }
+  .audit-role { color: #6c757d; font-style: italic; }
 </style>
 
 <div class="d-flex align-items-center mb-3">
@@ -356,6 +352,14 @@
                     style="background:#ffc107;color:#000;font-size:10px"></span>
             </button>
           </li>
+          <li class="nav-item">
+            <button class="nav-link" id="tab-audit"
+                    data-bs-toggle="tab" data-bs-target="#pane-audit">
+              <i class="bi bi-shield-exclamation me-1"></i>Изменения прав
+              <span class="badge ms-1" id="badge-audit"
+                    style="background:#dc3545;color:#fff;font-size:10px"></span>
+            </button>
+          </li>
         </ul>
       </div>
 
@@ -505,6 +509,56 @@
           </div>
         </div>
 
+        {# ─── Изменения прав ─── #}
+        <div class="tab-pane fade" id="pane-audit">
+          <div class="table-responsive">
+            <table class="table table-sm mb-0" style="font-size:12px">
+              <thead class="table-light">
+                <tr>
+                  <th>Время</th>
+                  <th>Кто изменил</th>
+                  <th>Изменения</th>
+                </tr>
+              </thead>
+              <tbody>
+              {% for a in perm_audit %}
+              <tr>
+                <td class="text-muted" style="white-space:nowrap">{{ a.created_at }}</td>
+                <td>{{ a.actor_name or a.actor_username or '—' }}</td>
+                <td>
+                  {# detail формат: «[ФИО цели] роль: old→new; + can_delete; - can_export» #}
+                  {% if a.detail %}
+                    {% set parts = a.detail.split('; ') %}
+                    <div class="audit-diff">
+                    {% for part in parts %}
+                      {% if loop.first %}
+                        {# первая часть — имя цели #}
+                        <span class="fw-semibold">{{ part }}</span>
+                      {% elif part.startswith('+ ') %}
+                        <span class="audit-add">{{ part }}</span>
+                      {% elif part.startswith('- ') %}
+                        <span class="audit-rem">{{ part }}</span>
+                      {% else %}
+                        <span class="audit-role">{{ part }}</span>
+                      {% endif %}
+                      {% if not loop.last %}<br>{% endif %}
+                    {% endfor %}
+                    </div>
+                  {% else %}
+                    <span class="text-muted">—</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% else %}
+              <tr>
+                <td colspan="3" class="text-center text-muted py-3">Изменений прав не зафиксировано</td>
+              </tr>
+              {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
       </div>
     </div>
 
@@ -522,13 +576,14 @@ function genPw() {
 function genPassword()       { document.getElementById('newPwField').value = genPw(); }
 function genPasswordFor(fid) { document.getElementById(fid).value = genPw(); }
 
+// Синхронизировано с ROLE_PERMISSION_PRESETS в auth_utils.py
 var PRESETS = {
   employee: { can_create:1, can_edit_others:0, can_confirm:0, can_delete:0,
               can_rollback:0, can_export:1, can_classifiers:0, can_users:0,
-              can_view_all:1, can_view_investmap:0 },
+              can_view_all:0, can_view_investmap:1 },
   manager:  { can_create:1, can_edit_others:1, can_confirm:1, can_delete:0,
               can_rollback:0, can_export:1, can_classifiers:0, can_users:0,
-              can_view_all:1, can_view_investmap:0 },
+              can_view_all:1, can_view_investmap:1 },
   admin:    { can_create:1, can_edit_others:1, can_confirm:1, can_delete:1,
               can_rollback:1, can_export:1, can_classifiers:1, can_users:1,
               can_view_all:1, can_view_investmap:1 }
@@ -545,10 +600,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
   var loginRows    = document.querySelectorAll('#pane-login tbody tr').length;
   var activityRows = document.querySelectorAll('#pane-activity tbody tr').length;
+  var auditRows    = document.querySelectorAll('#pane-audit tbody tr').length;
   var bl = document.getElementById('badge-login');
   var ba = document.getElementById('badge-activity');
-  if (bl && loginRows > 0)    bl.textContent = loginRows;
-  if (ba && activityRows > 0) ba.textContent = activityRows;
+  var bau = document.getElementById('badge-audit');
+  if (bl  && loginRows > 0)    bl.textContent  = loginRows;
+  if (ba  && activityRows > 0) ba.textContent  = activityRows;
+  if (bau && auditRows > 0)    bau.textContent = auditRows;
 
   function setActive(btn) {
     document.querySelectorAll('.journal-tabs .nav-link').forEach(function (b) {

@@ -2,6 +2,7 @@
 # ║                     activity_log.py                          ║
 # ║  Журнал действий пользователей (создание, редактирование,    ║
 # ║  удаление, принятие, ответ, откат, выгрузки)                 ║
+# ║  v1.1: +perm_change — изменение прав пользователя            ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from datetime import datetime
@@ -22,14 +23,16 @@ ACTION_LABELS = {
     'export_report': 'Выгрузка отчёта Excel',
     'export_minek':  'Выгрузка МинЭК Excel',
     # ─ Issue #53: новая логика статусов
-    'register':       'Регистрация обращения (присвоен номер)',
-    'take_work':      'Исполнитель принял в работу',
-    'send_reviewer':  'Направлено на проверку',
-    'reviewer_ok':    'Проверяющий одобрил',
-    'reviewer_rej':   'Проверяющий отклонил',
-    'docs_sent':      'Документы отправлены заявителю',
-    'close':          'Обращение закрыто',
-    'admin_return':   'Админ вернул в черновик',
+    'register':      'Регистрация обращения (присвоен номер)',
+    'take_work':     'Исполнитель принял в работу',
+    'send_reviewer': 'Направлено на проверку',
+    'reviewer_ok':   'Проверяющий одобрил',
+    'reviewer_rej':  'Проверяющий отклонил',
+    'docs_sent':     'Документы отправлены заявителю',
+    'close':         'Обращение закрыто',
+    'admin_return':  'Админ вернул в черновик',
+    # ─ Аудит прав
+    'perm_change':   'Изменение прав пользователя',
 }
 
 
@@ -83,6 +86,27 @@ def get_activity_log(limit: int = 100, user_id: int = None,
         f"WHERE {' AND '.join(where)} "
         "ORDER BY al.id DESC LIMIT ?",
         params
+    ).fetchall()
+    conn.close()
+    return rows
+
+
+def get_perm_audit(limit: int = 200):
+    """
+    Возвращает только события изменения прав (action='perm_change').
+    detail содержит строку вида:
+      «[ФИО цели] роль: employee→admin; +can_delete; -can_export"
+    """
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT al.*, "
+        "       u_actor.full_name AS actor_name, "
+        "       u_actor.username  AS actor_username "
+        "FROM activity_log al "
+        "LEFT JOIN users u_actor ON al.user_id = u_actor.id "
+        "WHERE al.action = 'perm_change' "
+        "ORDER BY al.id DESC LIMIT ?",
+        (limit,)
     ).fetchall()
     conn.close()
     return rows
