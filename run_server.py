@@ -1,12 +1,17 @@
 # ╔══════════════════════════════════════════════════════════════╗
-# ║  run_server.py                                                ║
-# ║  Вспомогательный запуск Flask через subprocess.         ║
-# ║  Записывает PID дочернего процесса в _server.pid.       ║
-# ║  Ждёт завершения, затем возвращает:               ║
-# ║    sys.exit(42) — если _restart.flag существует         ║
-# ║    sys.exit(0)  — обычная остановка                      ║
-# ║  Батник читает код выхода и решает goto :start_server. ║
-# ║  Если KITEZH_TRAY=1 — запускает иконку в системном трее.  ║
+# ║  run_server.py                                               ║
+# ║  Вспомогательный запуск Flask через subprocess.              ║
+# ║  Записывает PID дочернего процесса в _server.pid.            ║
+# ║  Ждёт завершения, затем возвращает:                          ║
+# ║    sys.exit(42) — если _restart.flag существует              ║
+# ║    sys.exit(0)  — обычная остановка                          ║
+# ║  Батник читает код выхода и решает goto :start_server.       ║
+# ║  Если KITEZH_TRAY=1 — запускает иконку в системном трее.    ║
+# ║                                                              ║
+# ║  FIX: при авторестарте после обновления (os._exit(42))       ║
+# ║  батник делает goto :start_server без диалога режима,        ║
+# ║  поэтому KITEZH_TRAY сохраняется из предыдущего запуска.    ║
+# ║  Чтобы трей не дублировался — проверяем _tray_running.lock.  ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 import os
@@ -14,24 +19,44 @@ import sys
 import subprocess
 import signal
 
-BASE_DIR     = os.path.dirname(os.path.abspath(__file__))
-PID_FILE     = os.path.join(BASE_DIR, '_server.pid')
-RESTART_FLAG = os.path.join(BASE_DIR, '_restart.flag')
+BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
+PID_FILE      = os.path.join(BASE_DIR, '_server.pid')
+RESTART_FLAG  = os.path.join(BASE_DIR, '_restart.flag')
+TRAY_LOCK     = os.path.join(BASE_DIR, '_tray_running.lock')
 
 PYTHON = sys.executable
 app_py = os.path.join(BASE_DIR, 'app.py')
 
-# ─── TRAY ────────────────────────────────────────────────────────────────────────────
+# ─── TRAY ─────────────────────────────────────────────────────────────────────
 TRAY_MODE = os.environ.get('KITEZH_TRAY', '0') == '1'
 
-if TRAY_MODE:
+# Запускаем трей только если:
+#   1. Выбран tray-режим (KITEZH_TRAY=1)
+#   2. Трей ещё не запущен в этом процессе (нет _tray_running.lock)
+# Это защищает от двойной иконки при авторестарте после обновления,
+# т.к. батник делает goto :start_server снова вызывая run_server.py
+# с теми же переменными окружения.
+
+_tray_started = False
+
+if TRAY_MODE and not os.path.exists(TRAY_LOCK):
     try:
         from tray import start_tray_thread
         start_tray_thread(hide_on_start=True)
+        _tray_started = True
+        # Создаём лок — следующий run_server.py в том же сеансе батника
+        # увидит его и пропустит повторный старт трея
+        try:
+            with open(TRAY_LOCK, 'w') as _f:
+                _f.write(str(os.getpid()))
+        except Exception:
+            pass
         print("  Трей-режим: иконка KITEZH появится в системном трее")
     except ImportError as e:
         print(f"  [ПРЕДУПРЕЖДЕНИЕ] Трей недоступен: {e}")
         print("  Запуск в обычном режиме...")
+elif TRAY_MODE and os.path.exists(TRAY_LOCK):
+    print("  Трей-режим: иконка уже запущена (авторестарт), повторный запуск пропущен.")
 
 # ─── ЗАПУСК Flask ─────────────────────────────────────────────────────────────
 creation_flags = 0
@@ -52,7 +77,7 @@ except Exception:
 
 
 def _relay_signal(signum, frame):
-    """Стражем Ctrl+C/SIGTERM в Flask-процесс."""
+    """Передаём Ctrl+C/SIGTERM в Flask-процесс."""
     try:
         if sys.platform == 'win32':
             proc.send_signal(signal.CTRL_BREAK_EVENT)
@@ -77,6 +102,14 @@ try:
     os.remove(PID_FILE)
 except Exception:
     pass
+
+# При завершении сессии (не рестарт) — чистим лок трея,
+# чтобы следующий ручной запуск батника снова показал иконку.
+if not os.path.exists(RESTART_FLAG):
+    try:
+        os.remove(TRAY_LOCK)
+    except Exception:
+        pass
 
 if os.path.exists(RESTART_FLAG):
     try:
