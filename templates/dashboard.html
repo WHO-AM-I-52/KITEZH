@@ -129,7 +129,10 @@
         <span class="badge bg-secondary" style="font-size:10px">за период: {{ pl }}</span>
       </div>
       {% if dash.emp_chart.labels %}
-      <canvas id="chartEmp" height="140"></canvas>
+      {# Высота вычисляется в JS: 30px * кол-во сотрудников, мин 120px #}
+      <div style="position:relative">
+        <canvas id="chartEmp"></canvas>
+      </div>
       {% else %}
       <p class="text-muted text-center small mt-3">Нет данных</p>
       {% endif %}
@@ -143,12 +146,15 @@
     <div class="card p-3">
       <div class="d-flex justify-content-between align-items-center mb-1">
         <p class="mb-0 fw-bold" style="font-size:12px;color:#1B5E7B">
-          <i class="bi bi-geo-alt me-1"></i>По районам (топ-12)
+          <i class="bi bi-geo-alt me-1"></i>По районам
         </p>
         <span class="badge bg-secondary" style="font-size:10px">за период: {{ pl }}</span>
       </div>
       {% if dash.dist_chart.labels %}
-      <canvas id="chartDist" height="80"></canvas>
+      {# Высота вычисляется в JS: 28px * кол-во районов, мин 80px #}
+      <div style="position:relative">
+        <canvas id="chartDist"></canvas>
+      </div>
       {% else %}
       <p class="text-muted text-center small mt-3">Нет данных — заполните поле «Районы» в обращениях</p>
       {% endif %}
@@ -245,19 +251,27 @@ if(document.getElementById('chartSource') && sourceData.labels.length){
 }
 
 if(document.getElementById('chartEmp') && empData.labels.length){
+  var empH = Math.max(120, empData.labels.length * 30);
+  document.getElementById('chartEmp').style.height = empH + 'px';
   new Chart(document.getElementById('chartEmp'),{
     type:'bar',
     data:{labels:empData.labels,datasets:[{data:empData.values,
       backgroundColor:empData.labels.map((_,i)=>COLORS[i%COLORS.length]),borderRadius:4}]},
-    options:{indexAxis:'y',plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.raw+' обр.'}}},scales:{x:{beginAtZero:true,ticks:{stepSize:1}}},responsive:true,maintainAspectRatio:true}
+    options:{indexAxis:'y',plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.raw+' обр.'}}},
+      scales:{x:{beginAtZero:true,ticks:{stepSize:1}}},
+      responsive:true,maintainAspectRatio:false}
   });
 }
 
 if(document.getElementById('chartDist') && distData.labels.length){
+  var distH = Math.max(80, distData.labels.length * 28);
+  document.getElementById('chartDist').style.height = distH + 'px';
   new Chart(document.getElementById('chartDist'),{
     type:'bar',
     data:{labels:distData.labels,datasets:[{data:distData.values,backgroundColor:'#1B5E7B',borderRadius:4}]},
-    options:{indexAxis:'y',plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.raw+' обр.'}}},scales:{x:{beginAtZero:true,ticks:{stepSize:1}}},responsive:true,maintainAspectRatio:true}
+    options:{indexAxis:'y',plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.raw+' обр.'}}},
+      scales:{x:{beginAtZero:true,ticks:{stepSize:1}}},
+      responsive:true,maintainAspectRatio:false}
   });
 }
 
