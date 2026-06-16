@@ -159,7 +159,69 @@
     background: #dc3545;
     color: #fff;
   }
+
+  /* -- баннер ошибки скачивания -- */
+  #dlErrorBanner {
+    border-left: 4px solid #dc3545;
+    background: #fff5f5;
+    border-radius: 6px;
+    padding: 10px 14px;
+    font-size: 12px;
+    color: #842029;
+    margin-top: 10px;
+  }
+  #dlErrorPre {
+    font-size: 11px;
+    background: #f8d7da;
+    border-radius: 4px;
+    padding: 6px 8px;
+    margin-top: 6px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 100px;
+    overflow-y: auto;
+  }
+  body[data-theme="dark"] #dlErrorBanner { background:#2a1a1e; color:#f1aeb5; }
+  body[data-theme="dark"] #dlErrorPre    { background:#3a1520; color:#f1aeb5; }
 </style>
+
+{# -- Модалка выбора задержки -- #}
+{% if session.get('role') == 'admin' %}
+<div class="modal fade" id="scheduleModal" tabindex="-1" aria-labelledby="scheduleModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title" id="scheduleModalLabel">
+          <i class="bi bi-clock me-1"></i> Запланировать обновление
+        </h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label for="scheduleDelay" class="form-label" style="font-size:13px">
+            Задержка <span class="text-muted">(секунды после скачивания)</span>
+          </label>
+          <input type="number" id="scheduleDelay" class="form-control form-control-sm"
+                 min="1" max="3600" value="120">
+          <div class="form-text">1 = немедленно после загрузки архива</div>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" id="scheduleForce">
+          <label class="form-check-label" style="font-size:13px" for="scheduleForce">
+            Принудительно (перезаписать все файлы)
+          </label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Отмена</button>
+        <button type="button" class="btn btn-sm btn-primary" id="btnScheduleConfirm" onclick="_scheduleConfirm()">
+          <i class="bi bi-cloud-arrow-down-fill me-1"></i> Запустить
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
 
 {# -- Карточка "О программе" -- #}
 <div class="card mb-4 p-3" style="border-left:4px solid #1B5E7B">
@@ -207,6 +269,14 @@
           <i class="bi bi-git me-1"></i>Что изменилось:
         </div>
         <ul id="commitsList"></ul>
+      </div>
+
+      {# баннер ошибки скачивания -- появляется при phase=download_failed #}
+      <div id="dlErrorBanner" class="d-none">
+        <i class="bi bi-exclamation-triangle-fill me-1"></i>
+        <strong>Не удалось скачать архив обновления.</strong>
+        Баннер для пользователей <strong>не был показан</strong>.
+        <pre id="dlErrorPre"></pre>
       </div>
     </div>
 
@@ -470,6 +540,8 @@
   var _countdown   = document.getElementById('nextCheckCountdown');
   var _commitsWrap = document.getElementById('commitsWrap');
   var _commitsList = document.getElementById('commitsList');
+  var _dlErrorBanner = document.getElementById('dlErrorBanner');
+  var _dlErrorPre    = document.getElementById('dlErrorPre');
   var _UPD_CACHE   = 'sonar_upd_status';
 
   var _mntPanel  = document.getElementById('maintenancePanel');
@@ -481,6 +553,13 @@
   var _trayStatus      = document.getElementById('trayStatus');
   var _btnTrayCritical = document.getElementById('btnTrayCritical');
   var _btnTrayExtended = document.getElementById('btnTrayExtended');
+
+  // -- модалка --
+  var _scheduleModal  = new bootstrap.Modal(document.getElementById('scheduleModal'));
+  var _scheduleForce  = false;  // запомним откуда открыли модалку
+
+  // -- поллинг pre-status --
+  var _preStatusTimer = null;
 
   // -- Расписание автопроверок: 12:00 и 17:00 --
   var AUTO_CHECK_HOURS = [12, 17];
@@ -526,7 +605,14 @@
   _tickCountdown();
   setInterval(_tickCountdown, 1000);
 
-  // -- Отрисовка панели статуса --
+  // ── Вспомогательные ──────────────────────────────────────────────────────
+
+  function _esc(s) {
+    return String(s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
   function _updSetStatus(html, type) {
     _updStatus.innerHTML = html;
     _updPanel.className = _updPanel.className
@@ -541,6 +627,16 @@
     if (!text) return;
     _logPre.textContent = text;
     _logWrap.classList.remove('d-none');
+  }
+
+  function _showDlError(msg) {
+    _dlErrorPre.textContent = msg || '';
+    _dlErrorBanner.classList.remove('d-none');
+  }
+
+  function _hideDlError() {
+    _dlErrorBanner.classList.add('d-none');
+    _dlErrorPre.textContent = '';
   }
 
   // -- Отрисовка списка коммитов --
@@ -561,13 +657,191 @@
     _commitsWrap.classList.remove('d-none');
   }
 
-  function _esc(s) {
-    return String(s)
-      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
-      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  // ── Поллинг pre-status (фазы обновления) ─────────────────────────────────
+
+  function _startPreStatusPoll() {
+    if (_preStatusTimer) return;
+    _preStatusTimer = setInterval(_pollPreStatus, 3000);
+    _pollPreStatus();
   }
 
-  // -- Основной обработчик ответа /api/update/check --
+  function _stopPreStatusPoll() {
+    if (_preStatusTimer) {
+      clearInterval(_preStatusTimer);
+      _preStatusTimer = null;
+    }
+  }
+
+  function _pollPreStatus() {
+    fetch('/api/update/pre-status', {credentials: 'same-origin', cache: 'no-store'})
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (!d.scheduled) {
+          _stopPreStatusPoll();
+          return;
+        }
+        var phase = d.phase || 'scheduled';
+
+        if (phase === 'downloading') {
+          _updSetStatus(
+            '<span class="spin"><i class="bi bi-arrow-repeat"></i></span>' +
+            ' <strong>Скачиваем архив обновления…</strong>' +
+            ' <span class="text-muted" style="font-size:11px">баннер появится после загрузки</span>',
+            'progress'
+          );
+          _hideDlError();
+
+        } else if (phase === 'scheduled') {
+          var sl = d.seconds_left || 0;
+          _updSetStatus(
+            '<i class="bi bi-clock-fill me-1" style="color:#ffc107"></i>' +
+            ' <strong>Обновление через ' + sl + ' сек</strong>' +
+            ' — пользователи видят баннер',
+            'progress'
+          );
+          _hideDlError();
+
+        } else if (phase === 'applying') {
+          _updSetStatus(
+            '<span class="spin"><i class="bi bi-arrow-repeat"></i></span>' +
+            ' <strong>Применяем обновление…</strong> Сервер скоро перезапустится.',
+            'progress'
+          );
+          _hideDlError();
+          // ждём перезапуска
+          _stopPreStatusPoll();
+          _pollRestart();
+
+        } else if (phase === 'download_failed') {
+          _updSetStatus(
+            '<i class="bi bi-x-circle-fill me-1 text-danger"></i>' +
+            ' <strong class="text-danger">Ошибка скачивания</strong>' +
+            ' — баннер для пользователей <strong>не показан</strong>',
+            'error'
+          );
+          _showDlError(d.download_error || 'нет деталей');
+          _stopPreStatusPoll();
+          _setBtnsEnabled(true);
+        }
+      })
+      .catch(function() { /* сервер перезапускается — ждём */ });
+  }
+
+  // ── Ожидание перезапуска сервера ─────────────────────────────────────────
+
+  function _pollRestart() {
+    var attempts  = 0;
+    var maxAttempts = 40;
+    var t = setInterval(function() {
+      attempts++;
+      fetch('/ping', {cache: 'no-store', credentials: 'same-origin'})
+        .then(function(r) {
+          if (r.ok) {
+            clearInterval(t);
+            _updSetStatus(
+              '<i class="bi bi-check-circle-fill me-1 text-success"></i>Обновление завершено! Перезагрузка…',
+              'ok'
+            );
+            setTimeout(function() { location.reload(); }, 800);
+          }
+        })
+        .catch(function() {});
+      if (attempts >= maxAttempts) {
+        clearInterval(t);
+        _updSetStatus(
+          '<i class="bi bi-exclamation-triangle-fill me-1 text-warning"></i>' +
+          'Ожидание перезапуска истекло. Обновите страницу вручную.',
+          'error'
+        );
+        _setBtnsEnabled(true);
+      }
+    }, 2000);
+  }
+
+  // ── Кнопки ───────────────────────────────────────────────────────────────
+
+  function _setBtnsEnabled(on) {
+    _btnUpdate.disabled = !on;
+    _btnCheck.disabled  = !on;
+    _btnForce.disabled  = !on;
+    if (on) _btnUpdate.innerHTML = '<i class="bi bi-cloud-arrow-down-fill"></i> Обновить сейчас';
+  }
+
+  // -- Открываем модалку (обычное обновление) --
+  function updApply() {
+    _scheduleForce = false;
+    document.getElementById('scheduleForce').checked = false;
+    _scheduleModal.show();
+  }
+
+  // -- Открываем модалку (принудительное) --
+  function updApplyForce() {
+    _scheduleForce = true;
+    document.getElementById('scheduleForce').checked = true;
+    _scheduleModal.show();
+  }
+
+  // -- Подтверждение из модалки --
+  function _scheduleConfirm() {
+    var delay = parseInt(document.getElementById('scheduleDelay').value, 10);
+    var force = document.getElementById('scheduleForce').checked;
+    if (isNaN(delay) || delay < 1) delay = 1;
+    if (delay > 3600) delay = 3600;
+    _scheduleModal.hide();
+    _runSchedule(delay, force);
+  }
+
+  // -- Отправка запроса на сервер --
+  function _runSchedule(delay, force) {
+    _setBtnsEnabled(false);
+    _btnUpdate.innerHTML = '<span class="spin"><i class="bi bi-arrow-repeat"></i></span> Запускаем…';
+    _commitsWrap.classList.add('d-none');
+    _hideDlError();
+    sessionStorage.removeItem(_UPD_CACHE);
+
+    _updSetStatus(
+      '<span class="spin"><i class="bi bi-arrow-repeat"></i></span>' +
+      ' Скачиваем архив' + (force ? ' (принудительно)' : '') + '…',
+      'progress'
+    );
+
+    fetch('/api/update/schedule', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({delay: delay, force: force})
+    })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.ok) {
+          _startPreStatusPoll();
+        } else if (data.error === 'already_in_progress') {
+          _updSetStatus(
+            '<i class="bi bi-hourglass-split me-1 text-warning"></i>Обновление уже выполняется, подождите…',
+            'progress'
+          );
+          _setBtnsEnabled(true);
+        } else {
+          _updSetStatus(
+            '<i class="bi bi-x-circle-fill me-1 text-danger"></i>Ошибка: ' +
+            _esc(data.error || 'неизвестно'),
+            'error'
+          );
+          _setBtnsEnabled(true);
+        }
+      })
+      .catch(function() {
+        // сервер упал сразу — ждём перезапуска
+        _updSetStatus(
+          '<span class="spin"><i class="bi bi-arrow-repeat"></i></span> Сервер перезапускается…',
+          'progress'
+        );
+        _pollRestart();
+      });
+  }
+
+  // ── Проверка обновлений ───────────────────────────────────────────────────
+
   function _updRenderResult(data) {
     if (data.has_update) {
       _updSetStatus(
@@ -606,7 +880,6 @@
     if (data.output) _updShowLog(data.output);
   }
 
-  // -- Проверка обновлений --
   function updCheck(force) {
     if (force) sessionStorage.removeItem(_UPD_CACHE);
 
@@ -636,111 +909,8 @@
       .finally(function() { _btnCheck.disabled = false; });
   }
 
-  // -- Применить обновление (обычное) --
-  function updApply() {
-    if (!confirm(
-      'Применить обновление?\n\nСервер автоматически перезапустится — пользователи получат кратковременный разрыв (~5-15 сек).'
-    )) return;
-    _runUpdate('/api/update/apply', false);
-  }
+  // ── Технические работы ────────────────────────────────────────────────────
 
-  // -- Принудительное обновление (force) --
-  function updApplyForce() {
-    if (!confirm(
-      '⚠️ ПРИНУДИТЕЛЬНОЕ обновление\n\n' +
-      'Все файлы системы будут перезаписаны из GitHub,\nдаже если SHA коммита совпадает.\n\n' +
-      'Используй когда локальные файлы расходятся с репозиторием.\n\n' +
-      'Сервер перезапустится автоматически. Продолжить?'
-    )) return;
-    _runUpdate('/api/update/apply-force', true);
-  }
-
-  // -- Общая логика запуска обновления --
-  function _runUpdate(url, isForce) {
-    _btnUpdate.disabled = true;
-    _btnCheck.disabled  = true;
-    _btnForce.disabled  = true;
-    _btnUpdate.innerHTML = isForce
-      ? '<span class="spin"><i class="bi bi-arrow-repeat"></i></span> Применяем…'
-      : '<span class="spin"><i class="bi bi-arrow-repeat"></i></span> Обновляем…';
-    _commitsWrap.classList.add('d-none');
-    sessionStorage.removeItem(_UPD_CACHE);
-
-    var statusMsg = isForce
-      ? '<span class="spin"><i class="bi bi-arrow-repeat"></i></span> Принудительное обновление: перезаписываем все файлы… Сервер скоро перезапустится.'
-      : '<span class="spin"><i class="bi bi-arrow-repeat"></i></span> Скачиваем и применяем обновление… Сервер скоро перезапустится.';
-    _updSetStatus(statusMsg, 'progress');
-
-    fetch(url, {method: 'POST', credentials: 'same-origin'})
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        if (data.ok) {
-          _updSetStatus(
-            '<i class="bi bi-check-circle-fill me-1 text-success"></i>' +
-            'Обновление запущено. Сервер перезапускается, страница обновится автоматически…',
-            'ok'
-          );
-          var attempts    = 0;
-          var maxAttempts = 30;
-          var pollTimer   = setInterval(function() {
-            attempts++;
-            fetch('/ping', {cache: 'no-store', credentials: 'same-origin'})
-              .then(function(r) {
-                if (r.ok) {
-                  clearInterval(pollTimer);
-                  _updSetStatus(
-                    '<i class="bi bi-check-circle-fill me-1 text-success"></i>Обновление завершено! Перезагрузка…',
-                    'ok'
-                  );
-                  setTimeout(function() { location.reload(); }, 800);
-                }
-              })
-              .catch(function() {});
-            if (attempts >= maxAttempts) {
-              clearInterval(pollTimer);
-              _updSetStatus(
-                '<i class="bi bi-exclamation-triangle-fill me-1 text-warning"></i>Ожидание перезапуска истекло. Обновите страницу вручную.',
-                'error'
-              );
-              _btnCheck.disabled  = false;
-              _btnUpdate.disabled = false;
-              _btnForce.disabled  = false;
-              _btnUpdate.innerHTML = '<i class="bi bi-cloud-arrow-down-fill"></i> Обновить сейчас';
-            }
-          }, 2000);
-
-        } else if (data.error === 'already_in_progress') {
-          _updSetStatus(
-            '<i class="bi bi-hourglass-split me-1 text-warning"></i>Обновление уже выполняется, подождите…',
-            'progress'
-          );
-          _btnCheck.disabled = false;
-          _btnForce.disabled = false;
-        } else {
-          _updSetStatus(
-            '<i class="bi bi-x-circle-fill me-1 text-danger"></i>Ошибка: ' + (data.error || 'неизвестно'),
-            'error'
-          );
-          _btnCheck.disabled  = false;
-          _btnUpdate.disabled = false;
-          _btnForce.disabled  = false;
-          _btnUpdate.innerHTML = '<i class="bi bi-cloud-arrow-down-fill"></i> Обновить сейчас';
-        }
-      })
-      .catch(function() {
-        _updSetStatus(
-          '<span class="spin"><i class="bi bi-arrow-repeat"></i></span> Сервер перезапускается…',
-          'progress'
-        );
-        var t = setInterval(function() {
-          fetch('/ping', {cache: 'no-store', credentials: 'same-origin'})
-            .then(function(r) { if (r.ok) { clearInterval(t); location.reload(); } })
-            .catch(function() {});
-        }, 2000);
-      });
-  }
-
-  // -- Технические работы --
   function _mntRender(active) {
     _mntPanel.className = _mntPanel.className
       .replace(/\b(mnt-active|mnt-inactive)\b/g, '').trim();
@@ -786,12 +956,12 @@
   }
 
   // ── Уведомления трея ──────────────────────────────────────────────────────
+
   function _trayRender(level) {
     _trayPanel.className = _trayPanel.className
       .replace(/\b(tray-critical|tray-extended)\b/g, '').trim();
     _btnTrayCritical.classList.remove('tray-btn-active');
     _btnTrayExtended.classList.remove('tray-btn-active');
-
     if (level === 'extended') {
       _trayPanel.classList.add('tray-extended');
       _trayStatus.innerHTML =
@@ -838,9 +1008,21 @@
       });
   }
 
+  // ── Инициализация ─────────────────────────────────────────────────────────
   updCheck(false);
   mntCheck();
   trayCheck();
+
+  // Если на странице уже идёт процесс — подключаемся к поллингу
+  fetch('/api/update/pre-status', {credentials: 'same-origin', cache: 'no-store'})
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.scheduled) {
+        _setBtnsEnabled(false);
+        _startPreStatusPoll();
+      }
+    })
+    .catch(function() {});
 </script>
 {% endif %}
 
