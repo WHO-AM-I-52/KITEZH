@@ -1,10 +1,11 @@
-# ╔══════════════════════════════════════════════════════════════╗
+# ╔══════════════════════════════════════════════════════════════
 # ║                      form_utils.py                           ║
 # ║  Работа с формой обращения: поля, приведение типов,          ║
 # ║  классификаторы                                              ║
 # ║  v2.6: contact_position добавлен после contact_email         ║
 # ║  v2.7: add_workdays() — +N рабочих дней (сб/вс — выходные) ║
-# ╚══════════════════════════════════════════════════════════════╝
+# ║  v2.8: site_area_ha/site_build_area_m2 → _min/_max (багфикс)   ║
+# ╚══════════════════════════════════════════════════════════════
 
 from datetime import date, timedelta
 from validators import _int, _flt
@@ -27,7 +28,7 @@ def add_workdays(start: date, days: int) -> date:
     return current
 
 
-# ─── Issue #48: Коэффициенты перевода в базовые единицы ────────────────────
+# ─── Issue #48: Коэффициенты перевода в базовые единицы ──────────────────
 UNIT_FACTORS = {
     'elec_unit': {
         'кВт':  1.0,
@@ -84,6 +85,9 @@ def denormalize_from_base(value, unit_key, unit_value):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# ALL_FIELDS — порядок соответствует порядку колонок в INSERT/UPDATE
+# v2.8: site_area_ha       → site_area_ha_min + site_area_ha_max
+#        site_build_area_m2 → site_build_area_m2_min + site_build_area_m2_max
 ALL_FIELDS = [
     "request_date", "status", "consent_disclosure",
     "source_type",
@@ -96,8 +100,11 @@ ALL_FIELDS = [
     "investment_total", "investment_borrowed",
     "construction_stages", "construction_start", "operation_start",
     "product_nomenclature", "production_description", "object_composition",
-    "site_type_free", "site_type_existing", "site_area_ha", "site_area_expansion",
-    "site_build_area_m2", "site_right", "sanitary_zone_m", "hazard_class",
+    "site_type_free", "site_type_existing",
+    "site_area_ha_min", "site_area_ha_max",   # ← v2.8: было site_area_ha
+    "site_area_expansion",
+    "site_build_area_m2_min", "site_build_area_m2_max",  # ← v2.8: было site_build_area_m2
+    "site_right", "sanitary_zone_m", "hazard_class",
     "site_shape", "site_length_min", "site_width_min", "site_other",
     "water_household", "water_production", "sewage", "firefighting",
     "electricity_total", "electricity_cat1", "electricity_cat2", "electricity_cat3",
@@ -148,12 +155,15 @@ INT_F = {
 }
 
 FLOAT_F = {
-    "investment_total", "investment_borrowed", "site_area_ha", "site_build_area_m2",
-    "sanitary_zone_m", "site_length_min", "site_width_min", "water_household",
-    "water_production", "sewage", "firefighting", "electricity_total",
-    "electricity_cat1", "electricity_cat2", "electricity_cat3", "heat_gcal",
-    "gas_m3h", "gas_m3y", "heated_area", "road_federal_dist", "road_regional_dist",
-    "road_local_dist", "road_private_dist", "railway_dist", "railway_cargo", "distance_nn_max"
+    "investment_total", "investment_borrowed",
+    "site_area_ha_min", "site_area_ha_max",           # v2.8
+    "site_build_area_m2_min", "site_build_area_m2_max", # v2.8
+    "sanitary_zone_m", "site_length_min", "site_width_min",
+    "water_household", "water_production", "sewage", "firefighting",
+    "electricity_total", "electricity_cat1", "electricity_cat2", "electricity_cat3",
+    "heat_gcal", "gas_m3h", "gas_m3y", "heated_area",
+    "road_federal_dist", "road_regional_dist", "road_local_dist", "road_private_dist",
+    "railway_dist", "railway_cargo", "distance_nn_max"
 }
 
 REQUIRED_FIELDS = {
