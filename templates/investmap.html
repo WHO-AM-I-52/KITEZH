@@ -9,8 +9,35 @@
   <i class="bi bi-map fs-4" style="color:#1B5E7B"></i>
   <h5 class="mb-0 fw-bold">Инвестплощадки</h5>
 </div>
+
+{# ─── Вкладки ──────────────────────────────────────────────────── #}
+<ul class="nav nav-tabs mb-3" id="investmapTabs" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" id="tab-analysis-btn"
+            data-bs-toggle="tab" data-bs-target="#tab-analysis"
+            type="button" role="tab" aria-selected="true">
+      <i class="bi bi-bar-chart-line me-1"></i>Анализ заполняемости карточек
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link disabled" id="tab-map-btn"
+            type="button" role="tab" aria-selected="false"
+            title="Скоро">
+      <i class="bi bi-map me-1"></i>Карта площадок
+      <span class="badge bg-secondary ms-1" style="font-size:10px">скоро</span>
+    </button>
+  </li>
+</ul>
+
+<div class="tab-content" id="investmapTabContent">
+
+{# ══════════════════════════════════════════════════════════════════ #}
+{# Вкладка 1: Анализ заполняемости                                   #}
+{# ══════════════════════════════════════════════════════════════════ #}
+<div class="tab-pane fade show active" id="tab-analysis" role="tabpanel">
+
 <p class="text-muted" style="font-size:13px">
-  Загрузите выгрузку из ГИС НСИ (.xlsx) — конвертируйте в текст для ИИ или запустите
+  Загрузите выгрузку из ГИС ЭКОНОМИКА (.xlsx) — конвертируйте в текст для ИИ или запустите
   автоматический анализ заполняемости по методике Минэкономразвития.
 </p>
 
@@ -42,10 +69,14 @@
         </div>
 
         <div class="d-flex gap-2 mt-3">
-          <button class="btn btn-outline-primary flex-grow-1" id="convertBtn" disabled>
+          <button class="btn btn-outline-primary flex-grow-1" id="convertBtn" disabled
+                  data-bs-toggle="tooltip" data-bs-placement="bottom"
+                  title="Конвертировать площадку в структурированный текст для передачи в ChatGPT / Perplexity">
             <i class="bi bi-chat-text me-1"></i>Для ИИ
           </button>
-          <button class="btn btn-primary flex-grow-1" id="analyzeBtn" disabled>
+          <button class="btn btn-primary flex-grow-1" id="analyzeBtn" disabled
+                  data-bs-toggle="tooltip" data-bs-placement="bottom"
+                  title="Рассчитать заполняемость карточки по методике Минэкономразвития и выявить незаполненные поля">
             <i class="bi bi-bar-chart-line me-1"></i>Анализировать
           </button>
         </div>
@@ -241,16 +272,38 @@
       </div>
       <div class="col-12 col-md-4">
         <i class="bi bi-info-circle me-1 text-primary"></i>
-        <strong>Формат 3</strong>: выгрузка ГИС НСИ — 3 столбца, шапка на строке 2.
+        <strong>Формат 3</strong>: выгрузка ГИС ЭКОНОМИКА — 3 столбца, шапка на строке 2.
       </div>
     </div>
   </div>
 </div>
+
+</div>{# /tab-analysis #}
+
+{# ══════════════════════════════════════════════════════════════════ #}
+{# Вкладка 2: Карта площадок (заглушка)                              #}
+{# ══════════════════════════════════════════════════════════════════ #}
+<div class="tab-pane fade" id="tab-map" role="tabpanel">
+  <div class="card mt-2">
+    <div class="card-body text-center py-5" style="color:var(--text-muted)">
+      <i class="bi bi-map" style="font-size:3rem;opacity:.3"></i>
+      <div class="mt-3 fw-semibold" style="font-size:15px">Скоро</div>
+      <div class="mt-1" style="font-size:13px">Раздел находится в разработке</div>
+    </div>
+  </div>
+</div>
+
+</div>{# /tab-content #}
 {% endblock %}
 
 {% block scripts %}
 <script>
 (function(){
+
+  // Инициализация Bootstrap tooltips
+  document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function(el){
+    new bootstrap.Tooltip(el, {trigger: 'hover'});
+  });
 
   // ─── Элементы ─────────────────────────────────────────────────────────────────────
   var dropzone      = document.getElementById('dropzone');
