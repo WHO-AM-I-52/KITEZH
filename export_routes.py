@@ -1,6 +1,7 @@
 # ╔═════════════════════════════════════════════════════════════════════════════╗
 # ║                       export_routes.py                                       ║
 # ║  v3.7: алиасы /export/excel → report, /export/excel/upload → import_full    ║
+# ║  v3.8: site_area_ha/site_build_area_m2 → _min/_max (bagfix v2.8)            ║
 # ╚═════════════════════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, request, send_file, jsonify, session
@@ -21,7 +22,12 @@ report_bp = Blueprint('report', __name__)
 DATE_FIELDS = {'request_date', 'answer_date', 'feedback_date'}
 
 # Числовые поля — нормализуем через _parse_numeric_for_db
-NUMERIC_FIELDS = {'investment_total', 'jobs_total', 'site_area_ha', 'site_build_area_m2'}
+# v3.8: site_area_ha/site_build_area_m2 заменены на _min/_max
+NUMERIC_FIELDS = {
+    'investment_total', 'jobs_total',
+    'site_area_ha_min', 'site_area_ha_max',
+    'site_build_area_m2_min', 'site_build_area_m2_max',
+}
 
 # Обязательные поля для создания новой записи при импорте (3В-2)
 REQUIRED_FOR_CREATE = ('applicant_full_name', 'request_date')
@@ -142,7 +148,7 @@ def _parse_numeric_for_db(val, field: str) -> tuple:
     if isinstance(val, bool):
         return None, f'поле «{field}»: булево значение не является числом'
     if isinstance(val, (int, float)):
-        if field in ('jobs_total', 'site_build_area_m2'):
+        if field == 'jobs_total':
             return int(round(val)), None
         return val, None
     s = str(val).strip()
@@ -158,7 +164,7 @@ def _parse_numeric_for_db(val, field: str) -> tuple:
         return None, None
     try:
         num = float(s)
-        if field in ('jobs_total', 'site_build_area_m2'):
+        if field == 'jobs_total':
             return int(round(num)), None
         return num, None
     except ValueError:
@@ -255,14 +261,14 @@ def report():
         alt   = PatternFill("solid", fgColor="EAF4FB")
         br    = _std_border()
 
-        ws.merge_cells('A1:Q1')
+        ws.merge_cells('A1:R1')
         per = f" за период {_fmt_date(df)}–{_fmt_date(dt)}" if (df or dt) else ""
         ws['A1'].value     = f"Обращения на подбор земельных участков{per}"
         ws['A1'].font      = Font(bold=True, size=13, color="1B5E7B")
         ws['A1'].alignment = Alignment(horizontal='center')
         ws.row_dimensions[1].height = 26
 
-        ws.merge_cells('A2:Q2')
+        ws.merge_cells('A2:R2')
         ws['A2'].value = (
             f"Дата формирования: {datetime.now().strftime('%d.%m.%Y %H:%M')}  "
             f"Всего: {len(rows)}"
@@ -270,11 +276,13 @@ def report():
         ws['A2'].font      = Font(italic=True, size=9, color="888888")
         ws['A2'].alignment = Alignment(horizontal='center')
 
+        # v3.8: площадь разбита на min/max — добавлен столбец
         hdrs = [
             '№ обращения', 'Дата', 'Статус', 'Источник', 'Заявитель', 'Название проекта',
             'Контактное лицо', 'Телефон', 'E-mail', 'Инвестиции (млн)',
-            'Рабочих мест', 'Площадь (га)', 'Застройка (м²)', 'Право пользования',
-            'Районы', 'Ответственный', 'Дата ответа',
+            'Рабочих мест', 'Площадь от (га)', 'Площадь до (га)',
+            'Застройка от (м²)', 'Застройка до (м²)',
+            'Право пользования', 'Районы', 'Дата ответа',
         ]
         for ci, h in enumerate(hdrs, 1):
             c = ws.cell(row=3, column=ci, value=h)
@@ -296,11 +304,12 @@ def report():
                 r['contact_email'] or '—',
                 r['investment_total'],
                 r['jobs_total'],
-                r['site_area_ha'],
-                r['site_build_area_m2'],
+                r['site_area_ha_min'],        # v3.8
+                r['site_area_ha_max'],        # v3.8
+                r['site_build_area_m2_min'],  # v3.8
+                r['site_build_area_m2_max'],  # v3.8
                 r['site_right'] or '—',
                 r['preferred_districts'] or '—',
-                r['assigned_name'] or r['employee_name'] or '—',
                 _fmt_date(r['answer_date']),
             ]
             for ci, val in enumerate(vals, 1):
@@ -310,7 +319,7 @@ def report():
             ws.row_dimensions[ri].height = 16
 
         for ci, w in enumerate(
-            [16, 12, 20, 16, 28, 30, 20, 15, 24, 12, 10, 10, 12, 16, 24, 20, 12], 1
+            [16, 12, 20, 16, 28, 30, 20, 15, 24, 12, 10, 10, 10, 12, 12, 16, 24, 12], 1
         ):
             ws.column_dimensions[get_column_letter(ci)].width = w
         ws.freeze_panes = 'A4'
@@ -569,33 +578,37 @@ def export_full():
         hfont   = Font(bold=True, color="FFFFFF", size=10)
         br      = _std_border()
 
+        # v3.8: site_area_ha → site_area_ha_min + site_area_ha_max
+        #        site_build_area_m2 → site_build_area_m2_min + site_build_area_m2_max
         COLS = [
-            ('id',                   'ID (не менять)'),
-            ('request_number',       '№ обращения'),
-            ('request_date',         'Дата обращения'),
-            ('status',               'Статус'),
-            ('applicant_full_name',  'Полное наименование'),
-            ('applicant_short_name', 'Краткое наименование'),
-            ('applicant_inn',        'ИНН'),
-            ('project_name',         'Название проекта'),
-            ('contact_person',       'Контактное лицо'),
-            ('contact_phone',        'Телефон'),
-            ('contact_email',        'E-mail'),
-            ('investment_total',     'Инвестиции (млн руб.)'),
-            ('jobs_total',           'Рабочих мест'),
-            ('site_area_ha',         'Площадь (га)'),
-            ('site_build_area_m2',   'Застройка (м²)'),
-            ('preferred_districts',  'Районы'),
-            ('source_type',          'Источник'),
-            ('assigned_name',        'Ответственный'),
-            ('subject_type_name',    'Предмет обращения'),
-            ('feedback_date',        'Дата обратной связи'),
-            ('result_type_name',     'Итоги работы'),
-            ('incoming_number',      'Входящий номер'),
-            ('answer_date',          'Дата ответа'),
-            ('answer_method',        'Способ ответа'),
-            ('answer_notes',         'Примечания к ответу'),
-            ('additional_info',      'Доп. информация'),
+            ('id',                      'ID (не менять)'),
+            ('request_number',          '№ обращения'),
+            ('request_date',            'Дата обращения'),
+            ('status',                  'Статус'),
+            ('applicant_full_name',     'Полное наименование'),
+            ('applicant_short_name',    'Краткое наименование'),
+            ('applicant_inn',           'ИНН'),
+            ('project_name',            'Название проекта'),
+            ('contact_person',          'Контактное лицо'),
+            ('contact_phone',           'Телефон'),
+            ('contact_email',           'E-mail'),
+            ('investment_total',        'Инвестиции (млн руб.)'),
+            ('jobs_total',              'Рабочих мест'),
+            ('site_area_ha_min',        'Площадь от (га)'),
+            ('site_area_ha_max',        'Площадь до (га)'),
+            ('site_build_area_m2_min',  'Застройка от (м²)'),
+            ('site_build_area_m2_max',  'Застройка до (м²)'),
+            ('preferred_districts',     'Районы'),
+            ('source_type',             'Источник'),
+            ('assigned_name',           'Ответственный'),
+            ('subject_type_name',       'Предмет обращения'),
+            ('feedback_date',           'Дата обратной связи'),
+            ('result_type_name',        'Итоги работы'),
+            ('incoming_number',         'Входящий номер'),
+            ('answer_date',             'Дата ответа'),
+            ('answer_method',           'Способ ответа'),
+            ('answer_notes',            'Примечания к ответу'),
+            ('additional_info',         'Доп. информация'),
         ]
 
         for ci, (field, header) in enumerate(COLS, 1):
@@ -617,7 +630,7 @@ def export_full():
                 c.border = br
                 c.alignment = Alignment(vertical='center', wrap_text=(ci == len(COLS)))
 
-        col_widths = [8, 16, 14, 16, 35, 25, 14, 30, 22, 16, 24, 14, 12, 10, 12, 24, 16, 20, 22, 14, 28, 18, 14, 18, 28, 30]
+        col_widths = [8, 16, 14, 16, 35, 25, 14, 30, 22, 16, 24, 14, 12, 10, 10, 12, 12, 24, 16, 20, 22, 14, 28, 18, 14, 18, 28, 30]
         for ci, w in enumerate(col_widths[:len(COLS)], 1):
             ws.column_dimensions[get_column_letter(ci)].width = w
 
@@ -669,6 +682,7 @@ def import_full():
 
     headers = [str(c.value).strip() if c.value else '' for c in next(ws.iter_rows(min_row=1, max_row=1))]
 
+    # v3.8: заголовки Excel обновлены под _min/_max
     COL_MAP = {
         '№ обращения':          'request_number',
         'Дата обращения':        'request_date',
@@ -681,8 +695,10 @@ def import_full():
         'E-mail':                'contact_email',
         'Инвестиции (млн руб.)': 'investment_total',
         'Рабочих мест':          'jobs_total',
-        'Площадь (га)':          'site_area_ha',
-        'Застройка (м²)':        'site_build_area_m2',
+        'Площадь от (га)':       'site_area_ha_min',
+        'Площадь до (га)':       'site_area_ha_max',
+        'Застройка от (м²)':     'site_build_area_m2_min',
+        'Застройка до (м²)':     'site_build_area_m2_max',
         'Районы':                'preferred_districts',
         'Источник':              'source_type',
         'Дата обратной связи':   'feedback_date',
