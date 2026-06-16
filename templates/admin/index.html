@@ -64,5 +64,69 @@
     </a>
   </div>
 
+  {# ─── Консоль Windows ─── #}
+  <div class="col-md-4">
+    <div class="card h-100 p-3" style="border-left:4px solid #fd7e14">
+      <div class="d-flex align-items-center gap-3 mb-2">
+        <i class="bi bi-display" style="font-size:2rem;color:#fd7e14"></i>
+        <div>
+          <div class="fw-bold" style="color:#fd7e14">Консоль Windows</div>
+          <div class="text-muted" style="font-size:12px" id="console-status-text">Проверка...</div>
+        </div>
+      </div>
+      <div class="d-flex gap-2">
+        <button class="btn btn-sm btn-outline-success" id="btn-console-show" onclick="consoleAction('show')">
+          <i class="bi bi-eye"></i> Показать
+        </button>
+        <button class="btn btn-sm btn-outline-secondary" id="btn-console-hide" onclick="consoleAction('hide')">
+          <i class="bi bi-eye-slash"></i> Скрыть
+        </button>
+      </div>
+    </div>
+  </div>
+
 </div>
+
+<script>
+(function(){
+  function updateStatus(visible) {
+    var txt = document.getElementById('console-status-text');
+    var btnShow = document.getElementById('btn-console-show');
+    var btnHide = document.getElementById('btn-console-hide');
+    if (visible) {
+      txt.textContent = 'Сейчас: видима';
+      txt.style.color = '#198754';
+      btnShow.disabled = true;
+      btnHide.disabled = false;
+    } else {
+      txt.textContent = 'Сейчас: скрыта';
+      txt.style.color = '#6c757d';
+      btnShow.disabled = false;
+      btnHide.disabled = true;
+    }
+  }
+
+  // Получаем текущий статус при загрузке страницы
+  fetch('/api/console/status')
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (d.ok) updateStatus(d.visible);
+      else document.getElementById('console-status-text').textContent = 'Недоступно';
+    })
+    .catch(function(){ document.getElementById('console-status-text').textContent = 'Ошибка сети'; });
+
+  window.consoleAction = function(action) {
+    fetch('/api/console/' + action, {method: 'POST', headers: {'X-CSRFToken': window._csrf || ''}})
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if (d.ok) {
+          updateStatus(d.visible);
+        } else {
+          alert('Ошибка: ' + (d.error || 'неизвестная'));
+        }
+      })
+      .catch(function(){ alert('Ошибка сети'); });
+  };
+})();
+</script>
 {% endblock %}
