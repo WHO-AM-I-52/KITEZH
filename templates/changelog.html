@@ -554,9 +554,18 @@
   var _btnTrayCritical = document.getElementById('btnTrayCritical');
   var _btnTrayExtended = document.getElementById('btnTrayExtended');
 
-  // -- модалка --
-  var _scheduleModal  = new bootstrap.Modal(document.getElementById('scheduleModal'));
-  var _scheduleForce  = false;  // запомним откуда открыли модалку
+  // -- модалка: ленивая инициализация при первом открытии --
+  var _scheduleModalInstance = null;
+  var _scheduleForce = false;
+
+  function _getScheduleModal() {
+    if (!_scheduleModalInstance) {
+      _scheduleModalInstance = new bootstrap.Modal(
+        document.getElementById('scheduleModal')
+      );
+    }
+    return _scheduleModalInstance;
+  }
 
   // -- поллинг pre-status --
   var _preStatusTimer = null;
@@ -708,7 +717,6 @@
             'progress'
           );
           _hideDlError();
-          // ждём перезапуска
           _stopPreStatusPoll();
           _pollRestart();
 
@@ -771,14 +779,14 @@
   function updApply() {
     _scheduleForce = false;
     document.getElementById('scheduleForce').checked = false;
-    _scheduleModal.show();
+    _getScheduleModal().show();
   }
 
   // -- Открываем модалку (принудительное) --
   function updApplyForce() {
     _scheduleForce = true;
     document.getElementById('scheduleForce').checked = true;
-    _scheduleModal.show();
+    _getScheduleModal().show();
   }
 
   // -- Подтверждение из модалки --
@@ -787,7 +795,7 @@
     var force = document.getElementById('scheduleForce').checked;
     if (isNaN(delay) || delay < 1) delay = 1;
     if (delay > 3600) delay = 3600;
-    _scheduleModal.hide();
+    _getScheduleModal().hide();
     _runSchedule(delay, force);
   }
 
@@ -831,7 +839,6 @@
         }
       })
       .catch(function() {
-        // сервер упал сразу — ждём перезапуска
         _updSetStatus(
           '<span class="spin"><i class="bi bi-arrow-repeat"></i></span> Сервер перезапускается…',
           'progress'
