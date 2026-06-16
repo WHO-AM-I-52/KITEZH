@@ -88,6 +88,43 @@ CREATE TABLE IF NOT EXISTS result_types (
 """)
 
 
+def _migrate_districts_table(conn):
+    """Создаёт таблицу districts если отсутствует (нужна view_routes.py)."""
+    conn.executescript("""
+CREATE TABLE IF NOT EXISTS districts (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    name      TEXT NOT NULL UNIQUE,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    sort_order INTEGER DEFAULT 0
+);
+""")
+    # Наполнить из DISTRICTS_DEFAULT, если таблица пустая
+    if not conn.execute("SELECT id FROM districts LIMIT 1").fetchone():
+        for i, name in enumerate(DISTRICTS_DEFAULT):
+            conn.execute(
+                "INSERT OR IGNORE INTO districts (name, is_active, sort_order) VALUES (?,1,?)",
+                (name, i)
+            )
+
+
+def _migrate_review_chain_table(conn):
+    """Создаёт таблицу review_chain если отсутствует (нужна view_routes.py)."""
+    conn.executescript("""
+CREATE TABLE IF NOT EXISTS review_chain (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    request_id    INTEGER NOT NULL,
+    step_order    INTEGER NOT NULL DEFAULT 0,
+    user_id       INTEGER,
+    external_name TEXT,
+    decision      TEXT,
+    comment       TEXT,
+    decided_at    TEXT,
+    created_at    TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_rc_request ON review_chain(request_id);
+""")
+
+
 def init_db():
     conn = sqlite3.connect(DB_PATH, timeout=15)
     conn.row_factory = sqlite3.Row
@@ -228,6 +265,12 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         # ── subject_types / result_types ──────────────────────────────────────────
         _migrate_classifiers_tables(conn)
 
+        # ── districts ─────────────────────────────────────────────────────────────
+        _migrate_districts_table(conn)
+
+        # ── review_chain ──────────────────────────────────────────────────────────
+        _migrate_review_chain_table(conn)
+
         # ── Миграция requests ──────────────────────────────────────────────────
         cols = {r[1] for r in conn.execute("PRAGMA table_info(requests)").fetchall()}
         for col in ['source_type', 'request_files', 'edit_reason', 'updated_by']:
@@ -289,6 +332,12 @@ def migrate_db():
     try:
         # ── subject_types / result_types ──────────────────────────────────────────
         _migrate_classifiers_tables(conn)
+
+        # ── districts ─────────────────────────────────────────────────────────────
+        _migrate_districts_table(conn)
+
+        # ── review_chain ──────────────────────────────────────────────────────────
+        _migrate_review_chain_table(conn)
 
         # ── requests ───────────────────────────────────────────────────────────────────
         cols = {r[1] for r in conn.execute("PRAGMA table_info(requests)").fetchall()}

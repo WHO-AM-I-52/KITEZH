@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>500 — Внутренняя ошибка сервера</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #f7f6f2;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      color: #28251d;
+    }
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 4px 24px rgba(0,0,0,.08);
+      padding: 48px 56px;
+      max-width: 480px;
+      width: 90%;
+      text-align: center;
+    }
+    .code {
+      font-size: 5rem;
+      font-weight: 700;
+      color: #a12c7b;
+      line-height: 1;
+      margin-bottom: 12px;
+    }
+    h1 {
+      font-size: 1.35rem;
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+    p {
+      font-size: 0.95rem;
+      color: #7a7974;
+      line-height: 1.6;
+      margin-bottom: 32px;
+    }
+    .btn {
+      display: inline-block;
+      padding: 10px 28px;
+      background: #01696f;
+      color: #fff;
+      border-radius: 8px;
+      text-decoration: none;
+      font-size: 0.95rem;
+      font-weight: 500;
+      transition: background 180ms;
+    }
+    .btn:hover { background: #0c4e54; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="code">500</div>
+    <h1>Внутренняя ошибка сервера</h1>
+    <p>Что-то пошло не так при обработке запроса.<br>
+       Попробуйте обновить страницу или вернитесь на главную.</p>
+    <a href="/" class="btn">На главную</a>
+  </div>
+</body>
+</html>
