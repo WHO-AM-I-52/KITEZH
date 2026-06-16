@@ -7,6 +7,7 @@
 {# ║  v2.5: dark-theme — убраны инлайн bg:#f8f9fa → CSS-класс    ║ #}
 {# ║  v2.6: dark/zone — form-switch чекбоксы                     ║ #}
 {# ║  v2.7: 3-я вкладка «Изменения прав» (perm_audit)            ║ #}
+{# ║  v2.8: кнопка + модалка редактирования ФИО                  ║ #}
 {#         JS PRESETS синхронизированы с ROLE_PERMISSION_PRESETS  ║ #}
 {# ╚══════════════════════════════════════════════════════════════╝ #}
 
@@ -221,6 +222,11 @@
                       title="Редактировать права">
                 <i class="bi bi-shield-check"></i>
               </button>
+              <button class="btn btn-sm btn-outline-warning py-0 px-1 me-1"
+                      data-bs-toggle="modal" data-bs-target="#nameModal{{ u.id }}"
+                      title="Изменить ФИО">
+                <i class="bi bi-pencil"></i>
+              </button>
               <button class="btn btn-sm btn-outline-secondary py-0 px-1 me-1"
                       data-bs-toggle="modal" data-bs-target="#pwModal{{ u.id }}"
                       title="Сменить пароль">
@@ -283,6 +289,34 @@
                   <button type="button" class="btn btn-secondary btn-sm"
                           data-bs-dismiss="modal">Отмена</button>
                   <button type="submit" class="btn btn-primary btn-sm">
+                    <i class="bi bi-check-circle me-1"></i>Сохранить
+                  </button>
+                </div>
+              </form>
+            </div></div>
+          </div>
+
+          {# Модалка ФИО #}
+          <div class="modal fade" id="nameModal{{ u.id }}" tabindex="-1">
+            <div class="modal-dialog modal-sm"><div class="modal-content">
+              <form method="post" action="{{ url_for('admin.manage_users') }}">
+                <input type="hidden" name="action" value="edit_name">
+                <input type="hidden" name="user_id" value="{{ u.id }}">
+                <div class="modal-header">
+                  <h6 class="modal-title">
+                    <i class="bi bi-pencil me-1"></i>{{ u.full_name }}
+                  </h6>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                  <label class="form-label" style="font-size:12px">ФИО</label>
+                  <input type="text" name="full_name" class="form-control form-control-sm"
+                         value="{{ u.full_name }}" required>
+                </div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-secondary btn-sm"
+                          data-bs-dismiss="modal">Отмена</button>
+                  <button type="submit" class="btn btn-warning btn-sm">
                     <i class="bi bi-check-circle me-1"></i>Сохранить
                   </button>
                 </div>
