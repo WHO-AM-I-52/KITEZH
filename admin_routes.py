@@ -11,6 +11,8 @@
 # ║  v3.5: audit — log_action('perm_change') в edit_permissions;  ║
 # ║         get_perm_audit() передаётся в users.html              ║
 # ║  v3.6: action edit_name — редактирование ФИО пользователя     ║
+# ║  v3.7: /api/console/show|hide|status — управление         ║
+# ║         консолью через браузер (независимот от трея)    ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify
@@ -46,7 +48,7 @@ _IMPORT_NAME = {
 }
 
 
-# ─── /admin дашборд ────────────────────────────────────────────────────────────────────────────────
+# ─── /admin дашборд ──────────────────────────────────────────────────────────────────────────────────────
 @admin_bp.route('/admin')
 @login_required
 @admin_required
@@ -54,7 +56,7 @@ def admin_index():
     return render_template('admin/index.html')
 
 
-# ─── /admin/deps ────────────────────────────────────────────────────────────────────────────────
+# ─── /admin/deps ───────────────────────────────────────────────────────────────────────────────────
 @admin_bp.route('/admin/deps')
 @login_required
 @admin_required
@@ -62,7 +64,7 @@ def admin_deps():
     return render_template('admin/deps.html')
 
 
-# ─── /api/deps/check ────────────────────────────────────────────────────────────────────────────
+# ─── /api/deps/check ─────────────────────────────────────────────────────────────────────────────
 @admin_bp.route('/api/deps/check')
 @login_required
 @admin_required
@@ -112,7 +114,7 @@ def api_deps_check():
     return jsonify({'packages': packages, 'path': _REQUIREMENTS})
 
 
-# ─── /api/deps/install ───────────────────────────────────────────────────────────────────────────
+# ─── /api/deps/install ────────────────────────────────────────────────────────────────────────────
 @admin_bp.route('/api/deps/install', methods=['POST'])
 @login_required
 @admin_required
@@ -162,7 +164,7 @@ def api_deps_install():
         return jsonify({'ok': False, 'error': str(e)})
 
 
-# ─── Имперсонация ──────────────────────────────────────────────────────────────────────────────────
+# ─── Имперсонация ─────────────────────────────────────────────────────────────────────────────────────────
 @admin_bp.route('/impersonate/<int:uid>')
 @login_required
 @admin_required
@@ -218,7 +220,7 @@ def impersonate_stop():
     return redirect(url_for('requests.index'))
 
 
-# ─── Классификаторы ──────────────────────────────────────────────────────────────────────────────────
+# ─── Классификаторы ────────────────────────────────────────────────────────────────────────────────────────────
 @admin_bp.route('/admin/classifiers', methods=['GET', 'POST'])
 @login_required
 @admin_required
@@ -802,3 +804,48 @@ def apply_saved_filter(fid):
     qs = {k: v for k, v in p.items() if v}
     qs['active_filter'] = fid
     return redirect(url_for('requests.index') + '?' + urlencode(qs))
+
+
+# ─── /api/console ───────────────────────────────────────────────────────────────────────────────────────
+# Управление консолью через браузер — запасной выход при потере иконки трея.
+# Роуты: GET /api/console/status, POST /api/console/show, POST /api/console/hide
+# Безопасно: только для администраторов (@admin_required).
+# Windows only — на других OS возвращает ok=false без падения.
+
+@admin_bp.route('/api/console/status')
+@login_required
+@admin_required
+def api_console_status():
+    """GET — возвращает текущее состояние консоли."""
+    try:
+        from tray import get_console_visible
+        visible = get_console_visible()
+        return jsonify({'ok': True, 'visible': visible})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)})
+
+
+@admin_bp.route('/api/console/show', methods=['POST'])
+@login_required
+@admin_required
+def api_console_show():
+    """POST — показывает консоль."""
+    try:
+        from tray import show_console
+        ok = show_console()
+        return jsonify({'ok': ok, 'visible': True})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)})
+
+
+@admin_bp.route('/api/console/hide', methods=['POST'])
+@login_required
+@admin_required
+def api_console_hide():
+    """POST — скрывает консоль."""
+    try:
+        from tray import hide_console
+        ok = hide_console()
+        return jsonify({'ok': ok, 'visible': False})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)})
