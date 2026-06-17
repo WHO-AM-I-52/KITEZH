@@ -894,9 +894,9 @@
     }
     var total = (data.updated || 0) + (data.unchanged || 0) + (data.skipped || 0);
     if (total > 0) {
-      var pctUpd = Math.round((data.updated || 0) / total * 100);
+      var pctUpd  = Math.round((data.updated   || 0) / total * 100);
       var pctUnch = Math.round((data.unchanged || 0) / total * 100);
-      var pctSkip = Math.round((data.skipped || 0) / total * 100);
+      var pctSkip = Math.round((data.skipped   || 0) / total * 100);
       _sseDoneNote.textContent =
         'Всего файлов в архиве: ' + total +
         ' · обновлено ' + pctUpd + '%' +
@@ -959,16 +959,24 @@
       _sseApplyFiles.textContent = (d.current || 0) + ' / ' + (d.total || 0) + ' файлов';
     });
 
+    // ── FIX: обратный отсчёт delay между скачиванием и установкой ──
+    es.addEventListener('delay_tick', function(e) {
+      var d = JSON.parse(e.data);
+      _sseApplyFiles.textContent = 'ожидание установки… ' + (d.remaining || 0) + ' сек';
+    });
+
     es.addEventListener('done', function(e) {
       var d = JSON.parse(e.data);
+      // ── FIX: показываем баннер отчёта, даём 3 сек прочитать, потом рестарт ──
       _sseDone(d);
       _sseClose();
-      // После баннера ждём рестарта
-      _updSetStatus(
-        '<span class="spin"><i class="bi bi-arrow-repeat"></i></span> Перезапуск сервера…',
-        'progress'
-      );
-      _pollRestart();
+      setTimeout(function() {
+        _updSetStatus(
+          '<span class="spin"><i class="bi bi-arrow-repeat"></i></span> Перезапуск сервера…',
+          'progress'
+        );
+        _pollRestart();
+      }, 3000);
     });
 
     es.addEventListener('error', function(e) {
@@ -1012,7 +1020,8 @@
               '<i class="bi bi-check-circle-fill me-1 text-success"></i>Обновление завершено! Перезагрузка…',
               'ok'
             );
-            setTimeout(function() { location.reload(); }, 800);
+            // ── FIX: задержка 1.5с перед reload, чтобы статус был виден ──
+            setTimeout(function() { location.reload(); }, 1500);
           }
         })
         .catch(function() {});
