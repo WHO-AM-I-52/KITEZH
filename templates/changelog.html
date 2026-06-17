@@ -307,8 +307,8 @@
             Задержка <span class="text-muted">(секунды после скачивания)</span>
           </label>
           <input type="number" id="scheduleDelay" class="form-control form-control-sm"
-                 min="1" max="3600" value="120">
-          <div class="form-text">1 = немедленно после загрузки архива</div>
+                 min="0" max="3600" value="0">
+          <div class="form-text">0 = немедленно после загрузки архива</div>
         </div>
         <div class="form-check">
           <input class="form-check-input" type="checkbox" id="scheduleForce">
@@ -759,9 +759,6 @@
     return _scheduleModalInstance;
   }
 
-  // -- поллинг pre-status --
-  var _preStatusTimer = null;
-
   // -- Расписание автопроверок: 12:00 и 17:00 --
   var AUTO_CHECK_HOURS = [12, 17];
 
@@ -861,8 +858,8 @@
   // ── SSE: прогресс скачивания и установки ─────────────────────────────────
 
   function _sseReset() {
-    // Сброс прогресс-баров в начальное состояние
     _sseDlBar.style.width      = '0%';
+    _sseDlBar.style.background = '#0d6efd';
     _sseDlPct.textContent      = '0%';
     _sseDlMb.textContent       = '0 МБ / — МБ';
     _sseApplyBar.style.width   = '0%';
@@ -895,11 +892,16 @@
     } else {
       _sseCntErrorsWrap.classList.add('d-none');
     }
-    // Процент без изменений
     var total = (data.updated || 0) + (data.unchanged || 0) + (data.skipped || 0);
     if (total > 0) {
       var pctUpd = Math.round((data.updated || 0) / total * 100);
-      _sseDoneNote.textContent = 'Всего файлов в архиве: ' + total + ' · обновлено ' + pctUpd + '%';
+      var pctUnch = Math.round((data.unchanged || 0) / total * 100);
+      var pctSkip = Math.round((data.skipped || 0) / total * 100);
+      _sseDoneNote.textContent =
+        'Всего файлов в архиве: ' + total +
+        ' · обновлено ' + pctUpd + '%' +
+        ' · без изм. ' + pctUnch + '%' +
+        ' · пропущено ' + pctSkip + '%';
     } else {
       _sseDoneNote.textContent = '';
     }
@@ -913,11 +915,19 @@
     }
   }
 
-  function _startSSEStream(force) {
+  /**
+   * Запускает SSE-стрим напрямую через /api/update/stream.
+   * @param {boolean} force  — принудительная перезапись
+   * @param {number}  delay  — секунд между скачиванием и установкой (0 = немедленно)
+   */
+  function _startSSEStream(force, delay) {
     _sseClose();
     _sseReset();
 
-    var url = '/api/update/stream' + (force ? '?force=1' : '');
+    var params = [];
+    if (force) params.push('force=1');
+    if (delay && delay > 0) params.push('delay=' + delay);
+    var url = '/api/update/stream' + (params.length ? '?' + params.join('&') : '');
     var es  = new EventSource(url);
     _sseSource = es;
 
@@ -925,7 +935,6 @@
       var d   = JSON.parse(e.data);
       var pct = d.pct;
       if (pct < 0) {
-        // размер неизвестен — анимируем индетерминированно
         _sseDlBar.style.width = '60%';
         _sseDlPct.textContent = '…';
         _sseDlMb.textContent  = (d.downloaded_mb || 0).toFixed(2) + ' МБ / неизвестно';
@@ -937,7 +946,7 @@
           (d.total_mb > 0 ? ' / ' + (d.total_mb).toFixed(2) + ' МБ' : '');
       }
       if (pct >= 100) {
-        _sseDlBar.style.background = '#198754';  // зелёный после завершения
+        _sseDlBar.style.background = '#198754';
         _sseApplyFiles.textContent = 'подготовка…';
       }
     });
@@ -954,7 +963,12 @@
       var d = JSON.parse(e.data);
       _sseDone(d);
       _sseClose();
-      // Баннер с отчётом показан — теперь ждём рестарта через preStatusPoll
+      // После баннера ждём рестарта
+      _updSetStatus(
+        '<span class="spin"><i class="bi bi-arrow-repeat"></i></span> Перезапуск сервера…',
+        'progress'
+      );
+      _pollRestart();
     });
 
     es.addEventListener('error', function(e) {
@@ -972,94 +986,21 @@
       _sseDonePanel.classList.add('sse-done-error');
       _sseDonePanel.classList.remove('d-none');
       _sseClose();
+      _setBtnsEnabled(true);
     });
 
-    // heartbeat — просто держит соединение живым, UI не меняем
     es.addEventListener('heartbeat', function() {});
 
-    // onerror EventSource (сеть упала / сервер перезапустился)
     es.onerror = function() {
-      // Не показываем ошибку если уже есть done-баннер
       if (!_sseDonePanel.classList.contains('d-none')) return;
       _sseClose();
     };
   }
 
-  // ── Поллинг pre-status (фазы обновления) ─────────────────────────────────
-
-  function _startPreStatusPoll() {
-    if (_preStatusTimer) return;
-    _preStatusTimer = setInterval(_pollPreStatus, 3000);
-    _pollPreStatus();
-  }
-
-  function _stopPreStatusPoll() {
-    if (_preStatusTimer) {
-      clearInterval(_preStatusTimer);
-      _preStatusTimer = null;
-    }
-  }
-
-  function _pollPreStatus() {
-    fetch('/api/update/pre-status', {credentials: 'same-origin', cache: 'no-store'})
-      .then(function(r) { return r.json(); })
-      .then(function(d) {
-        if (!d.scheduled) {
-          _stopPreStatusPoll();
-          return;
-        }
-        var phase = d.phase || 'scheduled';
-
-        if (phase === 'downloading') {
-          _updSetStatus(
-            '<span class="spin"><i class="bi bi-arrow-repeat"></i></span>' +
-            ' <strong>Скачиваем архив обновления…</strong>' +
-            ' <span class="text-muted" style="font-size:11px">см. прогресс ниже</span>',
-            'progress'
-          );
-          _hideDlError();
-
-        } else if (phase === 'scheduled') {
-          var sl = d.seconds_left || 0;
-          _updSetStatus(
-            '<i class="bi bi-clock-fill me-1" style="color:#ffc107"></i>' +
-            ' <strong>Обновление через ' + sl + ' сек</strong>' +
-            ' — пользователи видят баннер',
-            'progress'
-          );
-          _hideDlError();
-
-        } else if (phase === 'applying') {
-          _updSetStatus(
-            '<span class="spin"><i class="bi bi-arrow-repeat"></i></span>' +
-            ' <strong>Применяем обновление…</strong> см. прогресс ниже',
-            'progress'
-          );
-          _hideDlError();
-          _stopPreStatusPoll();
-          _pollRestart();
-
-        } else if (phase === 'download_failed') {
-          _updSetStatus(
-            '<i class="bi bi-x-circle-fill me-1 text-danger"></i>' +
-            ' <strong class="text-danger">Ошибка скачивания</strong>' +
-            ' — баннер для пользователей <strong>не показан</strong>',
-            'error'
-          );
-          _showDlError(d.download_error || 'нет деталей');
-          _stopPreStatusPoll();
-          _sseClose();
-          _sseHideBars();
-          _setBtnsEnabled(true);
-        }
-      })
-      .catch(function() { /* сервер перезапускается — ждём */ });
-  }
-
   // ── Ожидание перезапуска сервера ─────────────────────────────────────────
 
   function _pollRestart() {
-    var attempts  = 0;
+    var attempts    = 0;
     var maxAttempts = 40;
     var t = setInterval(function() {
       attempts++;
@@ -1114,22 +1055,25 @@
   function _scheduleConfirm() {
     var delay = parseInt(document.getElementById('scheduleDelay').value, 10);
     var force = document.getElementById('scheduleForce').checked;
-    if (isNaN(delay) || delay < 1) delay = 1;
+    if (isNaN(delay) || delay < 0) delay = 0;
     if (delay > 3600) delay = 3600;
     _getScheduleModal().hide();
-    _runSchedule(delay, force);
+    _runWithSSE(delay, force);
   }
 
-  // -- Отправка запроса на сервер --
-  function _runSchedule(delay, force) {
+  /**
+   * Запускает обновление через SSE-стрим.
+   * delay=0 → немедленная установка после скачивания.
+   * delay>0 → пауза N сек между скачиванием и установкой (виден отсчёт в баре).
+   */
+  function _runWithSSE(delay, force) {
     _setBtnsEnabled(false);
     _btnUpdate.innerHTML = '<span class="spin"><i class="bi bi-arrow-repeat"></i></span> Запускаем…';
     _commitsWrap.classList.add('d-none');
     _hideDlError();
-    // Сбрасываем предыдущий баннер отчёта
     _sseDonePanel.classList.add('d-none');
     _sseDonePanel.classList.remove('sse-done-error');
-    sessionStorage.removeItem(_UPD_CACHE);
+    try { sessionStorage.removeItem(_UPD_CACHE); } catch(e){}
 
     _updSetStatus(
       '<span class="spin"><i class="bi bi-arrow-repeat"></i></span>' +
@@ -1137,40 +1081,7 @@
       'progress'
     );
 
-    fetch('/api/update/schedule', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({delay: delay, force: force})
-    })
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        if (data.ok) {
-          // Запускаем SSE-стрим прогресса параллельно с preStatusPoll
-          _startSSEStream(force);
-          _startPreStatusPoll();
-        } else if (data.error === 'already_in_progress') {
-          _updSetStatus(
-            '<i class="bi bi-hourglass-split me-1 text-warning"></i>Обновление уже выполняется, подождите…',
-            'progress'
-          );
-          _setBtnsEnabled(true);
-        } else {
-          _updSetStatus(
-            '<i class="bi bi-x-circle-fill me-1 text-danger"></i>Ошибка: ' +
-            _esc(data.error || 'неизвестно'),
-            'error'
-          );
-          _setBtnsEnabled(true);
-        }
-      })
-      .catch(function() {
-        _updSetStatus(
-          '<span class="spin"><i class="bi bi-arrow-repeat"></i></span> Сервер перезапускается…',
-          'progress'
-        );
-        _pollRestart();
-      });
+    _startSSEStream(force, delay);
   }
 
   // ── Проверка обновлений ───────────────────────────────────────────────────
@@ -1214,7 +1125,7 @@
   }
 
   function updCheck(force) {
-    if (force) sessionStorage.removeItem(_UPD_CACHE);
+    if (force) try { sessionStorage.removeItem(_UPD_CACHE); } catch(e){}
 
     var cached = null;
     try { cached = JSON.parse(sessionStorage.getItem(_UPD_CACHE)); } catch(e){}
@@ -1342,24 +1253,16 @@
   }
 
   // ── Инициализация ─────────────────────────────────────────────────────────
+
   updCheck(false);
   mntCheck();
   trayCheck();
 
-  // Если на странице уже идёт процесс — подключаемся к поллингу
-  fetch('/api/update/pre-status', {credentials: 'same-origin', cache: 'no-store'})
-    .then(function(r) { return r.json(); })
-    .then(function(d) {
-      if (d.scheduled) {
-        _setBtnsEnabled(false);
-        _startPreStatusPoll();
-        // Если сервер уже качает/ставит — подключаемся к SSE
-        if (d.phase === 'downloading' || d.phase === 'applying') {
-          _startSSEStream(false);
-        }
-      }
-    })
-    .catch(function() {});
+  // Тултип для названия системы
+  var ttEl = document.querySelector('[data-bs-toggle="tooltip"]');
+  if (ttEl && typeof bootstrap !== 'undefined') {
+    new bootstrap.Tooltip(ttEl);
+  }
 </script>
 {% endif %}
 
