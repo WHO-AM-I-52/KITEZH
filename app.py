@@ -11,6 +11,7 @@
 # ║      fix #15 — /login и /change-password доступны в ТО     ║
 # ║      feat #15 — update_bp: планировщик обновлений          ║
 # ║      feat: kitezh_logger — централизованный логгер         ║
+# ║      feat: portal_analysis_bp — анализ заполняемости       ║
 # ╚═══════════════════════════════════════════════════════════════╝
 
 import os
@@ -130,6 +131,7 @@ from api.requests_api  import api_bp
 from ai_routes         import ai_bp
 from quality_checks    import quality_bp
 from admin_sql_routes  import admin_sql_bp
+from portal_analysis.portal_analysis_routes import portal_analysis_bp
 import backup_scheduler
 
 for bp in [
@@ -142,6 +144,7 @@ for bp in [
     ai_bp,
     quality_bp,
     admin_sql_bp,
+    portal_analysis_bp,
 ]:
     app.register_blueprint(bp)
 
