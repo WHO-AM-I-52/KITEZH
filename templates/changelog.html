@@ -184,6 +184,94 @@
   body[data-theme="dark"] #dlErrorBanner { background:#2a1a1e; color:#f1aeb5; }
   body[data-theme="dark"] #dlErrorPre    { background:#3a1520; color:#f1aeb5; }
 
+  /* ── SSE прогресс-бары ────────────────────────────────────── */
+  #sseProgressWrap {
+    padding: 10px 14px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border: 1px solid #dee2e6;
+  }
+  .sse-bar-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: #495057;
+    margin-bottom: 3px;
+  }
+  .sse-bar-track {
+    background: #e9ecef;
+    border-radius: 6px;
+    height: 8px;
+    overflow: hidden;
+  }
+  .sse-bar-fill {
+    height: 8px;
+    border-radius: 6px;
+    width: 0%;
+    transition: width .35s ease;
+  }
+  .sse-bar-sub {
+    font-size: 10px;
+    color: #6c757d;
+    margin-top: 3px;
+    min-height: 14px;
+  }
+  .sse-bar-sep {
+    height: 1px;
+    background: #dee2e6;
+    margin: 8px 0;
+  }
+  body[data-theme="dark"] #sseProgressWrap {
+    background: #1e2235;
+    border-color: #2a3050;
+  }
+  body[data-theme="dark"] .sse-bar-track  { background: #2a3050; }
+  body[data-theme="dark"] .sse-bar-label  { color: #c8d0e8; }
+  body[data-theme="dark"] .sse-bar-sub    { color: #6677aa; }
+  body[data-theme="dark"] .sse-bar-sep    { background: #2a3050; }
+  body[data-theme="zone"] #sseProgressWrap { background: #161712; border-color: #232418; }
+  body[data-theme="zone"] .sse-bar-track   { background: #232418; }
+  body[data-theme="zone"] .sse-bar-label   { color: #c8c4a8; }
+  body[data-theme="zone"] .sse-bar-sub     { color: #9a9880; }
+
+  /* ── Итоговый баннер отчёта ──────────────────────────────── */
+  #sseDonePanel {
+    border-left: 4px solid #198754;
+    background: #f0fff4;
+    border-radius: 6px;
+    padding: 10px 14px;
+    font-size: 13px;
+    color: #155724;
+  }
+  #sseDonePanel.sse-done-error {
+    border-left-color: #dc3545;
+    background: #fff5f5;
+    color: #842029;
+  }
+  .sse-done-stat {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    background: rgba(0,0,0,.06);
+    border-radius: 4px;
+    padding: 2px 8px;
+    margin-right: 4px;
+  }
+  body[data-theme="dark"] #sseDonePanel {
+    background: #0f2a1a;
+    color: #6ee79e;
+    border-left-color: #198754;
+  }
+  body[data-theme="dark"] #sseDonePanel.sse-done-error {
+    background: #2a1a1e;
+    color: #f1aeb5;
+  }
+  body[data-theme="zone"] #sseDonePanel {
+    background: #141a13;
+    color: #a8c4a0;
+  }
+
   /* -- название системы в карточке О программе -- */
   .about-system-name {
     font-size: 20px;
@@ -303,7 +391,66 @@
         Баннер для пользователей <strong>не был показан</strong>.
         <pre id="dlErrorPre"></pre>
       </div>
-    </div>
+
+      {# ── SSE прогресс-бары (скачивание + установка) ── #}
+      <div id="sseProgressWrap" class="d-none mt-2">
+
+        {# Строка 1: скачивание #}
+        <div>
+          <div class="sse-bar-label">
+            <span><i class="bi bi-cloud-arrow-down me-1"></i>Скачивание</span>
+            <span id="sseDlPct">0%</span>
+          </div>
+          <div class="sse-bar-track">
+            <div id="sseDlBar" class="sse-bar-fill" style="background:#0d6efd"></div>
+          </div>
+          <div id="sseDlMb" class="sse-bar-sub">0 МБ / — МБ</div>
+        </div>
+
+        <div class="sse-bar-sep"></div>
+
+        {# Строка 2: установка #}
+        <div>
+          <div class="sse-bar-label">
+            <span><i class="bi bi-gear me-1"></i>Установка файлов</span>
+            <span id="sseApplyPct">0%</span>
+          </div>
+          <div class="sse-bar-track">
+            <div id="sseApplyBar" class="sse-bar-fill" style="background:#198754"></div>
+          </div>
+          <div id="sseApplyFiles" class="sse-bar-sub">ожидание скачивания…</div>
+        </div>
+
+      </div>{# /sseProgressWrap #}
+
+      {# ── Итоговый баннер отчёта ── #}
+      <div id="sseDonePanel" class="d-none mt-2">
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <i id="sseDoneIcon" class="bi bi-check-circle-fill"></i>
+          <strong id="sseDoneTitle">Обновление установлено</strong>
+          <div class="ms-1">
+            <span class="sse-done-stat" title="Обновлено файлов">
+              <i class="bi bi-arrow-up-circle-fill" style="color:#198754"></i>
+              <span id="sseCntUpdated">0</span> обновлено
+            </span>
+            <span class="sse-done-stat" title="Файлов без изменений">
+              <i class="bi bi-dash-circle" style="color:#6c757d"></i>
+              <span id="sseCntUnchanged">0</span> без изм.
+            </span>
+            <span class="sse-done-stat" title="Пропущено (защищённые)">
+              <i class="bi bi-shield-fill-check" style="color:#0d6efd"></i>
+              <span id="sseCntSkipped">0</span> пропущено
+            </span>
+            <span class="sse-done-stat d-none" id="sseCntErrorsWrap" title="Ошибки">
+              <i class="bi bi-exclamation-triangle-fill" style="color:#dc3545"></i>
+              <span id="sseCntErrors">0</span> ошибок
+            </span>
+          </div>
+        </div>
+        <div id="sseDoneNote" class="mt-1" style="font-size:11px;opacity:.8"></div>
+      </div>{# /sseDonePanel #}
+
+    </div>{# /flex:1 #}
 
     <div class="d-flex flex-column align-items-end gap-1 flex-shrink-0">
       <div class="d-flex gap-2 flex-wrap justify-content-end">
@@ -579,6 +726,26 @@
   var _btnTrayCritical = document.getElementById('btnTrayCritical');
   var _btnTrayExtended = document.getElementById('btnTrayExtended');
 
+  // SSE-элементы
+  var _sseWrap       = document.getElementById('sseProgressWrap');
+  var _sseDlBar      = document.getElementById('sseDlBar');
+  var _sseDlPct      = document.getElementById('sseDlPct');
+  var _sseDlMb       = document.getElementById('sseDlMb');
+  var _sseApplyBar   = document.getElementById('sseApplyBar');
+  var _sseApplyPct   = document.getElementById('sseApplyPct');
+  var _sseApplyFiles = document.getElementById('sseApplyFiles');
+  var _sseDonePanel  = document.getElementById('sseDonePanel');
+  var _sseDoneIcon   = document.getElementById('sseDoneIcon');
+  var _sseDoneTitle  = document.getElementById('sseDoneTitle');
+  var _sseDoneNote   = document.getElementById('sseDoneNote');
+  var _sseCntUpdated   = document.getElementById('sseCntUpdated');
+  var _sseCntUnchanged = document.getElementById('sseCntUnchanged');
+  var _sseCntSkipped   = document.getElementById('sseCntSkipped');
+  var _sseCntErrors    = document.getElementById('sseCntErrors');
+  var _sseCntErrorsWrap = document.getElementById('sseCntErrorsWrap');
+
+  var _sseSource = null;  // активный EventSource
+
   // -- модалка: ленивая инициализация при первом открытии --
   var _scheduleModalInstance = null;
   var _scheduleForce = false;
@@ -691,6 +858,133 @@
     _commitsWrap.classList.remove('d-none');
   }
 
+  // ── SSE: прогресс скачивания и установки ─────────────────────────────────
+
+  function _sseReset() {
+    // Сброс прогресс-баров в начальное состояние
+    _sseDlBar.style.width      = '0%';
+    _sseDlPct.textContent      = '0%';
+    _sseDlMb.textContent       = '0 МБ / — МБ';
+    _sseApplyBar.style.width   = '0%';
+    _sseApplyPct.textContent   = '0%';
+    _sseApplyFiles.textContent = 'ожидание скачивания…';
+    _sseWrap.classList.remove('d-none');
+    _sseDonePanel.classList.add('d-none');
+    _sseDonePanel.classList.remove('sse-done-error');
+  }
+
+  function _sseHideBars() {
+    _sseWrap.classList.add('d-none');
+  }
+
+  function _sseDone(data) {
+    _sseHideBars();
+    var errors   = data.errors || 0;
+    var isErr    = errors > 0;
+    _sseDoneIcon.className  = isErr
+      ? 'bi bi-exclamation-triangle-fill text-danger'
+      : 'bi bi-check-circle-fill text-success';
+    _sseDoneTitle.textContent = isErr ? 'Обновлено с ошибками' : 'Обновление установлено';
+    _sseCntUpdated.textContent   = data.updated   || 0;
+    _sseCntUnchanged.textContent = data.unchanged || 0;
+    _sseCntSkipped.textContent   = data.skipped   || 0;
+    _sseCntErrors.textContent    = errors;
+    if (errors > 0) {
+      _sseCntErrorsWrap.classList.remove('d-none');
+      _sseDonePanel.classList.add('sse-done-error');
+    } else {
+      _sseCntErrorsWrap.classList.add('d-none');
+    }
+    // Процент без изменений
+    var total = (data.updated || 0) + (data.unchanged || 0) + (data.skipped || 0);
+    if (total > 0) {
+      var pctUpd = Math.round((data.updated || 0) / total * 100);
+      _sseDoneNote.textContent = 'Всего файлов в архиве: ' + total + ' · обновлено ' + pctUpd + '%';
+    } else {
+      _sseDoneNote.textContent = '';
+    }
+    _sseDonePanel.classList.remove('d-none');
+  }
+
+  function _sseClose() {
+    if (_sseSource) {
+      _sseSource.close();
+      _sseSource = null;
+    }
+  }
+
+  function _startSSEStream(force) {
+    _sseClose();
+    _sseReset();
+
+    var url = '/api/update/stream' + (force ? '?force=1' : '');
+    var es  = new EventSource(url);
+    _sseSource = es;
+
+    es.addEventListener('download_pct', function(e) {
+      var d   = JSON.parse(e.data);
+      var pct = d.pct;
+      if (pct < 0) {
+        // размер неизвестен — анимируем индетерминированно
+        _sseDlBar.style.width = '60%';
+        _sseDlPct.textContent = '…';
+        _sseDlMb.textContent  = (d.downloaded_mb || 0).toFixed(2) + ' МБ / неизвестно';
+      } else {
+        var w = Math.min(pct, 100);
+        _sseDlBar.style.width = w + '%';
+        _sseDlPct.textContent = w.toFixed(0) + '%';
+        _sseDlMb.textContent  = (d.downloaded_mb || 0).toFixed(2) + ' МБ' +
+          (d.total_mb > 0 ? ' / ' + (d.total_mb).toFixed(2) + ' МБ' : '');
+      }
+      if (pct >= 100) {
+        _sseDlBar.style.background = '#198754';  // зелёный после завершения
+        _sseApplyFiles.textContent = 'подготовка…';
+      }
+    });
+
+    es.addEventListener('apply_pct', function(e) {
+      var d = JSON.parse(e.data);
+      var w = Math.min(d.pct || 0, 100);
+      _sseApplyBar.style.width   = w + '%';
+      _sseApplyPct.textContent   = w.toFixed(0) + '%';
+      _sseApplyFiles.textContent = (d.current || 0) + ' / ' + (d.total || 0) + ' файлов';
+    });
+
+    es.addEventListener('done', function(e) {
+      var d = JSON.parse(e.data);
+      _sseDone(d);
+      _sseClose();
+      // Баннер с отчётом показан — теперь ждём рестарта через preStatusPoll
+    });
+
+    es.addEventListener('error', function(e) {
+      var msg = 'Ошибка потока обновления';
+      try {
+        var d = JSON.parse(e.data);
+        msg = d.message || msg;
+      } catch(ex) {}
+      _sseHideBars();
+      _sseDoneIcon.className  = 'bi bi-x-circle-fill text-danger';
+      _sseDoneTitle.textContent = 'Ошибка: ' + _esc(msg);
+      _sseCntUpdated.textContent = _sseCntUnchanged.textContent =
+        _sseCntSkipped.textContent = '—';
+      _sseDoneNote.textContent = '';
+      _sseDonePanel.classList.add('sse-done-error');
+      _sseDonePanel.classList.remove('d-none');
+      _sseClose();
+    });
+
+    // heartbeat — просто держит соединение живым, UI не меняем
+    es.addEventListener('heartbeat', function() {});
+
+    // onerror EventSource (сеть упала / сервер перезапустился)
+    es.onerror = function() {
+      // Не показываем ошибку если уже есть done-баннер
+      if (!_sseDonePanel.classList.contains('d-none')) return;
+      _sseClose();
+    };
+  }
+
   // ── Поллинг pre-status (фазы обновления) ─────────────────────────────────
 
   function _startPreStatusPoll() {
@@ -720,7 +1014,7 @@
           _updSetStatus(
             '<span class="spin"><i class="bi bi-arrow-repeat"></i></span>' +
             ' <strong>Скачиваем архив обновления…</strong>' +
-            ' <span class="text-muted" style="font-size:11px">баннер появится после загрузки</span>',
+            ' <span class="text-muted" style="font-size:11px">см. прогресс ниже</span>',
             'progress'
           );
           _hideDlError();
@@ -738,7 +1032,7 @@
         } else if (phase === 'applying') {
           _updSetStatus(
             '<span class="spin"><i class="bi bi-arrow-repeat"></i></span>' +
-            ' <strong>Применяем обновление…</strong> Сервер скоро перезапустится.',
+            ' <strong>Применяем обновление…</strong> см. прогресс ниже',
             'progress'
           );
           _hideDlError();
@@ -754,6 +1048,8 @@
           );
           _showDlError(d.download_error || 'нет деталей');
           _stopPreStatusPoll();
+          _sseClose();
+          _sseHideBars();
           _setBtnsEnabled(true);
         }
       })
@@ -830,6 +1126,9 @@
     _btnUpdate.innerHTML = '<span class="spin"><i class="bi bi-arrow-repeat"></i></span> Запускаем…';
     _commitsWrap.classList.add('d-none');
     _hideDlError();
+    // Сбрасываем предыдущий баннер отчёта
+    _sseDonePanel.classList.add('d-none');
+    _sseDonePanel.classList.remove('sse-done-error');
     sessionStorage.removeItem(_UPD_CACHE);
 
     _updSetStatus(
@@ -847,6 +1146,8 @@
       .then(function(r) { return r.json(); })
       .then(function(data) {
         if (data.ok) {
+          // Запускаем SSE-стрим прогресса параллельно с preStatusPoll
+          _startSSEStream(force);
           _startPreStatusPoll();
         } else if (data.error === 'already_in_progress') {
           _updSetStatus(
@@ -1052,6 +1353,10 @@
       if (d.scheduled) {
         _setBtnsEnabled(false);
         _startPreStatusPoll();
+        // Если сервер уже качает/ставит — подключаемся к SSE
+        if (d.phase === 'downloading' || d.phase === 'applying') {
+          _startSSEStream(false);
+        }
       }
     })
     .catch(function() {});
