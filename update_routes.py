@@ -11,6 +11,9 @@
 # ║  v2.0.1: алиас /api/update-status → /api/update/status       ║
 # ║  v2.1.0: /api/update/stream — SSE-стрим прогресса            ║
 # ║           (% скачивания + % установки + итоговый отчёт)      ║
+# ║  v2.2.0: /api/update/stream принимает ?delay=N               ║
+# ║           (пауза между download и apply); кнопка «Обновить»  ║
+# ║           теперь идёт напрямую через SSE, минуя schedule      ║
 # ╚═══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, jsonify, request as flask_request, session, Response, stream_with_context
@@ -160,23 +163,21 @@ def _sse_format(event: str, data: dict) -> str:
 def api_update_stream():
     """SSE-стрим прогресса скачивания и установки обновления.
 
-    Клиент подписывается: const es = new EventSource('/api/update/stream');
+    Параметры запроса (GET):
+      force=1       — принудительная перезапись всех файлов
+      delay=N       — пауза (сек, 1–3600) между скачиванием и установкой
+                      (позволяет кнопке «Обновить» заменить /api/update/schedule)
+
     События (event: download_pct | apply_pct | apply_file | done | error | heartbeat):
 
       download_pct  {pct: 0-100, downloaded_mb: float, total_mb: float}
       apply_pct     {pct: 0-100, current: int, total: int}
       apply_file    {status: 'updated'|'unchanged'|'skipped', path: str}
       done          {updated: int, unchanged: int, skipped: int, errors: int, message: str}
-      error         {message: str, phase: 'download'|'apply'}
-      heartbeat     {} — каждые 15 сек пока ждём subprocess
-
-    Требует: _updater.py поддерживает флаг --stream-json
-    (добавляется в Этапе 2).
-    Если _updater.py не поддерживает флаг — стрим отдаёт одно событие error.
+      error         {message: str, phase: 'download'|'apply'|'delay'}
+      heartbeat     {} — каждые 15 сек пока ждём subprocess или delay
     """
     if session.get('role') != 'admin':
-        # SSE не поддерживает стандартные HTTP-ошибки на клиенте без обёртки;
-        # отдаём событие error и закрываем поток.
         def _forbidden():
             yield _sse_format('error', {'message': 'forbidden', 'phase': 'auth'})
         return Response(stream_with_context(_forbidden()),
@@ -184,6 +185,13 @@ def api_update_stream():
                         headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
 
     force = flask_request.args.get('force') == '1'
+
+    # Параметр delay: пауза между скачиванием и установкой (сек)
+    try:
+        delay = int(flask_request.args.get('delay', 0))
+        delay = max(0, min(_MAX_DELAY, delay))
+    except (ValueError, TypeError):
+        delay = 0
 
     def _generate():
         # ── Фаза 1: скачивание ──────────────────────────────────
@@ -204,11 +212,9 @@ def api_update_stream():
             yield _sse_format('error', {'message': str(e), 'phase': 'download'})
             return
 
-        dl_ok = False
         last_heartbeat = time.time()
 
         for raw_line in proc_dl.stdout:
-            # heartbeat каждые 15 сек чтобы соединение не закрылось
             if time.time() - last_heartbeat >= 15:
                 yield _sse_format('heartbeat', {})
                 last_heartbeat = time.time()
@@ -217,7 +223,6 @@ def api_update_stream():
             if not line:
                 continue
 
-            # Пробуем разобрать JSON-строку от --stream-json
             if line.startswith('{'):
                 try:
                     msg = json.loads(line)
@@ -228,7 +233,6 @@ def api_update_stream():
                             'downloaded_mb': msg.get('downloaded_mb', 0),
                             'total_mb':      msg.get('total_mb', 0),
                         })
-                    # иные JSON-строки от _updater.py при --download-only игнорируем
                 except json.JSONDecodeError:
                     pass
 
@@ -242,9 +246,20 @@ def api_update_stream():
             })
             return
 
-        # Финальный heartbeat после скачивания
+        # Гарантированный 100% после завершения скачивания
         yield _sse_format('download_pct', {'pct': 100, 'downloaded_mb': 0, 'total_mb': 0})
-        dl_ok = True
+
+        # ── Фаза 1.5: задержка (delay сек) перед установкой ────
+        if delay > 0:
+            yield _sse_format('delay', {'seconds': delay})
+            deadline = time.time() + delay
+            while time.time() < deadline:
+                remaining = int(deadline - time.time())
+                if time.time() - last_heartbeat >= 15:
+                    yield _sse_format('heartbeat', {})
+                    last_heartbeat = time.time()
+                yield _sse_format('delay_tick', {'remaining': remaining})
+                time.sleep(1)
 
         # ── Фаза 2: установка ───────────────────────────────────
         cmd_apply = [sys.executable, _UPDATER, '--apply-only', '--stream-json']
@@ -315,7 +330,7 @@ def api_update_stream():
         mimetype='text/event-stream',
         headers={
             'Cache-Control':    'no-cache',
-            'X-Accel-Buffering': 'no',   # отключает буферизацию nginx
+            'X-Accel-Buffering': 'no',
         },
     )
 
@@ -414,7 +429,6 @@ def _build_timer_worker(delay: int, fire_at_ts: float, force: bool, user_id: int
             dl_output = str(e)
 
         if rc_dl != 0:
-            # Ошибка скачивания: записываем в pre-update и очищаем
             try:
                 with open(_PRE_UPDATE_FILE, 'r', encoding='utf-8') as f:
                     pre = json.load(f)
@@ -427,7 +441,6 @@ def _build_timer_worker(delay: int, fire_at_ts: float, force: bool, user_id: int
                     json.dump(pre, f, ensure_ascii=False)
             except Exception:
                 pass
-            # через 5 сек удаляем пре-файл и лок (баннер не покажется)
             time.sleep(5)
             _clear_pre_update()
             _lock_clear()
@@ -440,7 +453,7 @@ def _build_timer_worker(delay: int, fire_at_ts: float, force: bool, user_id: int
         except Exception:
             pre = {}
         pre['phase']      = 'scheduled'
-        pre['fire_at_ts'] = fire_at_ts   # перезаписываем с актуальным TS
+        pre['fire_at_ts'] = fire_at_ts
         try:
             with open(_PRE_UPDATE_FILE, 'w', encoding='utf-8') as f:
                 json.dump(pre, f, ensure_ascii=False)
@@ -452,12 +465,12 @@ def _build_timer_worker(delay: int, fire_at_ts: float, force: bool, user_id: int
         while time.time() < fire_at_ts:
             if not os.path.exists(_PRE_UPDATE_FILE):
                 _lock_clear()
-                return  # отменено
+                return
             time.sleep(1)
 
         if not os.path.exists(_PRE_UPDATE_FILE):
             _lock_clear()
-            return  # отменено в последнюю секунду
+            return
 
         _clear_pre_update()
         _lock_update_phase('applying')
@@ -489,30 +502,29 @@ def _build_timer_worker(delay: int, fire_at_ts: float, force: bool, user_id: int
             pass
 
         if rc_apply == 2:
-            # .bat был обновлён — запускаем новый .bat, через 10 сек выходим
             _run_bat_restart()
         else:
-            # Обычный рестарт: Flask перезапустяется через start KITEZH.bat
             os._exit(42)
 
     return _worker
 
 
-# ─── Запланированное обновление (+ немедленное delay=1) ────────────────────────────────────
+# ─── Запланированное обновление (баннер для всех пользователей) ────────────────────────────────────
 
 @update_bp.route('/api/update/schedule', methods=['POST'])
 def api_update_schedule():
     """POST {delay: N, force: bool}
     delay: секунд от момента завершения скачивания.
     force: перезаписать все файлы.
+    Используется когда нужен баннер ожидания для всех пользователей системы.
+    Для немедленного обновления с SSE-прогрессом используй /api/update/stream.
     """
     if session.get('role') != 'admin':
         return jsonify({'error': 'forbidden'}), 403
 
-    # ── PID-валидация лока ──
     if os.path.exists(_LOCK_FILE):
         if _lock_is_stale():
-            pass  # лок уже удалён внутри _lock_is_stale()
+            pass
         else:
             return jsonify({'error': 'already_in_progress',
                             'message': 'Обновление уже выполняется'}), 409
@@ -524,16 +536,13 @@ def api_update_schedule():
         return jsonify({'error': 'already_scheduled',
                         'message': 'Обновление уже запланировано'}), 409
 
-    # ── Параметры из запроса ──
     body       = flask_request.get_json(silent=True) or {}
     delay      = int(body.get('delay', 120))
     force      = bool(body.get('force', False))
     delay      = max(_MIN_DELAY, min(_MAX_DELAY, delay))
 
     scheduled_at = datetime.now().isoformat()
-    # fire_at_ts — момент применения (время скачивания + delay)
-    # Точный TS будет перезаписан после успешного скачивания
-    fire_at_ts   = time.time() + delay  # плацехолдер; будет обновлён в _worker
+    fire_at_ts   = time.time() + delay
 
     payload = {
         'scheduled_at':  scheduled_at,
@@ -550,7 +559,6 @@ def api_update_schedule():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-    # ── Ставим лок с PID фаза downloading ──
     _lock_write('downloading')
 
     conn = get_db()
@@ -575,18 +583,13 @@ def api_update_schedule():
     })
 
 
-# ─── Обратная совместимость: /apply и /apply-force теперь тоже через schedule ───────────────────────
+# ─── Обратная совместимость: /apply и /apply-force ───────────────────────────────────────────────
 
 @update_bp.route('/api/update/apply', methods=['POST'])
 def api_update_apply():
     """shortcut: delay=1, force=False"""
     if session.get('role') != 'admin':
         return jsonify({'error': 'forbidden'}), 403
-    from flask import request as _req
-    # Делегируем в schedule с delay=1
-    with _req.environ['werkzeug.request'].get_environ():
-        pass
-    # Прямой вызов логики schedule без HTTP-редиректа
     return _schedule_internal(delay=1, force=False)
 
 
@@ -661,7 +664,6 @@ def api_update_schedule_cancel():
         return jsonify({'error': 'not_scheduled',
                         'message': 'Нет активного расписания'}), 404
 
-    # Нельзя отменить если уже идёт применение
     try:
         with open(_PRE_UPDATE_FILE, 'r', encoding='utf-8') as f:
             pre = json.load(f)
