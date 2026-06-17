@@ -308,6 +308,8 @@ def extract_and_apply(zip_path: str, force: bool = False):
     """Распаковывает архив, копирует только изменившиеся файлы.
     force=True — перезаписывает ВСЕ файлы (кроме защищённых), не сравнивая содержимое.
     При STREAM_JSON=True пишет JSON-строки прогресса в stdout.
+
+    Возвращает: (updated, unchanged, skipped, errors, bat_updated)
     """
     updated     = 0
     unchanged   = 0
@@ -326,7 +328,7 @@ def extract_and_apply(zip_path: str, force: bool = False):
         entries = os.listdir(tmp_dir)
         if not entries:
             print("  [ОШИБКА] Архив пустой.")
-            return 0, 0, 0, False
+            return 0, 0, 0, 0, False
         repo_root = os.path.join(tmp_dir, entries[0])
 
         # ── Предварительный подсчёт файлов для прогресс-бара установки ──
@@ -393,7 +395,7 @@ def extract_and_apply(zip_path: str, force: bool = False):
                 "total":   total_files,
             })
 
-    return updated, unchanged, skipped, bat_updated
+    return updated, unchanged, skipped, errors, bat_updated
 
 
 def load_changelog():
@@ -519,7 +521,7 @@ def _cmd_download_only():
         sys.exit(1)
 
 
-# ─── Режим --apply-only ─────────────────────────────────────────────────────────────────────────────────────────────
+# ─── Режим --apply-only ───────────────────────────────────────────────────────────────────────────────────────────────
 # Применяет уже скачанный ZIP_PATH; удаляет архив после установки.
 # Выход: 0 = успех, 1 = ошибка, 2 = успех + обновлён bat (нужен ручной рестарт)
 def _cmd_apply_only(force: bool = False):
@@ -527,13 +529,13 @@ def _cmd_apply_only(force: bool = False):
         print(f"  [ОШИБКА] Архив {ZIP_PATH} не найден. Сначала выполни --download-only.")
         sys.exit(1)
 
-    remote_sha = load_local_sha()  # SHA был сохранён при скачивании нет; читаем с GitHub
     # Для --apply-only SHA считываем заново (zip уже скачан, но SHA надо сохранить)
     remote_sha = get_remote_sha()
 
     apply_ok = False
+    errors   = 0
     try:
-        updated, unchanged, skipped, bat_updated = extract_and_apply(ZIP_PATH, force=force)
+        updated, unchanged, skipped, errors, bat_updated = extract_and_apply(ZIP_PATH, force=force)
         apply_ok = True
     except Exception as e:
         print(f"  [ОШИБКА] Не удалось применить обновление: {e}")
@@ -551,16 +553,22 @@ def _cmd_apply_only(force: bool = False):
     print(f"  Обновлено файлов     : {updated}")
     print(f"  Без изменений        : {unchanged}")
     print(f"  Пропущено (защита)   : {skipped}")
+    if errors:
+        print(f"  Ошибок при записи    : {errors}")
     print()
 
-    # JSON-итог для SSE-стрима (отправляется до ensure_github_release чтобы UI получил раньше)
+    # JSON-итог для SSE-стрима — реальный счётчик errors передаётся в UI
     _sjson({
         "type":      "done",
         "updated":   updated,
         "unchanged": unchanged,
         "skipped":   skipped,
-        "errors":    0,
-        "message":   f"Обновлено: {updated} | Без изменений: {unchanged} | Пропущено: {skipped}",
+        "errors":    errors,
+        "message":   (
+            f"Обновлено: {updated} | Без изменений: {unchanged} | "
+            f"Пропущено: {skipped}" +
+            (f" | Ошибок: {errors}" if errors else "")
+        ),
     })
 
     ensure_github_release()
@@ -627,8 +635,9 @@ def main():
         sys.exit(1)
 
     apply_ok = False
+    errors   = 0
     try:
-        updated, unchanged, skipped, bat_updated = extract_and_apply(ZIP_PATH, force=force_mode)
+        updated, unchanged, skipped, errors, bat_updated = extract_and_apply(ZIP_PATH, force=force_mode)
         apply_ok = True
     except Exception as e:
         print(f"  [ОШИБКА] Не удалось применить обновление: {e}")
@@ -646,6 +655,8 @@ def main():
     print(f"  Обновлено файлов     : {updated}")
     print(f"  Без изменений        : {unchanged}")
     print(f"  Пропущено (защита)   : {skipped}")
+    if errors:
+        print(f"  Ошибок при записи    : {errors}")
     print()
 
     ensure_github_release()
