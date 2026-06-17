@@ -5,6 +5,7 @@
 # ║  Режим --force:         перезаписывает ВСЕ файлы, игнорируя сравнение байт    ║
 # ║  Режим --download-only: только скачать zip в _kitezh_update.zip        ║
 # ║  Режим --apply-only:    применить уже скачанный _kitezh_update.zip       ║
+# ║  Режим --stream-json:   JSON-строки прогресса в stdout для SSE-стрима   ║
 # ║  Не трогает БД и файлы пользователя.                               ║
 # ║  get_commits_between: список коммитов для панели обновлений          ║
 # ╚════════════════════════════════════════════════════════════════════════╝
@@ -27,6 +28,18 @@ COMMIT_FILE   = os.path.join(BASE_DIR, "_last_commit.txt")
 BRANCH_FILE   = os.path.join(BASE_DIR, "_branch.txt")
 ZIP_PATH      = os.path.join(BASE_DIR, "_kitezh_update.zip")
 FALLBACK_KB   = 600
+
+# ── Флаг --stream-json: JSON-строки прогресса в stdout для SSE-стрима ────────
+STREAM_JSON = "--stream-json" in sys.argv
+
+def _sjson(obj: dict):
+    """Выводит JSON-строку в stdout если включён --stream-json.
+    Использует flush=True чтобы буфер не задерживал данные.
+    Без --stream-json — полный no-op, поведение не меняется.
+    """
+    if STREAM_JSON:
+        print(json.dumps(obj, ensure_ascii=False), flush=True)
+
 
 # ── Читаем активную ветку из _branch.txt (по умолчанию main) ───────────────────────────────────────────────
 def load_branch() -> str:
@@ -232,10 +245,25 @@ def _print_progress(downloaded: int, estimated_kb: int, spinner_idx: int):
         pct    = downloaded / (estimated_kb * 1024) * 100
         filled = int(pct / 5)
         bar    = "█" * filled + "░" * (20 - filled)
+        # Текстовый прогресс в консоль (bat-окно)
         print(f"  [{bar}] {pct:4.0f}%  {size_kb} / ~{estimated_kb} КБ", end="\r", flush=True)
+        # JSON-прогресс для SSE-стрима
+        _sjson({
+            "type":          "download_pct",
+            "pct":           round(min(pct, 100), 1),
+            "downloaded_mb": round(downloaded / 1048576, 2),
+            "total_mb":      round(estimated_kb / 1024, 2),
+        })
     else:
         spin = SPINNER[spinner_idx % len(SPINNER)]
         print(f"  [{spin}] Скачано: {size_kb} КБ...", end="\r", flush=True)
+        # Если размер неизвестен — отдаём pct=-1 как сигнал «неопределённо»
+        _sjson({
+            "type":          "download_pct",
+            "pct":           -1,
+            "downloaded_mb": round(downloaded / 1048576, 2),
+            "total_mb":      0,
+        })
 
 
 def download_zip(zip_path: str):
@@ -267,15 +295,24 @@ def download_zip(zip_path: str):
     print()
     size_kb = os.path.getsize(zip_path) // 1024
     print(f"  Архив обновления скачан: {size_kb} КБ")
+    # Финальный 100% после завершения скачивания
+    _sjson({
+        "type":          "download_pct",
+        "pct":           100,
+        "downloaded_mb": round(size_kb / 1024, 2),
+        "total_mb":      round(size_kb / 1024, 2),
+    })
 
 
 def extract_and_apply(zip_path: str, force: bool = False):
     """Распаковывает архив, копирует только изменившиеся файлы.
     force=True — перезаписывает ВСЕ файлы (кроме защищённых), не сравнивая содержимое.
+    При STREAM_JSON=True пишет JSON-строки прогресса в stdout.
     """
     updated     = 0
     unchanged   = 0
     skipped     = 0
+    errors      = 0
     bat_updated = False
 
     if force:
@@ -292,24 +329,36 @@ def extract_and_apply(zip_path: str, force: bool = False):
             return 0, 0, 0, False
         repo_root = os.path.join(tmp_dir, entries[0])
 
-        print("  Применяем обновления...")
+        # ── Предварительный подсчёт файлов для прогресс-бара установки ──
+        all_files = []
         for dirpath, dirnames, filenames in os.walk(repo_root):
-            rel_dir = os.path.relpath(dirpath, repo_root)
-
             for fname in filenames:
-                if rel_dir == ".":
-                    rel_path = fname
-                else:
-                    rel_path = os.path.join(rel_dir, fname)
+                rel_dir  = os.path.relpath(dirpath, repo_root)
+                rel_path = fname if rel_dir == "." else os.path.join(rel_dir, fname)
+                all_files.append((dirpath, fname, rel_path))
+        total_files = max(len(all_files), 1)  # защита от деления на ноль
 
-                rel_path_fwd = rel_path.replace("\\", "/")
+        print("  Применяем обновления...")
+        processed = 0
+        for dirpath, fname, rel_path in all_files:
+            processed += 1
+            rel_path_fwd = rel_path.replace("\\", "/")
 
-                if should_skip(rel_path_fwd):
-                    skipped += 1
-                    continue
+            if should_skip(rel_path_fwd):
+                skipped += 1
+                _sjson({"type": "apply_file", "status": "skipped", "path": rel_path_fwd})
+                _sjson({
+                    "type":    "apply_pct",
+                    "pct":     round(processed / total_files * 100, 1),
+                    "current": processed,
+                    "total":   total_files,
+                })
+                continue
 
-                src  = os.path.join(dirpath, fname)
-                dest = os.path.join(BASE_DIR, rel_path)
+            src  = os.path.join(dirpath, fname)
+            dest = os.path.join(BASE_DIR, rel_path)
+
+            try:
                 os.makedirs(os.path.dirname(dest), exist_ok=True)
 
                 new_content = open(src, "rb").read()
@@ -320,17 +369,29 @@ def extract_and_apply(zip_path: str, force: bool = False):
                 if not force and new_content == old_content:
                     print(f"  [--] {rel_path_fwd}")
                     unchanged += 1
-                    continue
-
-                shutil.copy2(src, dest)
-                updated += 1
-
-                if rel_path_fwd == BAT_NAME:
-                    bat_updated = True
-                    print(f"  [OK] {rel_path_fwd} (ОБНОВЛЕН)")
+                    _sjson({"type": "apply_file", "status": "unchanged", "path": rel_path_fwd})
                 else:
-                    label = "(FORCE)" if force and new_content == old_content else ""
-                    print(f"  [OK] {rel_path_fwd} {label}".rstrip())
+                    shutil.copy2(src, dest)
+                    updated += 1
+                    if rel_path_fwd == BAT_NAME:
+                        bat_updated = True
+                        print(f"  [OK] {rel_path_fwd} (ОБНОВЛЕН)")
+                    else:
+                        label = "(FORCE)" if force and new_content == old_content else ""
+                        print(f"  [OK] {rel_path_fwd} {label}".rstrip())
+                    _sjson({"type": "apply_file", "status": "updated", "path": rel_path_fwd})
+
+            except Exception as e:
+                errors += 1
+                print(f"  [!!] {rel_path_fwd} — ошибка: {e}")
+                _sjson({"type": "apply_file", "status": "error", "path": rel_path_fwd})
+
+            _sjson({
+                "type":    "apply_pct",
+                "pct":     round(processed / total_files * 100, 1),
+                "current": processed,
+                "total":   total_files,
+            })
 
     return updated, unchanged, skipped, bat_updated
 
@@ -491,6 +552,16 @@ def _cmd_apply_only(force: bool = False):
     print(f"  Без изменений        : {unchanged}")
     print(f"  Пропущено (защита)   : {skipped}")
     print()
+
+    # JSON-итог для SSE-стрима (отправляется до ensure_github_release чтобы UI получил раньше)
+    _sjson({
+        "type":      "done",
+        "updated":   updated,
+        "unchanged": unchanged,
+        "skipped":   skipped,
+        "errors":    0,
+        "message":   f"Обновлено: {updated} | Без изменений: {unchanged} | Пропущено: {skipped}",
+    })
 
     ensure_github_release()
     run_sync_changelog()
