@@ -9,9 +9,11 @@
 # ║           delay из запроса; rc=2 → запуск .bat;             ║
 # ║           pre-status отдаёт phase + download_error              ║
 # ║  v2.0.1: алиас /api/update-status → /api/update/status       ║
+# ║  v2.1.0: /api/update/stream — SSE-стрим прогресса            ║
+# ║           (% скачивания + % установки + итоговый отчёт)      ║
 # ╚═══════════════════════════════════════════════════════════════╝
 
-from flask import Blueprint, jsonify, request as flask_request, session
+from flask import Blueprint, jsonify, request as flask_request, session, Response, stream_with_context
 from db import BASE_DIR
 from activity_log import log_action
 from db import get_db
@@ -138,6 +140,184 @@ def _run_bat_restart():
         pass
     time.sleep(10)
     os._exit(0)
+
+
+# ─── SSE-утилита ──────────────────────────────────────────────────────────────────────────────────────────────
+
+def _sse_format(event: str, data: dict) -> str:
+    """Формирует одно SSE-сообщение.
+    Формат:
+        event: <event_name>
+        data: <json>
+        (пустая строка)
+    """
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+# ─── SSE-стрим прогресса обновления ──────────────────────────────────────────────────────────────────────────
+
+@update_bp.route('/api/update/stream')
+def api_update_stream():
+    """SSE-стрим прогресса скачивания и установки обновления.
+
+    Клиент подписывается: const es = new EventSource('/api/update/stream');
+    События (event: download_pct | apply_pct | apply_file | done | error | heartbeat):
+
+      download_pct  {pct: 0-100, downloaded_mb: float, total_mb: float}
+      apply_pct     {pct: 0-100, current: int, total: int}
+      apply_file    {status: 'updated'|'unchanged'|'skipped', path: str}
+      done          {updated: int, unchanged: int, skipped: int, errors: int, message: str}
+      error         {message: str, phase: 'download'|'apply'}
+      heartbeat     {} — каждые 15 сек пока ждём subprocess
+
+    Требует: _updater.py поддерживает флаг --stream-json
+    (добавляется в Этапе 2).
+    Если _updater.py не поддерживает флаг — стрим отдаёт одно событие error.
+    """
+    if session.get('role') != 'admin':
+        # SSE не поддерживает стандартные HTTP-ошибки на клиенте без обёртки;
+        # отдаём событие error и закрываем поток.
+        def _forbidden():
+            yield _sse_format('error', {'message': 'forbidden', 'phase': 'auth'})
+        return Response(stream_with_context(_forbidden()),
+                        mimetype='text/event-stream',
+                        headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
+
+    force = flask_request.args.get('force') == '1'
+
+    def _generate():
+        # ── Фаза 1: скачивание ──────────────────────────────────
+        cmd_dl = [sys.executable, _UPDATER, '--download-only', '--stream-json']
+        if force:
+            cmd_dl.append('--force')
+
+        try:
+            proc_dl = subprocess.Popen(
+                cmd_dl,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                cwd=BASE_DIR,
+            )
+        except Exception as e:
+            yield _sse_format('error', {'message': str(e), 'phase': 'download'})
+            return
+
+        dl_ok = False
+        last_heartbeat = time.time()
+
+        for raw_line in proc_dl.stdout:
+            # heartbeat каждые 15 сек чтобы соединение не закрылось
+            if time.time() - last_heartbeat >= 15:
+                yield _sse_format('heartbeat', {})
+                last_heartbeat = time.time()
+
+            line = raw_line.strip()
+            if not line:
+                continue
+
+            # Пробуем разобрать JSON-строку от --stream-json
+            if line.startswith('{'):
+                try:
+                    msg = json.loads(line)
+                    t = msg.get('type', '')
+                    if t == 'download_pct':
+                        yield _sse_format('download_pct', {
+                            'pct':           msg.get('pct', 0),
+                            'downloaded_mb': msg.get('downloaded_mb', 0),
+                            'total_mb':      msg.get('total_mb', 0),
+                        })
+                    # иные JSON-строки от _updater.py при --download-only игнорируем
+                except json.JSONDecodeError:
+                    pass
+
+        proc_dl.wait()
+        rc_dl = proc_dl.returncode
+
+        if rc_dl != 0:
+            yield _sse_format('error', {
+                'message': f'Ошибка скачивания (rc={rc_dl})',
+                'phase': 'download',
+            })
+            return
+
+        # Финальный heartbeat после скачивания
+        yield _sse_format('download_pct', {'pct': 100, 'downloaded_mb': 0, 'total_mb': 0})
+        dl_ok = True
+
+        # ── Фаза 2: установка ───────────────────────────────────
+        cmd_apply = [sys.executable, _UPDATER, '--apply-only', '--stream-json']
+        if force:
+            cmd_apply.append('--force')
+
+        try:
+            proc_apply = subprocess.Popen(
+                cmd_apply,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                cwd=BASE_DIR,
+            )
+        except Exception as e:
+            yield _sse_format('error', {'message': str(e), 'phase': 'apply'})
+            return
+
+        last_heartbeat = time.time()
+
+        for raw_line in proc_apply.stdout:
+            if time.time() - last_heartbeat >= 15:
+                yield _sse_format('heartbeat', {})
+                last_heartbeat = time.time()
+
+            line = raw_line.strip()
+            if not line:
+                continue
+
+            if line.startswith('{'):
+                try:
+                    msg = json.loads(line)
+                    t = msg.get('type', '')
+                    if t == 'apply_pct':
+                        yield _sse_format('apply_pct', {
+                            'pct':     msg.get('pct', 0),
+                            'current': msg.get('current', 0),
+                            'total':   msg.get('total', 0),
+                        })
+                    elif t == 'apply_file':
+                        yield _sse_format('apply_file', {
+                            'status': msg.get('status', ''),
+                            'path':   msg.get('path', ''),
+                        })
+                    elif t == 'done':
+                        yield _sse_format('done', {
+                            'updated':   msg.get('updated', 0),
+                            'unchanged': msg.get('unchanged', 0),
+                            'skipped':   msg.get('skipped', 0),
+                            'errors':    msg.get('errors', 0),
+                            'message':   msg.get('message', 'Готово'),
+                        })
+                except json.JSONDecodeError:
+                    pass
+
+        proc_apply.wait()
+        rc_apply = proc_apply.returncode
+
+        if rc_apply not in (0, 2):
+            yield _sse_format('error', {
+                'message': f'Ошибка установки (rc={rc_apply})',
+                'phase': 'apply',
+            })
+
+    return Response(
+        stream_with_context(_generate()),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control':    'no-cache',
+            'X-Accel-Buffering': 'no',   # отключает буферизацию nginx
+        },
+    )
 
 
 # ─── Проверка обновлений ───────────────────────────────────────────────────────────────────────────────────
