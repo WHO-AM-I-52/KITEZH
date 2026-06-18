@@ -1,0 +1,20 @@
+{
+  "category": "priority",
+  "title": "Приоритетная площадка",
+  "fields": [
+    {
+      "id": 12,
+      "portal_name": "Приоритетная площадка",
+      "key": "is_priority",
+      "type": "number",
+      "required": false,
+      "parent_field": null,
+      "parent_value": null,
+      "group": "basic",
+      "text_checks": {
+        "min_value": 1,
+        "recommendation": "Укажите целое число от 1 до 10. Только для приоритетных площадок инвесткарты. Если площадка не приоритетная — оставьте пустым."
+      }
+    }
+  ]
+}
