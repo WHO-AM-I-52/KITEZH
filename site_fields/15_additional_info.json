@@ -1,37 +1,68 @@
 {
-  "section_id": 15,
-  "section_name": "additional_info",
-  "section_title": "Процедура подачи заявки",
-  "text_checks": [
+  "category": "additional_info",
+  "title": "Процедура подачи заявки",
+  "fields": [
     {
       "id": 83,
-      "field": "application_procedure_desc",
+      "portal_name": "Описание процедуры подачи заявки",
+      "key": "application_procedure_desc",
       "type": "text",
-      "min_length": 20,
-      "rec": "Опишите пошагово процедуру подачи заявки на площадку"
+      "required": true,
+      "parent_field": null,
+      "parent_value": null,
+      "group": "procedure",
+      "text_checks": {
+        "irrelevant_values": ["не указано", "-", "н/д", "нет"],
+        "min_length": 20,
+        "recommendation": "Опишите пошагово процедуру подачи заявки на площадку"
+      }
     },
     {
       "id": 84,
-      "field": "application_docs_list",
+      "portal_name": "Перечень документов, необходимых для подачи заявки",
+      "key": "application_docs_list",
       "type": "text",
-      "min_length": 10,
-      "rec": "Перечислите документы, необходимые инвестору для подачи заявки"
+      "required": false,
+      "parent_field": null,
+      "parent_value": null,
+      "group": "procedure",
+      "text_checks": {
+        "irrelevant_values": ["не указано", "-", "н/д", "нет"],
+        "min_length": 10,
+        "recommendation": "Перечислите документы, необходимые инвестору для подачи заявки"
+      }
     },
     {
       "id": 85,
-      "field": "application_email",
+      "portal_name": "Адрес эл. почты для подачи заявки",
+      "key": "application_email",
       "type": "text",
-      "min_length": 6,
-      "rec": "Укажите действующий e-mail для приёма заявок",
-      "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+"
+      "required": true,
+      "parent_field": null,
+      "parent_value": null,
+      "group": "procedure",
+      "text_checks": {
+        "irrelevant_values": ["не указано", "-", "н/д", "нет"],
+        "min_length": 6,
+        "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+",
+        "recommendation": "Укажите действующий e-mail для приёма заявок"
+      }
     },
     {
       "id": 86,
-      "field": "application_form_url",
+      "portal_name": "Ссылка на форму для подачи заявки",
+      "key": "application_form_url",
       "type": "text",
-      "min_length": 4,
-      "rec": "Укажите ссылку на онлайн-форму подачи заявки",
-      "pattern": "^(https?://|www\\.)"
+      "required": false,
+      "parent_field": null,
+      "parent_value": null,
+      "group": "procedure",
+      "text_checks": {
+        "irrelevant_values": ["не указано", "-", "н/д", "нет"],
+        "min_length": 4,
+        "pattern": "^(https?://|www\\.)",
+        "recommendation": "Укажите ссылку на онлайн-форму подачи заявки"
+      }
     }
   ]
 }
