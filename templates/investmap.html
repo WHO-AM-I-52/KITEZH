@@ -14,7 +14,7 @@
 <div class="row g-3 mb-4" id="sectionCards">
 
   {# Карточка 1: Анализ заполняемости #}
-  <div class="col-12 col-md-4">
+  <div class="col-12 col-md-6">
     <div class="card h-100 p-3 section-card" id="card-analysis"
          style="border-left:4px solid #1B5E7B; transition:box-shadow .2s; cursor:pointer;
                 background:rgba(27,94,123,0.06); box-shadow:0 4px 16px rgba(0,0,0,.12)"
@@ -32,26 +32,8 @@
     </div>
   </div>
 
-  {# Карточка 2: Карта площадок (disabled) #}
-  <div class="col-12 col-md-4">
-    <div class="card h-100 p-3"
-         style="border-left:4px solid #6c757d; opacity:.6; cursor:not-allowed"
-    >
-      <div class="d-flex align-items-center gap-3">
-        <i class="bi bi-map" style="font-size:2rem;color:#6c757d"></i>
-        <div>
-          <div class="fw-bold" style="color:#6c757d">
-            Карта площадок
-            <span class="badge bg-secondary ms-1" style="font-size:10px">скоро</span>
-          </div>
-          <div class="text-muted" style="font-size:12px">Раздел в разработке</div>
-        </div>
-      </div>
-    </div>
-  </div>
-
   {# Карточка 3: Анализ заполняемости v2 #}
-  <div class="col-12 col-md-4">
+  <div class="col-12 col-md-6">
     <div class="card h-100 p-3 section-card" id="card-analysis-v2"
          style="border-left:4px solid #0d6efd; transition:box-shadow .2s; cursor:pointer"
          onclick="switchTab('tab-analysis-v2','card-analysis-v2','#0d6efd')"
@@ -352,20 +334,7 @@ function switchTab(tabId, cardId, accentColor) {
 </div>{# /tab-analysis #}
 
 {# ══════════════════════════════════════════════════════════════════ #}
-{# Вкладка 2: Карта площадок (заглушка)                              #}
-{# ══════════════════════════════════════════════════════════════════ #}
-<div class="tab-pane fade" id="tab-map" role="tabpanel">
-  <div class="card mt-2">
-    <div class="card-body text-center py-5" style="color:var(--text-muted)">
-      <i class="bi bi-map" style="font-size:3rem;opacity:.3"></i>
-      <div class="mt-3 fw-semibold" style="font-size:15px">Скоро</div>
-      <div class="mt-1" style="font-size:13px">Раздел находится в разработке</div>
-    </div>
-  </div>
-</div>
-
-{# ══════════════════════════════════════════════════════════════════ #}
-{# Вкладка 3: Анализ заполняемости v2                                #}
+{# Вкладка 2: Анализ заполняемости v2                                #}
 {# ══════════════════════════════════════════════════════════════════ #}
 <div class="tab-pane fade" id="tab-analysis-v2" role="tabpanel">
 
