@@ -1,0 +1,18 @@
+{
+  "_meta": {
+    "version": "0.1",
+    "updated": "2026-06-18",
+    "description": "Правила валидации полей площадки (~160 столбцов портала КРНО)",
+    "total_fields": 0,
+    "check_types": [
+      "required",
+      "min_length",
+      "not_template",
+      "numeric_range",
+      "value_in_list",
+      "required_if"
+    ]
+  },
+  "groups": [],
+  "rules": []
+}
