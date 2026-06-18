@@ -1,0 +1,56 @@
+{
+  "_meta": {
+    "file": "06_building_params.json",
+    "description": "Параметры здания / сооружения / помещения",
+    "source_fields": [27, 28, 29],
+    "parent_condition": {
+      "field": "site_format",
+      "values": ["здания и сооружения", "помещение"]
+    }
+  },
+  "fields": [
+    {
+      "id": 27,
+      "portal_name": "Свободная площадь здания, сооружения, помещения, кв. м",
+      "key": "free_area_m2",
+      "type": "number",
+      "required": true,
+      "parent_field": "site_format",
+      "parent_value": ["здания и сооружения", "помещение"],
+      "group": "basic",
+      "text_checks": {
+        "min_value": 0,
+        "rec": "Укажите свободную площадь в кв.м"
+      }
+    },
+    {
+      "id": 28,
+      "portal_name": "Кадастровый номер здания, сооружения, помещения",
+      "key": "cadastral_number_building",
+      "type": "text",
+      "required": true,
+      "parent_field": "site_format",
+      "parent_value": ["здания и сооружения", "помещение"],
+      "group": "basic",
+      "text_checks": {
+        "min_length": 3,
+        "rec": "Укажите кадастровый номер здания в формате ХХ:ХХ:XXXXXXX:ХХ",
+        "pattern": "^\\d{2}:\\d{2}:\\d{6,7}:\\d+"
+      }
+    },
+    {
+      "id": 29,
+      "portal_name": "Технические характеристики здания, сооружения, помещения",
+      "key": "building_tech_desc",
+      "type": "text",
+      "required": true,
+      "parent_field": "site_format",
+      "parent_value": ["здания и сооружения", "помещение"],
+      "group": "basic",
+      "text_checks": {
+        "min_length": 10,
+        "rec": "Опишите технические характеристики: год постройки, этажность, материал стен, состояние"
+      }
+    }
+  ]
+}
