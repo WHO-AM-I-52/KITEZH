@@ -13,8 +13,7 @@
       "type": "dropdown_conditional",
       "required": true,
       "parent_field": null,
-      "parent_value": null,
-      "text_checks": null
+      "parent_value": null
     },
     {
       "id": 77,
