@@ -6,8 +6,6 @@
 {# ║  v2.24.0: глобальный баннер запланированного обновления     ║ #}
 {# ║  v2.24.1: топбар переименован в КИТЕЖ + расшифровка тултип  ║ #}
 {# ║  v2.24.2: кнопка K.I.T.E.Z.H + полная расшифровка тултип   ║ #}
-{# ║  v2.25.0: ссылки «Анализ заполняемости» и v2.0 в сайдбар   ║ #}
-{# ║  v2.25.1: fix — восстановлен обрезанный хвост файла         ║ #}
 {# ╚══════════════════════════════════════════════════════════════╝ #}
 <html lang="ru">
 <head>
@@ -547,24 +545,6 @@
       {% if perms.can_view_investmap %}
       <a href="/investmap" class="sb-link {{ 'active' if 'investmap' in request.path }}">
         <i class="bi bi-pin-map-fill"></i><span class="sb-lbl">Инвестплощадки</span>
-      </a>
-
-      {# ── Анализ заполняемости площадок ── #}
-      <a href="{{ url_for('quality.quality_check_all') }}"
-         class="sb-link {{ 'active' if request.endpoint == 'quality.quality_check_all' }}"
-         title="Анализ заполняемости площадок">
-        <i class="bi bi-clipboard2-check"></i>
-        <span class="sb-lbl">Анализ площадок</span>
-      </a>
-
-      {# ── Анализ заполняемости площадок v2.0 (группировка по КЛ) ── #}
-      <a href="{{ url_for('portal_analysis.page') }}"
-         class="sb-link {{ 'active' if request.endpoint == 'portal_analysis.page' }}"
-         title="Анализ заполняемости площадок v2.0 — группировка по контактному лицу">
-        <i class="bi bi-clipboard2-data"></i>
-        <span class="sb-lbl">Анализ площадок
-          <span class="badge ms-1" style="background:rgba(255,255,255,.25);font-size:9px">v2</span>
-        </span>
       </a>
       {% endif %}
 
