@@ -374,3 +374,17 @@ def calc_portal_score(row: dict) -> dict:
         'missing': missing,
         'skipped': skipped,
     }
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# БЛОК 5: Обёртка для роута — читает площадку из БД
+# ──────────────────────────────────────────────────────────────────────────────
+
+def build_site_fill_report(conn, site_id: int) -> dict:
+    """Обёртка для роута: читает площадку из БД, возвращает отчёт calc_portal_score."""
+    row = conn.execute(
+        "SELECT * FROM requests WHERE id = ?", (site_id,)
+    ).fetchone()
+    if row is None:
+        return {"score": 0, "filled": 0, "total": 0, "missing": [], "skipped": []}
+    return calc_portal_score(dict(row))
