@@ -549,8 +549,8 @@
       </a>
 
       {# ── Анализ заполняемости площадок ── #}
-      <a href="{{ url_for('quality.quality_check') }}"
-         class="sb-link {{ 'active' if request.endpoint == 'quality.quality_check' }}"
+      <a href="{{ url_for('quality.quality_check_all') }}"
+         class="sb-link {{ 'active' if request.endpoint == 'quality.quality_check_all' }}"
          title="Анализ заполняемости площадок">
         <i class="bi bi-clipboard2-check"></i>
         <span class="sb-lbl">Анализ площадок</span>
