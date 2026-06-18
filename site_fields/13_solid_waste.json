@@ -1,0 +1,46 @@
+{
+  "_meta": {
+    "field_group": "solid_waste",
+    "label": "Вывоз ТКО",
+    "ids": "76-78",
+    "source": "site_field_rules.json v0.2"
+  },
+  "fields": [
+    {
+      "id": 76,
+      "key": "waste_removal_avail",
+      "portal_name": "Вывоз ТКО — Наличие",
+      "type": "dropdown_conditional",
+      "required": true,
+      "parent_field": null,
+      "parent_value": null,
+      "text_checks": null
+    },
+    {
+      "id": 77,
+      "key": "waste_removal_tariff_ton",
+      "portal_name": "Вывоз ТКО — Тариф, руб./тонна",
+      "type": "number",
+      "required": false,
+      "parent_field": "waste_removal_avail",
+      "parent_value": ["да"],
+      "text_checks": {
+        "min_value": 0,
+        "rec": "Тариф на вывоз ТКО, руб./тонна"
+      }
+    },
+    {
+      "id": 78,
+      "key": "waste_removal_tariff_m3",
+      "portal_name": "Вывоз ТКО — Тариф, руб./куб. м",
+      "type": "number",
+      "required": false,
+      "parent_field": "waste_removal_avail",
+      "parent_value": ["да"],
+      "text_checks": {
+        "min_value": 0,
+        "rec": "Тариф на вывоз ТКО, руб./куб.м"
+      }
+    }
+  ]
+}
