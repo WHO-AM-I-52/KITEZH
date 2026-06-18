@@ -1,0 +1,25 @@
+{
+  "_meta": {
+    "version": "1.0",
+    "description": "Манифест сборки site_field_rules.json из category-файлов",
+    "source_of_truth": "site_fields/",
+    "build_target": "site_field_rules.json",
+    "total_fields": 93
+  },
+  "categories": [
+    {"code": "object_info",      "file": "02_object_info.json",        "title": "Сведения об объекте",                    "fields_count": 20},
+    {"code": "priority",         "file": "03_priority.json",           "title": "Приоритетная площадка",                  "fields_count": 1},
+    {"code": "land_plot",        "file": "05_land_plot.json",          "title": "Параметры земельного участка",            "fields_count": 5},
+    {"code": "building_params",  "file": "06_building_params.json",    "title": "Параметры здания/сооружения/помещения",   "fields_count": 3},
+    {"code": "contacts",         "file": "07_contacts.json",           "title": "Контакты",                               "fields_count": 6},
+    {"code": "water_supply",     "file": "08_water_supply.json",       "title": "Водоснабжение",                          "fields_count": 8},
+    {"code": "wastewater",       "file": "09_wastewater.json",         "title": "Водоотведение",                          "fields_count": 8},
+    {"code": "gas_supply",       "file": "10_gas_supply.json",         "title": "Газоснабжение",                          "fields_count": 8},
+    {"code": "power_supply",     "file": "11_power_supply.json",       "title": "Электроснабжение",                       "fields_count": 8},
+    {"code": "heat_supply",      "file": "12_heat_supply.json",        "title": "Теплоснабжение",                         "fields_count": 8},
+    {"code": "solid_waste",      "file": "13_solid_waste.json",        "title": "Вывоз ТКО",                              "fields_count": 3},
+    {"code": "transport",        "file": "14_transport.json",          "title": "Транспортная доступность",               "fields_count": 4},
+    {"code": "additional_info",  "file": "15_additional_info.json",    "title": "Дополнительные сведения",                "fields_count": 4},
+    {"code": "extra",            "file": "16_coordinates_extra.json",  "title": "Прочее / файлы / гео",                   "fields_count": 7}
+  ]
+}
