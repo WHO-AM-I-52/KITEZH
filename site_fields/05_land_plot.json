@@ -1,0 +1,76 @@
+{
+  "_meta": {
+    "category_code": "land_plot",
+    "title": "Параметры земельного участка",
+    "fields_count": 5,
+    "field_ids": [22, 23, 24, 25, 26],
+    "parent_condition": {
+      "field": "site_format",
+      "value": "земельный участок"
+    }
+  },
+  "fields": [
+    {
+      "id": 22,
+      "portal_name": "Свободная площадь ЗУ, га",
+      "key": "free_area_ha",
+      "type": "number",
+      "required": true,
+      "parent_field": "site_format",
+      "parent_value": ["земельный участок"],
+      "group": "basic",
+      "text_checks": {
+        "min_value": 0,
+        "rec": "Укажите свободную площадь земельного участка в гектарах"
+      }
+    },
+    {
+      "id": 23,
+      "portal_name": "Кадастровый номер ЗУ",
+      "key": "cadastral_number_land",
+      "type": "text",
+      "required": false,
+      "parent_field": "site_format",
+      "parent_value": ["земельный участок"],
+      "group": "basic",
+      "text_checks": {
+        "min_length": 3,
+        "rec": "Укажите кадастровый номер в формате ХХ:ХХ:XXXXXXX:ХХ",
+        "pattern": "^\\d{2}:\\d{2}:\\d{6,7}:\\d+"
+      }
+    },
+    {
+      "id": 24,
+      "portal_name": "Варианты разрешенного использования",
+      "key": "permitted_use",
+      "type": "dropdown",
+      "required": true,
+      "parent_field": "site_format",
+      "parent_value": ["земельный участок"],
+      "group": "basic",
+      "text_checks": null
+    },
+    {
+      "id": 25,
+      "portal_name": "Межевание земельного участка",
+      "key": "land_surveying",
+      "type": "dropdown",
+      "required": true,
+      "parent_field": "site_format",
+      "parent_value": ["земельный участок"],
+      "group": "basic",
+      "text_checks": null
+    },
+    {
+      "id": 26,
+      "portal_name": "Категория земель",
+      "key": "land_category",
+      "type": "dropdown",
+      "required": true,
+      "parent_field": "site_format",
+      "parent_value": ["земельный участок"],
+      "group": "basic",
+      "text_checks": null
+    }
+  ]
+}
