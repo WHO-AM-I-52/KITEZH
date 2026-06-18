@@ -46,6 +46,94 @@
   </div>
 </div>
 
+{# ══════════════════════════════════════════════════════════════════════════ #}
+{# БЛОК ЗАПОЛНЕННОСТИ ПЛОЩАДКИ (Задача #4)                                   #}
+{# ══════════════════════════════════════════════════════════════════════════ #}
+{% set fill_color = 'success' if fill_pct >= 80 else ('warning' if fill_pct >= 50 else 'danger') %}
+<div class="card mb-3 border-{{ fill_color }}">
+  <div class="card-header fw-bold d-flex justify-content-between align-items-center"
+       style="background:var(--surface2,#f0f4f8)">
+    <span><i class="bi bi-bar-chart-line me-1"></i> Заполненность карточки площадки</span>
+    <span class="badge bg-{{ fill_color }} fs-6">{{ fill_pct }}%</span>
+  </div>
+  <div class="card-body">
+
+    {# Прогресс-бар #}
+    <div class="progress mb-3" style="height:18px">
+      <div class="progress-bar bg-{{ fill_color }} progress-bar-striped"
+           role="progressbar"
+           style="width:{{ fill_pct }}%"
+           aria-valuenow="{{ fill_pct }}"
+           aria-valuemin="0"
+           aria-valuemax="100">
+        {{ fill_pct }}%
+      </div>
+    </div>
+
+    {# Итог по группам #}
+    {% if by_group %}
+    <div class="d-flex flex-wrap gap-2 mb-3">
+      {% for group_name, gdata in by_group.items() %}
+        {% set g_color = 'success' if gdata.pct >= 80 else ('warning' if gdata.pct >= 50 else 'danger') %}
+        <span class="badge bg-{{ g_color }}-subtle text-{{ g_color }}-emphasis border border-{{ g_color }}-subtle"
+              style="font-size:0.78rem">
+          {{ group_name }}: {{ gdata.pct }}%
+        </span>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {# Список предупреждений #}
+    {% if failed_checks %}
+    <div class="accordion accordion-flush" id="fillWarningsAccordion">
+      <div class="accordion-item border rounded">
+        <h2 class="accordion-header">
+          <button class="accordion-button collapsed py-2 fw-semibold text-danger"
+                  type="button"
+                  data-bs-toggle="collapse"
+                  data-bs-target="#fillWarningsBody"
+                  aria-expanded="false">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+            Предупреждения: {{ failed_checks | length }} поля требуют заполнения
+          </button>
+        </h2>
+        <div id="fillWarningsBody" class="accordion-collapse collapse">
+          <div class="accordion-body p-0">
+            <table class="table table-sm table-hover mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th style="width:35%">Поле</th>
+                  <th style="width:25%">Группа</th>
+                  <th>Рекомендация</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for chk in failed_checks %}
+                <tr>
+                  <td class="fw-semibold text-danger">
+                    <i class="bi bi-x-circle me-1"></i>{{ chk.label or chk.field }}
+                  </td>
+                  <td class="text-muted" style="font-size:0.85rem">{{ chk.group or '—' }}</td>
+                  <td style="font-size:0.85rem">{{ chk.recommendation or 'Заполните поле' }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <div class="text-success small">
+      <i class="bi bi-check-circle-fill me-1"></i>
+      Все обязательные поля заполнены — карточка готова к работе.
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+{# ══════════════════════════════════════════════════════════════════════════ #}
+
 {# ── ЦЕПОЧКА СТАТУСОВ (#53) ──────────────────────────── #}
 {% set status_steps = [
   ('draft',             'Черновик',              'bi-file-earmark'),
