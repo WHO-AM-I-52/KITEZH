@@ -14,7 +14,9 @@ try:
 except ImportError:
     pd = None
 
-from .portal_checker import calc_portal_score, _strip_html
+import db as _db
+
+from .portal_checker import calc_portal_score, _strip_html, build_site_fill_report
 from .portal_message_builder import build_messages, FIELD_HINTS, _get_site_name, _get_site_id, _get_contact
 
 portal_analysis_bp = Blueprint('portal_analysis', __name__)
@@ -69,7 +71,7 @@ def page():
     return render_template('portal_analysis_v2.html')
 
 
-# ─── API-эндпоинт ─────────────────────────────────────────────────────
+# ─── API-эндпоинт (xlsx) ──────────────────────────────────────────────
 
 @portal_analysis_bp.route('/api/portal-analysis-v2', methods=['POST'])
 def api_analyze():
@@ -126,4 +128,37 @@ def api_analyze():
         'total_contacts': contacts,
         'avg_score':      avg_score,
         'low_score_count': low_count,
+    })
+
+
+# ─── /investmap — анализ заполняемости одной площадки из БД ──────────
+
+@portal_analysis_bp.route('/api/investmap/<int:site_id>')
+def api_investmap_fill(site_id: int):
+    err = _require_login()
+    if err:
+        return err
+
+    conn = _db.get_db()
+    report = build_site_fill_report(conn, site_id)
+
+    if report['total'] == 0 and not report['missing'] and report['score'] == 0:
+        return jsonify({'error': f'Площадка {site_id} не найдена'}), 404
+
+    missing_hints = [
+        {
+            'field': f,
+            'hint':  FIELD_HINTS.get(f.strip().lower(),
+                     'Заполните поле на портале invest.gov.ru.'),
+        }
+        for f in report['missing']
+    ]
+
+    return jsonify({
+        'site_id': site_id,
+        'score':   report['score'],
+        'filled':  report['filled'],
+        'total':   report['total'],
+        'missing': missing_hints,
+        'skipped': report['skipped'],
     })
