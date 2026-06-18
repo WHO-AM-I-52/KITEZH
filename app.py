@@ -12,6 +12,7 @@
 # ║      feat #15 — update_bp: планировщик обновлений          ║
 # ║      feat: kitezh_logger — централизованный логгер         ║
 # ║      feat: portal_analysis_bp — анализ заполняемости       ║
+# ║      fix: threaded=True — SSE-стрим обновления работает     ║
 # ╚═══════════════════════════════════════════════════════════════╝
 
 import os
@@ -201,5 +202,5 @@ _startup()
 if __name__ == '__main__':
     app_debug  = os.getenv('APP_DEBUG', '0')
     debug_flag = app_debug == '1'
-    print(f"Starting Flask with debug={debug_flag}, FLASK_ENV={os.getenv('FLASK_ENV', '')}")
-    app.run(host='0.0.0.0', port=5000, debug=debug_flag, use_reloader=debug_flag)
+    print(f"Starting Flask with debug={debug_flag}, threaded=True, FLASK_ENV={os.getenv('FLASK_ENV', '')}")
+    app.run(host='0.0.0.0', port=5000, debug=debug_flag, use_reloader=debug_flag, threaded=True)
