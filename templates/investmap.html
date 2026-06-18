@@ -27,6 +27,13 @@
       <span class="badge bg-secondary ms-1" style="font-size:10px">скоро</span>
     </button>
   </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="tab-analysis-v2-btn"
+            data-bs-toggle="tab" data-bs-target="#tab-analysis-v2"
+            type="button" role="tab" aria-selected="false">
+      <i class="bi bi-clipboard2-data me-1"></i>Анализ заполняемости v2
+    </button>
+  </li>
 </ul>
 
 <div class="tab-content" id="investmapTabContent">
@@ -292,6 +299,108 @@
     </div>
   </div>
 </div>
+
+{# ══════════════════════════════════════════════════════════════════ #}
+{# Вкладка 3: Анализ заполняемости v2                                #}
+{# ══════════════════════════════════════════════════════════════════ #}
+<div class="tab-pane fade" id="tab-analysis-v2" role="tabpanel">
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="mb-0" style="color:#1B5E7B">
+    <i class="bi bi-clipboard2-data me-1"></i>
+    Анализ заполняемости площадок
+    <span class="badge ms-2" style="background:#1B5E7B;font-size:11px">v2.0</span>
+  </h5>
+  <div class="d-flex gap-2 align-items-center">
+    <span class="text-muted small">Загрузите выгрузку с портала invest.gov.ru (xlsx)</span>
+  </div>
+</div>
+
+{# ───── ЗАГРУЗКА ФАЙЛА ───── #}
+<div class="card mb-4" style="border-left:4px solid #1B5E7B">
+  <div class="card-body py-3">
+    <form id="portalUploadForm" enctype="multipart/form-data">
+      <div class="row g-3 align-items-end">
+        <div class="col-md-6">
+          <label class="form-label small fw-bold mb-1">
+            <i class="bi bi-file-earmark-excel me-1 text-success"></i>Файл выгрузки с портала (.xlsx)
+          </label>
+          <input type="file" id="portalFile" name="file" class="form-control form-control-sm" accept=".xlsx" required>
+          <div class="form-text">Столбцы: «Контактное лицо», «Название площадки», «ID» и все поля заполняемости</div>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small fw-bold mb-1">
+            <i class="bi bi-funnel me-1"></i>Фильтр по контактному лицу
+          </label>
+          <input type="text" id="contactFilter" class="form-control form-control-sm"
+                 placeholder="Иванов, Петров..." autocomplete="off">
+        </div>
+        <div class="col-md-3">
+          <button type="button" id="uploadBtn" class="btn btn-sm w-100"
+                  style="background:#1B5E7B;color:#fff">
+            <i class="bi bi-cpu me-1"></i>Анализировать
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+{# ───── СТАТУС / СПИННЕР ───── #}
+<div id="analysisStatus" class="d-none mb-3"></div>
+
+{# ───── KPI-СТРОКА (заполняется JS) ───── #}
+<div id="kpiRow" class="row g-2 mb-4 d-none">
+  <div class="col-6 col-sm-3">
+    <div class="card py-2 px-3" style="border-left:4px solid #1B5E7B">
+      <div class="d-flex align-items-center gap-2">
+        <i class="bi bi-buildings" style="font-size:1.3rem;color:#1B5E7B"></i>
+        <div>
+          <div class="fw-bold fs-5" style="color:#1B5E7B;line-height:1" id="kpi-total">—</div>
+          <div class="text-muted" style="font-size:10px">Площадок</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-sm-3">
+    <div class="card py-2 px-3" style="border-left:4px solid #198754">
+      <div class="d-flex align-items-center gap-2">
+        <i class="bi bi-person-lines-fill" style="font-size:1.3rem;color:#198754"></i>
+        <div>
+          <div class="fw-bold fs-5" style="color:#198754;line-height:1" id="kpi-contacts">—</div>
+          <div class="text-muted" style="font-size:10px">Контактных лиц</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-sm-3">
+    <div class="card py-2 px-3" style="border-left:4px solid #fd7e14">
+      <div class="d-flex align-items-center gap-2">
+        <i class="bi bi-percent" style="font-size:1.3rem;color:#fd7e14"></i>
+        <div>
+          <div class="fw-bold fs-5" style="color:#fd7e14;line-height:1" id="kpi-avg">—</div>
+          <div class="text-muted" style="font-size:10px">Средний score</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-sm-3">
+    <div class="card py-2 px-3" style="border-left:4px solid #dc3545">
+      <div class="d-flex align-items-center gap-2">
+        <i class="bi bi-exclamation-diamond" style="font-size:1.3rem;color:#dc3545"></i>
+        <div>
+          <div class="fw-bold fs-5" style="color:#dc3545;line-height:1" id="kpi-low">—</div>
+          <div class="text-muted" style="font-size:10px">Score < 60%</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ───── РЕЗУЛЬТАТЫ ───── #}
+<div id="resultsContainer"></div>
+
+</div>{# /tab-analysis-v2 #}
 
 </div>{# /tab-content #}
 {% endblock %}
@@ -631,7 +740,6 @@
   });
 
   // ─── Копирование в буфер обмена ───────────────────────────────────────────────────
-  // Поддерживает как HTTPS (Clipboard API), так и HTTP/file:// (fallback через execCommand)
   function copyToClipboard(text, btn, label){
     if (!text) return;
     var orig = btn.innerHTML;
@@ -680,6 +788,204 @@
     resultError.classList.remove('d-none');
     resultError.textContent = msg;
   }
+
+})();
+</script>
+
+<script>
+(function () {
+  'use strict';
+
+  var uploadBtn     = document.getElementById('uploadBtn');
+  var portalFile    = document.getElementById('portalFile');
+  var contactFilter = document.getElementById('contactFilter');
+  var statusDiv     = document.getElementById('analysisStatus');
+  var kpiRow        = document.getElementById('kpiRow');
+  var results       = document.getElementById('resultsContainer');
+
+  // Последний ответ сервера — для живой фильтрации
+  var lastData = null;
+
+  // ── Утилиты ──────────────────────────────────────────────────────
+  function setStatus(html, type) {
+    statusDiv.className = 'mb-3 alert alert-' + (type || 'info');
+    statusDiv.innerHTML = html;
+    statusDiv.classList.remove('d-none');
+  }
+
+  function scoreColor(s) {
+    if (s >= 80) return '#198754';
+    if (s >= 60) return '#fd7e14';
+    return '#dc3545';
+  }
+
+  function scoreBadge(s) {
+    var c = scoreColor(s);
+    return '<span class="badge" style="background:' + c + ';font-size:13px">' + s + '%</span>';
+  }
+
+  // ── Рендер одного сообщения ──────────────────────────────────────
+  function renderMessage(msg) {
+    var isNoContact = (msg.contact === '__no_contact__');
+    var headerColor = isNoContact ? '#dc3545' : '#1B5E7B';
+    var headerIcon  = isNoContact ? 'bi-exclamation-triangle' : 'bi-person-badge';
+    var headerTitle = isNoContact
+      ? '<span class="text-danger">⚠️ Без контактного лица (' + msg.sites.length + ' пл.)</span>'
+      : msg.contact + ' <span class="text-white-50 small">(' + msg.sites.length + ' пл.)</span>';
+
+    // Плашки площадок в шапке
+    var sitePills = msg.sites.map(function(s) {
+      return '<span class="badge bg-white text-dark border me-1 mb-1" style="font-size:10px">'
+        + (s.length > 40 ? s.substring(0, 40) + '…' : s) + '</span>';
+    }).join('');
+
+    // Тело — textarea с готовым текстом
+    var textareaId = 'msg_' + Math.random().toString(36).substr(2, 8);
+    var escapedText = msg.text
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    // Таблица площадок с прогресс-барами
+    var siteRows = '';
+    if (msg.scores) {
+      msg.scores.forEach(function(sc) {
+        var c = scoreColor(sc.score);
+        var missingList = (sc.missing || []).map(function(f, i) {
+          return '<li class="mb-1"><strong>' + (i+1) + '. ' + f.field + '</strong>'
+            + ' <span class="text-muted small">— ' + f.hint + '</span></li>';
+        }).join('');
+        var missing_block = missingList
+          ? '<ul class="mt-1 mb-0 ps-3" style="font-size:12px">' + missingList + '</ul>'
+          : '<div class="text-success small mt-1"><i class="bi bi-check-circle me-1"></i>Все поля заполнены</div>';
+
+        siteRows += '<div class="mb-3 pb-3" style="border-bottom:1px solid #eee">'
+          + '<div class="d-flex justify-content-between align-items-start mb-1">'
+          + '<div style="font-size:13px;font-weight:600">'
+          + '📍 ' + sc.name
+          + (sc.id ? ' <span class="text-muted fw-normal">(ID: ' + sc.id + ')</span>' : '')
+          + '</div>'
+          + '<div>' + scoreBadge(sc.score) + '</div>'
+          + '</div>'
+          + '<div class="progress mb-2" style="height:6px">'
+          + '<div class="progress-bar" style="width:' + sc.score + '%;background:' + c + '"></div>'
+          + '</div>'
+          + missing_block
+          + '</div>';
+      });
+    }
+
+    return '<div class="card mb-4">'
+      + '<div class="card-header d-flex justify-content-between align-items-start" style="background:' + headerColor + ';color:#fff">'
+      + '<div><i class="bi ' + headerIcon + ' me-2"></i>' + headerTitle + '</div>'
+      + '<div>'
+      + '<button class="btn btn-sm btn-light me-1 copy-btn" data-target="' + textareaId + '" title="Скопировать сообщение">'
+      + '<i class="bi bi-clipboard"></i> Копировать'
+      + '</button>'
+      + '<button class="btn btn-sm btn-outline-light toggle-detail" data-bs-toggle="collapse" '
+      + 'data-bs-target="#detail_' + textareaId + '">'
+      + '<i class="bi bi-chevron-down"></i> Детали'
+      + '</button>'
+      + '</div></div>'
+      + '<div class="card-body pb-2">'
+      + '<div class="mb-2"><div class="d-flex flex-wrap">' + sitePills + '</div></div>'
+      // Текст сообщения
+      + '<textarea id="' + textareaId + '" class="form-control font-monospace" rows="8" '
+      + 'style="font-size:12px;resize:vertical;background:#f8f9fa" readonly>'
+      + escapedText
+      + '</textarea>'
+      + '</div>'
+      // Детальный разбор
+      + '<div id="detail_' + textareaId + '" class="collapse">'
+      + '<div class="card-body pt-0">'
+      + '<hr class="mt-0">'
+      + '<h6 style="color:#1B5E7B"><i class="bi bi-list-check me-1"></i>Детальный разбор по площадкам</h6>'
+      + siteRows
+      + '</div></div>'
+      + '</div>';
+  }
+
+  // ── Рендер всего результата ──────────────────────────────────────
+  function renderAll(data, filterStr) {
+    var msgs = data.messages;
+    filterStr = (filterStr || '').toLowerCase().trim();
+
+    if (filterStr) {
+      msgs = msgs.filter(function(m) {
+        return m.contact.toLowerCase().indexOf(filterStr) !== -1;
+      });
+    }
+
+    // KPI
+    kpiRow.classList.remove('d-none');
+    document.getElementById('kpi-total').textContent    = data.total_sites;
+    document.getElementById('kpi-contacts').textContent = data.total_contacts;
+    document.getElementById('kpi-avg').textContent      = data.avg_score + '%';
+    document.getElementById('kpi-low').textContent      = data.low_score_count;
+
+    if (!msgs.length) {
+      results.innerHTML = '<div class="alert alert-warning"><i class="bi bi-search me-1"></i>По фильтру ничего не найдено</div>';
+      return;
+    }
+
+    results.innerHTML = msgs.map(renderMessage).join('');
+
+    // Кнопки «Копировать»
+    document.querySelectorAll('.copy-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var ta = document.getElementById(btn.dataset.target);
+        if (!ta) return;
+        navigator.clipboard.writeText(ta.value).then(function() {
+          btn.innerHTML = '<i class="bi bi-check2"></i> Скопировано!';
+          btn.classList.replace('btn-light', 'btn-success');
+          setTimeout(function() {
+            btn.innerHTML = '<i class="bi bi-clipboard"></i> Копировать';
+            btn.classList.replace('btn-success', 'btn-light');
+          }, 2000);
+        });
+      });
+    });
+  }
+
+  // ── Живой фильтр ────────────────────────────────────────────────
+  contactFilter.addEventListener('input', function() {
+    if (lastData) renderAll(lastData, this.value);
+  });
+
+  // ── Загрузка файла ───────────────────────────────────────────────
+  uploadBtn.addEventListener('click', function() {
+    if (!portalFile.files.length) {
+      setStatus('<i class="bi bi-exclamation-circle me-1"></i>Выберите файл .xlsx', 'warning');
+      return;
+    }
+    var fd = new FormData(document.getElementById('portalUploadForm'));
+    uploadBtn.disabled = true;
+    uploadBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Анализирую...';
+    statusDiv.classList.add('d-none');
+    results.innerHTML = '';
+    kpiRow.classList.add('d-none');
+
+    fetch('/api/portal-analysis-v2', { method: 'POST', body: fd })
+      .then(function(r) {
+        if (!r.ok) return r.json().then(function(e) { throw new Error(e.error || r.statusText); });
+        return r.json();
+      })
+      .then(function(data) {
+        if (data.error) throw new Error(data.error);
+        lastData = data;
+        renderAll(data, contactFilter.value);
+        setStatus(
+          '<i class="bi bi-check-circle me-1"></i>Анализ завершён. Площадок: <strong>' + data.total_sites + '</strong>, '
+          + 'контактных лиц: <strong>' + data.total_contacts + '</strong>.',
+          'success'
+        );
+      })
+      .catch(function(err) {
+        setStatus('<i class="bi bi-x-circle me-1"></i>' + err.message, 'danger');
+      })
+      .finally(function() {
+        uploadBtn.disabled = false;
+        uploadBtn.innerHTML = '<i class="bi bi-cpu me-1"></i>Анализировать';
+      });
+  });
 
 })();
 </script>
