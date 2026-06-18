@@ -1,3 +1,4 @@
+<!-- version: 0.3 -->
 # Логика заполняемости полей портала invest.gov.ru
 
 > Источник истины для `portal_checker.py`.
@@ -249,3 +250,60 @@
 |---|---|---|
 | 2026-06-16 | 0.1 | Создан шаблон структуры |
 | 2026-06-16 | 0.2 | Заполнены все поля по методичке 29.03.2024 |
+| 2026-06-18 | 0.3 | Добавлены text_checks; конфигурация декомпозирована на 14 category-файлов в site_fields/ |
+
+---
+
+## v0.3 — text_checks и декомпозиция на category-файлы
+
+**Дата:** 2026-06-18
+**Статус:** завершено
+
+### Что сделано
+
+Все 93 поля `site_field_rules.json` дополнены блоком `text_checks`
+с индивидуальными рекомендациями для операторов КРНО.
+
+Конфигурация вынесена в 14 category-файлов в папке `site_fields/`:
+
+| Файл | Секция | Полей |
+|------|--------|-------|
+| 02_object_info.json | Сведения об объекте | 20 |
+| 03_priority.json | Приоритетная площадка | 1 |
+| 05_land_plot.json | Параметры ЗУ | 5 |
+| 06_building_params.json | Параметры здания | 3 |
+| 07_contacts.json | Контакты | 6 |
+| 08_water_supply.json | Водоснабжение | 8 |
+| 09_wastewater.json | Водоотведение | 8 |
+| 10_gas_supply.json | Газоснабжение | 8 |
+| 11_power_supply.json | Электроснабжение | 8 |
+| 12_heat_supply.json | Теплоснабжение | 8 |
+| 13_solid_waste.json | Вывоз ТКО | 3 |
+| 14_transport.json | Транспортная доступность | 4 |
+| 15_additional_info.json | Процедура подачи заявки | 4 |
+| 16_coordinates_extra.json | Прочее / файлы / гео | 7 |
+
+### Структура text_checks
+
+```json
+{
+  "text_checks": {
+    "irrelevant_values": ["не указано", "-", "н/д", "нет"],
+    "min_length": 10,
+    "pattern": "regex — если есть формат",
+    "min_value": 0,
+    "recommendation": "Конкретная подсказка по полю"
+  }
+}
+```
+
+**Правила применения:**
+- `text` → `irrelevant_values` + `min_length` + `recommendation` (+ `pattern` если есть формат)
+- `number` → `min_value` + `recommendation`
+- `dropdown` / `dropdown_conditional` / `file` / `geo` → `text_checks` отсутствует
+
+### Источник истины
+
+`site_fields/` — папка с 14 category-файлами.
+`site_field_rules.json` в корне репо — собранный из них итоговый файл.
+`site_fields/index.json` — манифест сборки.
