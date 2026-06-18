@@ -47,8 +47,7 @@
       "required": true,
       "parent_field": "site_format",
       "parent_value": ["земельный участок"],
-      "group": "basic",
-      "text_checks": null
+      "group": "basic"
     },
     {
       "id": 25,
@@ -58,8 +57,7 @@
       "required": true,
       "parent_field": "site_format",
       "parent_value": ["земельный участок"],
-      "group": "basic",
-      "text_checks": null
+      "group": "basic"
     },
     {
       "id": 26,
@@ -69,8 +67,7 @@
       "required": true,
       "parent_field": "site_format",
       "parent_value": ["земельный участок"],
-      "group": "basic",
-      "text_checks": null
+      "group": "basic"
     }
   ]
 }
