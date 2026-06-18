@@ -14,6 +14,7 @@
 # ║  v2.2.0: /api/update/stream принимает ?delay=N               ║
 # ║           (пауза между download и apply); кнопка «Обновить»  ║
 # ║           теперь идёт напрямую через SSE, минуя schedule      ║
+# ║  v2.2.1: _MIN_DELAY 1→0; delay=0 разрешён                   ║
 # ╚═══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, jsonify, request as flask_request, session, Response, stream_with_context
@@ -39,7 +40,7 @@ _COMMIT_FILE      = os.path.join(BASE_DIR, '_last_commit.txt')
 _PRE_UPDATE_FILE  = os.path.join(BASE_DIR, '_pre_update.json')
 _BAT_NAME         = 'start KITEZH.bat'
 
-_MIN_DELAY = 1
+_MIN_DELAY = 0
 _MAX_DELAY = 3600
 
 
@@ -165,7 +166,7 @@ def api_update_stream():
 
     Параметры запроса (GET):
       force=1       — принудительная перезапись всех файлов
-      delay=N       — пауза (сек, 1–3600) между скачиванием и установкой
+      delay=N       — пауза (сек, 0–3600) между скачиванием и установкой
                       (позволяет кнопке «Обновить» заменить /api/update/schedule)
 
     События (event: download_pct | apply_pct | apply_file | done | error | heartbeat):
@@ -514,7 +515,7 @@ def _build_timer_worker(delay: int, fire_at_ts: float, force: bool, user_id: int
 @update_bp.route('/api/update/schedule', methods=['POST'])
 def api_update_schedule():
     """POST {delay: N, force: bool}
-    delay: секунд от момента завершения скачивания.
+    delay: секунд от момента завершения скачивания (0–3600).
     force: перезаписать все файлы.
     Используется когда нужен баннер ожидания для всех пользователей системы.
     Для немедленного обновления с SSE-прогрессом используй /api/update/stream.
@@ -539,7 +540,7 @@ def api_update_schedule():
     body       = flask_request.get_json(silent=True) or {}
     delay      = int(body.get('delay', 120))
     force      = bool(body.get('force', False))
-    delay      = max(_MIN_DELAY, min(_MAX_DELAY, delay))
+    delay      = max(0, min(_MAX_DELAY, delay))
 
     scheduled_at = datetime.now().isoformat()
     fire_at_ts   = time.time() + delay
