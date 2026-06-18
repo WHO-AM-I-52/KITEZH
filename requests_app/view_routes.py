@@ -6,6 +6,7 @@ from auth_utils import login_required, admin_required
 from request_history import get_history, rollback_history
 from activity_log import log_action
 from form_utils import denormalize_from_base, FIELD_UNIT_KEY
+from portal_analysis.portal_checker import build_site_fill_report  # Задача #4
 from . import requests_bp
 
 # ─── Issue #48: поля, которые денормализуются в карточке ──────────────────
@@ -110,6 +111,9 @@ def view_request(rid):
         (rid,)
     ).fetchall()
 
+    # ─ Задача #4: анализ заполненности площадки ──────────────────────────
+    fill_report = build_site_fill_report(conn, req['id'])
+
     conn.close()
 
     display_vals = _build_display_vals(req)
@@ -125,6 +129,9 @@ def view_request(rid):
         all_districts=all_districts,
         review_chain=review_chain,
         today_str=str(date.today()),
+        fill_pct=fill_report.get('fill_pct', 0),
+        failed_checks=fill_report.get('failed_checks', []),
+        by_group=fill_report.get('by_group', {}),
     )
 
 
