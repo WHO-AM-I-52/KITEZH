@@ -11,6 +11,7 @@
 # ║  v2.9.0: /api/update/* вынесен в update_routes.py             ║
 # ║  v2.9.1: fix — /ping использует utcnow() для синхронизации   ║
 # ║           с datetime('now') SQLite (UTC)                      ║
+# ║  v2.9.2: /api/online-users — алиас для /api/online           ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, render_template, session, jsonify, request as flask_request, redirect, url_for
@@ -137,10 +138,13 @@ def ping():
     return '', 204
 
 
+@misc_bp.route('/api/online-users')
 @misc_bp.route('/api/online')
 @login_required
 def api_online():
-    """Возвращает число и список пользователей активных за последние 5 минут."""
+    """Возвращает число и список пользователей активных за последние 5 минут.
+    Доступен по /api/online и /api/online-users (алиас).
+    """
     conn = get_db()
     rows = conn.execute(
         """
