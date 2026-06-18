@@ -16,6 +16,7 @@
 # ║           теперь идёт напрямую через SSE, минуя schedule      ║
 # ║  v2.2.1: _MIN_DELAY 1→0; delay=0 разрешён                   ║
 # ║  v2.2.2: FIX fire_at_ts пересчитывается ПОСЛЕ скачивания     ║
+# ║  v2.2.3: stderr=None в Popen → _updater виден в консоли bat  ║
 # ╚═══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, jsonify, request as flask_request, session, Response, stream_with_context
@@ -45,7 +46,7 @@ _MIN_DELAY = 0
 _MAX_DELAY = 3600
 
 
-# ─── Вспомогательные ────────────────────────────────────────────────────────────────────────────────────────
+# ─── Вспомогательные ────────────────────────────────────────────────────────────────────────────────────
 
 def _read_local_sha() -> str:
     if os.path.exists(_COMMIT_FILE):
@@ -95,7 +96,7 @@ def _lock_update_phase(phase: str):
 
 
 def _lock_is_stale() -> bool:
-    """Возвращает True если лок существует, но PID уже мёртв.
+    """Возвращает True если лок существует, но PID уже мёрт.
     В этом случае автоматически удаляет лок-файл.
     """
     if not os.path.exists(_LOCK_FILE):
@@ -159,7 +160,7 @@ def _sse_format(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
-# ─── SSE-стрим прогресса обновления ──────────────────────────────────────────────────────────────────────────
+# ─── SSE-стрим прогресса обновления ──────────────────────────────────────────────────────────────────
 
 @update_bp.route('/api/update/stream')
 def api_update_stream():
@@ -196,7 +197,7 @@ def api_update_stream():
         delay = 0
 
     def _generate():
-        # ── Фаза 1: скачивание ──────────────────────────────────
+        # ── Фаза 1: скачивание ──────────────────────────────────────────
         cmd_dl = [sys.executable, _UPDATER, '--download-only', '--stream-json']
         if force:
             cmd_dl.append('--force')
@@ -205,7 +206,7 @@ def api_update_stream():
             proc_dl = subprocess.Popen(
                 cmd_dl,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
+                stderr=None,   # stderr наследуется от родителя → виден в консоли bat
                 text=True,
                 bufsize=1,
                 cwd=BASE_DIR,
@@ -263,7 +264,7 @@ def api_update_stream():
                 yield _sse_format('delay_tick', {'remaining': remaining})
                 time.sleep(1)
 
-        # ── Фаза 2: установка ───────────────────────────────────
+        # ── Фаза 2: установка ──────────────────────────────────────────
         cmd_apply = [sys.executable, _UPDATER, '--apply-only', '--stream-json']
         if force:
             cmd_apply.append('--force')
@@ -272,7 +273,7 @@ def api_update_stream():
             proc_apply = subprocess.Popen(
                 cmd_apply,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
+                stderr=None,   # stderr наследуется от родителя → виден в консоли bat
                 text=True,
                 bufsize=1,
                 cwd=BASE_DIR,
@@ -337,7 +338,7 @@ def api_update_stream():
     )
 
 
-# ─── Проверка обновлений ───────────────────────────────────────────────────────────────────────────────────
+# ─── Проверка обновлений ────────────────────────────────────────────────────────────────────────────────────
 
 @update_bp.route('/api/update/check')
 def api_update_check():
@@ -404,7 +405,7 @@ def api_update_check():
                         'has_update': False, 'local_sha': _read_local_sha()}), 200
 
 
-# ─── Общая логика рабочего потока: download → таймер → apply ─────────────────────────────────
+# ─── Общая логика рабочего потока: download → таймер → apply ─────────────────
 
 def _build_timer_worker(delay: int, force: bool, user_id: int):
     """Ретурнирует целевую функцию для threading.Thread.
@@ -513,7 +514,7 @@ def _build_timer_worker(delay: int, force: bool, user_id: int):
     return _worker
 
 
-# ─── Запланированное обновление (баннер для всех пользователей) ────────────────────────────────────
+# ─── Запланированное обновление (баннер для всех пользователей) ─────────────────────────────────
 
 @update_bp.route('/api/update/schedule', methods=['POST'])
 def api_update_schedule():
@@ -589,7 +590,7 @@ def api_update_schedule():
     })
 
 
-# ─── Обратная совместимость: /apply и /apply-force ───────────────────────────────────────────────
+# ─── Обратная совместимость: /apply и /apply-force ─────────────────────────────────────────────
 
 @update_bp.route('/api/update/apply', methods=['POST'])
 def api_update_apply():
@@ -658,7 +659,7 @@ def _schedule_internal(delay: int, force: bool):
                     'message': f'Запущено. Скачиваем архив... потом перезапуск через ~{delay}с.'})
 
 
-# ─── Отмена запланированного обновления ─────────────────────────────────────────────────────────────────────────────────
+# ─── Отмена запланированного обновления ───────────────────────────────────────────────────────────────────────────────────────
 
 @update_bp.route('/api/update/schedule/cancel', methods=['POST'])
 def api_update_schedule_cancel():
@@ -689,7 +690,7 @@ def api_update_schedule_cancel():
     return jsonify({'ok': True, 'message': 'Обновление отменено'})
 
 
-# ─── Статус текущего обновления ───────────────────────────────────────────────────────────────────────────────
+# ─── Статус текущего обновления ───────────────────────────────────────────────────────────────────────────────────
 
 @update_bp.route('/api/update/status')
 @update_bp.route('/api/update-status')  # алиас: обратная совместимость с base.html
@@ -707,7 +708,7 @@ def api_update_status():
     return jsonify({'in_progress': in_progress, 'phase': phase})
 
 
-# ─── Статус предобновления (публичный для всех авторизованных) ──────────────────────────
+# ─── Статус предобновления (публичный для всех авторизованных) ────────────────────
 
 @update_bp.route('/api/update/pre-status')
 def api_update_pre_status():
