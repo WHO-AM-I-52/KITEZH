@@ -1,0 +1,115 @@
+{
+  "category": "power_supply",
+  "title": "Электроснабжение",
+  "fields": [
+    {
+      "id": 60,
+      "portal_name": "Электроснабжение — Наличие",
+      "key": "electricity_avail",
+      "type": "dropdown_conditional",
+      "required": true,
+      "parent_field": null,
+      "parent_value": null,
+      "group": "utilities"
+    },
+    {
+      "id": 61,
+      "portal_name": "Электроснабжение — Тариф на потребление, руб./кВт·ч",
+      "key": "electricity_tariff_consumption",
+      "type": "number",
+      "required": true,
+      "parent_field": "electricity_avail",
+      "parent_value": ["да"],
+      "group": "utilities",
+      "text_checks": {
+        "min_value": 0,
+        "recommendation": "Тариф на потребление электроэнергии, руб./кВт·ч"
+      }
+    },
+    {
+      "id": 62,
+      "portal_name": "Электроснабжение — Тариф на транспортировку, руб./кВт·ч",
+      "key": "electricity_tariff_transport",
+      "type": "number",
+      "required": true,
+      "parent_field": "electricity_avail",
+      "parent_value": ["да"],
+      "group": "utilities",
+      "text_checks": {
+        "min_value": 0,
+        "recommendation": "Тариф на передачу электроэнергии, руб./кВт·ч"
+      }
+    },
+    {
+      "id": 63,
+      "portal_name": "Объекты электроснабжения — Максимально допустимая мощность, МВт",
+      "key": "electricity_capacity_max",
+      "type": "number",
+      "required": true,
+      "parent_field": "electricity_avail",
+      "parent_value": ["да"],
+      "group": "utilities",
+      "text_checks": {
+        "min_value": 0,
+        "recommendation": "Максимальная мощность объектов электроснабжения, МВт"
+      }
+    },
+    {
+      "id": 64,
+      "portal_name": "Объекты электроснабжения — Свободная мощность, МВт",
+      "key": "electricity_capacity_free",
+      "type": "number",
+      "required": true,
+      "parent_field": "electricity_avail",
+      "parent_value": ["да"],
+      "group": "utilities",
+      "text_checks": {
+        "min_value": 0,
+        "recommendation": "Свободная мощность электроснабжения, МВт"
+      }
+    },
+    {
+      "id": 65,
+      "portal_name": "Объекты электроснабжения — Иные характеристики",
+      "key": "electricity_other",
+      "type": "text",
+      "required": false,
+      "parent_field": "electricity_avail",
+      "parent_value": ["да", "возможно создание"],
+      "group": "utilities",
+      "text_checks": {
+        "irrelevant_values": ["не указано", "-", "н/д", "нет"],
+        "min_length": 5,
+        "recommendation": "Укажите иные существенные характеристики электроснабжения"
+      }
+    },
+    {
+      "id": 66,
+      "portal_name": "Сети электроснабжения — Пропускная способность, МВт",
+      "key": "electricity_network_throughput",
+      "type": "number",
+      "required": true,
+      "parent_field": "electricity_avail",
+      "parent_value": ["да"],
+      "group": "utilities",
+      "text_checks": {
+        "min_value": 0,
+        "recommendation": "Пропускная способность электрических сетей, МВт"
+      }
+    },
+    {
+      "id": 67,
+      "portal_name": "Электроснабжение — Тариф на технологическое присоединение, руб.",
+      "key": "electricity_tariff_connection",
+      "type": "number",
+      "required": true,
+      "parent_field": "electricity_avail",
+      "parent_value": ["возможно создание"],
+      "group": "utilities",
+      "text_checks": {
+        "min_value": 0,
+        "recommendation": "Тариф на технологическое присоединение к электросетям, руб."
+      }
+    }
+  ]
+}
