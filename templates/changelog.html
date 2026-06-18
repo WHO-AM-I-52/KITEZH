@@ -234,6 +234,27 @@
   body[data-theme="zone"] .sse-bar-label   { color: #c8c4a8; }
   body[data-theme="zone"] .sse-bar-sub     { color: #9a9880; }
 
+  /* ── Лог apply_file ── */
+  #sseFileLog {
+    list-style: none; padding: 0; margin: 6px 0 0;
+    max-height: 110px; overflow-y: auto;
+    font-size: 10px; font-family: monospace;
+  }
+  #sseFileLog li {
+    padding: 1px 0;
+    color: #495057;
+    display: flex; gap: 6px;
+  }
+  #sseFileLog li.fl-updated  { color: #198754; }
+  #sseFileLog li.fl-skipped  { color: #6c757d; }
+  #sseFileLog li.fl-error    { color: #dc3545; }
+  body[data-theme="dark"] #sseFileLog li { color: #c8d0e8; }
+  body[data-theme="dark"] #sseFileLog li.fl-updated  { color: #6ee79e; }
+  body[data-theme="dark"] #sseFileLog li.fl-error    { color: #f1aeb5; }
+  body[data-theme="zone"] #sseFileLog li { color: #c8c4a8; }
+  body[data-theme="zone"] #sseFileLog li.fl-updated  { color: #a8c4a0; }
+  body[data-theme="zone"] #sseFileLog li.fl-error    { color: #c47070; }
+
   /* ── Итоговый баннер отчёта ──────────────────────────────── */
   #sseDonePanel {
     border-left: 4px solid #198754;
@@ -420,6 +441,13 @@
           </div>
           <div id="sseApplyFiles" class="sse-bar-sub">ожидание скачивания…</div>
         </div>
+
+        {# Строка 3: лог файлов apply_file #}
+        <div class="sse-bar-sep"></div>
+        <div style="font-size:11px;color:#6c757d;margin-bottom:3px">
+          <i class="bi bi-list-ul me-1"></i>Файлы:
+        </div>
+        <ul id="sseFileLog"></ul>
 
       </div>{# /sseProgressWrap #}
 
@@ -734,6 +762,7 @@
   var _sseApplyBar   = document.getElementById('sseApplyBar');
   var _sseApplyPct   = document.getElementById('sseApplyPct');
   var _sseApplyFiles = document.getElementById('sseApplyFiles');
+  var _sseFileLog    = document.getElementById('sseFileLog');
   var _sseDonePanel  = document.getElementById('sseDonePanel');
   var _sseDoneIcon   = document.getElementById('sseDoneIcon');
   var _sseDoneTitle  = document.getElementById('sseDoneTitle');
@@ -865,6 +894,7 @@
     _sseApplyBar.style.width   = '0%';
     _sseApplyPct.textContent   = '0%';
     _sseApplyFiles.textContent = 'ожидание скачивания…';
+    if (_sseFileLog) _sseFileLog.innerHTML = '';
     _sseWrap.classList.remove('d-none');
     _sseDonePanel.classList.add('d-none');
     _sseDonePanel.classList.remove('sse-done-error');
@@ -957,6 +987,20 @@
       _sseApplyBar.style.width   = w + '%';
       _sseApplyPct.textContent   = w.toFixed(0) + '%';
       _sseApplyFiles.textContent = (d.current || 0) + ' / ' + (d.total || 0) + ' файлов';
+    });
+
+    // ── Лог отдельных файлов при установке ──
+    es.addEventListener('apply_file', function(e) {
+      var d  = JSON.parse(e.data);
+      if (!_sseFileLog) return;
+      var li   = document.createElement('li');
+      var icon = d.action === 'updated'  ? '↑' :
+                 d.action === 'skipped'  ? '–' :
+                 d.action === 'error'    ? '✗' : '·';
+      li.className   = 'fl-' + (d.action || 'updated');
+      li.textContent = icon + ' ' + (d.file || d.path || '');
+      _sseFileLog.appendChild(li);
+      _sseFileLog.scrollTop = _sseFileLog.scrollHeight;
     });
 
     // ── FIX: обратный отсчёт delay между скачиванием и установкой ──
@@ -1272,6 +1316,15 @@
   if (ttEl && typeof bootstrap !== 'undefined') {
     new bootstrap.Tooltip(ttEl);
   }
+
+  // ── autostart=1 — запуск из баннера «Обновить сейчас» ──
+  (function() {
+    var params = new URLSearchParams(window.location.search);
+    if (params.get('autostart') === '1') {
+      history.replaceState(null, '', window.location.pathname);
+      setTimeout(function() { _runWithSSE(0, false); }, 400);
+    }
+  })();
 </script>
 {% endif %}
 
