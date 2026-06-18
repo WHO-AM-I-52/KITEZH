@@ -6,6 +6,8 @@
 {# ║  v2.24.0: глобальный баннер запланированного обновления     ║ #}
 {# ║  v2.24.1: топбар переименован в КИТЕЖ + расшифровка тултип  ║ #}
 {# ║  v2.24.2: кнопка K.I.T.E.Z.H + полная расшифровка тултип   ║ #}
+{# ║  v2.25.0: JS-баннер pre-status polling + фазы downloading / ║ #}
+{# ║           scheduled / applying; кнопки только для admin     ║ #}
 {# ╚══════════════════════════════════════════════════════════════╝ #}
 <html lang="ru">
 <head>
@@ -804,201 +806,166 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     body.innerHTML = lastUsers.map(function(name){
       return '<div class="sb-online-tooltip-item"><i class="bi bi-person-fill"></i>' +
-             name.replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</div>';
+             name + '</div>';
     }).join('');
   }
 
-  function fetchOnline(){
-    fetch('/api/online', {cache:'no-store', credentials:'same-origin'})
-      .then(function(r){ return r.ok ? r.json() : null; })
-      .then(function(data){
-        if (!data) return;
-        var n = data.online;
-        el.textContent = n;
-        if (prevVal !== null && prevVal !== n) {
-          el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump');
-          setTimeout(function(){ el.classList.remove('bump'); }, 400);
-        }
-        prevVal = n;
-        lastUsers = Array.isArray(data.users) ? data.users : [];
-      }).catch(function(){});
+  function poll() {
+    fetch('/api/online-users', {credentials:'same-origin', cache:'no-store'})
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(d){
+      if (!d) return;
+      var cnt = d.count || 0;
+      var users = d.users || [];
+      if (prevVal !== null && cnt !== prevVal) {
+        el.classList.add('bump');
+        setTimeout(function(){ el.classList.remove('bump'); }, 400);
+      }
+      prevVal = cnt;
+      el.textContent = cnt;
+      lastUsers = users;
+      renderTooltip();
+    })
+    .catch(function(){});
   }
 
-  if (widget && tooltip) {
+  poll();
+  setInterval(poll, 30000);
+
+  if (widget) {
     widget.addEventListener('mouseenter', function(){
-      renderTooltip();
-      tooltip.classList.add('visible');
+      if (tooltip) tooltip.classList.add('visible');
     });
     widget.addEventListener('mouseleave', function(){
-      tooltip.classList.remove('visible');
+      if (tooltip) tooltip.classList.remove('visible');
     });
   }
-
-  setTimeout(function(){ fetchOnline(); setInterval(fetchOnline, 60000); }, 2000);
 })();
 </script>
 
+{# ─── Баннер обновления: опрос /api/update/pre-status ─── #}
 {% if 'user_id' in session %}
 <script>
 (function(){
-  var input    = document.getElementById('gsInput');
-  var dropdown = document.getElementById('gsDropdown');
-  if (!input) return;
-  var timer = null;
-  var activeIdx = -1;
-  var currentItems = [];
-  var lastQ = '';
-  var STATUS_MAP = {
-    'draft':             {text:'Черновик',         cls:'status-draft'},
-    'registered':        {text:'Зарегистрировано', cls:'status-registered'},
-    'in_progress':       {text:'В работе',         cls:'status-in_progress'},
-    'under_review':      {text:'На проверке',      cls:'status-under_review'},
-    'ready_to_send':     {text:'Готово к отпр.',   cls:'status-ready_to_send'},
-    'sent_to_applicant': {text:'Отправлено',       cls:'status-sent_to_applicant'},
-    'closed':            {text:'Закрыто',           cls:'status-closed'},
-  };
-  function showDropdown(html){ dropdown.innerHTML=html; dropdown.classList.add('show'); activeIdx=-1; currentItems=dropdown.querySelectorAll('.gs-item[data-url]'); }
-  function hideDropdown(){ dropdown.classList.remove('show'); dropdown.innerHTML=''; activeIdx=-1; }
-  function goToSearch(q){ window.location.href='/search?q='+encodeURIComponent(q); }
-  function renderResults(data){
-    if (!data.results.length){ showDropdown('<div class="gs-empty"><i class="bi bi-search me-1"></i>Ничего не найдено</div>'); return; }
-    var html='';
-    data.results.forEach(function(r){
-      var s=STATUS_MAP[r.status]||{text:r.status,cls:'bg-secondary'};
-      var meta=[];
-      if(r.inn) meta.push('ИНН '+r.inn);
-      if(r.project) meta.push(r.project);
-      if(r.match_label) meta.push('<span style="color:#1B5E7B">по: '+r.match_label+'</span>');
-      html+='<a class="gs-item" href="'+r.url+'" data-url="'+r.url+'"><div class="gs-item-left"><div class="gs-item-num">'+r.number+'</div><div class="gs-item-name">'+r.name+'</div>'+(meta.length?'<div class="gs-item-meta">'+meta.join(' · ')+'</div>':'')+'</div><span class="badge '+s.cls+' gs-item-badge">'+s.text+'</span></a>';
-    });
-    html+='<div class="gs-footer" id="gsFooter">Показать все результаты</div>';
-    showDropdown(html);
-    document.getElementById('gsFooter').addEventListener('click',function(){ goToSearch(lastQ); });
+  var banner      = document.getElementById('updBanner');
+  var bannerText  = document.getElementById('updBannerText');
+  var bannerBy    = document.getElementById('updBannerBy');
+  var btnCancel   = document.getElementById('updBannerCancel');
+  var btnNow      = document.getElementById('updBannerNow');
+  var isAdmin     = document.body.getAttribute('data-is-admin') === '1';
+  var visible     = false;
+  var countdownId = null;
+
+  if (!banner) return;
+
+  /* Показать / скрыть кнопки только для admin */
+  function setAdminBtns(show) {
+    if (!isAdmin) return;
+    if (btnCancel) btnCancel.style.display = show ? '' : 'none';
+    if (btnNow)    btnNow.style.display    = show ? '' : 'none';
   }
-  function doSearch(q){
-    lastQ=q;
-    showDropdown('<div class="gs-loading"><i class="bi bi-hourglass-split me-1"></i>Поиск…</div>');
-    fetch('/api/search?q='+encodeURIComponent(q),{credentials:'same-origin'}).then(function(r){return r.json();}).then(renderResults).catch(function(){hideDropdown();});
+
+  function showBanner() {
+    if (!visible) {
+      banner.style.display = 'block';
+      document.body.classList.add('upd-banner-visible');
+      visible = true;
+    }
   }
-  input.addEventListener('input',function(){ var q=input.value.trim(); clearTimeout(timer); if(q.length<2){hideDropdown();return;} timer=setTimeout(function(){doSearch(q);},280); });
-  input.addEventListener('keydown',function(e){
-    var items=currentItems;
-    if(e.key==='ArrowDown'){e.preventDefault();activeIdx=Math.min(activeIdx+1,items.length-1);items.forEach(function(el,i){el.classList.toggle('gs-active',i===activeIdx);});}
-    else if(e.key==='ArrowUp'){e.preventDefault();activeIdx=Math.max(activeIdx-1,0);items.forEach(function(el,i){el.classList.toggle('gs-active',i===activeIdx);});}
-    else if(e.key==='Enter'){e.preventDefault();if(activeIdx>=0&&items[activeIdx]){window.location.href=items[activeIdx].getAttribute('data-url');}else if(input.value.trim().length>=2){goToSearch(input.value.trim());}}
-    else if(e.key==='Escape'){hideDropdown();input.blur();}
-  });
-  document.addEventListener('click',function(e){if(!document.getElementById('gsWrap').contains(e.target))hideDropdown();});
-  document.addEventListener('keydown',function(e){if(e.ctrlKey&&e.shiftKey&&e.key==='F'){e.preventDefault();input.focus();input.select();}});
+
+  function hideBanner() {
+    banner.style.display = 'none';
+    document.body.classList.remove('upd-banner-visible');
+    visible = false;
+    if (countdownId) { clearInterval(countdownId); countdownId = null; }
+    setAdminBtns(false);
+  }
+
+  /* Обновляет текст баннера по фазе */
+  function renderBanner(data) {
+    var phase    = data.phase || 'scheduled';
+    var by       = data.scheduled_by ? ('Инициировал: ' + data.scheduled_by) : '';
+    var fireTs   = data.fire_at_ts || 0;
+
+    if (countdownId) { clearInterval(countdownId); countdownId = null; }
+
+    if (phase === 'downloading') {
+      bannerText.textContent = '⬇️ Скачивается обновление…';
+      bannerBy.textContent   = by;
+      setAdminBtns(false);
+      showBanner();
+
+    } else if (phase === 'scheduled') {
+      /* Отсчёт вниз от fire_at_ts */
+      function tick() {
+        var left = Math.max(0, Math.round(fireTs - Date.now() / 1000));
+        bannerText.textContent = left > 0
+          ? ('⏱ Перезагрузка через ' + left + ' с…')
+          : '⏱ Перезагрузка через 0 с…';
+      }
+      tick();
+      countdownId = setInterval(tick, 1000);
+      bannerBy.textContent = by;
+      setAdminBtns(true);
+      showBanner();
+
+    } else if (phase === 'applying') {
+      bannerText.textContent = '⚙️ Устанавливается обновление…';
+      bannerBy.textContent   = by;
+      setAdminBtns(false);
+      showBanner();
+
+    } else {
+      hideBanner();
+    }
+  }
+
+  /* Polling каждые 3 сек */
+  function poll() {
+    fetch('/api/update/pre-status', {credentials:'same-origin', cache:'no-store'})
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(d){
+      if (!d || !d.scheduled) { hideBanner(); return; }
+      renderBanner(d);
+    })
+    .catch(function(){ /* сеть недоступна — молча пропускаем */ });
+  }
+
+  poll();
+  setInterval(poll, 3000);
+
+  /* ── Кнопки (только admin) ── */
+  if (isAdmin) {
+    if (btnCancel) {
+      btnCancel.addEventListener('click', function(){
+        fetch('/api/update/schedule/cancel', {
+          method: 'POST', credentials: 'same-origin',
+          headers: {'Content-Type':'application/json'}
+        })
+        .then(function(r){ return r.json(); })
+        .then(function(d){ if (d.ok) hideBanner(); })
+        .catch(function(){});
+      });
+    }
+
+    if (btnNow) {
+      btnNow.addEventListener('click', function(){
+        /* Перенаправляем на страницу changelog где SSE-прогресс */
+        window.location.href = '/changelog?autostart=1';
+      });
+    }
+  }
 })();
 </script>
 {% endif %}
 
-{# ── Централизованный модуль мигания вкладки ── #}
-{% if 'user_id' in session %}
 <script>
 (function(){
-  var originalTitle   = document.title;
-  var versionInterval = null;
-  var taskInterval    = null;
-
-  function stopAllFlashing() {
-    if (versionInterval) { clearInterval(versionInterval); versionInterval = null; }
-    if (taskInterval)    { clearInterval(taskInterval);    taskInterval    = null; }
-    document.title = originalTitle;
+  var updDoneReload = document.getElementById('updDoneReload');
+  if (updDoneReload) {
+    updDoneReload.addEventListener('click', function(){ window.location.reload(); });
   }
-  window.stopAllFlashing = stopAllFlashing;
-
-  window.startVersionFlashing = function() {
-    if (versionInterval) return;
-    var state = false;
-    versionInterval = setInterval(function() {
-      document.title = state ? '🆕 Новая версия!' : originalTitle;
-      state = !state;
-    }, 700);
-  };
-
-  window.startTaskFlashing = function() {
-    if (taskInterval) return;
-    var state = false;
-    taskInterval = setInterval(function() {
-      document.title = state ? '📋 Новая задача!' : originalTitle;
-      state = !state;
-    }, 700);
-  };
-
-  window.addEventListener('focus', stopAllFlashing);
 })();
 </script>
-{% endif %}
-
-{# ── Уведомление о новых задачах ── #}
-{% if 'user_id' in session %}
-<script>
-(function(){
-  var PREV_KEY = 'kitezh_unread_prev_{{ session.get("user_id") }}';
-  var current  = {{ unread_count|int }};
-  var prev     = parseInt(localStorage.getItem(PREV_KEY) || '-1', 10);
-  localStorage.setItem(PREV_KEY, String(current));
-  if (prev >= 0 && current > prev && window.startTaskFlashing) {
-    if (window.location.pathname !== '/notifications') window.startTaskFlashing();
-  }
-  var notifLink = document.getElementById('sbNotifLink');
-  if (notifLink && window.stopAllFlashing) notifLink.addEventListener('click', window.stopAllFlashing);
-})();
-</script>
-{% endif %}
-
-{# ── Проверка обновлений (admin) ── #}
-{% if session.get('role') == 'admin' %}
-<script>
-(function(){
-  var dot       = document.getElementById('sbUpdateDot');
-  if (!dot) return;
-  var CACHE_KEY = 'kitezh_upd_status';
-  var SEEN_KEY  = 'kitezh_upd_seen';
-  var INTERVAL  = 30 * 60 * 1000;
-  function applyUpdateState(has) {
-    var seen = sessionStorage.getItem(SEEN_KEY) === '1';
-    var show = has && !seen;
-    dot.classList.toggle('d-none', !show);
-    if (show && window.startVersionFlashing) window.startVersionFlashing();
-  }
-
-  var clLink = document.getElementById('sbChangelogLink');
-  if (clLink) {
-    clLink.addEventListener('click', function() {
-      sessionStorage.setItem(SEEN_KEY, '1');
-      dot.classList.add('d-none');
-      if (window.stopAllFlashing) window.stopAllFlashing();
-    });
-  }
-
-  function doCheck() {
-    fetch('/api/update/check?force=1', {credentials:'same-origin', cache:'no-store'})
-      .then(function(r){ return r.ok ? r.json() : null; })
-      .then(function(data){
-        if (!data) return;
-        var has = data.has_update === true;
-        localStorage.setItem(CACHE_KEY, JSON.stringify({ts: Date.now(), has: has}));
-        applyUpdateState(has);
-      }).catch(function(){});
-  }
-
-  var cached = localStorage.getItem(CACHE_KEY);
-  if (cached) {
-    try {
-      var c = JSON.parse(cached);
-      applyUpdateState(c.has);
-      if (Date.now() - c.ts > INTERVAL) doCheck();
-    } catch(e) { doCheck(); }
-  } else {
-    setTimeout(doCheck, 5000);
-  }
-  setInterval(doCheck, INTERVAL);
-})();
-</script>
-{% endif %}
-
 </body>
 </html>
