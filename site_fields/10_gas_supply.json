@@ -1,0 +1,115 @@
+{
+  "category": "gas_supply",
+  "title": "Газоснабжение",
+  "fields": [
+    {
+      "id": 52,
+      "portal_name": "Газоснабжение — Наличие",
+      "key": "gas_avail",
+      "type": "dropdown_conditional",
+      "required": true,
+      "parent_field": null,
+      "parent_value": null,
+      "group": "utilities"
+    },
+    {
+      "id": 53,
+      "portal_name": "Газоснабжение — Тариф на потребление, руб./куб. м",
+      "key": "gas_tariff_consumption",
+      "type": "number",
+      "required": true,
+      "parent_field": "gas_avail",
+      "parent_value": ["да"],
+      "group": "utilities",
+      "text_checks": {
+        "min_value": 0,
+        "recommendation": "Тариф на потребление газа, руб./куб.м"
+      }
+    },
+    {
+      "id": 54,
+      "portal_name": "Газоснабжение — Тариф на транспортировку, руб./куб. м",
+      "key": "gas_tariff_transport",
+      "type": "number",
+      "required": true,
+      "parent_field": "gas_avail",
+      "parent_value": ["да"],
+      "group": "utilities",
+      "text_checks": {
+        "min_value": 0,
+        "recommendation": "Тариф на транспортировку газа, руб./куб.м"
+      }
+    },
+    {
+      "id": 55,
+      "portal_name": "Объекты газоснабжения — Максимально допустимая мощность, куб. м/ч",
+      "key": "gas_capacity_max",
+      "type": "number",
+      "required": true,
+      "parent_field": "gas_avail",
+      "parent_value": ["да"],
+      "group": "utilities",
+      "text_checks": {
+        "min_value": 0,
+        "recommendation": "Максимально допустимый расход газа, куб.м/ч"
+      }
+    },
+    {
+      "id": 56,
+      "portal_name": "Объекты газоснабжения — Свободная мощность, куб. м/ч",
+      "key": "gas_capacity_free",
+      "type": "number",
+      "required": true,
+      "parent_field": "gas_avail",
+      "parent_value": ["да"],
+      "group": "utilities",
+      "text_checks": {
+        "min_value": 0,
+        "recommendation": "Свободная мощность газоснабжения, куб.м/ч"
+      }
+    },
+    {
+      "id": 57,
+      "portal_name": "Объекты газоснабжения — Иные характеристики",
+      "key": "gas_other",
+      "type": "text",
+      "required": false,
+      "parent_field": "gas_avail",
+      "parent_value": ["да", "возможно создание"],
+      "group": "utilities",
+      "text_checks": {
+        "irrelevant_values": ["не указано", "-", "н/д", "нет"],
+        "min_length": 5,
+        "recommendation": "Укажите иные существенные характеристики газоснабжения"
+      }
+    },
+    {
+      "id": 58,
+      "portal_name": "Сети газоснабжения — Пропускная способность, куб. м/ч",
+      "key": "gas_network_throughput",
+      "type": "number",
+      "required": true,
+      "parent_field": "gas_avail",
+      "parent_value": ["да"],
+      "group": "utilities",
+      "text_checks": {
+        "min_value": 0,
+        "recommendation": "Пропускная способность газовых сетей, куб.м/ч"
+      }
+    },
+    {
+      "id": 59,
+      "portal_name": "Газоснабжение — Тариф на технологическое присоединение, руб.",
+      "key": "gas_tariff_connection",
+      "type": "number",
+      "required": true,
+      "parent_field": "gas_avail",
+      "parent_value": ["возможно создание"],
+      "group": "utilities",
+      "text_checks": {
+        "min_value": 0,
+        "recommendation": "Тариф на технологическое присоединение к газоснабжению, руб."
+      }
+    }
+  ]
+}
