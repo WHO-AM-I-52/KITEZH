@@ -1,0 +1,111 @@
+{
+  "_meta": {
+    "field_group": "heat_supply",
+    "label": "Теплоснабжение",
+    "ids": "68-75",
+    "source": "site_field_rules.json v0.2"
+  },
+  "fields": [
+    {
+      "id": 68,
+      "key": "heat_avail",
+      "portal_name": "Теплоснабжение — Наличие",
+      "type": "dropdown_conditional",
+      "required": true,
+      "parent_field": null,
+      "parent_value": null,
+      "text_checks": null
+    },
+    {
+      "id": 69,
+      "key": "heat_tariff_consumption",
+      "portal_name": "Теплоснабжение — Тариф на потребление, руб./Гкал",
+      "type": "number",
+      "required": true,
+      "parent_field": "heat_avail",
+      "parent_value": ["да"],
+      "text_checks": {
+        "min_value": 0,
+        "rec": "Тариф на тепловую энергию (мощность), руб./Гкал"
+      }
+    },
+    {
+      "id": 70,
+      "key": "heat_tariff_transport",
+      "portal_name": "Теплоснабжение — Тариф на транспортировку, руб./Гкал",
+      "type": "number",
+      "required": true,
+      "parent_field": "heat_avail",
+      "parent_value": ["да"],
+      "text_checks": {
+        "min_value": 0,
+        "rec": "Тариф на услуги по передаче тепловой энергии, руб./Гкал"
+      }
+    },
+    {
+      "id": 71,
+      "key": "heat_capacity_max",
+      "portal_name": "Объекты теплоснабжения — Максимально допустимая мощность, Гкал/ч",
+      "type": "number",
+      "required": true,
+      "parent_field": "heat_avail",
+      "parent_value": ["да"],
+      "text_checks": {
+        "min_value": 0,
+        "rec": "Максимально допустимая мощность теплоснабжения, Гкал/ч"
+      }
+    },
+    {
+      "id": 72,
+      "key": "heat_capacity_free",
+      "portal_name": "Объекты теплоснабжения — Свободная мощность, Гкал/ч",
+      "type": "number",
+      "required": true,
+      "parent_field": "heat_avail",
+      "parent_value": ["да"],
+      "text_checks": {
+        "min_value": 0,
+        "rec": "Свободная мощность теплоснабжения, Гкал/ч"
+      }
+    },
+    {
+      "id": 73,
+      "key": "heat_other",
+      "portal_name": "Объекты теплоснабжения — Иные характеристики",
+      "type": "text",
+      "required": false,
+      "parent_field": "heat_avail",
+      "parent_value": ["да", "возможно создание"],
+      "text_checks": {
+        "min_length": 5,
+        "rec": "Укажите иные существенные характеристики теплоснабжения"
+      }
+    },
+    {
+      "id": 74,
+      "key": "heat_network_throughput",
+      "portal_name": "Сети теплоснабжения — Пропускная способность, Гкал/ч",
+      "type": "number",
+      "required": true,
+      "parent_field": "heat_avail",
+      "parent_value": ["да"],
+      "text_checks": {
+        "min_value": 0,
+        "rec": "Пропускная способность тепловых сетей, Гкал/ч"
+      }
+    },
+    {
+      "id": 75,
+      "key": "heat_tariff_connection",
+      "portal_name": "Теплоснабжение — Тариф на технологическое присоединение, руб.",
+      "type": "number",
+      "required": true,
+      "parent_field": "heat_avail",
+      "parent_value": ["возможно создание"],
+      "text_checks": {
+        "min_value": 0,
+        "rec": "Тариф на технологическое присоединение к теплосетям, руб."
+      }
+    }
+  ]
+}
