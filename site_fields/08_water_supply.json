@@ -1,0 +1,115 @@
+{
+  "category": "water_supply",
+  "title": "Водоснабжение",
+  "fields": [
+    {
+      "id": 36,
+      "portal_name": "Водоснабжение — Наличие",
+      "key": "water_supply_avail",
+      "type": "dropdown_conditional",
+      "required": true,
+      "parent_field": null,
+      "parent_value": null,
+      "group": "utilities"
+    },
+    {
+      "id": 37,
+      "portal_name": "Водоснабжение — Тариф на потребление, руб./куб. м",
+      "key": "water_supply_tariff_consumption",
+      "type": "number",
+      "required": true,
+      "parent_field": "water_supply_avail",
+      "parent_value": ["да"],
+      "group": "utilities",
+      "text_checks": {
+        "min_value": 0,
+        "recommendation": "Тариф на питьевую/техническую воду, руб./куб.м"
+      }
+    },
+    {
+      "id": 38,
+      "portal_name": "Водоснабжение — Тариф на транспортировку, руб./куб. м",
+      "key": "water_supply_tariff_transport",
+      "type": "number",
+      "required": true,
+      "parent_field": "water_supply_avail",
+      "parent_value": ["да"],
+      "group": "utilities",
+      "text_checks": {
+        "min_value": 0,
+        "recommendation": "Тариф на транспортировку воды, руб./куб.м"
+      }
+    },
+    {
+      "id": 39,
+      "portal_name": "Объекты водоснабжения — Максимально допустимая мощность, куб. м/ч",
+      "key": "water_supply_capacity_max",
+      "type": "number",
+      "required": true,
+      "parent_field": "water_supply_avail",
+      "parent_value": ["да"],
+      "group": "utilities",
+      "text_checks": {
+        "min_value": 0,
+        "recommendation": "Максимально допустимая мощность объекта водоснабжения, куб.м/ч"
+      }
+    },
+    {
+      "id": 40,
+      "portal_name": "Объекты водоснабжения — Свободная мощность, куб. м/ч",
+      "key": "water_supply_capacity_free",
+      "type": "number",
+      "required": true,
+      "parent_field": "water_supply_avail",
+      "parent_value": ["да"],
+      "group": "utilities",
+      "text_checks": {
+        "min_value": 0,
+        "recommendation": "Свободная мощность объекта водоснабжения, куб.м/ч"
+      }
+    },
+    {
+      "id": 41,
+      "portal_name": "Объекты водоснабжения — Иные характеристики",
+      "key": "water_supply_other",
+      "type": "text",
+      "required": false,
+      "parent_field": "water_supply_avail",
+      "parent_value": ["да", "возможно создание"],
+      "group": "utilities",
+      "text_checks": {
+        "irrelevant_values": ["не указано", "-", "н/д", "нет"],
+        "min_length": 5,
+        "recommendation": "Укажите иные существенные характеристики системы водоснабжения"
+      }
+    },
+    {
+      "id": 42,
+      "portal_name": "Сети водоснабжения — Пропускная способность, куб. м/ч",
+      "key": "water_supply_network_throughput",
+      "type": "number",
+      "required": true,
+      "parent_field": "water_supply_avail",
+      "parent_value": ["да"],
+      "group": "utilities",
+      "text_checks": {
+        "min_value": 0,
+        "recommendation": "Пропускная способность сетей водоснабжения, куб.м/ч"
+      }
+    },
+    {
+      "id": 43,
+      "portal_name": "Водоснабжение — Тариф на технологическое присоединение, руб.",
+      "key": "water_supply_tariff_connection",
+      "type": "number",
+      "required": true,
+      "parent_field": "water_supply_avail",
+      "parent_value": ["возможно создание"],
+      "group": "utilities",
+      "text_checks": {
+        "min_value": 0,
+        "recommendation": "Тариф на технологическое присоединение к водоснабжению, руб."
+      }
+    }
+  ]
+}
