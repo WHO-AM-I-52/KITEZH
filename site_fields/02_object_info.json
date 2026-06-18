@@ -1,0 +1,260 @@
+{
+  "category": "object_info",
+  "title": "Сведения об объекте",
+  "fields": [
+    {
+      "id": 1,
+      "portal_name": "Название площадки",
+      "key": "site_name",
+      "type": "text",
+      "required": true,
+      "parent_field": null,
+      "parent_value": null,
+      "group": "basic",
+      "text_checks": {
+        "irrelevant_values": ["не указано", "-", "н/д", "нет"],
+        "min_length": 5,
+        "recommendation": "Укажите полное официальное название площадки"
+      }
+    },
+    {
+      "id": 2,
+      "portal_name": "Преференциальный режим",
+      "key": "pref_regime",
+      "type": "dropdown_conditional",
+      "required": true,
+      "parent_field": null,
+      "parent_value": null,
+      "group": "basic"
+    },
+    {
+      "id": 3,
+      "portal_name": "Наименование объекта преференциального режима",
+      "key": "pref_regime_name",
+      "type": "text",
+      "required": false,
+      "parent_field": "pref_regime",
+      "parent_value": ["особая экономическая зона", "территория опережающего развития", "свободная экономическая зона", "специальный административный район", "свободный порт Владивосток", "зона приоритетного экономического развития", "Арктическая зона РФ (по регионам)"],
+      "group": "basic",
+      "text_checks": {
+        "irrelevant_values": ["не указано", "-", "н/д", "нет"],
+        "min_length": 5,
+        "recommendation": "Укажите точное наименование объекта преференциального режима"
+      }
+    },
+    {
+      "id": 4,
+      "portal_name": "Объект инфраструктуры поддержки",
+      "key": "infra_support",
+      "type": "dropdown_conditional",
+      "required": true,
+      "parent_field": null,
+      "parent_value": null,
+      "group": "basic"
+    },
+    {
+      "id": 5,
+      "portal_name": "Наименование объекта инфраструктуры поддержки",
+      "key": "infra_support_name",
+      "type": "text",
+      "required": false,
+      "parent_field": "infra_support",
+      "parent_value": ["технопарк", "индустриальный парк", "бизнес-инкубатор", "инновационный научно-технологический центр", "промплощадка", "агропромышленный парк", "логистический парк"],
+      "group": "basic",
+      "text_checks": {
+        "irrelevant_values": ["не указано", "-", "н/д", "нет"],
+        "min_length": 5,
+        "recommendation": "Укажите точное наименование объекта инфраструктуры поддержки"
+      }
+    },
+    {
+      "id": 6,
+      "portal_name": "Регион",
+      "key": "region",
+      "type": "dropdown",
+      "required": true,
+      "parent_field": null,
+      "parent_value": null,
+      "group": "basic"
+    },
+    {
+      "id": 7,
+      "portal_name": "Муниципальное образование",
+      "key": "municipality",
+      "type": "dropdown",
+      "required": true,
+      "parent_field": null,
+      "parent_value": null,
+      "group": "basic"
+    },
+    {
+      "id": 8,
+      "portal_name": "Адрес объекта",
+      "key": "site_address",
+      "type": "text",
+      "required": true,
+      "parent_field": null,
+      "parent_value": null,
+      "group": "basic",
+      "text_checks": {
+        "irrelevant_values": ["не указано", "-", "н/д", "нет"],
+        "min_length": 10,
+        "recommendation": "Укажите полный адрес: регион, населённый пункт, улица, дом",
+        "pattern": "^[А-Яа-яЁёa-zA-Z0-9 ,./\\-]+"
+      }
+    },
+    {
+      "id": 9,
+      "portal_name": "Ближайший город",
+      "key": "nearest_city",
+      "type": "text",
+      "required": true,
+      "parent_field": null,
+      "parent_value": null,
+      "group": "basic",
+      "text_checks": {
+        "irrelevant_values": ["не указано", "-", "н/д", "нет"],
+        "min_length": 2,
+        "recommendation": "Укажите ближайший крупный город (не посёлок)"
+      }
+    },
+    {
+      "id": 10,
+      "portal_name": "Формат площадки",
+      "key": "site_format",
+      "type": "dropdown_conditional",
+      "required": true,
+      "parent_field": null,
+      "parent_value": null,
+      "group": "basic"
+    },
+    {
+      "id": 11,
+      "portal_name": "Тип площадки",
+      "key": "site_type",
+      "type": "dropdown",
+      "required": true,
+      "parent_field": null,
+      "parent_value": null,
+      "group": "basic"
+    },
+    {
+      "id": 13,
+      "portal_name": "Форма собственности объекта",
+      "key": "ownership_form",
+      "type": "dropdown",
+      "required": true,
+      "parent_field": null,
+      "parent_value": null,
+      "group": "basic"
+    },
+    {
+      "id": 14,
+      "portal_name": "Форма сделки",
+      "key": "deal_form",
+      "type": "dropdown_conditional",
+      "required": true,
+      "parent_field": null,
+      "parent_value": null,
+      "group": "basic"
+    },
+    {
+      "id": 15,
+      "portal_name": "Стоимость объекта, руб. (покупки или месячной аренды)",
+      "key": "price_rub",
+      "type": "number",
+      "required": true,
+      "parent_field": null,
+      "parent_value": null,
+      "group": "basic",
+      "text_checks": {
+        "min_value": 0,
+        "recommendation": "Укажите стоимость покупки или месячной аренды в рублях"
+      }
+    },
+    {
+      "id": 16,
+      "portal_name": "Стоимость, руб./год за га",
+      "key": "price_rub_per_ha_year",
+      "type": "number",
+      "required": false,
+      "parent_field": null,
+      "parent_value": null,
+      "group": "basic",
+      "text_checks": {
+        "min_value": 0,
+        "recommendation": "Стоимость аренды за гектар в год, рублей"
+      }
+    },
+    {
+      "id": 17,
+      "portal_name": "Стоимость, руб./год за кв. м",
+      "key": "price_rub_per_m2_year",
+      "type": "number",
+      "required": true,
+      "parent_field": null,
+      "parent_value": null,
+      "group": "basic",
+      "text_checks": {
+        "min_value": 0,
+        "recommendation": "Стоимость аренды за кв.м в год, рублей"
+      }
+    },
+    {
+      "id": 18,
+      "portal_name": "min и max сроки аренды (если применимо), лет",
+      "key": "rent_term_years",
+      "type": "text",
+      "required": false,
+      "parent_field": "deal_form",
+      "parent_value": ["аренда", "аренда через аукцион"],
+      "group": "basic",
+      "text_checks": {
+        "irrelevant_values": ["не указано", "-", "н/д", "нет"],
+        "min_length": 1,
+        "recommendation": "Укажите минимальный и максимальный срок аренды, например: 1-49",
+        "pattern": "^\\d+(-\\d+)?$"
+      }
+    },
+    {
+      "id": 19,
+      "portal_name": "Порядок определения стоимости (для всех форм сделки)",
+      "key": "price_procedure",
+      "type": "text",
+      "required": true,
+      "parent_field": null,
+      "parent_value": null,
+      "group": "basic",
+      "text_checks": {
+        "irrelevant_values": ["не указано", "-", "н/д", "нет"],
+        "min_length": 10,
+        "recommendation": "Опишите порядок определения стоимости (аукцион, переговоры, фиксированная и т.д.)"
+      }
+    },
+    {
+      "id": 20,
+      "portal_name": "Класс опасности объекта",
+      "key": "hazard_class",
+      "type": "dropdown",
+      "required": false,
+      "parent_field": null,
+      "parent_value": null,
+      "group": "basic"
+    },
+    {
+      "id": 21,
+      "portal_name": "Характеристики расположенных объектов капитального строительства",
+      "key": "capital_construction_desc",
+      "type": "text",
+      "required": false,
+      "parent_field": null,
+      "parent_value": null,
+      "group": "basic",
+      "text_checks": {
+        "irrelevant_values": ["не указано", "-", "н/д", "нет"],
+        "min_length": 10,
+        "recommendation": "Опишите характеристики имеющихся объектов капитального строительства"
+      }
+    }
+  ]
+}
