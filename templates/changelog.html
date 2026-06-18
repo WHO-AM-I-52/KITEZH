@@ -245,9 +245,10 @@
     color: #495057;
     display: flex; gap: 6px;
   }
-  #sseFileLog li.fl-updated  { color: #198754; }
-  #sseFileLog li.fl-skipped  { color: #6c757d; }
-  #sseFileLog li.fl-error    { color: #dc3545; }
+  #sseFileLog li.fl-updated   { color: #198754; }
+  #sseFileLog li.fl-unchanged { color: #6c757d; }
+  #sseFileLog li.fl-skipped   { color: #6c757d; }
+  #sseFileLog li.fl-error     { color: #dc3545; }
   body[data-theme="dark"] #sseFileLog li { color: #c8d0e8; }
   body[data-theme="dark"] #sseFileLog li.fl-updated  { color: #6ee79e; }
   body[data-theme="dark"] #sseFileLog li.fl-error    { color: #f1aeb5; }
@@ -994,10 +995,11 @@
       var d  = JSON.parse(e.data);
       if (!_sseFileLog) return;
       var li   = document.createElement('li');
-      var icon = d.action === 'updated'  ? '↑' :
-                 d.action === 'skipped'  ? '–' :
-                 d.action === 'error'    ? '✗' : '·';
-      li.className   = 'fl-' + (d.action || 'updated');
+      var icon = d.status === 'updated'   ? '↑' :
+                 d.status === 'unchanged' ? '·' :
+                 d.status === 'skipped'   ? '–' :
+                 d.status === 'error'     ? '✗' : '·';
+      li.className   = 'fl-' + (d.status || 'unknown');
       li.textContent = icon + ' ' + (d.file || d.path || '');
       _sseFileLog.appendChild(li);
       _sseFileLog.scrollTop = _sseFileLog.scrollHeight;
