@@ -1,0 +1,53 @@
+{
+  "_meta": {
+    "group_id": "transport",
+    "group_label": "Транспортная доступность",
+    "fields_range": "79-82",
+    "source": "site_field_rules.json"
+  },
+  "fields": [
+    {
+      "id": 79,
+      "key": "access_roads_avail",
+      "portal_name": "Наличие подъездных путей",
+      "type": "dropdown",
+      "required": true,
+      "parent_field": null,
+      "parent_value": null,
+      "text_checks": null
+    },
+    {
+      "id": 80,
+      "key": "railway_avail",
+      "portal_name": "Наличие ж/д",
+      "type": "dropdown_conditional",
+      "required": true,
+      "parent_field": null,
+      "parent_value": null,
+      "text_checks": null
+    },
+    {
+      "id": 81,
+      "key": "transport_other",
+      "portal_name": "Иные характеристики (транспортная доступность)",
+      "type": "text",
+      "required": false,
+      "parent_field": "railway_avail",
+      "parent_value": ["да"],
+      "text_checks": {
+        "min_length": 5,
+        "recommendation": "Опишите особенности транспортной доступности: ж/д тупик, причал, расстояние до ж/д станции и т.д."
+      }
+    },
+    {
+      "id": 82,
+      "key": "freight_parking_avail",
+      "portal_name": "Наличие парковки грузового транспорта",
+      "type": "dropdown",
+      "required": true,
+      "parent_field": null,
+      "parent_value": null,
+      "text_checks": null
+    }
+  ]
+}
