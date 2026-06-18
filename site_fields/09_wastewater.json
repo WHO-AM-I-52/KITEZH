@@ -1,0 +1,101 @@
+{
+  "_meta": {
+    "file": "09_wastewater.json",
+    "description": "Водоотведение",
+    "source_fields": [44, 45, 46, 47, 48, 49, 50, 51]
+  },
+  "fields": [
+    {
+      "id": 44,
+      "portal_name": "Наличие водоотведения",
+      "key": "sewage_avail",
+      "type": "dropdown_conditional",
+      "required": true,
+      "group": "basic"
+    },
+    {
+      "id": 45,
+      "portal_name": "Тариф на водоотведение, руб./куб.м",
+      "key": "sewage_tariff_consumption",
+      "type": "number",
+      "required": true,
+      "group": "basic",
+      "text_checks": {
+        "min_value": 0,
+        "rec": "Тариф на водоотведение, руб./куб.м"
+      }
+    },
+    {
+      "id": 46,
+      "portal_name": "Тариф на транспортировку стоков, руб./куб.м",
+      "key": "sewage_tariff_transport",
+      "type": "number",
+      "required": true,
+      "group": "basic",
+      "text_checks": {
+        "min_value": 0,
+        "rec": "Тариф на транспортировку стоков, руб./куб.м"
+      }
+    },
+    {
+      "id": 47,
+      "portal_name": "Максимально допустимая мощность системы водоотведения, куб.м/ч",
+      "key": "sewage_capacity_max",
+      "type": "number",
+      "required": true,
+      "group": "basic",
+      "text_checks": {
+        "min_value": 0,
+        "rec": "Максимально допустимая мощность системы водоотведения, куб.м/ч"
+      }
+    },
+    {
+      "id": 48,
+      "portal_name": "Свободная мощность системы водоотведения, куб.м/ч",
+      "key": "sewage_capacity_free",
+      "type": "number",
+      "required": true,
+      "group": "basic",
+      "text_checks": {
+        "min_value": 0,
+        "rec": "Свободная мощность системы водоотведения, куб.м/ч"
+      }
+    },
+    {
+      "id": 49,
+      "portal_name": "Иные существенные характеристики системы водоотведения",
+      "key": "sewage_other",
+      "type": "text",
+      "required": false,
+      "group": "basic",
+      "text_checks": {
+        "min_length": 5,
+        "rec": "Укажите иные существенные характеристики системы водоотведения"
+      }
+    },
+    {
+      "id": 50,
+      "portal_name": "Пропускная способность сетей водоотведения, куб.м/ч",
+      "key": "sewage_network_throughput",
+      "type": "number",
+      "required": true,
+      "group": "basic",
+      "text_checks": {
+        "min_value": 0,
+        "rec": "Пропускная способность сетей водоотведения, куб.м/ч"
+      }
+    },
+    {
+      "id": 51,
+      "portal_name": "Тариф на технологическое присоединение к водоотведению, руб.",
+      "key": "sewage_tariff_connection",
+      "type": "number",
+      "required": true,
+      "group": "basic",
+      "text_checks": {
+        "min_value": 0,
+        "rec": "Тариф на технологическое присоединение к водоотведению, руб."
+      }
+    }
+  ]
+}
