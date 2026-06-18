@@ -9,6 +9,8 @@
 # ║  v2.7.0: /api/tray/notify-level — уровень уведомлений трея    ║
 # ║  v2.8.0: /api/online возвращает users[] для tooltip          ║
 # ║  v2.9.0: /api/update/* вынесен в update_routes.py             ║
+# ║  v2.9.1: fix — /ping использует utcnow() для синхронизации   ║
+# ║           с datetime('now') SQLite (UTC)                      ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, render_template, session, jsonify, request as flask_request, redirect, url_for
@@ -117,7 +119,9 @@ def ping():
     if uid:
         try:
             conn = get_db()
-            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            # Используем utcnow() для синхронизации с datetime('now') SQLite,
+            # который всегда возвращает UTC.
+            now = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
             conn.execute(
                 """
                 INSERT INTO online_presence (user_id, last_seen)
