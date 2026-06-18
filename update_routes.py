@@ -15,6 +15,7 @@
 # ║           (пауза между download и apply); кнопка «Обновить»  ║
 # ║           теперь идёт напрямую через SSE, минуя schedule      ║
 # ║  v2.2.1: _MIN_DELAY 1→0; delay=0 разрешён                   ║
+# ║  v2.2.2: FIX fire_at_ts пересчитывается ПОСЛЕ скачивания     ║
 # ╚═══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, jsonify, request as flask_request, session, Response, stream_with_context
@@ -405,10 +406,11 @@ def api_update_check():
 
 # ─── Общая логика рабочего потока: download → таймер → apply ─────────────────────────────────
 
-def _build_timer_worker(delay: int, fire_at_ts: float, force: bool, user_id: int):
+def _build_timer_worker(delay: int, force: bool, user_id: int):
     """Ретурнирует целевую функцию для threading.Thread.
     Флоу: phase=downloading → --download-only → rc=0 → phase=scheduled →
-           таймер delay сек → phase=applying → --apply-only → rc=0/2 → рестарт.
+           таймер delay сек (отсчёт от момента завершения скачивания) →
+           phase=applying → --apply-only → rc=0/2 → рестарт.
     rc=1 при download: ошибка записывается в pre-update.json, лок удаляется,
     баннер НЕ показывается.
     """
@@ -447,7 +449,8 @@ def _build_timer_worker(delay: int, fire_at_ts: float, force: bool, user_id: int
             _lock_clear()
             return
 
-        # ── Фаза 2: обновляем pre-update — теперь знаем delay ──
+        # ── Фаза 2: пересчитываем fire_at_ts ПОСЛЕ скачивания ──
+        fire_at_ts = time.time() + delay  # FIX: точка отсчёта — завершение download
         try:
             with open(_PRE_UPDATE_FILE, 'r', encoding='utf-8') as f:
                 pre = json.load(f)
@@ -543,11 +546,14 @@ def api_update_schedule():
     delay      = max(0, min(_MAX_DELAY, delay))
 
     scheduled_at = datetime.now().isoformat()
-    fire_at_ts   = time.time() + delay
+
+    # fire_at_ts здесь — предварительная оценка для отображения до скачивания.
+    # Воркер пересчитает точное значение после завершения download.
+    fire_at_ts_estimate = time.time() + delay
 
     payload = {
         'scheduled_at':  scheduled_at,
-        'fire_at_ts':    fire_at_ts,
+        'fire_at_ts':    fire_at_ts_estimate,
         'delay':         delay,
         'force':         force,
         'phase':         'downloading',
@@ -570,7 +576,6 @@ def api_update_schedule():
 
     worker = _build_timer_worker(
         delay=delay,
-        fire_at_ts=fire_at_ts,
         force=force,
         user_id=session['user_id'],
     )
@@ -579,7 +584,7 @@ def api_update_schedule():
     return jsonify({
         'ok':           True,
         'delay':        delay,
-        'fire_at_ts':   fire_at_ts,
+        'fire_at_ts':   fire_at_ts_estimate,
         'message':      f'Скачиваем... После загрузки баннер появится через ~{delay}с после начала загрузки.',
     })
 
@@ -618,11 +623,11 @@ def _schedule_internal(delay: int, force: bool):
         return jsonify({'error': 'already_scheduled',
                         'message': 'Обновление уже запланировано'}), 409
 
-    scheduled_at = datetime.now().isoformat()
-    fire_at_ts   = time.time() + delay
+    scheduled_at        = datetime.now().isoformat()
+    fire_at_ts_estimate = time.time() + delay
     payload = {
         'scheduled_at':   scheduled_at,
-        'fire_at_ts':     fire_at_ts,
+        'fire_at_ts':     fire_at_ts_estimate,
         'delay':          delay,
         'force':          force,
         'phase':          'downloading',
@@ -645,12 +650,11 @@ def _schedule_internal(delay: int, force: bool):
 
     worker = _build_timer_worker(
         delay=delay,
-        fire_at_ts=fire_at_ts,
         force=force,
         user_id=session['user_id'],
     )
     threading.Thread(target=worker, daemon=True).start()
-    return jsonify({'ok': True, 'delay': delay, 'fire_at_ts': fire_at_ts,
+    return jsonify({'ok': True, 'delay': delay, 'fire_at_ts': fire_at_ts_estimate,
                     'message': f'Запущено. Скачиваем архив... потом перезапуск через ~{delay}с.'})
 
 
