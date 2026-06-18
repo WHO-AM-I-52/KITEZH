@@ -1,0 +1,36 @@
+{
+  "_meta": {
+    "group_id": "extra",
+    "group_label": "Прочее / файлы / гео",
+    "fields_range": "87-93",
+    "file": "16_coordinates_extra.json",
+    "description": "Валидация текстовых полей группы extra (id 87-93). Поля типа dropdown, file, geo — пропущены."
+  },
+  "text_checks": [
+    {
+      "id": 88,
+      "key": "urban_planning_restrictions",
+      "portal_name": "Градостроительные характеристики и ограничения",
+      "type": "text",
+      "required": false,
+      "min_length": 10,
+      "recommendation": "Опишите градостроительные ограничения: ЗОУИТ, санзоны, охранные зоны и т.д."
+    },
+    {
+      "id": 90,
+      "key": "other_info",
+      "portal_name": "Иные сведения",
+      "type": "text",
+      "required": false,
+      "min_length": 0,
+      "recommendation": "Любые дополнительные сведения о площадке, не вошедшие в другие разделы"
+    }
+  ],
+  "skipped": [
+    { "id": 87, "key": "economic_activity_types", "type": "dropdown", "reason": "не текстовое поле" },
+    { "id": 89, "key": "territorial_planning_docs", "type": "file",     "reason": "не текстовое поле" },
+    { "id": 91, "key": "photos",                    "type": "file",     "reason": "не текстовое поле" },
+    { "id": 92, "key": "object_docs",               "type": "file",     "reason": "не текстовое поле" },
+    { "id": 93, "key": "geo",                       "type": "geo",      "reason": "не текстовое поле" }
+  ]
+}
