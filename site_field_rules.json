@@ -1,954 +1,1182 @@
-{
-  "_meta": {
-    "version": "0.2",
-    "updated": "2026-06-18",
-    "source": "portal_analysis/PORTAL_LOGIC.md v0.2 (методичка 29.03.2024)",
-    "description": "Правила валидации полей площадки портала invest.gov.ru",
-    "total_fields": 93,
-    "check_types": [
-      "required",
-      "required_if",
-      "type",
-      "not_empty"
-    ]
-  },
-  "groups": [
-    { "id": "basic",      "label": "Базовая информация",           "fields_range": "1-35"  },
-    { "id": "utilities",  "label": "Коммунальная инфраструктура",  "fields_range": "36-78" },
-    { "id": "transport",  "label": "Транспортная доступность",     "fields_range": "79-82" },
-    { "id": "procedure",  "label": "Процедура подачи заявки",      "fields_range": "83-86" },
-    { "id": "extra",      "label": "Прочее / файлы / гео",         "fields_range": "87-93" }
-  ],
-  "fields": [
-    {
-      "id": 1,
-      "portal_name": "Название площадки",
-      "key": "site_name",
-      "type": "text",
-      "required": true,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "basic"
-    },
-    {
-      "id": 2,
-      "portal_name": "Преференциальный режим",
-      "key": "pref_regime",
-      "type": "dropdown_conditional",
-      "required": true,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "basic"
-    },
-    {
-      "id": 3,
-      "portal_name": "Наименование объекта преференциального режима",
-      "key": "pref_regime_name",
-      "type": "text",
-      "required": false,
-      "parent_field": "pref_regime",
-      "parent_value": ["особая экономическая зона", "территория опережающего развития", "свободная экономическая зона", "специальный административный район", "свободный порт Владивосток", "зона приоритетного экономического развития", "Арктическая зона РФ (по регионам)"],
-      "group": "basic"
-    },
-    {
-      "id": 4,
-      "portal_name": "Объект инфраструктуры поддержки",
-      "key": "infra_support",
-      "type": "dropdown_conditional",
-      "required": true,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "basic"
-    },
-    {
-      "id": 5,
-      "portal_name": "Наименование объекта инфраструктуры поддержки",
-      "key": "infra_support_name",
-      "type": "text",
-      "required": false,
-      "parent_field": "infra_support",
-      "parent_value": ["технопарк", "индустриальный парк", "бизнес-инкубатор", "инновационный научно-технологический центр", "промплощадка", "агропромышленный парк", "логистический парк"],
-      "group": "basic"
-    },
-    {
-      "id": 6,
-      "portal_name": "Регион",
-      "key": "region",
-      "type": "dropdown",
-      "required": true,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "basic"
-    },
-    {
-      "id": 7,
-      "portal_name": "Муниципальное образование",
-      "key": "municipality",
-      "type": "dropdown",
-      "required": true,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "basic"
-    },
-    {
-      "id": 8,
-      "portal_name": "Адрес объекта",
-      "key": "site_address",
-      "type": "text",
-      "required": true,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "basic"
-    },
-    {
-      "id": 9,
-      "portal_name": "Ближайший город",
-      "key": "nearest_city",
-      "type": "text",
-      "required": true,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "basic"
-    },
-    {
-      "id": 10,
-      "portal_name": "Формат площадки",
-      "key": "site_format",
-      "type": "dropdown_conditional",
-      "required": true,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "basic"
-    },
-    {
-      "id": 11,
-      "portal_name": "Тип площадки",
-      "key": "site_type",
-      "type": "dropdown",
-      "required": true,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "basic"
-    },
-    {
-      "id": 12,
-      "portal_name": "Приоритетная площадка",
-      "key": "is_priority",
-      "type": "number",
-      "required": false,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "basic"
-    },
-    {
-      "id": 13,
-      "portal_name": "Форма собственности объекта",
-      "key": "ownership_form",
-      "type": "dropdown",
-      "required": true,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "basic"
-    },
-    {
-      "id": 14,
-      "portal_name": "Форма сделки",
-      "key": "deal_form",
-      "type": "dropdown_conditional",
-      "required": true,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "basic"
-    },
-    {
-      "id": 15,
-      "portal_name": "Стоимость объекта, руб. (покупки или месячной аренды)",
-      "key": "price_rub",
-      "type": "number",
-      "required": true,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "basic"
-    },
-    {
-      "id": 16,
-      "portal_name": "Стоимость, руб./год за га",
-      "key": "price_rub_per_ha_year",
-      "type": "number",
-      "required": false,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "basic"
-    },
-    {
-      "id": 17,
-      "portal_name": "Стоимость, руб./год за кв. м",
-      "key": "price_rub_per_m2_year",
-      "type": "number",
-      "required": true,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "basic"
-    },
-    {
-      "id": 18,
-      "portal_name": "min и max сроки аренды (если применимо), лет",
-      "key": "rent_term_years",
-      "type": "text",
-      "required": false,
-      "parent_field": "deal_form",
-      "parent_value": ["аренда", "аренда через аукцион"],
-      "group": "basic"
-    },
-    {
-      "id": 19,
-      "portal_name": "Порядок определения стоимости (для всех форм сделки)",
-      "key": "price_procedure",
-      "type": "text",
-      "required": true,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "basic"
-    },
-    {
-      "id": 20,
-      "portal_name": "Класс опасности объекта",
-      "key": "hazard_class",
-      "type": "dropdown",
-      "required": false,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "basic"
-    },
-    {
-      "id": 21,
-      "portal_name": "Характеристики расположенных объектов капитального строительства",
-      "key": "capital_construction_desc",
-      "type": "text",
-      "required": false,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "basic"
-    },
-    {
-      "id": 22,
-      "portal_name": "Свободная площадь ЗУ, га",
-      "key": "free_area_ha",
-      "type": "number",
-      "required": true,
-      "parent_field": "site_format",
-      "parent_value": ["земельный участок"],
-      "group": "basic"
-    },
-    {
-      "id": 23,
-      "portal_name": "Кадастровый номер ЗУ",
-      "key": "cadastral_number_land",
-      "type": "text",
-      "required": false,
-      "parent_field": "site_format",
-      "parent_value": ["земельный участок"],
-      "group": "basic"
-    },
-    {
-      "id": 24,
-      "portal_name": "Варианты разрешенного использования",
-      "key": "permitted_use",
-      "type": "dropdown",
-      "required": true,
-      "parent_field": "site_format",
-      "parent_value": ["земельный участок"],
-      "group": "basic"
-    },
-    {
-      "id": 25,
-      "portal_name": "Межевание земельного участка",
-      "key": "land_surveying",
-      "type": "dropdown",
-      "required": true,
-      "parent_field": "site_format",
-      "parent_value": ["земельный участок"],
-      "group": "basic"
-    },
-    {
-      "id": 26,
-      "portal_name": "Категория земель",
-      "key": "land_category",
-      "type": "dropdown",
-      "required": true,
-      "parent_field": "site_format",
-      "parent_value": ["земельный участок"],
-      "group": "basic"
-    },
-    {
-      "id": 27,
-      "portal_name": "Свободная площадь здания, сооружения, помещения, кв. м",
-      "key": "free_area_m2",
-      "type": "number",
-      "required": true,
-      "parent_field": "site_format",
-      "parent_value": ["здания и сооружения", "помещение"],
-      "group": "basic"
-    },
-    {
-      "id": 28,
-      "portal_name": "Кадастровый номер здания, сооружения, помещения",
-      "key": "cadastral_number_building",
-      "type": "text",
-      "required": true,
-      "parent_field": "site_format",
-      "parent_value": ["здания и сооружения", "помещение"],
-      "group": "basic"
-    },
-    {
-      "id": 29,
-      "portal_name": "Технические характеристики здания, сооружения, помещения",
-      "key": "building_tech_desc",
-      "type": "text",
-      "required": true,
-      "parent_field": "site_format",
-      "parent_value": ["здания и сооружения", "помещение"],
-      "group": "basic"
-    },
-    {
-      "id": 30,
-      "portal_name": "Наименование собственника / администратора объекта",
-      "key": "owner_name",
-      "type": "text",
-      "required": true,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "basic"
-    },
-    {
-      "id": 31,
-      "portal_name": "ИНН собственника",
-      "key": "owner_inn",
-      "type": "text",
-      "required": false,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "basic"
-    },
-    {
-      "id": 32,
-      "portal_name": "Контактное лицо",
-      "key": "contact_person",
-      "type": "text",
-      "required": false,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "basic"
-    },
-    {
-      "id": 33,
-      "portal_name": "Телефон контактного лица, e-mail",
-      "key": "contact_phone_email",
-      "type": "text",
-      "required": true,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "basic"
-    },
-    {
-      "id": 34,
-      "portal_name": "Сайт",
-      "key": "site_url",
-      "type": "text",
-      "required": false,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "basic"
-    },
-    {
-      "id": 35,
-      "portal_name": "Примечание",
-      "key": "notes",
-      "type": "text",
-      "required": false,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "basic"
-    },
-    {
-      "id": 36,
-      "portal_name": "Водоснабжение — Наличие",
-      "key": "water_supply_avail",
-      "type": "dropdown_conditional",
-      "required": true,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "utilities"
-    },
-    {
-      "id": 37,
-      "portal_name": "Водоснабжение — Тариф на потребление, руб./куб. м",
-      "key": "water_supply_tariff_consumption",
-      "type": "number",
-      "required": true,
-      "parent_field": "water_supply_avail",
-      "parent_value": ["да"],
-      "group": "utilities"
-    },
-    {
-      "id": 38,
-      "portal_name": "Водоснабжение — Тариф на транспортировку, руб./куб. м",
-      "key": "water_supply_tariff_transport",
-      "type": "number",
-      "required": true,
-      "parent_field": "water_supply_avail",
-      "parent_value": ["да"],
-      "group": "utilities"
-    },
-    {
-      "id": 39,
-      "portal_name": "Объекты водоснабжения — Максимально допустимая мощность, куб. м/ч",
-      "key": "water_supply_capacity_max",
-      "type": "number",
-      "required": true,
-      "parent_field": "water_supply_avail",
-      "parent_value": ["да"],
-      "group": "utilities"
-    },
-    {
-      "id": 40,
-      "portal_name": "Объекты водоснабжения — Свободная мощность, куб. м/ч",
-      "key": "water_supply_capacity_free",
-      "type": "number",
-      "required": true,
-      "parent_field": "water_supply_avail",
-      "parent_value": ["да"],
-      "group": "utilities"
-    },
-    {
-      "id": 41,
-      "portal_name": "Объекты водоснабжения — Иные характеристики",
-      "key": "water_supply_other",
-      "type": "text",
-      "required": false,
-      "parent_field": "water_supply_avail",
-      "parent_value": ["да", "возможно создание"],
-      "group": "utilities"
-    },
-    {
-      "id": 42,
-      "portal_name": "Сети водоснабжения — Пропускная способность, куб. м/ч",
-      "key": "water_supply_network_throughput",
-      "type": "number",
-      "required": true,
-      "parent_field": "water_supply_avail",
-      "parent_value": ["да"],
-      "group": "utilities"
-    },
-    {
-      "id": 43,
-      "portal_name": "Водоснабжение — Тариф на технологическое присоединение, руб.",
-      "key": "water_supply_tariff_connection",
-      "type": "number",
-      "required": true,
-      "parent_field": "water_supply_avail",
-      "parent_value": ["возможно создание"],
-      "group": "utilities"
-    },
-    {
-      "id": 44,
-      "portal_name": "Водоотведение — Наличие",
-      "key": "sewage_avail",
-      "type": "dropdown_conditional",
-      "required": true,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "utilities"
-    },
-    {
-      "id": 45,
-      "portal_name": "Водоотведение — Тариф на потребление, руб./куб. м",
-      "key": "sewage_tariff_consumption",
-      "type": "number",
-      "required": true,
-      "parent_field": "sewage_avail",
-      "parent_value": ["да"],
-      "group": "utilities"
-    },
-    {
-      "id": 46,
-      "portal_name": "Водоотведение — Тариф на транспортировку, руб./куб. м",
-      "key": "sewage_tariff_transport",
-      "type": "number",
-      "required": true,
-      "parent_field": "sewage_avail",
-      "parent_value": ["да"],
-      "group": "utilities"
-    },
-    {
-      "id": 47,
-      "portal_name": "Объекты водоотведения — Максимально допустимая мощность, куб. м/ч",
-      "key": "sewage_capacity_max",
-      "type": "number",
-      "required": true,
-      "parent_field": "sewage_avail",
-      "parent_value": ["да"],
-      "group": "utilities"
-    },
-    {
-      "id": 48,
-      "portal_name": "Объекты водоотведения — Свободная мощность, куб. м/ч",
-      "key": "sewage_capacity_free",
-      "type": "number",
-      "required": true,
-      "parent_field": "sewage_avail",
-      "parent_value": ["да"],
-      "group": "utilities"
-    },
-    {
-      "id": 49,
-      "portal_name": "Объекты водоотведения — Иные характеристики",
-      "key": "sewage_other",
-      "type": "text",
-      "required": false,
-      "parent_field": "sewage_avail",
-      "parent_value": ["да", "возможно создание"],
-      "group": "utilities"
-    },
-    {
-      "id": 50,
-      "portal_name": "Сети водоотведения — Пропускная способность, куб. м/ч",
-      "key": "sewage_network_throughput",
-      "type": "number",
-      "required": true,
-      "parent_field": "sewage_avail",
-      "parent_value": ["да"],
-      "group": "utilities"
-    },
-    {
-      "id": 51,
-      "portal_name": "Водоотведение — Тариф на технологическое присоединение, руб.",
-      "key": "sewage_tariff_connection",
-      "type": "number",
-      "required": true,
-      "parent_field": "sewage_avail",
-      "parent_value": ["возможно создание"],
-      "group": "utilities"
-    },
-    {
-      "id": 52,
-      "portal_name": "Газоснабжение — Наличие",
-      "key": "gas_avail",
-      "type": "dropdown_conditional",
-      "required": true,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "utilities"
-    },
-    {
-      "id": 53,
-      "portal_name": "Газоснабжение — Тариф на потребление, руб./куб. м",
-      "key": "gas_tariff_consumption",
-      "type": "number",
-      "required": true,
-      "parent_field": "gas_avail",
-      "parent_value": ["да"],
-      "group": "utilities"
-    },
-    {
-      "id": 54,
-      "portal_name": "Газоснабжение — Тариф на транспортировку, руб./куб. м",
-      "key": "gas_tariff_transport",
-      "type": "number",
-      "required": true,
-      "parent_field": "gas_avail",
-      "parent_value": ["да"],
-      "group": "utilities"
-    },
-    {
-      "id": 55,
-      "portal_name": "Объекты газоснабжения — Максимально допустимая мощность, куб. м/ч",
-      "key": "gas_capacity_max",
-      "type": "number",
-      "required": true,
-      "parent_field": "gas_avail",
-      "parent_value": ["да"],
-      "group": "utilities"
-    },
-    {
-      "id": 56,
-      "portal_name": "Объекты газоснабжения — Свободная мощность, куб. м/ч",
-      "key": "gas_capacity_free",
-      "type": "number",
-      "required": true,
-      "parent_field": "gas_avail",
-      "parent_value": ["да"],
-      "group": "utilities"
-    },
-    {
-      "id": 57,
-      "portal_name": "Объекты газоснабжения — Иные характеристики",
-      "key": "gas_other",
-      "type": "text",
-      "required": false,
-      "parent_field": "gas_avail",
-      "parent_value": ["да", "возможно создание"],
-      "group": "utilities"
-    },
-    {
-      "id": 58,
-      "portal_name": "Сети газоснабжения — Пропускная способность, куб. м/ч",
-      "key": "gas_network_throughput",
-      "type": "number",
-      "required": true,
-      "parent_field": "gas_avail",
-      "parent_value": ["да"],
-      "group": "utilities"
-    },
-    {
-      "id": 59,
-      "portal_name": "Газоснабжение — Тариф на технологическое присоединение, руб.",
-      "key": "gas_tariff_connection",
-      "type": "number",
-      "required": true,
-      "parent_field": "gas_avail",
-      "parent_value": ["возможно создание"],
-      "group": "utilities"
-    },
-    {
-      "id": 60,
-      "portal_name": "Электроснабжение — Наличие",
-      "key": "electricity_avail",
-      "type": "dropdown_conditional",
-      "required": true,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "utilities"
-    },
-    {
-      "id": 61,
-      "portal_name": "Электроснабжение — Тариф на потребление, руб./кВт·ч",
-      "key": "electricity_tariff_consumption",
-      "type": "number",
-      "required": true,
-      "parent_field": "electricity_avail",
-      "parent_value": ["да"],
-      "group": "utilities"
-    },
-    {
-      "id": 62,
-      "portal_name": "Электроснабжение — Тариф на транспортировку, руб./кВт·ч",
-      "key": "electricity_tariff_transport",
-      "type": "number",
-      "required": true,
-      "parent_field": "electricity_avail",
-      "parent_value": ["да"],
-      "group": "utilities"
-    },
-    {
-      "id": 63,
-      "portal_name": "Объекты электроснабжения — Максимально допустимая мощность, МВт",
-      "key": "electricity_capacity_max",
-      "type": "number",
-      "required": true,
-      "parent_field": "electricity_avail",
-      "parent_value": ["да"],
-      "group": "utilities"
-    },
-    {
-      "id": 64,
-      "portal_name": "Объекты электроснабжения — Свободная мощность, МВт",
-      "key": "electricity_capacity_free",
-      "type": "number",
-      "required": true,
-      "parent_field": "electricity_avail",
-      "parent_value": ["да"],
-      "group": "utilities"
-    },
-    {
-      "id": 65,
-      "portal_name": "Объекты электроснабжения — Иные характеристики",
-      "key": "electricity_other",
-      "type": "text",
-      "required": false,
-      "parent_field": "electricity_avail",
-      "parent_value": ["да", "возможно создание"],
-      "group": "utilities"
-    },
-    {
-      "id": 66,
-      "portal_name": "Сети электроснабжения — Пропускная способность, МВт",
-      "key": "electricity_network_throughput",
-      "type": "number",
-      "required": true,
-      "parent_field": "electricity_avail",
-      "parent_value": ["да"],
-      "group": "utilities"
-    },
-    {
-      "id": 67,
-      "portal_name": "Электроснабжение — Тариф на технологическое присоединение, руб.",
-      "key": "electricity_tariff_connection",
-      "type": "number",
-      "required": true,
-      "parent_field": "electricity_avail",
-      "parent_value": ["возможно создание"],
-      "group": "utilities"
-    },
-    {
-      "id": 68,
-      "portal_name": "Теплоснабжение — Наличие",
-      "key": "heat_avail",
-      "type": "dropdown_conditional",
-      "required": true,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "utilities"
-    },
-    {
-      "id": 69,
-      "portal_name": "Теплоснабжение — Тариф на потребление, руб./Гкал",
-      "key": "heat_tariff_consumption",
-      "type": "number",
-      "required": true,
-      "parent_field": "heat_avail",
-      "parent_value": ["да"],
-      "group": "utilities"
-    },
-    {
-      "id": 70,
-      "portal_name": "Теплоснабжение — Тариф на транспортировку, руб./Гкал",
-      "key": "heat_tariff_transport",
-      "type": "number",
-      "required": true,
-      "parent_field": "heat_avail",
-      "parent_value": ["да"],
-      "group": "utilities"
-    },
-    {
-      "id": 71,
-      "portal_name": "Объекты теплоснабжения — Максимально допустимая мощность, Гкал/ч",
-      "key": "heat_capacity_max",
-      "type": "number",
-      "required": true,
-      "parent_field": "heat_avail",
-      "parent_value": ["да"],
-      "group": "utilities"
-    },
-    {
-      "id": 72,
-      "portal_name": "Объекты теплоснабжения — Свободная мощность, Гкал/ч",
-      "key": "heat_capacity_free",
-      "type": "number",
-      "required": true,
-      "parent_field": "heat_avail",
-      "parent_value": ["да"],
-      "group": "utilities"
-    },
-    {
-      "id": 73,
-      "portal_name": "Объекты теплоснабжения — Иные характеристики",
-      "key": "heat_other",
-      "type": "text",
-      "required": false,
-      "parent_field": "heat_avail",
-      "parent_value": ["да", "возможно создание"],
-      "group": "utilities"
-    },
-    {
-      "id": 74,
-      "portal_name": "Сети теплоснабжения — Пропускная способность, Гкал/ч",
-      "key": "heat_network_throughput",
-      "type": "number",
-      "required": true,
-      "parent_field": "heat_avail",
-      "parent_value": ["да"],
-      "group": "utilities"
-    },
-    {
-      "id": 75,
-      "portal_name": "Теплоснабжение — Тариф на технологическое присоединение, руб.",
-      "key": "heat_tariff_connection",
-      "type": "number",
-      "required": true,
-      "parent_field": "heat_avail",
-      "parent_value": ["возможно создание"],
-      "group": "utilities"
-    },
-    {
-      "id": 76,
-      "portal_name": "Вывоз ТКО — Наличие",
-      "key": "waste_removal_avail",
-      "type": "dropdown_conditional",
-      "required": true,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "utilities"
-    },
-    {
-      "id": 77,
-      "portal_name": "Вывоз ТКО — Тариф, руб./тонна",
-      "key": "waste_removal_tariff_ton",
-      "type": "number",
-      "required": false,
-      "parent_field": "waste_removal_avail",
-      "parent_value": ["да"],
-      "group": "utilities"
-    },
-    {
-      "id": 78,
-      "portal_name": "Вывоз ТКО — Тариф, руб./куб. м",
-      "key": "waste_removal_tariff_m3",
-      "type": "number",
-      "required": false,
-      "parent_field": "waste_removal_avail",
-      "parent_value": ["да"],
-      "group": "utilities"
-    },
-    {
-      "id": 79,
-      "portal_name": "Наличие подъездных путей",
-      "key": "access_roads_avail",
-      "type": "dropdown",
-      "required": true,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "transport"
-    },
-    {
-      "id": 80,
-      "portal_name": "Наличие ж/д",
-      "key": "railway_avail",
-      "type": "dropdown_conditional",
-      "required": true,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "transport"
-    },
-    {
-      "id": 81,
-      "portal_name": "Иные характеристики (транспортная доступность)",
-      "key": "transport_other",
-      "type": "text",
-      "required": false,
-      "parent_field": "railway_avail",
-      "parent_value": ["да"],
-      "group": "transport"
-    },
-    {
-      "id": 82,
-      "portal_name": "Наличие парковки грузового транспорта",
-      "key": "freight_parking_avail",
-      "type": "dropdown",
-      "required": true,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "transport"
-    },
-    {
-      "id": 83,
-      "portal_name": "Описание процедуры подачи заявки",
-      "key": "application_procedure_desc",
-      "type": "text",
-      "required": true,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "procedure"
-    },
-    {
-      "id": 84,
-      "portal_name": "Перечень документов, необходимых для подачи заявки",
-      "key": "application_docs_list",
-      "type": "text",
-      "required": false,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "procedure"
-    },
-    {
-      "id": 85,
-      "portal_name": "Адрес эл. почты для подачи заявки",
-      "key": "application_email",
-      "type": "text",
-      "required": true,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "procedure"
-    },
-    {
-      "id": 86,
-      "portal_name": "Ссылка на форму для подачи заявки",
-      "key": "application_form_url",
-      "type": "text",
-      "required": false,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "procedure"
-    },
-    {
-      "id": 87,
-      "portal_name": "Перечень видов экономической деятельности, возможных к реализации на площадке",
-      "key": "economic_activity_types",
-      "type": "dropdown",
-      "required": true,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "extra"
-    },
-    {
-      "id": 88,
-      "portal_name": "Градостроительные характеристики и ограничения",
-      "key": "urban_planning_restrictions",
-      "type": "text",
-      "required": false,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "extra"
-    },
-    {
-      "id": 89,
-      "portal_name": "Документы территориального планирования",
-      "key": "territorial_planning_docs",
-      "type": "file",
-      "required": false,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "extra"
-    },
-    {
-      "id": 90,
-      "portal_name": "Иные сведения",
-      "key": "other_info",
-      "type": "text",
-      "required": false,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "extra"
-    },
-    {
-      "id": 91,
-      "portal_name": "Фотографии объекта",
-      "key": "photos",
-      "type": "file",
-      "required": true,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "extra"
-    },
-    {
-      "id": 92,
-      "portal_name": "Документы по объекту",
-      "key": "object_docs",
-      "type": "file",
-      "required": false,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "extra"
-    },
-    {
-      "id": 93,
-      "portal_name": "Геопривязка",
-      "key": "geo",
-      "type": "geo",
-      "required": true,
-      "parent_field": null,
-      "parent_value": null,
-      "group": "extra"
+[
+  {
+    "id": 1,
+    "portal_name": "Название площадки",
+    "key": "site_name",
+    "type": "text",
+    "required": true,
+    "parent_field": null,
+    "parent_value": null,
+    "group": "basic",
+    "text_checks": {
+      "irrelevant_values": ["не указано", "-", "н/д", "нет"],
+      "min_length": 5,
+      "recommendation": "Укажите полное официальное название площадки"
     }
-  ]
-}
+  },
+  {
+    "id": 2,
+    "portal_name": "Преференциальный режим",
+    "key": "pref_regime",
+    "type": "dropdown_conditional",
+    "required": true,
+    "parent_field": null,
+    "parent_value": null,
+    "group": "basic"
+  },
+  {
+    "id": 3,
+    "portal_name": "Наименование объекта преференциального режима",
+    "key": "pref_regime_name",
+    "type": "text",
+    "required": false,
+    "parent_field": "pref_regime",
+    "parent_value": ["особая экономическая зона", "территория опережающего развития", "свободная экономическая зона", "специальный административный район", "свободный порт Владивосток", "зона приоритетного экономического развития", "Арктическая зона РФ (по регионам)"],
+    "group": "basic",
+    "text_checks": {
+      "irrelevant_values": ["не указано", "-", "н/д", "нет"],
+      "min_length": 5,
+      "recommendation": "Укажите точное наименование объекта преференциального режима"
+    }
+  },
+  {
+    "id": 4,
+    "portal_name": "Объект инфраструктуры поддержки",
+    "key": "infra_support",
+    "type": "dropdown_conditional",
+    "required": true,
+    "parent_field": null,
+    "parent_value": null,
+    "group": "basic"
+  },
+  {
+    "id": 5,
+    "portal_name": "Наименование объекта инфраструктуры поддержки",
+    "key": "infra_support_name",
+    "type": "text",
+    "required": false,
+    "parent_field": "infra_support",
+    "parent_value": ["технопарк", "индустриальный парк", "бизнес-инкубатор", "инновационный научно-технологический центр", "промплощадка", "агропромышленный парк", "логистический парк"],
+    "group": "basic",
+    "text_checks": {
+      "irrelevant_values": ["не указано", "-", "н/д", "нет"],
+      "min_length": 5,
+      "recommendation": "Укажите точное наименование объекта инфраструктуры поддержки"
+    }
+  },
+  {
+    "id": 6,
+    "portal_name": "Регион",
+    "key": "region",
+    "type": "dropdown",
+    "required": true,
+    "parent_field": null,
+    "parent_value": null,
+    "group": "basic"
+  },
+  {
+    "id": 7,
+    "portal_name": "Муниципальное образование",
+    "key": "municipality",
+    "type": "dropdown",
+    "required": true,
+    "parent_field": null,
+    "parent_value": null,
+    "group": "basic"
+  },
+  {
+    "id": 8,
+    "portal_name": "Адрес объекта",
+    "key": "site_address",
+    "type": "text",
+    "required": true,
+    "parent_field": null,
+    "parent_value": null,
+    "group": "basic",
+    "text_checks": {
+      "irrelevant_values": ["не указано", "-", "н/д", "нет"],
+      "min_length": 10,
+      "recommendation": "Укажите полный адрес: регион, населённый пункт, улица, дом",
+      "pattern": "^[А-Яа-яЁёa-zA-Z0-9 ,./\\-]+"
+    }
+  },
+  {
+    "id": 9,
+    "portal_name": "Ближайший город",
+    "key": "nearest_city",
+    "type": "text",
+    "required": true,
+    "parent_field": null,
+    "parent_value": null,
+    "group": "basic",
+    "text_checks": {
+      "irrelevant_values": ["не указано", "-", "н/д", "нет"],
+      "min_length": 2,
+      "recommendation": "Укажите ближайший крупный город (не посёлок)"
+    }
+  },
+  {
+    "id": 10,
+    "portal_name": "Формат площадки",
+    "key": "site_format",
+    "type": "dropdown_conditional",
+    "required": true,
+    "parent_field": null,
+    "parent_value": null,
+    "group": "basic"
+  },
+  {
+    "id": 11,
+    "portal_name": "Тип площадки",
+    "key": "site_type",
+    "type": "dropdown",
+    "required": true,
+    "parent_field": null,
+    "parent_value": null,
+    "group": "basic"
+  },
+  {
+    "id": 12,
+    "portal_name": "Приоритетная площадка",
+    "key": "is_priority",
+    "type": "number",
+    "required": false,
+    "parent_field": null,
+    "parent_value": null,
+    "group": "basic",
+    "text_checks": {
+      "min_value": 1,
+      "recommendation": "Укажите целое число от 1 до 10. Только для приоритетных площадок инвесткарты. Если площадка не приоритетная — оставьте пустым."
+    }
+  },
+  {
+    "id": 13,
+    "portal_name": "Форма собственности объекта",
+    "key": "ownership_form",
+    "type": "dropdown",
+    "required": true,
+    "parent_field": null,
+    "parent_value": null,
+    "group": "basic"
+  },
+  {
+    "id": 14,
+    "portal_name": "Форма сделки",
+    "key": "deal_form",
+    "type": "dropdown_conditional",
+    "required": true,
+    "parent_field": null,
+    "parent_value": null,
+    "group": "basic"
+  },
+  {
+    "id": 15,
+    "portal_name": "Стоимость объекта, руб. (покупки или месячной аренды)",
+    "key": "price_rub",
+    "type": "number",
+    "required": true,
+    "parent_field": null,
+    "parent_value": null,
+    "group": "basic",
+    "text_checks": {
+      "min_value": 0,
+      "recommendation": "Укажите стоимость покупки или месячной аренды в рублях"
+    }
+  },
+  {
+    "id": 16,
+    "portal_name": "Стоимость, руб./год за га",
+    "key": "price_rub_per_ha_year",
+    "type": "number",
+    "required": false,
+    "parent_field": null,
+    "parent_value": null,
+    "group": "basic",
+    "text_checks": {
+      "min_value": 0,
+      "recommendation": "Стоимость аренды за гектар в год, рублей"
+    }
+  },
+  {
+    "id": 17,
+    "portal_name": "Стоимость, руб./год за кв. м",
+    "key": "price_rub_per_m2_year",
+    "type": "number",
+    "required": true,
+    "parent_field": null,
+    "parent_value": null,
+    "group": "basic",
+    "text_checks": {
+      "min_value": 0,
+      "recommendation": "Стоимость аренды за кв.м в год, рублей"
+    }
+  },
+  {
+    "id": 18,
+    "portal_name": "min и max сроки аренды (если применимо), лет",
+    "key": "rent_term_years",
+    "type": "text",
+    "required": false,
+    "parent_field": "deal_form",
+    "parent_value": ["аренда", "аренда через аукцион"],
+    "group": "basic",
+    "text_checks": {
+      "irrelevant_values": ["не указано", "-", "н/д", "нет"],
+      "min_length": 1,
+      "recommendation": "Укажите минимальный и максимальный срок аренды, например: 1-49",
+      "pattern": "^\\d+(-\\d+)?$"
+    }
+  },
+  {
+    "id": 19,
+    "portal_name": "Порядок определения стоимости (для всех форм сделки)",
+    "key": "price_procedure",
+    "type": "text",
+    "required": true,
+    "parent_field": null,
+    "parent_value": null,
+    "group": "basic",
+    "text_checks": {
+      "irrelevant_values": ["не указано", "-", "н/д", "нет"],
+      "min_length": 10,
+      "recommendation": "Опишите порядок определения стоимости (аукцион, переговоры, фиксированная и т.д.)"
+    }
+  },
+  {
+    "id": 20,
+    "portal_name": "Класс опасности объекта",
+    "key": "hazard_class",
+    "type": "dropdown",
+    "required": false,
+    "parent_field": null,
+    "parent_value": null,
+    "group": "basic"
+  },
+  {
+    "id": 21,
+    "portal_name": "Характеристики расположенных объектов капитального строительства",
+    "key": "capital_construction_desc",
+    "type": "text",
+    "required": false,
+    "parent_field": null,
+    "parent_value": null,
+    "group": "basic",
+    "text_checks": {
+      "irrelevant_values": ["не указано", "-", "н/д", "нет"],
+      "min_length": 10,
+      "recommendation": "Опишите характеристики имеющихся объектов капитального строительства"
+    }
+  },
+  {
+    "id": 22,
+    "portal_name": "Свободная площадь ЗУ, га",
+    "key": "free_area_ha",
+    "type": "number",
+    "required": true,
+    "parent_field": "site_format",
+    "parent_value": ["земельный участок"],
+    "group": "basic",
+    "text_checks": {
+      "min_value": 0,
+      "rec": "Укажите свободную площадь земельного участка в гектарах"
+    }
+  },
+  {
+    "id": 23,
+    "portal_name": "Кадастровый номер ЗУ",
+    "key": "cadastral_number_land",
+    "type": "text",
+    "required": false,
+    "parent_field": "site_format",
+    "parent_value": ["земельный участок"],
+    "group": "basic",
+    "text_checks": {
+      "min_length": 3,
+      "rec": "Укажите кадастровый номер в формате ХХ:ХХ:XXXXXXX:ХХ",
+      "pattern": "^\\d{2}:\\d{2}:\\d{6,7}:\\d+"
+    }
+  },
+  {
+    "id": 24,
+    "portal_name": "Варианты разрешенного использования",
+    "key": "permitted_use",
+    "type": "dropdown",
+    "required": true,
+    "parent_field": "site_format",
+    "parent_value": ["земельный участок"],
+    "group": "basic"
+  },
+  {
+    "id": 25,
+    "portal_name": "Межевание земельного участка",
+    "key": "land_surveying",
+    "type": "dropdown",
+    "required": true,
+    "parent_field": "site_format",
+    "parent_value": ["земельный участок"],
+    "group": "basic"
+  },
+  {
+    "id": 26,
+    "portal_name": "Категория земель",
+    "key": "land_category",
+    "type": "dropdown",
+    "required": true,
+    "parent_field": "site_format",
+    "parent_value": ["земельный участок"],
+    "group": "basic"
+  },
+  {
+    "id": 27,
+    "portal_name": "Свободная площадь здания, сооружения, помещения, кв. м",
+    "key": "free_area_m2",
+    "type": "number",
+    "required": true,
+    "parent_field": "site_format",
+    "parent_value": ["здания и сооружения", "помещение"],
+    "group": "basic",
+    "text_checks": {
+      "min_value": 0,
+      "rec": "Укажите свободную площадь в кв.м"
+    }
+  },
+  {
+    "id": 28,
+    "portal_name": "Кадастровый номер здания, сооружения, помещения",
+    "key": "cadastral_number_building",
+    "type": "text",
+    "required": true,
+    "parent_field": "site_format",
+    "parent_value": ["здания и сооружения", "помещение"],
+    "group": "basic",
+    "text_checks": {
+      "min_length": 3,
+      "rec": "Укажите кадастровый номер здания в формате ХХ:ХХ:XXXXXXX:ХХ",
+      "pattern": "^\\d{2}:\\d{2}:\\d{6,7}:\\d+"
+    }
+  },
+  {
+    "id": 29,
+    "portal_name": "Технические характеристики здания, сооружения, помещения",
+    "key": "building_tech_desc",
+    "type": "text",
+    "required": true,
+    "parent_field": "site_format",
+    "parent_value": ["здания и сооружения", "помещение"],
+    "group": "basic",
+    "text_checks": {
+      "min_length": 10,
+      "rec": "Опишите технические характеристики: год постройки, этажность, материал стен, состояние"
+    }
+  },
+  {
+    "id": 30,
+    "portal_name": "Наименование правообладателя",
+    "key": "owner_name",
+    "type": "text",
+    "required": true,
+    "group": "contacts",
+    "text_checks": {
+      "min_length": 5,
+      "rec": "Укажите полное наименование юридического лица или ФИО физического лица"
+    }
+  },
+  {
+    "id": 31,
+    "portal_name": "ИНН правообладателя",
+    "key": "owner_inn",
+    "type": "text",
+    "required": true,
+    "group": "contacts",
+    "text_checks": {
+      "min_length": 10,
+      "rec": "Укажите ИНН: 10 цифр для юр. лица, 12 для физ. лица",
+      "pattern": "^\\d{10}(\\d{2})?$"
+    }
+  },
+  {
+    "id": 32,
+    "portal_name": "Контактное лицо",
+    "key": "contact_person",
+    "type": "text",
+    "required": true,
+    "group": "contacts",
+    "text_checks": {
+      "min_length": 5,
+      "rec": "Укажите ФИО контактного лица (Фамилия Имя Отчество)"
+    }
+  },
+  {
+    "id": 33,
+    "portal_name": "Телефон и e-mail контактного лица",
+    "key": "contact_phone_email",
+    "type": "text",
+    "required": true,
+    "group": "contacts",
+    "text_checks": {
+      "min_length": 6,
+      "rec": "Укажите телефон и e-mail через запятую, например: +7 831 000-00-00, mail@example.ru"
+    }
+  },
+  {
+    "id": 34,
+    "portal_name": "Адрес сайта",
+    "key": "site_url",
+    "type": "text",
+    "required": false,
+    "group": "contacts",
+    "text_checks": {
+      "min_length": 4,
+      "rec": "Укажите адрес сайта, начиная с http:// или www.",
+      "pattern": "^(https?://|www\\.)"
+    }
+  },
+  {
+    "id": 35,
+    "portal_name": "Примечания",
+    "key": "notes",
+    "type": "text",
+    "required": false,
+    "group": "contacts",
+    "text_checks": {
+      "min_length": 0,
+      "rec": "Дополнительная информация о площадке, не вошедшая в другие поля"
+    }
+  },
+  {
+    "id": 36,
+    "portal_name": "Водоснабжение — Наличие",
+    "key": "water_supply_avail",
+    "type": "dropdown_conditional",
+    "required": true,
+    "parent_field": null,
+    "parent_value": null,
+    "group": "utilities"
+  },
+  {
+    "id": 37,
+    "portal_name": "Водоснабжение — Тариф на потребление, руб./куб. м",
+    "key": "water_supply_tariff_consumption",
+    "type": "number",
+    "required": true,
+    "parent_field": "water_supply_avail",
+    "parent_value": ["да"],
+    "group": "utilities",
+    "text_checks": {
+      "min_value": 0,
+      "recommendation": "Тариф на питьевую/техническую воду, руб./куб.м"
+    }
+  },
+  {
+    "id": 38,
+    "portal_name": "Водоснабжение — Тариф на транспортировку, руб./куб. м",
+    "key": "water_supply_tariff_transport",
+    "type": "number",
+    "required": true,
+    "parent_field": "water_supply_avail",
+    "parent_value": ["да"],
+    "group": "utilities",
+    "text_checks": {
+      "min_value": 0,
+      "recommendation": "Тариф на транспортировку воды, руб./куб.м"
+    }
+  },
+  {
+    "id": 39,
+    "portal_name": "Объекты водоснабжения — Максимально допустимая мощность, куб. м/ч",
+    "key": "water_supply_capacity_max",
+    "type": "number",
+    "required": true,
+    "parent_field": "water_supply_avail",
+    "parent_value": ["да"],
+    "group": "utilities",
+    "text_checks": {
+      "min_value": 0,
+      "recommendation": "Максимально допустимая мощность объекта водоснабжения, куб.м/ч"
+    }
+  },
+  {
+    "id": 40,
+    "portal_name": "Объекты водоснабжения — Свободная мощность, куб. м/ч",
+    "key": "water_supply_capacity_free",
+    "type": "number",
+    "required": true,
+    "parent_field": "water_supply_avail",
+    "parent_value": ["да"],
+    "group": "utilities",
+    "text_checks": {
+      "min_value": 0,
+      "recommendation": "Свободная мощность объекта водоснабжения, куб.м/ч"
+    }
+  },
+  {
+    "id": 41,
+    "portal_name": "Объекты водоснабжения — Иные характеристики",
+    "key": "water_supply_other",
+    "type": "text",
+    "required": false,
+    "parent_field": "water_supply_avail",
+    "parent_value": ["да", "возможно создание"],
+    "group": "utilities",
+    "text_checks": {
+      "irrelevant_values": ["не указано", "-", "н/д", "нет"],
+      "min_length": 5,
+      "recommendation": "Укажите иные существенные характеристики системы водоснабжения"
+    }
+  },
+  {
+    "id": 42,
+    "portal_name": "Сети водоснабжения — Пропускная способность, куб. м/ч",
+    "key": "water_supply_network_throughput",
+    "type": "number",
+    "required": true,
+    "parent_field": "water_supply_avail",
+    "parent_value": ["да"],
+    "group": "utilities",
+    "text_checks": {
+      "min_value": 0,
+      "recommendation": "Пропускная способность сетей водоснабжения, куб.м/ч"
+    }
+  },
+  {
+    "id": 43,
+    "portal_name": "Водоснабжение — Тариф на технологическое присоединение, руб.",
+    "key": "water_supply_tariff_connection",
+    "type": "number",
+    "required": true,
+    "parent_field": "water_supply_avail",
+    "parent_value": ["возможно создание"],
+    "group": "utilities",
+    "text_checks": {
+      "min_value": 0,
+      "recommendation": "Тариф на технологическое присоединение к водоснабжению, руб."
+    }
+  },
+  {
+    "id": 44,
+    "portal_name": "Наличие водоотведения",
+    "key": "sewage_avail",
+    "type": "dropdown_conditional",
+    "required": true,
+    "group": "basic"
+  },
+  {
+    "id": 45,
+    "portal_name": "Тариф на водоотведение, руб./куб.м",
+    "key": "sewage_tariff_consumption",
+    "type": "number",
+    "required": true,
+    "group": "basic",
+    "text_checks": {
+      "min_value": 0,
+      "rec": "Тариф на водоотведение, руб./куб.м"
+    }
+  },
+  {
+    "id": 46,
+    "portal_name": "Тариф на транспортировку стоков, руб./куб.м",
+    "key": "sewage_tariff_transport",
+    "type": "number",
+    "required": true,
+    "group": "basic",
+    "text_checks": {
+      "min_value": 0,
+      "rec": "Тариф на транспортировку стоков, руб./куб.м"
+    }
+  },
+  {
+    "id": 47,
+    "portal_name": "Максимально допустимая мощность системы водоотведения, куб.м/ч",
+    "key": "sewage_capacity_max",
+    "type": "number",
+    "required": true,
+    "group": "basic",
+    "text_checks": {
+      "min_value": 0,
+      "rec": "Максимально допустимая мощность системы водоотведения, куб.м/ч"
+    }
+  },
+  {
+    "id": 48,
+    "portal_name": "Свободная мощность системы водоотведения, куб.м/ч",
+    "key": "sewage_capacity_free",
+    "type": "number",
+    "required": true,
+    "group": "basic",
+    "text_checks": {
+      "min_value": 0,
+      "rec": "Свободная мощность системы водоотведения, куб.м/ч"
+    }
+  },
+  {
+    "id": 49,
+    "portal_name": "Иные существенные характеристики системы водоотведения",
+    "key": "sewage_other",
+    "type": "text",
+    "required": false,
+    "group": "basic",
+    "text_checks": {
+      "min_length": 5,
+      "rec": "Укажите иные существенные характеристики системы водоотведения"
+    }
+  },
+  {
+    "id": 50,
+    "portal_name": "Пропускная способность сетей водоотведения, куб.м/ч",
+    "key": "sewage_network_throughput",
+    "type": "number",
+    "required": true,
+    "group": "basic",
+    "text_checks": {
+      "min_value": 0,
+      "rec": "Пропускная способность сетей водоотведения, куб.м/ч"
+    }
+  },
+  {
+    "id": 51,
+    "portal_name": "Тариф на технологическое присоединение к водоотведению, руб.",
+    "key": "sewage_tariff_connection",
+    "type": "number",
+    "required": true,
+    "group": "basic",
+    "text_checks": {
+      "min_value": 0,
+      "rec": "Тариф на технологическое присоединение к водоотведению, руб."
+    }
+  },
+  {
+    "id": 52,
+    "portal_name": "Газоснабжение — Наличие",
+    "key": "gas_avail",
+    "type": "dropdown_conditional",
+    "required": true,
+    "parent_field": null,
+    "parent_value": null,
+    "group": "utilities"
+  },
+  {
+    "id": 53,
+    "portal_name": "Газоснабжение — Тариф на потребление, руб./куб. м",
+    "key": "gas_tariff_consumption",
+    "type": "number",
+    "required": true,
+    "parent_field": "gas_avail",
+    "parent_value": ["да"],
+    "group": "utilities",
+    "text_checks": {
+      "min_value": 0,
+      "recommendation": "Тариф на потребление газа, руб./куб.м"
+    }
+  },
+  {
+    "id": 54,
+    "portal_name": "Газоснабжение — Тариф на транспортировку, руб./куб. м",
+    "key": "gas_tariff_transport",
+    "type": "number",
+    "required": true,
+    "parent_field": "gas_avail",
+    "parent_value": ["да"],
+    "group": "utilities",
+    "text_checks": {
+      "min_value": 0,
+      "recommendation": "Тариф на транспортировку газа, руб./куб.м"
+    }
+  },
+  {
+    "id": 55,
+    "portal_name": "Объекты газоснабжения — Максимально допустимая мощность, куб. м/ч",
+    "key": "gas_capacity_max",
+    "type": "number",
+    "required": true,
+    "parent_field": "gas_avail",
+    "parent_value": ["да"],
+    "group": "utilities",
+    "text_checks": {
+      "min_value": 0,
+      "recommendation": "Максимально допустимый расход газа, куб.м/ч"
+    }
+  },
+  {
+    "id": 56,
+    "portal_name": "Объекты газоснабжения — Свободная мощность, куб. м/ч",
+    "key": "gas_capacity_free",
+    "type": "number",
+    "required": true,
+    "parent_field": "gas_avail",
+    "parent_value": ["да"],
+    "group": "utilities",
+    "text_checks": {
+      "min_value": 0,
+      "recommendation": "Свободная мощность газоснабжения, куб.м/ч"
+    }
+  },
+  {
+    "id": 57,
+    "portal_name": "Объекты газоснабжения — Иные характеристики",
+    "key": "gas_other",
+    "type": "text",
+    "required": false,
+    "parent_field": "gas_avail",
+    "parent_value": ["да", "возможно создание"],
+    "group": "utilities",
+    "text_checks": {
+      "irrelevant_values": ["не указано", "-", "н/д", "нет"],
+      "min_length": 5,
+      "recommendation": "Укажите иные существенные характеристики газоснабжения"
+    }
+  },
+  {
+    "id": 58,
+    "portal_name": "Сети газоснабжения — Пропускная способность, куб. м/ч",
+    "key": "gas_network_throughput",
+    "type": "number",
+    "required": true,
+    "parent_field": "gas_avail",
+    "parent_value": ["да"],
+    "group": "utilities",
+    "text_checks": {
+      "min_value": 0,
+      "recommendation": "Пропускная способность газовых сетей, куб.м/ч"
+    }
+  },
+  {
+    "id": 59,
+    "portal_name": "Газоснабжение — Тариф на технологическое присоединение, руб.",
+    "key": "gas_tariff_connection",
+    "type": "number",
+    "required": true,
+    "parent_field": "gas_avail",
+    "parent_value": ["возможно создание"],
+    "group": "utilities",
+    "text_checks": {
+      "min_value": 0,
+      "recommendation": "Тариф на технологическое присоединение к газоснабжению, руб."
+    }
+  },
+  {
+    "id": 60,
+    "portal_name": "Электроснабжение — Наличие",
+    "key": "electricity_avail",
+    "type": "dropdown_conditional",
+    "required": true,
+    "parent_field": null,
+    "parent_value": null,
+    "group": "utilities"
+  },
+  {
+    "id": 61,
+    "portal_name": "Электроснабжение — Тариф на потребление, руб./кВт·ч",
+    "key": "electricity_tariff_consumption",
+    "type": "number",
+    "required": true,
+    "parent_field": "electricity_avail",
+    "parent_value": ["да"],
+    "group": "utilities",
+    "text_checks": {
+      "min_value": 0,
+      "recommendation": "Тариф на потребление электроэнергии, руб./кВт·ч"
+    }
+  },
+  {
+    "id": 62,
+    "portal_name": "Электроснабжение — Тариф на транспортировку, руб./кВт·ч",
+    "key": "electricity_tariff_transport",
+    "type": "number",
+    "required": true,
+    "parent_field": "electricity_avail",
+    "parent_value": ["да"],
+    "group": "utilities",
+    "text_checks": {
+      "min_value": 0,
+      "recommendation": "Тариф на передачу электроэнергии, руб./кВт·ч"
+    }
+  },
+  {
+    "id": 63,
+    "portal_name": "Объекты электроснабжения — Максимально допустимая мощность, МВт",
+    "key": "electricity_capacity_max",
+    "type": "number",
+    "required": true,
+    "parent_field": "electricity_avail",
+    "parent_value": ["да"],
+    "group": "utilities",
+    "text_checks": {
+      "min_value": 0,
+      "recommendation": "Максимальная мощность объектов электроснабжения, МВт"
+    }
+  },
+  {
+    "id": 64,
+    "portal_name": "Объекты электроснабжения — Свободная мощность, МВт",
+    "key": "electricity_capacity_free",
+    "type": "number",
+    "required": true,
+    "parent_field": "electricity_avail",
+    "parent_value": ["да"],
+    "group": "utilities",
+    "text_checks": {
+      "min_value": 0,
+      "recommendation": "Свободная мощность электроснабжения, МВт"
+    }
+  },
+  {
+    "id": 65,
+    "portal_name": "Объекты электроснабжения — Иные характеристики",
+    "key": "electricity_other",
+    "type": "text",
+    "required": false,
+    "parent_field": "electricity_avail",
+    "parent_value": ["да", "возможно создание"],
+    "group": "utilities",
+    "text_checks": {
+      "irrelevant_values": ["не указано", "-", "н/д", "нет"],
+      "min_length": 5,
+      "recommendation": "Укажите иные существенные характеристики электроснабжения"
+    }
+  },
+  {
+    "id": 66,
+    "portal_name": "Сети электроснабжения — Пропускная способность, МВт",
+    "key": "electricity_network_throughput",
+    "type": "number",
+    "required": true,
+    "parent_field": "electricity_avail",
+    "parent_value": ["да"],
+    "group": "utilities",
+    "text_checks": {
+      "min_value": 0,
+      "recommendation": "Пропускная способность электрических сетей, МВт"
+    }
+  },
+  {
+    "id": 67,
+    "portal_name": "Электроснабжение — Тариф на технологическое присоединение, руб.",
+    "key": "electricity_tariff_connection",
+    "type": "number",
+    "required": true,
+    "parent_field": "electricity_avail",
+    "parent_value": ["возможно создание"],
+    "group": "utilities",
+    "text_checks": {
+      "min_value": 0,
+      "recommendation": "Тариф на технологическое присоединение к электросетям, руб."
+    }
+  },
+  {
+    "id": 68,
+    "key": "heat_avail",
+    "portal_name": "Теплоснабжение — Наличие",
+    "type": "dropdown_conditional",
+    "required": true,
+    "parent_field": null,
+    "parent_value": null
+  },
+  {
+    "id": 69,
+    "key": "heat_tariff_consumption",
+    "portal_name": "Теплоснабжение — Тариф на потребление, руб./Гкал",
+    "type": "number",
+    "required": true,
+    "parent_field": "heat_avail",
+    "parent_value": ["да"],
+    "text_checks": {
+      "min_value": 0,
+      "rec": "Тариф на тепловую энергию (мощность), руб./Гкал"
+    }
+  },
+  {
+    "id": 70,
+    "key": "heat_tariff_transport",
+    "portal_name": "Теплоснабжение — Тариф на транспортировку, руб./Гкал",
+    "type": "number",
+    "required": true,
+    "parent_field": "heat_avail",
+    "parent_value": ["да"],
+    "text_checks": {
+      "min_value": 0,
+      "rec": "Тариф на услуги по передаче тепловой энергии, руб./Гкал"
+    }
+  },
+  {
+    "id": 71,
+    "key": "heat_capacity_max",
+    "portal_name": "Объекты теплоснабжения — Максимально допустимая мощность, Гкал/ч",
+    "type": "number",
+    "required": true,
+    "parent_field": "heat_avail",
+    "parent_value": ["да"],
+    "text_checks": {
+      "min_value": 0,
+      "rec": "Максимально допустимая мощность теплоснабжения, Гкал/ч"
+    }
+  },
+  {
+    "id": 72,
+    "key": "heat_capacity_free",
+    "portal_name": "Объекты теплоснабжения — Свободная мощность, Гкал/ч",
+    "type": "number",
+    "required": true,
+    "parent_field": "heat_avail",
+    "parent_value": ["да"],
+    "text_checks": {
+      "min_value": 0,
+      "rec": "Свободная мощность теплоснабжения, Гкал/ч"
+    }
+  },
+  {
+    "id": 73,
+    "key": "heat_other",
+    "portal_name": "Объекты теплоснабжения — Иные характеристики",
+    "type": "text",
+    "required": false,
+    "parent_field": "heat_avail",
+    "parent_value": ["да", "возможно создание"],
+    "text_checks": {
+      "min_length": 5,
+      "rec": "Укажите иные существенные характеристики теплоснабжения"
+    }
+  },
+  {
+    "id": 74,
+    "key": "heat_network_throughput",
+    "portal_name": "Сети теплоснабжения — Пропускная способность, Гкал/ч",
+    "type": "number",
+    "required": true,
+    "parent_field": "heat_avail",
+    "parent_value": ["да"],
+    "text_checks": {
+      "min_value": 0,
+      "rec": "Пропускная способность тепловых сетей, Гкал/ч"
+    }
+  },
+  {
+    "id": 75,
+    "key": "heat_tariff_connection",
+    "portal_name": "Теплоснабжение — Тариф на технологическое присоединение, руб.",
+    "type": "number",
+    "required": true,
+    "parent_field": "heat_avail",
+    "parent_value": ["возможно создание"],
+    "text_checks": {
+      "min_value": 0,
+      "rec": "Тариф на технологическое присоединение к теплосетям, руб."
+    }
+  },
+  {
+    "id": 76,
+    "key": "waste_removal_avail",
+    "portal_name": "Вывоз ТКО — Наличие",
+    "type": "dropdown_conditional",
+    "required": true,
+    "parent_field": null,
+    "parent_value": null
+  },
+  {
+    "id": 77,
+    "key": "waste_removal_tariff_ton",
+    "portal_name": "Вывоз ТКО — Тариф, руб./тонна",
+    "type": "number",
+    "required": false,
+    "parent_field": "waste_removal_avail",
+    "parent_value": ["да"],
+    "text_checks": {
+      "min_value": 0,
+      "rec": "Тариф на вывоз ТКО, руб./тонна"
+    }
+  },
+  {
+    "id": 78,
+    "key": "waste_removal_tariff_m3",
+    "portal_name": "Вывоз ТКО — Тариф, руб./куб. м",
+    "type": "number",
+    "required": false,
+    "parent_field": "waste_removal_avail",
+    "parent_value": ["да"],
+    "text_checks": {
+      "min_value": 0,
+      "rec": "Тариф на вывоз ТКО, руб./куб.м"
+    }
+  },
+  {
+    "id": 79,
+    "key": "access_roads_avail",
+    "portal_name": "Наличие подъездных путей",
+    "type": "dropdown",
+    "required": true,
+    "parent_field": null,
+    "parent_value": null
+  },
+  {
+    "id": 80,
+    "key": "railway_avail",
+    "portal_name": "Наличие ж/д",
+    "type": "dropdown_conditional",
+    "required": true,
+    "parent_field": null,
+    "parent_value": null
+  },
+  {
+    "id": 81,
+    "key": "transport_other",
+    "portal_name": "Иные характеристики (транспортная доступность)",
+    "type": "text",
+    "required": false,
+    "parent_field": "railway_avail",
+    "parent_value": ["да"],
+    "text_checks": {
+      "min_length": 5,
+      "recommendation": "Опишите особенности транспортной доступности: ж/д тупик, причал, расстояние до ж/д станции и т.д."
+    }
+  },
+  {
+    "id": 82,
+    "key": "freight_parking_avail",
+    "portal_name": "Наличие парковки грузового транспорта",
+    "type": "dropdown",
+    "required": true,
+    "parent_field": null,
+    "parent_value": null
+  },
+  {
+    "id": 83,
+    "portal_name": "Описание процедуры подачи заявки",
+    "key": "application_procedure_desc",
+    "type": "text",
+    "required": true,
+    "parent_field": null,
+    "parent_value": null,
+    "group": "procedure",
+    "text_checks": {
+      "irrelevant_values": ["не указано", "-", "н/д", "нет"],
+      "min_length": 20,
+      "recommendation": "Опишите пошагово процедуру подачи заявки на площадку"
+    }
+  },
+  {
+    "id": 84,
+    "portal_name": "Перечень документов, необходимых для подачи заявки",
+    "key": "application_docs_list",
+    "type": "text",
+    "required": false,
+    "parent_field": null,
+    "parent_value": null,
+    "group": "procedure",
+    "text_checks": {
+      "irrelevant_values": ["не указано", "-", "н/д", "нет"],
+      "min_length": 10,
+      "recommendation": "Перечислите документы, необходимые инвестору для подачи заявки"
+    }
+  },
+  {
+    "id": 85,
+    "portal_name": "Адрес эл. почты для подачи заявки",
+    "key": "application_email",
+    "type": "text",
+    "required": true,
+    "parent_field": null,
+    "parent_value": null,
+    "group": "procedure",
+    "text_checks": {
+      "irrelevant_values": ["не указано", "-", "н/д", "нет"],
+      "min_length": 6,
+      "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+",
+      "recommendation": "Укажите действующий e-mail для приёма заявок"
+    }
+  },
+  {
+    "id": 86,
+    "portal_name": "Ссылка на форму для подачи заявки",
+    "key": "application_form_url",
+    "type": "text",
+    "required": false,
+    "parent_field": null,
+    "parent_value": null,
+    "group": "procedure",
+    "text_checks": {
+      "irrelevant_values": ["не указано", "-", "н/д", "нет"],
+      "min_length": 4,
+      "pattern": "^(https?://|www\\.)",
+      "recommendation": "Укажите ссылку на онлайн-форму подачи заявки"
+    }
+  },
+  {
+    "id": 87,
+    "portal_name": "Перечень видов экономической деятельности, возможных к реализации на площадке",
+    "key": "economic_activity_types",
+    "type": "dropdown",
+    "required": true,
+    "parent_field": null,
+    "parent_value": null,
+    "group": "extra"
+  },
+  {
+    "id": 88,
+    "portal_name": "Градостроительные характеристики и ограничения",
+    "key": "urban_planning_restrictions",
+    "type": "text",
+    "required": false,
+    "parent_field": null,
+    "parent_value": null,
+    "group": "extra",
+    "text_checks": {
+      "irrelevant_values": ["не указано", "-", "н/д", "нет"],
+      "min_length": 10,
+      "recommendation": "Опишите градостроительные ограничения: ЗОУИТ, санзоны, охранные зоны и т.д."
+    }
+  },
+  {
+    "id": 89,
+    "portal_name": "Документы территориального планирования",
+    "key": "territorial_planning_docs",
+    "type": "file",
+    "required": false,
+    "parent_field": null,
+    "parent_value": null,
+    "group": "extra"
+  },
+  {
+    "id": 90,
+    "portal_name": "Иные сведения",
+    "key": "other_info",
+    "type": "text",
+    "required": false,
+    "parent_field": null,
+    "parent_value": null,
+    "group": "extra",
+    "text_checks": {
+      "irrelevant_values": ["не указано", "-", "н/д", "нет"],
+      "min_length": 0,
+      "recommendation": "Любые дополнительные сведения о площадке, не вошедшие в другие разделы"
+    }
+  },
+  {
+    "id": 91,
+    "portal_name": "Фотографии объекта",
+    "key": "photos",
+    "type": "file",
+    "required": true,
+    "parent_field": null,
+    "parent_value": null,
+    "group": "extra"
+  },
+  {
+    "id": 92,
+    "portal_name": "Документы по объекту",
+    "key": "object_docs",
+    "type": "file",
+    "required": false,
+    "parent_field": null,
+    "parent_value": null,
+    "group": "extra"
+  },
+  {
+    "id": 93,
+    "portal_name": "Геопривязка",
+    "key": "geo",
+    "type": "geo",
+    "required": true,
+    "parent_field": null,
+    "parent_value": null,
+    "group": "extra"
+  }
+]
