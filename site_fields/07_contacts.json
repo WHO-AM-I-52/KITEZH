@@ -1,0 +1,83 @@
+{
+  "_meta": {
+    "file": "07_contacts.json",
+    "description": "Контакты",
+    "source_fields": [30, 31, 32, 33, 34, 35]
+  },
+  "fields": [
+    {
+      "id": 30,
+      "portal_name": "Наименование правообладателя",
+      "key": "owner_name",
+      "type": "text",
+      "required": true,
+      "group": "contacts",
+      "text_checks": {
+        "min_length": 5,
+        "rec": "Укажите полное наименование юридического лица или ФИО физического лица"
+      }
+    },
+    {
+      "id": 31,
+      "portal_name": "ИНН правообладателя",
+      "key": "owner_inn",
+      "type": "text",
+      "required": true,
+      "group": "contacts",
+      "text_checks": {
+        "min_length": 10,
+        "rec": "Укажите ИНН: 10 цифр для юр. лица, 12 для физ. лица",
+        "pattern": "^\\d{10}(\\d{2})?$"
+      }
+    },
+    {
+      "id": 32,
+      "portal_name": "Контактное лицо",
+      "key": "contact_person",
+      "type": "text",
+      "required": true,
+      "group": "contacts",
+      "text_checks": {
+        "min_length": 5,
+        "rec": "Укажите ФИО контактного лица (Фамилия Имя Отчество)"
+      }
+    },
+    {
+      "id": 33,
+      "portal_name": "Телефон и e-mail контактного лица",
+      "key": "contact_phone_email",
+      "type": "text",
+      "required": true,
+      "group": "contacts",
+      "text_checks": {
+        "min_length": 6,
+        "rec": "Укажите телефон и e-mail через запятую, например: +7 831 000-00-00, mail@example.ru"
+      }
+    },
+    {
+      "id": 34,
+      "portal_name": "Адрес сайта",
+      "key": "site_url",
+      "type": "text",
+      "required": false,
+      "group": "contacts",
+      "text_checks": {
+        "min_length": 4,
+        "rec": "Укажите адрес сайта, начиная с http:// или www.",
+        "pattern": "^(https?://|www\\.)"
+      }
+    },
+    {
+      "id": 35,
+      "portal_name": "Примечания",
+      "key": "notes",
+      "type": "text",
+      "required": false,
+      "group": "contacts",
+      "text_checks": {
+        "min_length": 0,
+        "rec": "Дополнительная информация о площадке, не вошедшая в другие поля"
+      }
+    }
+  ]
+}
