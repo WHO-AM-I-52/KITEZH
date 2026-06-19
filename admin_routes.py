@@ -14,8 +14,10 @@
 # ║  v3.7: /api/console/show|hide|status — управление         ║
 # ║         консолью через браузер (независимот от трея)    ║
 # ║  v3.8: #2.2 investmap upload/clear + classifiers() расширен   ║
+# ║  v3.9: investmap upload — поддержка CSV (delimiter=';')        ║
 # ╚══════════════════════════════════════════════════════════════╝
 
+import csv
 import io
 import json
 import os
@@ -306,8 +308,9 @@ def investmap_classifier_upload():
         return redirect(url_for('admin.classifiers') + '#tab-investmap')
 
     f = request.files.get('file')
-    if not f or not f.filename.endswith('.xlsx'):
-        flash('Необходимо загрузить файл в формате .xlsx', 'error')
+    fname = f.filename.lower() if f else ''
+    if not f or not (fname.endswith('.xlsx') or fname.endswith('.csv')):
+        flash('Необходимо загрузить файл в формате .xlsx или .csv', 'error')
         return redirect(url_for('admin.classifiers') + '#tab-investmap')
 
     conn = get_db()
@@ -318,22 +321,44 @@ def investmap_classifier_upload():
         ).fetchone()
         field_name = field_row['field_name'] if field_row else None
 
-        wb = openpyxl.load_workbook(io.BytesIO(f.read()), read_only=True, data_only=True)
-        ws = wb.active
-
         inserted = 0
-        for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True)):
-            if not row or row[0] is None:
-                continue
-            value = str(row[0]).strip()
-            if not value:
-                continue
-            conn.execute(
-                "INSERT OR REPLACE INTO investmap_classifiers "
-                "(classifier_num, field_name, sort_order, value) VALUES (?, ?, ?, ?)",
-                (num, field_name, i, value)
-            )
-            inserted += 1
+
+        if fname.endswith('.xlsx'):
+            wb = openpyxl.load_workbook(io.BytesIO(f.read()), read_only=True, data_only=True)
+            ws = wb.active
+            for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True)):
+                if not row or row[0] is None:
+                    continue
+                value = str(row[0]).strip()
+                if not value:
+                    continue
+                conn.execute(
+                    "INSERT OR REPLACE INTO investmap_classifiers "
+                    "(classifier_num, field_name, sort_order, value) VALUES (?, ?, ?, ?)",
+                    (num, field_name, i, value)
+                )
+                inserted += 1
+
+        elif fname.endswith('.csv'):
+            content = f.read().decode('utf-8-sig')
+            reader = csv.reader(io.StringIO(content), delimiter=';')
+            next(reader)  # пропустить заголовок
+            for row in reader:
+                if len(row) < 2:
+                    continue
+                try:
+                    sort_order = int(row[0].strip().strip('"'))
+                except ValueError:
+                    continue
+                value = row[1].strip().strip('"')
+                if not value:
+                    continue
+                conn.execute(
+                    "INSERT OR REPLACE INTO investmap_classifiers "
+                    "(classifier_num, field_name, sort_order, value) VALUES (?, ?, ?, ?)",
+                    (num, field_name, sort_order, value)
+                )
+                inserted += 1
 
         conn.commit()
         log_action(conn, g.user['id'], 'investmap_classifier_upload',
