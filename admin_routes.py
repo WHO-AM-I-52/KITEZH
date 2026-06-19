@@ -13,19 +13,24 @@
 # ║  v3.6: action edit_name — редактирование ФИО пользователя     ║
 # ║  v3.7: /api/console/show|hide|status — управление         ║
 # ║         консолью через браузер (независимот от трея)    ║
+# ║  v3.8: #2.2 investmap upload/clear + classifiers() расширен   ║
 # ╚══════════════════════════════════════════════════════════════╝
 
-from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify
+import io
 import json
 import os
 import sys
 import subprocess
 import importlib.util
 
+import openpyxl
+from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify, g
+
 from db import get_db
 from auth_utils import (
     login_required, admin_required, hash_pw,
     ALL_PERMISSIONS, ADMIN_PERMISSIONS, load_permissions_to_session,
+    permission_required,
 )
 from activity_log import get_activity_log, get_perm_audit, ACTION_LABELS, log_action
 
@@ -271,6 +276,12 @@ def classifiers():
 
         subject_types = conn.execute("SELECT * FROM subject_types ORDER BY id").fetchall()
         result_types  = conn.execute("SELECT * FROM result_types ORDER BY id").fetchall()
+
+        investmap_cls = conn.execute(
+            "SELECT classifier_num, COUNT(*) AS cnt "
+            "FROM investmap_classifiers "
+            "GROUP BY classifier_num ORDER BY classifier_num"
+        ).fetchall()
     finally:
         conn.close()
 
@@ -280,7 +291,84 @@ def classifiers():
         okved_total=okved_total, okved_last_sync=okved_last_sync,
         subject_types=subject_types,
         result_types=result_types,
+        investmap_classifiers=investmap_cls,
     )
+
+
+# ─── Investmap: загрузка справочника ──────────────────────────────────────────────────────────────
+@admin_bp.route('/admin/classifiers/investmap/upload', methods=['POST'])
+@login_required
+@permission_required('can_investmap_rules')
+def investmap_classifier_upload():
+    num = request.form.get('classifier_num', '')
+    if not num.isdigit():
+        flash('Некорректный номер справочника', 'error')
+        return redirect(url_for('admin.classifiers') + '#tab-investmap')
+
+    f = request.files.get('file')
+    if not f or not f.filename.endswith('.xlsx'):
+        flash('Необходимо загрузить файл в формате .xlsx', 'error')
+        return redirect(url_for('admin.classifiers') + '#tab-investmap')
+
+    conn = get_db()
+    try:
+        field_row = conn.execute(
+            "SELECT field_name FROM investmap_fields WHERE classifier_num=? LIMIT 1",
+            (num,)
+        ).fetchone()
+        field_name = field_row['field_name'] if field_row else None
+
+        wb = openpyxl.load_workbook(io.BytesIO(f.read()), read_only=True, data_only=True)
+        ws = wb.active
+
+        inserted = 0
+        for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True)):
+            if not row or row[0] is None:
+                continue
+            value = str(row[0]).strip()
+            if not value:
+                continue
+            conn.execute(
+                "INSERT OR REPLACE INTO investmap_classifiers "
+                "(classifier_num, field_name, sort_order, value) VALUES (?, ?, ?, ?)",
+                (num, field_name, i, value)
+            )
+            inserted += 1
+
+        conn.commit()
+        log_action(conn, g.user['id'], 'investmap_classifier_upload',
+                   detail=f'Справочник №{num}: загружено {inserted} значений')
+        conn.commit()
+        flash(f'Справочник №{num}: загружено {inserted} значений', 'success')
+    except Exception as e:
+        conn.rollback()
+        flash(f'Ошибка при загрузке: {e}', 'error')
+    finally:
+        conn.close()
+
+    return redirect(url_for('admin.classifiers') + '#tab-investmap')
+
+
+# ─── Investmap: очистка справочника ───────────────────────────────────────────────────────────────
+@admin_bp.route('/admin/classifiers/investmap/clear/<int:num>', methods=['POST'])
+@login_required
+@permission_required('can_investmap_rules')
+def investmap_classifier_clear(num):
+    conn = get_db()
+    try:
+        conn.execute(
+            "DELETE FROM investmap_classifiers WHERE classifier_num=?",
+            (num,)
+        )
+        conn.commit()
+        log_action(conn, g.user['id'], 'investmap_classifier_clear',
+                   detail=f'Справочник №{num}: все записи удалены')
+        conn.commit()
+        flash(f'Справочник №{num}: все записи удалены', 'success')
+    finally:
+        conn.close()
+
+    return redirect(url_for('admin.classifiers') + '#tab-investmap')
 
 
 @admin_bp.route('/admin/subject-types', methods=['POST'])
