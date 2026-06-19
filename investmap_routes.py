@@ -1,9 +1,10 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║                  investmap_routes.py                        ║
 # ║  Конвертер + анализатор инвестплощадок              ║
-# ║  Доступ: can_view_investmap (админ автоматически)     ║
+# ║  Доступ: can_view_investmap — просмотр карты          ║
+# ║           can_investmap_rules — анализ (правила)       ║
 # ║  Маршруты: /investmap, /investmap/convert,             ║
-# ║             /investmap/analyze                              ║
+# ║             /investmap/analyze                         ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, render_template, request, jsonify
@@ -38,6 +39,7 @@ def investmap_convert():
 
 @investmap_bp.route('/investmap/analyze', methods=['POST'])
 @login_required
+@permission_required('can_investmap_rules')
 @permission_required('can_view_investmap')
 def investmap_analyze():
     """
