@@ -506,67 +506,69 @@
 </div>
 
 <script>
-(function () {
+document.addEventListener('DOMContentLoaded', function () {
+  (function () {
 
-  /* ── 1. Автооткрытие вкладки по URL-якорю ── */
-  function openTabByHash(hash) {
-    if (!hash) return;
-    var link = document.querySelector('#classTab a[href="' + hash + '"]');
-    if (link) { new bootstrap.Tab(link).show(); }
-  }
-  openTabByHash(window.location.hash);
+    /* ── 1. Автооткрытие вкладки по URL-якорю ── */
+    function openTabByHash(hash) {
+      if (!hash) return;
+      var link = document.querySelector('#classTab a[href="' + hash + '"]');
+      if (link) { new bootstrap.Tab(link).show(); }
+    }
+    openTabByHash(window.location.hash);
 
-  /* ── 2. Bulk-delete ────────────────────────────────────────────────────────── */
+    /* ── 2. Bulk-delete ────────────────────────────────────────────────────────── */
 
-  function syncBulk() {
-    var btn      = document.getElementById('bulk-delete-btn');
-    var idsInput = document.getElementById('bulk-delete-ids');
-    var selAll   = document.getElementById('select-all-results');
-    if (!btn || !idsInput) return;
+    function syncBulk() {
+      var btn      = document.getElementById('bulk-delete-btn');
+      var idsInput = document.getElementById('bulk-delete-ids');
+      var selAll   = document.getElementById('select-all-results');
+      if (!btn || !idsInput) return;
 
-    var cbs      = Array.from(document.querySelectorAll('.result-cb'));
-    var selected = cbs.filter(function (cb) { return cb.checked; });
+      var cbs      = Array.from(document.querySelectorAll('.result-cb'));
+      var selected = cbs.filter(function (cb) { return cb.checked; });
 
-    if (selected.length === 0) {
-      btn.setAttribute('disabled', '');
-    } else {
-      btn.removeAttribute('disabled');
+      if (selected.length === 0) {
+        btn.setAttribute('disabled', '');
+      } else {
+        btn.removeAttribute('disabled');
+      }
+
+      idsInput.value = selected.map(function (cb) { return cb.value; }).join(',');
+
+      cbs.forEach(function (cb) {
+        var tr = cb.closest('tr');
+        if (tr) tr.classList.toggle('result-row-selected', cb.checked);
+      });
+
+      if (selAll) {
+        selAll.checked       = cbs.length > 0 && selected.length === cbs.length;
+        selAll.indeterminate = selected.length > 0 && selected.length < cbs.length;
+      }
     }
 
-    idsInput.value = selected.map(function (cb) { return cb.value; }).join(',');
-
-    cbs.forEach(function (cb) {
-      var tr = cb.closest('tr');
-      if (tr) tr.classList.toggle('result-row-selected', cb.checked);
+    document.addEventListener('change', function (e) {
+      if (e.target.classList.contains('result-cb')) {
+        syncBulk();
+        return;
+      }
+      if (e.target.id === 'select-all-results') {
+        var cbs = Array.from(document.querySelectorAll('.result-cb'));
+        cbs.forEach(function (cb) { cb.checked = e.target.checked; });
+        syncBulk();
+      }
     });
 
-    if (selAll) {
-      selAll.checked       = cbs.length > 0 && selected.length === cbs.length;
-      selAll.indeterminate = selected.length > 0 && selected.length < cbs.length;
+    var resultTabLink = document.querySelector('#classTab a[href="#tab-result"]');
+    if (resultTabLink) {
+      resultTabLink.addEventListener('shown.bs.tab', function () {
+        syncBulk();
+      });
     }
-  }
 
-  document.addEventListener('change', function (e) {
-    if (e.target.classList.contains('result-cb')) {
-      syncBulk();
-      return;
-    }
-    if (e.target.id === 'select-all-results') {
-      var cbs = Array.from(document.querySelectorAll('.result-cb'));
-      cbs.forEach(function (cb) { cb.checked = e.target.checked; });
-      syncBulk();
-    }
-  });
+    syncBulk();
 
-  var resultTabLink = document.querySelector('#classTab a[href="#tab-result"]');
-  if (resultTabLink) {
-    resultTabLink.addEventListener('shown.bs.tab', function () {
-      syncBulk();
-    });
-  }
-
-  syncBulk();
-
-})();
+  })();
+});
 </script>
 {% endblock %}
