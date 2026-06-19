@@ -15,6 +15,7 @@
 # ║         консолью через браузер (независимот от трея)    ║
 # ║  v3.8: #2.2 investmap upload/clear + classifiers() расширен   ║
 # ║  v3.9: investmap upload — поддержка CSV (delimiter=';')        ║
+# ║  v4.0: fix investmap upload — display_name вместо field_name  ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 import csv
@@ -316,10 +317,10 @@ def investmap_classifier_upload():
     conn = get_db()
     try:
         field_row = conn.execute(
-            "SELECT field_name FROM investmap_fields WHERE classifier_num=? LIMIT 1",
+            "SELECT display_name FROM investmap_fields WHERE classifier_num=? LIMIT 1",
             (num,)
         ).fetchone()
-        field_name = field_row['field_name'] if field_row else None
+        field_name = field_row['display_name'] if field_row else None
 
         inserted = 0
 
