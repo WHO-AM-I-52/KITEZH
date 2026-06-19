@@ -17,6 +17,8 @@
 # ║  v3.9: investmap upload — поддержка CSV (delimiter=';')        ║
 # ║  v4.0: fix investmap upload — display_name вместо field_name  ║
 # ║  v4.1: fix CSV encoding — автодетект utf-8-sig/cp1251/utf-8   ║
+# ║  v4.2: fix g.user → session[user_id] в investmap clear/upload ║
+# ║         пропуск строк с признаком 'Удалён' в CSV-парсере      ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 import csv
@@ -359,6 +361,9 @@ def investmap_classifier_upload():
             for row in reader:
                 if len(row) < 2:
                     continue
+                # пропускать удалённые элементы (3-я колонка == 'Удалён')
+                if len(row) >= 3 and row[2].strip().strip('"') == 'Удалён':
+                    continue
                 try:
                     sort_order = int(row[0].strip().strip('"'))
                 except ValueError:
@@ -374,7 +379,7 @@ def investmap_classifier_upload():
                 inserted += 1
 
         conn.commit()
-        log_action(conn, g.user['id'], 'investmap_classifier_upload',
+        log_action(conn, session['user_id'], 'investmap_classifier_upload',
                    detail=f'Справочник №{num}: загружено {inserted} значений')
         conn.commit()
         flash(f'Справочник №{num}: загружено {inserted} значений', 'success')
@@ -399,7 +404,7 @@ def investmap_classifier_clear(num):
             (num,)
         )
         conn.commit()
-        log_action(conn, g.user['id'], 'investmap_classifier_clear',
+        log_action(conn, session['user_id'], 'investmap_classifier_clear',
                    detail=f'Справочник №{num}: все записи удалены')
         conn.commit()
         flash(f'Справочник №{num}: все записи удалены', 'success')
