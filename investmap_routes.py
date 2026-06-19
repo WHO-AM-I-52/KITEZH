@@ -9,9 +9,10 @@
 # ║             /investmap/convert, /investmap/analyze           ║
 # ╚══════════════════════════════════════════════════════════════╝
 
-from flask import Blueprint, render_template, request, jsonify
+from flask import Blueprint, render_template, request, jsonify, flash, g
 
 from auth_utils import login_required, permission_required
+from kitezh_logger import err_logger
 from tools.investmap_export import convert_excel_to_text
 from tools.investmap_analyzer import analyze, build_summary_sms
 
@@ -39,7 +40,15 @@ def investmap_v1():
 @permission_required('can_view_investmap')
 def investmap_v2():
     """Анализ заполняемости v2 — заглушка (логика придёт в Карточке #5)."""
-    return render_template('investmap_v2.html')
+    user = getattr(g, 'user', {}).get('login', 'unknown')
+    try:
+        return render_template('investmap_v2.html')
+    except Exception as exc:
+        err_logger.exception(
+            'investmap_v2 error | user=%s | %s', user, exc
+        )
+        flash('Ошибка при загрузке страницы анализа v2.', 'error')
+        return render_template('investmap_v2.html'), 500
 
 
 # ── Конвертация и анализ ───────────────────────────────────────────────────
