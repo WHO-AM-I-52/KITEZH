@@ -1,10 +1,12 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║                  investmap_routes.py                        ║
-# ║  Конвертер + анализатор инвестплощадок              ║
-# ║  Доступ: can_view_investmap — просмотр карты          ║
-# ║           can_investmap_rules — анализ (правила)       ║
-# ║  Маршруты: /investmap, /investmap/convert,             ║
-# ║             /investmap/analyze                         ║
+# ║  Конвертер + анализатор инвестплощадок                      ║
+# ║  Доступ: can_view_investmap — просмотр карты                 ║
+# ║           can_investmap_rules — анализ (правила)             ║
+# ║  Маршруты: /investmap (плитки),                             ║
+# ║             /investmap/v1 (анализ ГИС ЭКОНОМИКА),           ║
+# ║             /investmap/v2 (заглушка),                       ║
+# ║             /investmap/convert, /investmap/analyze           ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, render_template, request, jsonify
@@ -19,7 +21,24 @@ investmap_bp = Blueprint('investmap', __name__)
 @login_required
 @permission_required('can_view_investmap')
 def investmap():
+    """Главная страница — плитки навигации."""
     return render_template('investmap.html')
+
+
+@investmap_bp.route('/investmap/v1')
+@login_required
+@permission_required('can_view_investmap')
+def investmap_v1():
+    """Анализ заполняемости (ГИС ЭКОНОМИКА) — перенесено с /investmap."""
+    return render_template('investmap_v1.html')
+
+
+@investmap_bp.route('/investmap/v2')
+@login_required
+@permission_required('can_view_investmap')
+def investmap_v2():
+    """Анализ заполняемости v2 — заглушка (логика придёт в Карточке #5)."""
+    return render_template('investmap_v2.html')
 
 
 @investmap_bp.route('/investmap/convert', methods=['POST'])
