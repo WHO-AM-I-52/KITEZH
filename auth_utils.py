@@ -2,6 +2,7 @@
 # ║                      auth_utils.py                           ║
 # ║  v2.5: +can_view_phonebook                                   ║
 # ║  v2.6: +ROLE_PERMISSION_PRESETS (шаблоны прав для ролей)    ║
+# ║  v2.7: +can_investmap_rules (право: Инвест. карта — правила)║
 # ╚══════════════════════════════════════════════════════════════╝
 
 import hashlib
@@ -52,6 +53,7 @@ ALL_PERMISSIONS = {
     'can_view_all':         'Видит все обращения (вкл. поиск)',
     'can_view_investmap':   'Просмотр инвест. карты',
     'can_view_phonebook':   'Просмотр телефонного справочника',
+    'can_investmap_rules':  'Инвест. карта — правила размещения',
 }
 
 # Все права включены — для роли admin
@@ -75,6 +77,7 @@ ROLE_PERMISSION_PRESETS = {
         'can_view_all':       0,
         'can_view_investmap': 1,
         'can_view_phonebook': 1,
+        'can_investmap_rules': 0,
     },
     # Руководитель: все обращения, управление ими, полный экспорт
     'manager': {
@@ -91,6 +94,7 @@ ROLE_PERMISSION_PRESETS = {
         'can_view_all':       1,
         'can_view_investmap': 1,
         'can_view_phonebook': 1,
+        'can_investmap_rules': 1,
     },
     # Администратор: все права
     'admin': ADMIN_PERMISSIONS,
