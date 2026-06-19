@@ -1,0 +1,97 @@
+{% extends 'base.html' %}
+{% block title %}Справочники классификаторов{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  <div class="d-flex align-items-center mb-3 gap-3">
+    <a href="{{ url_for('investmap.investmap_v2') }}" class="btn btn-outline-secondary btn-sm">
+      &larr; Назад
+    </a>
+    <h4 class="mb-0">Справочники классификаторов</h4>
+  </div>
+
+  {# Flash-сообщения #}
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+          {{ message }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Закрыть"></button>
+        </div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  {# Таблица загруженных справочников #}
+  <div class="card mb-4">
+    <div class="card-header">Загруженные справочники</div>
+    <div class="card-body p-0">
+      {% if classifiers %}
+        <table class="table table-hover table-bordered mb-0">
+          <thead class="table-light">
+            <tr>
+              <th style="width:180px">№ справочника</th>
+              <th>Количество значений</th>
+              <th style="width:140px">Действие</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in classifiers %}
+            <tr>
+              <td>№{{ row.classifier_num }}</td>
+              <td>{{ row.cnt }}</td>
+              <td>
+                <form method="post"
+                      action="{{ url_for('investmap.investmap_v2_classifiers_clear', num=row.classifier_num) }}"
+                      onsubmit="return confirm('Очистить справочник №{{ row.classifier_num }}? Это действие нельзя отменить.')">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button type="submit" class="btn btn-outline-danger btn-sm">
+                    Очистить
+                  </button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p class="text-muted p-3 mb-0">Справочники ещё не загружены.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  {# Форма загрузки справочника #}
+  <div class="card">
+    <div class="card-header">Загрузить справочник</div>
+    <div class="card-body">
+      <form method="post"
+            action="{{ url_for('investmap.investmap_v2_classifiers_upload') }}"
+            enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="row g-3 align-items-end">
+          <div class="col-md-3">
+            <label for="classifier_num" class="form-label">Номер справочника</label>
+            <input type="number" class="form-control" id="classifier_num"
+                   name="classifier_num" min="1" placeholder="например 441" required>
+          </div>
+          <div class="col-md-5">
+            <label for="file" class="form-label">Файл справочника (.xlsx)</label>
+            <input type="file" class="form-control" id="file"
+                   name="file" accept=".xlsx" required>
+          </div>
+          <div class="col-md-2">
+            <button type="submit" class="btn btn-primary w-100">Загрузить</button>
+          </div>
+        </div>
+        <div class="form-text mt-2">
+          Формат файла: столбец A — порядковый номер, столбец B — значение.
+          Первая строка (заголовок) пропускается. Если справочник с таким номером уже есть —
+          значения будут заменены.
+        </div>
+      </form>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
