@@ -19,6 +19,8 @@
 # ║  v4.1: fix CSV encoding — автодетект utf-8-sig/cp1251/utf-8   ║
 # ║  v4.2: fix g.user → session[user_id] в investmap clear/upload ║
 # ║         пропуск строк с признаком 'Удалён' в CSV-парсере      ║
+# ║  v4.3: logging — err_logger.exception() в investmap upload;   ║
+# ║         раздельные except для UnicodeDecodeError/ValueError   ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 import csv
@@ -39,6 +41,7 @@ from auth_utils import (
     permission_required,
 )
 from activity_log import get_activity_log, get_perm_audit, ACTION_LABELS, log_action
+from kitezh_logger import err_logger
 
 admin_bp = Blueprint('admin', __name__)
 
@@ -59,7 +62,7 @@ _IMPORT_NAME = {
 }
 
 
-# ─── /admin дашборд ──────────────────────────────────────────────────────────────────────────────────────
+# ─── /admin дашборд ────────────────────────────────────────────────────────────────────────────────────────────────────────────
 @admin_bp.route('/admin')
 @login_required
 @admin_required
@@ -67,7 +70,7 @@ def admin_index():
     return render_template('admin/index.html')
 
 
-# ─── /admin/deps ───────────────────────────────────────────────────────────────────────────────────
+# ─── /admin/deps ───────────────────────────────────────────────────────────────────────────────────────────
 @admin_bp.route('/admin/deps')
 @login_required
 @admin_required
@@ -75,7 +78,7 @@ def admin_deps():
     return render_template('admin/deps.html')
 
 
-# ─── /api/deps/check ─────────────────────────────────────────────────────────────────────────────
+# ─── /api/deps/check ───────────────────────────────────────────────────────────────────────────────────────
 @admin_bp.route('/api/deps/check')
 @login_required
 @admin_required
@@ -125,7 +128,7 @@ def api_deps_check():
     return jsonify({'packages': packages, 'path': _REQUIREMENTS})
 
 
-# ─── /api/deps/install ────────────────────────────────────────────────────────────────────────────
+# ─── /api/deps/install ────────────────────────────────────────────────────────────────────────────────────
 @admin_bp.route('/api/deps/install', methods=['POST'])
 @login_required
 @admin_required
@@ -175,7 +178,7 @@ def api_deps_install():
         return jsonify({'ok': False, 'error': str(e)})
 
 
-# ─── Имперсонация ─────────────────────────────────────────────────────────────────────────────────────────
+# ─── Имперсонация ──────────────────────────────────────────────────────────────────────────────────────────────────
 @admin_bp.route('/impersonate/<int:uid>')
 @login_required
 @admin_required
@@ -231,7 +234,7 @@ def impersonate_stop():
     return redirect(url_for('requests.index'))
 
 
-# ─── Классификаторы ────────────────────────────────────────────────────────────────────────────────────────────
+# ─── Классификаторы ───────────────────────────────────────────────────────────────────────────────────────────────────────────
 @admin_bp.route('/admin/classifiers', methods=['GET', 'POST'])
 @login_required
 @admin_required
@@ -301,7 +304,7 @@ def classifiers():
     )
 
 
-# ─── Investmap: загрузка справочника ──────────────────────────────────────────────────────────────
+# ─── Investmap: загрузка справочника ────────────────────────────────────────────────────────────────────────────
 @admin_bp.route('/admin/classifiers/investmap/upload', methods=['POST'])
 @login_required
 @permission_required('can_investmap_rules')
@@ -317,6 +320,7 @@ def investmap_classifier_upload():
         flash('Необходимо загрузить файл в формате .xlsx или .csv', 'error')
         return redirect(url_for('admin.classifiers') + '#tab-investmap')
 
+    user = session.get('username', f'id={session.get("user_id")}')
     conn = get_db()
     try:
         field_row = conn.execute(
@@ -366,7 +370,11 @@ def investmap_classifier_upload():
                     continue
                 try:
                     sort_order = int(row[0].strip().strip('"'))
-                except ValueError:
+                except ValueError as exc:
+                    err_logger.warning(
+                        'investmap upload: bad sort_order | num=%s file=%s user=%s | row=%r | %s',
+                        num, fname, user, row, exc
+                    )
                     continue
                 value = row[1].strip().strip('"')
                 if not value:
@@ -383,16 +391,50 @@ def investmap_classifier_upload():
                    detail=f'Справочник №{num}: загружено {inserted} значений')
         conn.commit()
         flash(f'Справочник №{num}: загружено {inserted} значений', 'success')
-    except Exception as e:
+
+    except UnicodeDecodeError:
         conn.rollback()
-        flash(f'Ошибка при загрузке: {e}', 'error')
+        err_logger.exception(
+            'investmap upload: encoding error | num=%s file=%s user=%s',
+            num, fname, user
+        )
+        flash(
+            'Ошибка при загрузке: не удалось распознать кодировку файла. '
+            'Убедитесь, что файл сохранён в кодировке CP1251 или UTF-8.',
+            'error'
+        )
+
+    except ValueError:
+        conn.rollback()
+        err_logger.exception(
+            'investmap upload: ValueError | num=%s file=%s user=%s',
+            num, fname, user
+        )
+        flash(
+            'Ошибка при загрузке: некорректные данные в файле. '
+            'Проверьте формат столбца с порядковым номером.',
+            'error'
+        )
+
+    except Exception:
+        conn.rollback()
+        err_logger.exception(
+            'investmap upload: unexpected error | num=%s file=%s user=%s',
+            num, fname, user
+        )
+        flash(
+            'Ошибка при загрузке: внутренний сбой. '
+            'Попробуйте ещё раз или обратитесь к администратору.',
+            'error'
+        )
+
     finally:
         conn.close()
 
     return redirect(url_for('admin.classifiers') + '#tab-investmap')
 
 
-# ─── Investmap: очистка справочника ───────────────────────────────────────────────────────────────
+# ─── Investmap: очистка справочника ─────────────────────────────────────────────────────────────────────────────
 @admin_bp.route('/admin/classifiers/investmap/clear/<int:num>', methods=['POST'])
 @login_required
 @permission_required('can_investmap_rules')
@@ -937,7 +979,7 @@ def apply_saved_filter(fid):
     return redirect(url_for('requests.index') + '?' + urlencode(qs))
 
 
-# ─── /api/console ───────────────────────────────────────────────────────────────────────────────────────
+# ─── /api/console ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 # Управление консолью через браузер — запасной выход при потере иконки трея.
 # Роуты: GET /api/console/status, POST /api/console/show, POST /api/console/hide
 # Безопасно: только для администраторов (@admin_required).
