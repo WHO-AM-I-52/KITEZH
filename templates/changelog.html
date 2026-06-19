@@ -1325,7 +1325,29 @@
     if (params.get('autostart') === '1') {
       history.replaceState(null, '', window.location.pathname);
       setTimeout(function() { _runWithSSE(0, false); }, 400);
+      return;  // не запускать _checkActiveUpdate параллельно
     }
+
+    // ── Автоподключение к SSE если обновление уже идёт ──
+    // Срабатывает при прямом открытии страницы во время активного обновления.
+    // Использует тот же /api/update/pre-status, что и баннер в base.html.
+    (function _checkActiveUpdate() {
+      fetch('/api/update/pre-status', {credentials: 'same-origin'})
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          if (d.phase === 'downloading' || d.phase === 'applying') {
+            _sseReset();
+            _setBtnsEnabled(false);
+            _updSetStatus(
+              '<span class="spin"><i class="bi bi-arrow-repeat"></i></span> ' +
+              (d.phase === 'downloading' ? 'Скачиваем архив…' : 'Устанавливаем файлы…'),
+              'progress'
+            );
+            _startSSEStream(false, 0);
+          }
+        })
+        .catch(function() {});
+    })();
   })();
 </script>
 {% endif %}
