@@ -59,6 +59,12 @@
       <span class="badge bg-secondary ms-1">{{ okved_total }}</span>
     </a>
   </li>
+  <li class="nav-item">
+    <a class="nav-link" data-bs-toggle="tab" href="#tab-investmap">
+      <i class="bi bi-map me-1"></i>Инвест. карты
+      <span class="badge bg-secondary ms-1">{{ investmap_classifiers|length }}</span>
+    </a>
+  </li>
 </ul>
 
 <div class="tab-content">
@@ -402,6 +408,75 @@
               <i class="bi bi-upload"></i> Загрузить и заменить классификатор
             </button>
           </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ===== СПРАВОЧНИКИ ИНВЕСТ. КАРТЫ ===== #}
+  <div class="tab-pane fade" id="tab-investmap">
+    <div class="row g-3 mt-2">
+      <div class="col-md-5">
+        <div class="card p-3">
+          <h6 class="mb-3" style="color:#1B5E7B">
+            <i class="bi bi-upload me-1"></i>Загрузить справочник
+          </h6>
+          <form action="{{ url_for('admin.investmap_classifiers_upload') }}" method="post" enctype="multipart/form-data">
+            <div class="mb-2">
+              <label class="form-label fw-bold" style="font-size:12px">№ справочника</label>
+              <input type="number" name="classifier_num" class="form-control form-control-sm"
+                     placeholder="например 441" required>
+            </div>
+            <div class="mb-2">
+              <label class="form-label fw-bold" style="font-size:12px">Файл Excel (.xlsx)</label>
+              <input type="file" name="file" class="form-control form-control-sm" accept=".xlsx" required>
+            </div>
+            <button type="submit" class="btn btn-sm btn-primary w-100">
+              <i class="bi bi-upload me-1"></i>Загрузить
+            </button>
+          </form>
+          <div class="form-text mt-2" style="font-size:11px">
+            Столбец A — порядковый номер, столбец B — значение. Первая строка — заголовок.
+          </div>
+        </div>
+      </div>
+      <div class="col-md-7">
+        <div class="card p-3">
+          <h6 class="mb-2" style="color:#1B5E7B">
+            <i class="bi bi-list-ul me-1"></i>Загруженные справочники
+          </h6>
+          {% if investmap_classifiers %}
+          <div style="max-height:420px;overflow-y:auto">
+            <table class="table table-sm table-hover mb-0" style="font-size:12px">
+              <thead>
+                <tr>
+                  <th class="cls-th">№ справочника</th>
+                  <th class="cls-th">Значений</th>
+                  <th class="cls-th text-end">Действие</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in investmap_classifiers %}
+                <tr>
+                  <td>№{{ row.classifier_num }}</td>
+                  <td>{{ row.cnt }}</td>
+                  <td class="text-end">
+                    <form method="post"
+                          action="{{ url_for('admin.investmap_classifiers_clear', num=row.classifier_num) }}"
+                          onsubmit="return confirm('Очистить справочник №{{ row.classifier_num }}?')">
+                      <button class="btn btn-outline-danger btn-sm py-0 px-2">
+                        <i class="bi bi-trash me-1"></i>Очистить
+                      </button>
+                    </form>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <p class="text-muted" style="font-size:13px">Справочники ещё не загружены.</p>
+          {% endif %}
         </div>
       </div>
     </div>
