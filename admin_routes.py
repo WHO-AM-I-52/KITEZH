@@ -21,6 +21,8 @@
 # ║         пропуск строк с признаком 'Удалён' в CSV-парсере      ║
 # ║  v4.3: logging — err_logger.exception() в investmap upload;   ║
 # ║         раздельные except для UnicodeDecodeError/ValueError   ║
+# ║  v4.4: fix field_name=None → fallback 'classifier_{num}'      ║
+# ║         при отсутствии записи в investmap_fields              ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 import csv
@@ -327,7 +329,8 @@ def investmap_classifier_upload():
             "SELECT display_name FROM investmap_fields WHERE classifier_num=? LIMIT 1",
             (num,)
         ).fetchone()
-        field_name = field_row['display_name'] if field_row else None
+        # Fallback: если справочник не описан в investmap_fields — используем имя по номеру
+        field_name = (field_row['display_name'] if field_row else None) or f'classifier_{num}'
 
         inserted = 0
 
