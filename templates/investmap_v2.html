@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+{# ╔══════════════════════════════════════════════════════════════╗ #}
+{# ║                  investmap_v2.html                            ║ #}
+{# ║  Анализ заполняемости v2 — заглушка                    ║ #}
+{# ║  Логика придёт в Карточке #5                          ║ #}
+{# ╚══════════════════════════════════════════════════════════════╝ #}
+
+{% block content %}
+<div class="d-flex align-items-center gap-2 mb-4">
+  <a href="/investmap" class="btn btn-sm btn-outline-secondary me-1">
+    <i class="bi bi-arrow-left"></i> Назад
+  </a>
+  <i class="bi bi-clipboard2-data fs-4" style="color:#6c757d"></i>
+  <h5 class="mb-0 fw-bold">Анализ заполняемости v2</h5>
+  <span class="badge bg-secondary ms-1" style="font-size:11px">В разработке</span>
+</div>
+
+<div class="row justify-content-center">
+  <div class="col-12 col-md-8 col-lg-6">
+    <div class="card text-center py-5 px-4" style="border:2px dashed #dee2e6">
+      <div class="mb-3">
+        <i class="bi bi-tools" style="font-size:3.5rem;color:#6c757d;opacity:.6"></i>
+      </div>
+      <h5 class="fw-bold mb-2" style="color:#495057">В разработке</h5>
+      <p class="text-muted mb-4" style="font-size:14px">
+        Анализ заполняемости по данным портала invest.gov.ru<br>
+        будет доступен в следующем обновлении.
+      </p>
+      <div>
+        <a href="/investmap" class="btn btn-outline-secondary">
+          <i class="bi bi-arrow-left me-2"></i>Вернуться назад
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
