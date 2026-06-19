@@ -16,6 +16,7 @@
 # ║  v3.8: #2.2 investmap upload/clear + classifiers() расширен   ║
 # ║  v3.9: investmap upload — поддержка CSV (delimiter=';')        ║
 # ║  v4.0: fix investmap upload — display_name вместо field_name  ║
+# ║  v4.1: fix CSV encoding — автодетект utf-8-sig/cp1251/utf-8   ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 import csv
@@ -341,7 +342,18 @@ def investmap_classifier_upload():
                 inserted += 1
 
         elif fname.endswith('.csv'):
-            content = f.read().decode('utf-8-sig')
+            for encoding in ('utf-8-sig', 'cp1251', 'utf-8'):
+                try:
+                    content = f.read().decode(encoding)
+                    f.seek(0)
+                    break
+                except (UnicodeDecodeError, AttributeError):
+                    f.seek(0)
+                    continue
+            else:
+                flash('Не удалось определить кодировку файла. '
+                      'Сохрани CSV в UTF-8 и попробуй снова.', 'danger')
+                return redirect(url_for('admin.classifiers'))
             reader = csv.reader(io.StringIO(content), delimiter=';')
             next(reader)  # пропустить заголовок
             for row in reader:
