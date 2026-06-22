@@ -59,7 +59,7 @@
     </div>
   </div>
 
-  {# ─── Подсказка ─────────────────────────────────────────────── #}
+  {# ─── Сводные счётчики ──────────────────────────────────────── #}
   <div class="col-12 col-lg-7">
     <div class="card h-100">
       <div class="card-body d-flex align-items-center justify-content-center"
@@ -121,7 +121,7 @@
 {# ─── Блок результатов (скрыт до загрузки) ──────────────────── #}
 <div id="resultsBlock" class="d-none">
 
-  {# Score-кружок + мета #}
+  {# Score-кружок + прогресс-бар #}
   <div class="card mb-3">
     <div class="card-body">
       <div class="row align-items-center g-3">
@@ -149,27 +149,38 @@
     </div>
   </div>
 
-  {# Таблица missing ─ незаполненные поля #}
-  <div class="card mb-3" id="missingCard">
-    <div class="card-header py-2 px-3 d-flex align-items-center gap-2">
-      <i class="bi bi-exclamation-triangle text-warning"></i>
-      <span class="fw-semibold" style="font-size:14px">Незаполненные поля</span>
-      <span id="missingCount" class="badge bg-warning text-dark ms-1">0</span>
+  {# Сводная таблица: оценка по полям (аналог blocksTable из v1) #}
+  <div class="card mb-3">
+    <div class="card-header py-2 px-3">
+      <span class="fw-semibold" style="font-size:14px">
+        <i class="bi bi-list-check me-2"></i>Оценка по полям
+      </span>
     </div>
     <div class="card-body p-0">
       <table class="table table-sm mb-0" style="font-size:13px">
         <thead style="background:var(--surface2)">
           <tr>
-            <th class="px-3 py-2" style="width:32px"></th>
-            <th class="px-3 py-2">Поле</th>
+            <th class="px-3 py-2">Параметр</th>
+            <th class="px-3 py-2 text-center">Значение</th>
           </tr>
         </thead>
-        <tbody id="missingBody"></tbody>
+        <tbody id="summaryTableBody"></tbody>
       </table>
-      <div id="missingEmpty" class="text-center py-3 d-none"
-           style="font-size:13px;color:var(--text-muted)">
-        <i class="bi bi-check-circle text-success me-1"></i>Все поля заполнены
-      </div>
+    </div>
+  </div>
+
+  {# Аккордеон: незаполненные поля (аналог missingAccordion из v1) #}
+  <div class="card mb-3" id="missingCard">
+    <div class="card-header py-2 px-3">
+      <span class="fw-semibold" style="font-size:14px">
+        <i class="bi bi-exclamation-triangle me-2 text-warning"></i>Незаполненные поля
+      </span>
+      <span id="missingCount" class="badge bg-warning text-dark ms-1">0</span>
+    </div>
+    <div class="accordion accordion-flush" id="missingAccordion"></div>
+    <div id="missingEmpty" class="text-center py-3 d-none"
+         style="font-size:13px;color:var(--text-muted)">
+      <i class="bi bi-check-circle text-success me-1"></i>Все поля заполнены
     </div>
   </div>
 
@@ -288,7 +299,6 @@
     .then(function(resp){
       setLoading(false);
       if (resp.error){ showError('Ошибка: ' + resp.error); return; }
-      /* fix #5в: сервер возвращает {results:[...], count:N, error:null} */
       var list = Array.isArray(resp.results) ? resp.results : [resp];
       allData    = list;
       currentIdx = 0;
@@ -339,17 +349,17 @@
     var filled  = typeof d.filled === 'number' ? d.filled : (total - missing.length);
 
     /* Score-кружок */
-    var col = scoreColor(score);
+    var col    = scoreColor(score);
     var circle = document.getElementById('scoreCircle');
     circle.style.borderColor = col;
     circle.style.color       = col;
     circle.textContent       = score + '%';
 
     var catMap = {
-      'высокая': 'Высокая заполняемость',
-      'средняя': 'Средняя заполняемость',
-      'низкая':  'Низкая заполняемость',
-      'критическая': 'Критическая заполняемость'
+      '\u0432\u044b\u0441\u043e\u043a\u0430\u044f': '\u0412\u044b\u0441\u043e\u043a\u0430\u044f \u0437\u0430\u043f\u043e\u043b\u043d\u044f\u0435\u043c\u043e\u0441\u0442\u044c',
+      '\u0441\u0440\u0435\u0434\u043d\u044f\u044f': '\u0421\u0440\u0435\u0434\u043d\u044f\u044f \u0437\u0430\u043f\u043e\u043b\u043d\u044f\u0435\u043c\u043e\u0441\u0442\u044c',
+      '\u043d\u0438\u0437\u043a\u0430\u044f':  '\u041d\u0438\u0437\u043a\u0430\u044f \u0437\u0430\u043f\u043e\u043b\u043d\u044f\u0435\u043c\u043e\u0441\u0442\u044c',
+      '\u043a\u0440\u0438\u0442\u0438\u0447\u0435\u0441\u043a\u0430\u044f': '\u041a\u0440\u0438\u0442\u0438\u0447\u0435\u0441\u043a\u0430\u044f \u0437\u0430\u043f\u043e\u043b\u043d\u044f\u0435\u043c\u043e\u0441\u0442\u044c'
     };
     var scoreLabel = document.getElementById('scoreLabel');
     scoreLabel.textContent = d.category ? (catMap[d.category] || d.category) : '';
@@ -362,10 +372,9 @@
     bar.setAttribute('aria-valuenow', score);
 
     /* Заголовок площадки */
-    var pt = document.getElementById('plotTitle');
-    pt.textContent = d.id ? ('\ud83d\udccd ' + d.id) : '';
+    document.getElementById('plotTitle').textContent = d.id ? ('\ud83d\udccd ' + d.id) : '';
 
-    /* Счётчики */
+    /* Счётчики в шапке */
     document.getElementById('statFilled').textContent  = filled;
     document.getElementById('statTotal').textContent   = total;
     document.getElementById('statMissing').textContent = missing.length;
@@ -373,33 +382,22 @@
     uploadHint.classList.add('d-none');
     summaryStats.classList.remove('d-none');
 
-    /* Таблица missing */
-    var missingBody = document.getElementById('missingBody');
-    var missingEmpty = document.getElementById('missingEmpty');
-    document.getElementById('missingCount').textContent = missing.length;
-    missingBody.innerHTML = '';
-    if (missing.length === 0){
-      missingBody.innerHTML = '';
-      missingEmpty.classList.remove('d-none');
-    } else {
-      missingEmpty.classList.add('d-none');
-      missing.forEach(function(f){
-        var tr = document.createElement('tr');
-        tr.innerHTML =
-          '<td class="px-3 py-1 text-warning"><i class="bi bi-exclamation-triangle-fill"></i></td>' +
-          '<td class="px-3 py-1">' + escHtml(fieldName(f)) + '</td>';
-        missingBody.appendChild(tr);
-      });
-    }
+    /* Сводная таблица (аналог blocksTable v1) */
+    renderSummaryTable(score, filled, total, missing.length, skipped.length, col);
+
+    /* Аккордеон missing (аналог missingAccordion v1) */
+    renderMissingAccordion(missing);
 
     /* Таблица skipped */
     var skippedBody  = document.getElementById('skippedBody');
     var skippedEmpty = document.getElementById('skippedEmpty');
     document.getElementById('skippedCount').textContent = skipped.length;
     skippedBody.innerHTML = '';
+    var skippedCard = document.getElementById('skippedCard');
     if (skipped.length === 0){
-      skippedEmpty.classList.remove('d-none');
+      skippedCard.style.display = 'none';
     } else {
+      skippedCard.style.display = '';
       skippedEmpty.classList.add('d-none');
       skipped.forEach(function(f){
         var tr = document.createElement('tr');
@@ -413,9 +411,86 @@
     resultsBlock.classList.remove('d-none');
   }
 
+  /* ─── Сводная таблица (аналог blocksTable v1) ────────────────── */
+  function renderSummaryTable(score, filled, total, missingCnt, skippedCnt, col){
+    var tbody = document.getElementById('summaryTableBody');
+    tbody.innerHTML = '';
+    var rows = [
+      ['Score (\u0437\u0430\u043f\u043e\u043b\u043d\u044f\u0435\u043c\u043e\u0441\u0442\u044c)',
+       '<span class="fw-semibold" style="color:' + col + '">' + score + '%</span>'],
+      ['\u0417\u0430\u043f\u043e\u043b\u043d\u0435\u043d\u043e \u043f\u043e\u043b\u0435\u0439',
+       '<span class="fw-semibold text-success">' + filled + '</span> \u0438\u0437 ' + total],
+      ['\u041d\u0435\u0437\u0430\u043f\u043e\u043b\u043d\u0435\u043d\u043e (\u0443\u0447\u0438\u0442\u044b\u0432\u0430\u0435\u0442\u0441\u044f)',
+       missingCnt > 0
+         ? '<span class="badge bg-warning text-dark">' + missingCnt + '</span>'
+         : '<span class="text-success">\u2713 \u043d\u0435\u0442</span>'],
+      ['\u041f\u0440\u043e\u043f\u0443\u0449\u0435\u043d\u043e (\u043d\u0435 \u0443\u0447\u0438\u0442\u044b\u0432\u0430\u0435\u0442\u0441\u044f)',
+       skippedCnt > 0
+         ? '<span class="badge bg-secondary">' + skippedCnt + '</span>'
+         : '<span class="text-muted">\u043d\u0435\u0442</span>']
+    ];
+    rows.forEach(function(r){
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td class="px-3 py-2 text-muted">' + r[0] + '</td>' +
+        '<td class="px-3 py-2 text-center">' + r[1] + '</td>';
+      tbody.appendChild(tr);
+    });
+  }
+
+  /* ─── Аккордеон missing (аналог missingAccordion v1) ─────────── */
+  function renderMissingAccordion(missing){
+    var accordion    = document.getElementById('missingAccordion');
+    var missingEmpty = document.getElementById('missingEmpty');
+    document.getElementById('missingCount').textContent = missing.length;
+    accordion.innerHTML = '';
+
+    if (missing.length === 0){
+      missingEmpty.classList.remove('d-none');
+      document.getElementById('missingCard').style.display = '';
+      return;
+    }
+    missingEmpty.classList.add('d-none');
+    document.getElementById('missingCard').style.display = '';
+
+    /* Группируем по category (если поля — объекты с category) — иначе один блок */
+    var groups = {};
+    missing.forEach(function(f){
+      var cat = (f && f.category) ? f.category : '\u041d\u0435\u0437\u0430\u043f\u043e\u043b\u043d\u0435\u043d\u043d\u044b\u0435 \u043f\u043e\u043b\u044f';
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(f);
+    });
+
+    var keys = Object.keys(groups);
+    keys.forEach(function(cat, idx){
+      var items  = groups[cat];
+      var bodyId = 'acc-v2-body-' + idx;
+      var item   = document.createElement('div');
+      item.className = 'accordion-item';
+      item.innerHTML =
+        '<h2 class="accordion-header">' +
+          '<button class="accordion-button' + (idx === 0 ? '' : ' collapsed') + ' py-2" type="button" ' +
+                  'data-bs-toggle="collapse" data-bs-target="#' + bodyId + '" style="font-size:13px">' +
+            '<span style="color:#ffc107;margin-right:8px">\u25cf</span>' +
+            escHtml(cat) +
+            ' <span class="badge bg-warning text-dark ms-2">' + items.length + '</span>' +
+          '</button>' +
+        '</h2>' +
+        '<div id="' + bodyId + '" class="accordion-collapse collapse' + (idx === 0 ? ' show' : '') + '">' +
+          '<div class="accordion-body py-2">' +
+            items.map(function(f){
+              return '<div class="d-flex align-items-start gap-2 py-1" style="font-size:13px">' +
+                '<i class="bi bi-exclamation-circle text-warning mt-1" style="flex-shrink:0"></i>' +
+                '<span>' + escHtml(fieldName(f)) + '</span></div>';
+            }).join('') +
+          '</div>' +
+        '</div>';
+      accordion.appendChild(item);
+    });
+  }
+
   /* ─── Вспомогательные функции ────────────────────────────────── */
   function fieldName(f){
-    /* f может быть строкой или объектом {display_name: ..., key: ...} */
     if (typeof f === 'string') return f;
     if (f && f.display_name) return f.display_name;
     if (f && f.key) return f.key;
