@@ -57,6 +57,7 @@ _RESTART_FLAG     = os.path.join(BASE_DIR, '_restart.flag')
 _UPDATER          = os.path.join(BASE_DIR, 'updater', '_updater.py')
 _COMMIT_FILE      = os.path.join(BASE_DIR, '_last_commit.txt')
 _PRE_UPDATE_FILE  = os.path.join(BASE_DIR, '_pre_update.json')
+_UPDATE_RESULT_FILE = os.path.join(BASE_DIR, '_update_result.json')
 _BAT_NAME         = 'start KITEZH.bat'
 
 _MIN_DELAY = 0
@@ -78,6 +79,30 @@ def _clear_pre_update():
     try:
         if os.path.exists(_PRE_UPDATE_FILE):
             os.remove(_PRE_UPDATE_FILE)
+    except Exception:
+        pass
+
+
+def _write_update_result(stats: dict, applied_by: str = ''):
+    """Записывает итог применённого обновления в _update_result.json.
+    Файл переживает рестарт сервера и читается один раз роутом
+    /api/update/result — после чего удаляется (one-shot).
+    Позволяет уведомить администратора об успешном перезапуске
+    (симптом: «админа не уведомляет об успешной перезагрузке»).
+    """
+    payload = {
+        'ok':          stats.get('errors', 0) == 0,
+        'updated':     stats.get('updated', 0),
+        'unchanged':   stats.get('unchanged', 0),
+        'skipped':     stats.get('skipped', 0),
+        'errors':      stats.get('errors', 0),
+        'message':     stats.get('message', ''),
+        'finished_at': datetime.now().isoformat(),
+        'applied_by':  applied_by,
+    }
+    try:
+        with open(_UPDATE_RESULT_FILE, 'w', encoding='utf-8') as f:
+            json.dump(payload, f, ensure_ascii=False)
     except Exception:
         pass
 
@@ -233,6 +258,7 @@ def api_update_stream():
 
     # Захватываем данные сессии ДО первого yield (session недоступен внутри генератора)
     _scheduled_by = session.get('full_name', session.get('username', ''))
+    _applied_by   = _scheduled_by
 
     # ── Сразу помечаем что идёт обновление (для не-админов) ──
     try:
@@ -345,6 +371,14 @@ def api_update_stream():
         # ── Точка 3: перед запуском apply — фиксируем фазу applying ──
         _pre_update_write({'phase': 'applying'})
 
+        # ── Симптом 1: ставим флаг ТО — не-админы попадают на maintenance.html ──
+        # before_request в app.py при наличии .maintenance отдаёт страницу ТО
+        # (с играми) всем кроме админа; _startup() снимет флаг после рестарта.
+        try:
+            open(_MAINTENANCE_FLAG, 'w').close()
+        except Exception:
+            pass
+
         # ── Фаза 2: установка ──────────────────────────────────────────────────────────────────────
         cmd_apply = [sys.executable, _UPDATER, '--apply-only', '--stream-json']
         if force:
@@ -366,6 +400,7 @@ def api_update_stream():
 
         last_heartbeat = time.time()
         done_received = False  # трекер: получен ли done-payload от _updater.py
+        apply_stats   = {}     # накопленная статистика из done для _update_result.json
 
         for raw_line in proc_apply.stdout:
             if time.time() - last_heartbeat >= 15:
@@ -393,13 +428,14 @@ def api_update_stream():
                         })
                     elif t == 'done':
                         done_received = True
-                        yield _sse_format('done', {
+                        apply_stats = {
                             'updated':   msg.get('updated', 0),
                             'unchanged': msg.get('unchanged', 0),
                             'skipped':   msg.get('skipped', 0),
                             'errors':    msg.get('errors', 0),
                             'message':   msg.get('message', 'Готово'),
-                        })
+                        }
+                        yield _sse_format('done', apply_stats)
                 except json.JSONDecodeError:
                     pass
 
@@ -417,26 +453,39 @@ def api_update_stream():
         elif not done_received:
             # Процесс завершился успешно, но done не пришёл —
             # отдаём синтетический done чтобы UI не завис
-            yield _sse_format('done', {
+            apply_stats = {
                 'updated':   0,
                 'unchanged': 0,
                 'skipped':   0,
                 'errors':    0,
                 'message':   'Установка завершена (отчёт недоступен)',
-            })
+            }
+            yield _sse_format('done', apply_stats)
 
         # ── Точка 5: Flask завершается → .bat перезапустит сервер ──
         if rc_apply in (0, 2):
-            def _shutdown():
+            # Симптом 2: фиксируем итог ДО рестарта — админ увидит тост
+            # об успехе после перезагрузки (через /api/update/result).
+            _write_update_result(apply_stats, applied_by=_applied_by)
+
+            def _shutdown(rc):
                 time.sleep(2)
                 # Создаём _restart.flag — run_server.py увидит его
-                # и вернёт sys.exit(42) в .bat → goto :start_server
+                # и вернёт sys.exit(42) в .bat → goto :start_server.
                 try:
-                    open(os.path.join(BASE_DIR, '_restart.flag'), 'w').close()
+                    open(_RESTART_FLAG, 'w').close()
                 except Exception:
                     pass
-                os._exit(0)
-            threading.Thread(target=_shutdown, daemon=False).start()
+                # Симптом 3: код выхода — как в timer-флоу.
+                # rc=2 → bat обновлён → запускаем новый .bat явно;
+                # rc=0 → os._exit(42) → текущий .bat делает goto :start_server.
+                # Раньше был os._exit(0) — из-за чего .bat не видел код 42
+                # и сервер не перезапускался.
+                if rc == 2:
+                    _run_bat_restart()
+                else:
+                    os._exit(42)
+            threading.Thread(target=_shutdown, args=(rc_apply,), daemon=False).start()
 
     return Response(
         stream_with_context(_generate()),
