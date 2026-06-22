@@ -130,7 +130,6 @@ def _backfill_review_deadline(conn):
     for row in rows:
         try:
             status = row['status']
-            # Определяем дату начала текущего этапа
             at_field_map = {
                 'registered':        'at_registered',
                 'in_progress':       'at_in_progress',
@@ -321,13 +320,11 @@ def _migrate(conn):
         if not _has_column(conn, 'requests', col):
             conn.execute(f"ALTER TABLE requests ADD COLUMN {col} TEXT")
 
-    # Бэкфилл: если уже есть registered_at — копируем в at_registered
     if _has_column(conn, 'requests', 'at_registered'):
         conn.execute(
             "UPDATE requests SET at_registered = registered_at "
             "WHERE at_registered IS NULL AND registered_at IS NOT NULL AND registered_at != ''"
         )
-    # Бэкфилл sent_to_applicant_at → at_sent_to_applicant
     if _has_column(conn, 'requests', 'at_sent_to_applicant'):
         conn.execute(
             "UPDATE requests SET at_sent_to_applicant = sent_to_applicant_at "
@@ -467,6 +464,36 @@ def _migrate(conn):
     """)
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_review_chain_req ON review_chain(request_id)"
+    )
+
+    # ════════════════════════════════════════════════════════════════
+    # Таблицы инвест. карты — fix: отсутствовали в _migrate(),
+    # из-за чего при обновлении данные справочников терялись
+    # ════════════════════════════════════════════════════════════════
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS investmap_fields (
+            id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+            tech_name          TEXT    NOT NULL UNIQUE,
+            display_name       TEXT    NOT NULL,
+            is_required        TEXT    NOT NULL DEFAULT 'да',
+            required_condition TEXT,
+            classifier_num     TEXT
+        )
+    """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS investmap_classifiers (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            classifier_num TEXT    NOT NULL,
+            field_name     TEXT    NOT NULL,
+            sort_order     INTEGER NOT NULL DEFAULT 0,
+            value          TEXT    NOT NULL,
+            UNIQUE(classifier_num, value)
+        )
+    """)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_investmap_cls_num "
+        "ON investmap_classifiers(classifier_num)"
     )
 
     conn.commit()
