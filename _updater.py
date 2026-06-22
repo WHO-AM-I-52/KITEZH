@@ -29,15 +29,37 @@ API_BASE      = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}"
 COMMIT_FILE   = os.path.join(BASE_DIR, "_last_commit.txt")
 BRANCH_FILE   = os.path.join(BASE_DIR, "_branch.txt")
 ZIP_PATH      = os.path.join(BASE_DIR, "_kitezh_update.zip")
+LOG_FILE      = os.path.join(BASE_DIR, "_updater_log.txt")
 FALLBACK_KB   = 600
 
 # ── Флаг --stream-json: JSON-строки прогресса в stdout для SSE-стрима ────────
 STREAM_JSON = "--stream-json" in sys.argv
 
+def _log_to_file(msg: str):
+    """Пишет строку с меткой времени в _updater_log.txt.
+    Вызывается из _log() — всегда, независимо от режима.
+    Ротация: если файл > 200 КБ — обрезается до последних 100 КБ.
+    """
+    try:
+        # Ротация
+        if os.path.exists(LOG_FILE) and \
+           os.path.getsize(LOG_FILE) > 200 * 1024:
+            with open(LOG_FILE, 'rb') as f:
+                f.seek(-100 * 1024, 2)
+                tail = f.read()
+            with open(LOG_FILE, 'wb') as f:
+                f.write(tail)
+        ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        with open(LOG_FILE, 'a', encoding='utf-8') as f:
+            f.write(f"[{ts}] {msg}\n")
+    except Exception:
+        pass
+
 def _log(msg: str):
     """Всегда пишет в stderr (виден в консоли bat даже когда stdout перехвачен Flask).
     В обычном режиме (без --stream-json) дублирует в stdout — для запуска вручную.
     """
+    _log_to_file(msg)
     print(msg, file=sys.stderr, flush=True)
     if not STREAM_JSON:
         print(msg, flush=True)
@@ -522,6 +544,13 @@ def run_sync_changelog():
 # Только скачивает zip-архив в ZIP_PATH; не применяет файлы.
 # Выход: 0 = успех, 1 = ошибка
 def _cmd_download_only():
+    _log_to_file("=" * 56)
+    _log_to_file(
+        f"ЗАПУСК: {' '.join(sys.argv[1:])} | "
+        f"PID={os.getpid()} | "
+        f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+    )
+    _log_to_file("=" * 56)
     _log("  Подключаемся к GitHub...")
     if TOKEN:
         _log("  Токен найден — лимит 5000 запросов/час")
@@ -555,6 +584,13 @@ def _cmd_download_only():
 # Применяет уже скачанный ZIP_PATH; удаляет архив после установки.
 # Выход: 0 = успех, 1 = ошибка, 2 = успех + обновлён bat (нужен ручной рестарт)
 def _cmd_apply_only(force: bool = False):
+    _log_to_file("=" * 56)
+    _log_to_file(
+        f"ЗАПУСК: {' '.join(sys.argv[1:])} | "
+        f"PID={os.getpid()} | "
+        f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+    )
+    _log_to_file("=" * 56)
     if not os.path.exists(ZIP_PATH):
         _log(f"  [ОШИБКА] Архив {ZIP_PATH} не найден. Сначала выполни --download-only.")
         sys.exit(1)
@@ -618,6 +654,14 @@ def _cmd_apply_only(force: bool = False):
 
 
 def main():
+    _log_to_file("=" * 56)
+    _log_to_file(
+        f"ЗАПУСК: {' '.join(sys.argv[1:])} | "
+        f"PID={os.getpid()} | "
+        f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+    )
+    _log_to_file("=" * 56)
+
     force_mode = "--force" in sys.argv
 
     if "--check" in sys.argv:
