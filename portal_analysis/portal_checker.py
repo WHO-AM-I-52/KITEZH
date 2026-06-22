@@ -382,6 +382,12 @@ def calc_portal_score(row: dict) -> dict:
 # БЛОК 5: v2 — расчёт по полям из БД (таблица investmap_fields)
 # ──────────────────────────────────────────────────────────────────────────────
 
+# v1.5.10: маппинг INTEGER → TEXT для is_required.
+# БД хранит 0/1 вместо 'нет'/'да'/'условно'.
+# При TEXT-значениях ключи '0'/'1' не совпадут → значение проходит насквозь.
+_IS_REQ_MAP = {'0': 'нет', '1': 'да', '2': 'условно'}
+
+
 def calc_portal_score_v2(row: dict, db) -> dict:
     """
     Рассчитывает заполняемость площадки по полям из БД (таблица investmap_fields).
@@ -403,6 +409,10 @@ def calc_portal_score_v2(row: dict, db) -> dict:
         #2 — поля с is_required='нет' полностью пропускаются (не влияют на score)
         #3 — поиск значений в row по display_name.lower()
         #4 — warning-лог при нераспознанном паттерне required_condition
+
+    Фикс v1.5.10:
+        is_required хранит INTEGER (0/1) вместо TEXT → AttributeError на .strip().
+        Защитный каст str() + маппинг _IS_REQ_MAP {'0':'нет','1':'да','2':'условно'}.
 
     Args:
         row: словарь с полями площадки (ключи — display_name, регистр не важен)
@@ -435,7 +445,10 @@ def calc_portal_score_v2(row: dict, db) -> dict:
     for rec in rows_db:
         tech_name          = (rec["tech_name"] or "").strip()
         display_name       = (rec["display_name"] or "").strip()
-        is_required        = (rec["is_required"] or "").strip().lower()
+        # v1.5.10 fix: is_required хранит INTEGER (0/1) → AttributeError на .strip()
+        # str() защищает от int; _IS_REQ_MAP нормализует 0/1 → 'нет'/'да'/'условно'
+        _raw_req           = str(rec["is_required"] or "").strip().lower()
+        is_required        = _IS_REQ_MAP.get(_raw_req, _raw_req)
         required_condition = (rec["required_condition"] or "").strip()
 
         # БАГ #2 FIX: поля с is_required='нет' не участвуют в подсчёте совсем
