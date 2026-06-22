@@ -43,9 +43,13 @@
           </div>
         </div>
 
-        <div class="mt-3">
-          <button class="btn btn-primary w-100" id="analyzeBtn" disabled>
+        <div class="mt-3 d-flex gap-2">
+          <button class="btn btn-primary flex-grow-1" id="analyzeBtn" disabled>
             <i class="bi bi-clipboard2-data me-1"></i>Анализировать
+          </button>
+          <button class="btn btn-outline-secondary" id="aiBtn" disabled
+                  title="Сформировать текст для ИИ">
+            <i class="bi bi-robot me-1"></i>Для ИИ
           </button>
         </div>
 
@@ -93,6 +97,24 @@
         </div>
       </div>
     </div>
+  </div>
+</div>
+
+{# ─── Блок «Текст для ИИ» ────────────────────────────────────── #}
+<div id="aiTextBlock" class="card mb-3 d-none">
+  <div class="card-header py-2 px-3 d-flex align-items-center gap-2">
+    <i class="bi bi-robot" style="color:#1B5E7B"></i>
+    <span class="fw-semibold" style="font-size:14px">Текст для ИИ</span>
+    <span id="formatBadge" class="badge ms-1" style="background:#1B5E7B;font-size:11px">txt</span>
+    <button class="btn btn-sm btn-outline-secondary ms-auto" id="copyBtn"
+            style="font-size:12px">
+      <i class="bi bi-clipboard me-1"></i>Копировать
+    </button>
+  </div>
+  <div class="card-body p-2">
+    <textarea id="resultText" class="form-control font-monospace"
+              style="min-height:200px;font-size:12px;resize:vertical"
+              readonly placeholder="Текст появится после нажатия «Анализировать» или «Для ИИ»"></textarea>
   </div>
 </div>
 
@@ -222,6 +244,7 @@
   var fileName    = document.getElementById('fileName');
   var clearFile   = document.getElementById('clearFile');
   var analyzeBtn  = document.getElementById('analyzeBtn');
+  var aiBtn       = document.getElementById('aiBtn');
   var spinner     = document.getElementById('actionSpinner');
   var resultError = document.getElementById('resultError');
 
@@ -235,6 +258,11 @@
   var resultsBlock = document.getElementById('resultsBlock');
   var uploadHint   = document.getElementById('uploadHint');
   var summaryStats = document.getElementById('summaryStats');
+
+  var aiTextBlock = document.getElementById('aiTextBlock');
+  var resultText  = document.getElementById('resultText');
+  var copyBtn     = document.getElementById('copyBtn');
+  var formatBadge = document.getElementById('formatBadge');
 
   var allData    = null;
   var currentIdx = 0;
@@ -272,6 +300,7 @@
     fileName.textContent = f.name;
     fileInfo.classList.remove('d-none');
     analyzeBtn.disabled = false;
+    aiBtn.disabled = false;
     hideError();
   }
 
@@ -281,11 +310,12 @@
     fileInput.value = '';
     fileInfo.classList.add('d-none');
     analyzeBtn.disabled = true;
+    aiBtn.disabled = true;
     hideError();
     resetResults();
   });
 
-  /* ─── Отправка формы ─────────────────────────────────────────── */
+  /* ─── Отправка формы (Анализировать) ────────────────────────── */
   analyzeBtn.addEventListener('click', function(){
     if (!selectedFile) return;
     var fd = new FormData();
@@ -304,9 +334,69 @@
       currentIdx = 0;
       initNav(list);
       renderPlot(list[0]);
+
+      /* Заполняем textarea текстом для ИИ если бэкенд вернул export.text */
+      if (resp.export && resp.export.text){
+        setAiText(resp.export.text, resp.export.format || 'txt');
+      } else if (list[0] && list[0].export && list[0].export.text){
+        setAiText(list[0].export.text, (list[0].export.format || 'txt'));
+      }
     })
     .catch(function(e){ setLoading(false); showError('Сетевая ошибка: ' + e); });
   });
+
+  /* ─── Кнопка «Для ИИ» ───────────────────────────────────────── */
+  aiBtn.addEventListener('click', function(){
+    if (!selectedFile) return;
+    var fd = new FormData();
+    fd.append('file', selectedFile);
+    setLoading(true);
+    hideError();
+
+    fetch('/investmap/convert', { method:'POST', body:fd, credentials:'same-origin' })
+    .then(function(r){ return r.json(); })
+    .then(function(resp){
+      setLoading(false);
+      if (resp.error){ showError('Ошибка: ' + resp.error); return; }
+      var text   = (resp.export && resp.export.text)   ? resp.export.text   : (resp.text || '');
+      var format = (resp.export && resp.export.format) ? resp.export.format : (resp.format || 'txt');
+      setAiText(text, format);
+    })
+    .catch(function(e){ setLoading(false); showError('Сетевая ошибка: ' + e); });
+  });
+
+  /* ─── Копировать ─────────────────────────────────────────────── */
+  copyBtn.addEventListener('click', function(){
+    var txt = resultText.value;
+    if (!txt) return;
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(txt).then(function(){
+        flashCopyBtn();
+      });
+    } else {
+      resultText.select();
+      document.execCommand('copy');
+      flashCopyBtn();
+    }
+  });
+
+  function flashCopyBtn(){
+    var orig = copyBtn.innerHTML;
+    copyBtn.innerHTML = '<i class="bi bi-check2 me-1"></i>Скопировано';
+    copyBtn.classList.add('btn-success');
+    copyBtn.classList.remove('btn-outline-secondary');
+    setTimeout(function(){
+      copyBtn.innerHTML = orig;
+      copyBtn.classList.remove('btn-success');
+      copyBtn.classList.add('btn-outline-secondary');
+    }, 1800);
+  }
+
+  function setAiText(text, format){
+    resultText.value = text;
+    formatBadge.textContent = format || 'txt';
+    aiTextBlock.classList.remove('d-none');
+  }
 
   /* ─── Навигатор площадок ─────────────────────────────────────── */
   function initNav(list){
@@ -507,6 +597,7 @@
 
   function setLoading(on){
     analyzeBtn.disabled = on || !selectedFile;
+    aiBtn.disabled = on || !selectedFile;
     spinner.classList.toggle('d-none', !on);
   }
 
@@ -515,6 +606,8 @@
     plotNav.classList.add('d-none');
     uploadHint.classList.remove('d-none');
     summaryStats.classList.add('d-none');
+    aiTextBlock.classList.add('d-none');
+    resultText.value = '';
     allData    = null;
     currentIdx = 0;
   }
