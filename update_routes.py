@@ -25,6 +25,9 @@
 # ║           shows for all users (downloading/scheduled/applying)║
 # ║  v2.2.7: FIX exit Flask with os._exit(42) after apply —      ║
 # ║           .bat делает goto :start_server автоматически       ║
+# ║  v2.2.8: FIX запись _pre_update.json СИНХРОННО до          ║
+# ║           запуска SSE-генератора — не-админы гарантированно  ║
+# ║           получают редирект на игру                          ║
 # ╚═══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, jsonify, request as flask_request, session, Response, stream_with_context
@@ -54,7 +57,7 @@ _MIN_DELAY = 0
 _MAX_DELAY = 3600
 
 
-# ─── Вспомогательные ──────────────────────────────────────────────────────────────────────────────────────
+# ─── Вспомогательные ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 def _read_local_sha() -> str:
     if os.path.exists(_COMMIT_FILE):
@@ -173,7 +176,7 @@ def _run_bat_restart():
     os._exit(0)
 
 
-# ─── SSE-утилита ──────────────────────────────────────────────────────────────────────────────────────────────────────────
+# ─── SSE-утилита ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 def _sse_format(event: str, data: dict) -> str:
     """Формирует одно SSE-сообщение.
@@ -185,7 +188,7 @@ def _sse_format(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
-# ─── SSE-стрим прогресса обновления ──────────────────────────────────────────────────────────────────
+# ─── SSE-стрим прогресса обновления ──────────────────────────────────────────────────────────────
 
 @update_bp.route('/api/update/stream')
 def api_update_stream():
@@ -224,6 +227,17 @@ def api_update_stream():
     # Захватываем данные сессии ДО первого yield (session недоступен внутри генератора)
     _scheduled_by = session.get('full_name', session.get('username', ''))
 
+    # ── Сразу помечаем что идёт обновление (для не-админов) ──
+    try:
+        _PRE_UPDATE = os.path.join(BASE_DIR, '_pre_update.json')
+        with open(_PRE_UPDATE, 'w', encoding='utf-8') as _f:
+            json.dump({
+                'started_at': datetime.utcnow().isoformat(),
+                'started_by': session.get('username', 'admin'),
+            }, _f, ensure_ascii=False)
+    except Exception:
+        pass
+
     def _generate():
         # ── Точка 1: уведомляем всех пользователей — начинаем скачивание ──
         _pre_update_write({
@@ -236,7 +250,7 @@ def api_update_stream():
             'download_error': None,
         })
 
-        # ── Фаза 1: скачивание ──────────────────────────────────────────────────────────
+        # ── Фаза 1: скачивание ──────────────────────────────────────────────────────────────────────
         cmd_dl = [sys.executable, _UPDATER, '--download-only', '--stream-json']
         if force:
             cmd_dl.append('--force')
@@ -324,7 +338,7 @@ def api_update_stream():
         # ── Точка 3: перед запуском apply — фиксируем фазу applying ──
         _pre_update_write({'phase': 'applying'})
 
-        # ── Фаза 2: установка ──────────────────────────────────────────────────────────
+        # ── Фаза 2: установка ──────────────────────────────────────────────────────────────────────
         cmd_apply = [sys.executable, _UPDATER, '--apply-only', '--stream-json']
         if force:
             cmd_apply.append('--force')
@@ -421,7 +435,7 @@ def api_update_stream():
     )
 
 
-# ─── Проверка обновлений ───────────────────────────────────────────────────────────────────────────────
+# ─── Проверка обновлений ────────────────────────────────────────────────────────────────────────────────────────
 
 @update_bp.route('/api/update/check')
 def api_update_check():
@@ -597,7 +611,7 @@ def _build_timer_worker(delay: int, force: bool, user_id: int):
     return _worker
 
 
-# ─── Запланированное обновление (баннер для всех пользователей) ──────────────────────────────
+# ─── Запланированное обновление (баннер для всех пользователей) ─────────────────────────────────
 
 @update_bp.route('/api/update/schedule', methods=['POST'])
 def api_update_schedule():
@@ -673,7 +687,7 @@ def api_update_schedule():
     })
 
 
-# ─── Обратная совместимость: /apply и /apply-force ───────────────────────────────────────────────────────
+# ─── Обратная совместимость: /apply и /apply-force ────────────────────────────────────────────────────
 
 @update_bp.route('/api/update/apply', methods=['POST'])
 def api_update_apply():
@@ -742,7 +756,7 @@ def _schedule_internal(delay: int, force: bool):
                     'message': f'Запущено. Скачиваем архив... потом перезапуск через ~{delay}с.'})
 
 
-# ─── Отмена запланированного обновления ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+# ─── Отмена запланированного обновления ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 @update_bp.route('/api/update/schedule/cancel', methods=['POST'])
 def api_update_schedule_cancel():
@@ -773,7 +787,7 @@ def api_update_schedule_cancel():
     return jsonify({'ok': True, 'message': 'Обновление отменено'})
 
 
-# ─── Статус текущего обновления ────────────────────────────────────────────────────────────────────────────────────────────
+# ─── Статус текущего обновления ──────────────────────────────────────────────────────────────────────────────────────
 
 @update_bp.route('/api/update/status')
 @update_bp.route('/api/update-status')  # алиас: обратная совместимость с base.html
@@ -791,7 +805,7 @@ def api_update_status():
     return jsonify({'in_progress': in_progress, 'phase': phase})
 
 
-# ─── Статус предобновления (публичный для всех авторизованных) ────────────────────
+# ─── Статус предобновления (публичный для всех авторизованных) ──────────────────
 
 @update_bp.route('/api/update/pre-status')
 def api_update_pre_status():
