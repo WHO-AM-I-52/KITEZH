@@ -374,3 +374,87 @@ def calc_portal_score(row: dict) -> dict:
         'missing': missing,
         'skipped': skipped,
     }
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# БЛОК 5: v2 — расчёт по полям из БД (таблица investmap_fields)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def calc_portal_score_v2(row: dict, db) -> dict:
+    """
+    Рассчитывает заполняемость площадки по полям из БД (таблица investmap_fields).
+
+    В отличие от calc_portal_score(), не использует хардкод PORTAL_FIELDS —
+    берёт актуальный список полей из БД (116 записей).
+
+    Логика skipped:
+        Если is_required содержит «если» — поле условное.
+        required_condition хранит условие в формате «parent_tech_name = value».
+        Если условие НЕ выполнено (родительское поле не равно нужному значению)
+        → поле пропускается (skipped).
+
+    Args:
+        row: словарь с полями площадки (ключи — tech_name, регистр не важен)
+        db:  объект соединения SQLite (Flask g.db или get_db())
+
+    Returns:
+        {
+            'score':   int 0..100,
+            'filled':  int,
+            'total':   int,   # total = filled + missing (skipped не считаются)
+            'missing': list,  # display_name полей, которые нужны, но не заполнены
+            'skipped': list,  # display_name полей, пропущенных по условию (N/A)
+        }
+    """
+    rows_db = db.execute(
+        "SELECT tech_name, display_name, is_required, required_condition"
+        " FROM investmap_fields ORDER BY id"
+    ).fetchall()
+
+    # Нормализуем ключи row один раз
+    normalized = {k.strip().lower(): v for k, v in row.items()}
+
+    filled  = []
+    missing = []
+    skipped = []
+
+    for rec in rows_db:
+        tech_name          = (rec["tech_name"] or "").strip()
+        display_name       = (rec["display_name"] or "").strip()
+        is_required        = (rec["is_required"] or "").strip().lower()
+        required_condition = (rec["required_condition"] or "").strip()
+
+        # Условное поле — проверяем, выполнено ли условие
+        if "если" in is_required and required_condition:
+            # Паттерн: «parent_tech_name = нужное_значение»
+            # Поддерживаем как «=», так и «==»
+            parts = re.split(r"\s*={1,2}\s*", required_condition, maxsplit=1)
+            if len(parts) == 2:
+                parent_key   = parts[0].strip().lower()
+                expected_val = parts[1].strip().lower()
+                actual_val   = _strip_html(
+                    str(normalized.get(parent_key, "") or "")
+                ).strip().lower()
+                if actual_val != expected_val:
+                    # Условие НЕ выполнено → поле не нужно
+                    skipped.append(display_name)
+                    continue
+            # Если паттерн не распознан — считаем поле обязательным (безопасный путь)
+
+        # Обязательное поле (или условие выполнено) — проверяем заполненность
+        value = normalized.get(tech_name.lower())
+        if _is_empty(value):
+            missing.append(display_name)
+        else:
+            filled.append(display_name)
+
+    total = len(filled) + len(missing)
+    score = round(len(filled) / max(total, 1) * 100)
+
+    return {
+        "score":   score,
+        "filled":  len(filled),
+        "total":   total,
+        "missing": missing,
+        "skipped": skipped,
+    }
