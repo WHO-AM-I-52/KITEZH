@@ -31,6 +31,9 @@
 # ║  v2.2.9: FIX _run_bat_restart sleep 10→3, os._exit(0)→42;   ║
 # ║           _shutdown thread daemon=True→False — гарантия      ║
 # ║           вызова os._exit(42) до завершения процесса         ║
+# ║  v2.3.0: FIX создаём _restart.flag перед os._exit(0) —      ║
+# ║           run_server.py видит флаг → sys.exit(42) → .bat     ║
+# ║           делает goto :start_server → авторестарт            ║
 # ╚═══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, jsonify, request as flask_request, session, Response, stream_with_context
@@ -425,8 +428,14 @@ def api_update_stream():
         # ── Точка 5: Flask завершается → .bat перезапустит сервер ──
         if rc_apply in (0, 2):
             def _shutdown():
-                time.sleep(2)   # даём done-событию дойти до браузера
-                os._exit(42)    # код 42 = авторестарт через .bat
+                time.sleep(2)
+                # Создаём _restart.flag — run_server.py увидит его
+                # и вернёт sys.exit(42) в .bat → goto :start_server
+                try:
+                    open(os.path.join(BASE_DIR, '_restart.flag'), 'w').close()
+                except Exception:
+                    pass
+                os._exit(0)
             threading.Thread(target=_shutdown, daemon=False).start()
 
     return Response(
