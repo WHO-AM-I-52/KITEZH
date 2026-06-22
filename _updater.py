@@ -62,9 +62,13 @@ def _sjson(obj: dict):
     """Выводит JSON-строку в stdout если включён --stream-json.
     Использует flush=True чтобы буфер не задерживал данные.
     Без --stream-json — полный no-op, поведение не меняется.
+    OSError подавляется — возникает когда pipe Flask-а закрыт раньше времени.
     """
     if STREAM_JSON:
-        print(json.dumps(obj, ensure_ascii=False), flush=True)
+        try:
+            print(json.dumps(obj, ensure_ascii=False), flush=True)
+        except OSError:
+            pass
 
 
 # ── Читаем активную ветку из _branch.txt (по умолчанию main) ───────────────────────────────────────────────
