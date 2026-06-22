@@ -71,6 +71,11 @@ def investmap_v2_post():
     {
         'results': list[dict],  # score/filled/total/missing/skipped
         'count': int,
+        'export': {
+            'format': int,
+            'count': int,
+            'text': str         # текст площадки для передачи в ИИ
+        },
         'error': null
     }
 
@@ -100,7 +105,16 @@ def investmap_v2_post():
         else:
             results = [calc_portal_score_v2(data, db)]
 
-        return jsonify({'results': results, 'count': len(results), 'error': None})
+        return jsonify({
+            'results': results,
+            'count':   len(results),
+            'export':  {
+                'format': fmt,
+                'count':  export.get('count', len(results)),
+                'text':   export.get('text', ''),
+            },
+            'error': None,
+        })
 
     except Exception as exc:
         err_logger.exception('investmap_v2 POST error | user=%s | %s', user, exc)
