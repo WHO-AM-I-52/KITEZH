@@ -20,9 +20,11 @@
 # ║  v2.2.4: FIX _lock_is_stale — split PermissionError/         ║
 # ║           ProcessLookupError; убран некорректный locals().get ║
 # ║  v2.2.5: FIX fallback done-событие если _updater завершился  ║
-# ║           без отправки done payload (буферизация / краш)      ║
+# ║           без отправки done payload (буферизация / краш) ║
 # ║  v2.2.6: FIX write _pre_update.json in SSE flow so banner    ║
 # ║           shows for all users (downloading/scheduled/applying)║
+# ║  v2.2.7: FIX exit Flask with os._exit(42) after apply —      ║
+# ║           .bat делает goto :start_server автоматически       ║
 # ╚═══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, jsonify, request as flask_request, session, Response, stream_with_context
@@ -52,7 +54,7 @@ _MIN_DELAY = 0
 _MAX_DELAY = 3600
 
 
-# ─── Вспомогательные ────────────────────────────────────────────────────────────────────────────────────
+# ─── Вспомогательные ──────────────────────────────────────────────────────────────────────────────────────
 
 def _read_local_sha() -> str:
     if os.path.exists(_COMMIT_FILE):
@@ -171,7 +173,7 @@ def _run_bat_restart():
     os._exit(0)
 
 
-# ─── SSE-утилита ──────────────────────────────────────────────────────────────────────────────────────────────
+# ─── SSE-утилита ──────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 def _sse_format(event: str, data: dict) -> str:
     """Формирует одно SSE-сообщение.
@@ -234,7 +236,7 @@ def api_update_stream():
             'download_error': None,
         })
 
-        # ── Фаза 1: скачивание ──────────────────────────────────────────
+        # ── Фаза 1: скачивание ──────────────────────────────────────────────────────────
         cmd_dl = [sys.executable, _UPDATER, '--download-only', '--stream-json']
         if force:
             cmd_dl.append('--force')
@@ -322,7 +324,7 @@ def api_update_stream():
         # ── Точка 3: перед запуском apply — фиксируем фазу applying ──
         _pre_update_write({'phase': 'applying'})
 
-        # ── Фаза 2: установка ──────────────────────────────────────────
+        # ── Фаза 2: установка ──────────────────────────────────────────────────────────
         cmd_apply = [sys.executable, _UPDATER, '--apply-only', '--stream-json']
         if force:
             cmd_apply.append('--force')
@@ -402,6 +404,13 @@ def api_update_stream():
                 'message':   'Установка завершена (отчёт недоступен)',
             })
 
+        # ── Точка 5: Flask завершается → .bat перезапустит сервер ──
+        if rc_apply in (0, 2):
+            def _shutdown():
+                time.sleep(2)   # даём done-событию дойти до браузера
+                os._exit(42)    # код 42 = авторестарт через .bat
+            threading.Thread(target=_shutdown, daemon=True).start()
+
     return Response(
         stream_with_context(_generate()),
         mimetype='text/event-stream',
@@ -412,7 +421,7 @@ def api_update_stream():
     )
 
 
-# ─── Проверка обновлений ────────────────────────────────────────────────────────────────────────────────────
+# ─── Проверка обновлений ───────────────────────────────────────────────────────────────────────────────
 
 @update_bp.route('/api/update/check')
 def api_update_check():
@@ -482,7 +491,7 @@ def api_update_check():
 # ─── Общая логика рабочего потока: download → таймер → apply ─────────────────
 
 def _build_timer_worker(delay: int, force: bool, user_id: int):
-    """Ретурнирует целевую функцию для threading.Thread.
+    """Ретурнит целевую функцию для threading.Thread.
     Флоу: phase=downloading → --download-only → rc=0 → phase=scheduled →
            таймер delay сек (отсчёт от момента завершения скачивания) →
            phase=applying → --apply-only → rc=0/2 → рестарт.
@@ -588,7 +597,7 @@ def _build_timer_worker(delay: int, force: bool, user_id: int):
     return _worker
 
 
-# ─── Запланированное обновление (баннер для всех пользователей) ─────────────────────────────────
+# ─── Запланированное обновление (баннер для всех пользователей) ──────────────────────────────
 
 @update_bp.route('/api/update/schedule', methods=['POST'])
 def api_update_schedule():
@@ -664,7 +673,7 @@ def api_update_schedule():
     })
 
 
-# ─── Обратная совместимость: /apply и /apply-force ─────────────────────────────────────────────
+# ─── Обратная совместимость: /apply и /apply-force ───────────────────────────────────────────────────────
 
 @update_bp.route('/api/update/apply', methods=['POST'])
 def api_update_apply():
@@ -733,7 +742,7 @@ def _schedule_internal(delay: int, force: bool):
                     'message': f'Запущено. Скачиваем архив... потом перезапуск через ~{delay}с.'})
 
 
-# ─── Отмена запланированного обновления ───────────────────────────────────────────────────────────────────────────────────────
+# ─── Отмена запланированного обновления ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 @update_bp.route('/api/update/schedule/cancel', methods=['POST'])
 def api_update_schedule_cancel():
@@ -764,7 +773,7 @@ def api_update_schedule_cancel():
     return jsonify({'ok': True, 'message': 'Обновление отменено'})
 
 
-# ─── Статус текущего обновления ───────────────────────────────────────────────────────────────────────────────────
+# ─── Статус текущего обновления ────────────────────────────────────────────────────────────────────────────────────────────
 
 @update_bp.route('/api/update/status')
 @update_bp.route('/api/update-status')  # алиас: обратная совместимость с base.html
