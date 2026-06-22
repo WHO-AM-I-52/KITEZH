@@ -37,6 +37,8 @@ IRRELEVANT_VALUES = {
     # поле 'Перечень видов экономической деятельности' незаполненным при этом значении.
     # Подтверждено письмом от портала по площадке 1530550 (17.06.2026).
     'нет ограничений',
+    # convert_excel_to_text() нормализует пустые значения к 'ПУСТО'
+    'пусто',
 }
 
 
@@ -387,14 +389,23 @@ def calc_portal_score_v2(row: dict, db) -> dict:
     В отличие от calc_portal_score(), не использует хардкод PORTAL_FIELDS —
     берёт актуальный список полей из БД (116 записей).
 
+    Ключи row — display_name (русские заголовки Excel, как возвращает
+    convert_excel_to_text). Поиск значений ведётся по display_name.lower().
+
     Логика skipped:
         Если is_required содержит «если» — поле условное.
-        required_condition хранит условие в формате «parent_tech_name = value».
-        Если условие НЕ выполнено (родительское поле не равно нужному значению)
-        → поле пропускается (skipped).
+        required_condition хранит условие в формате «display_name = значение»
+        (русский язык, как в Excel-выгрузке).
+        Если условие НЕ выполнено → поле пропускается (skipped).
+
+    Баги исправлены (Карточка #7):
+        #1 — required_condition парсится по display_name, не tech_name
+        #2 — поля с is_required='нет' полностью пропускаются (не влияют на score)
+        #3 — поиск значений в row по display_name.lower()
+        #4 — warning-лог при нераспознанном паттерне required_condition
 
     Args:
-        row: словарь с полями площадки (ключи — tech_name, регистр не важен)
+        row: словарь с полями площадки (ключи — display_name, регистр не важен)
         db:  объект соединения SQLite (Flask g.db или get_db())
 
     Returns:
@@ -406,12 +417,15 @@ def calc_portal_score_v2(row: dict, db) -> dict:
             'skipped': list,  # display_name полей, пропущенных по условию (N/A)
         }
     """
+    from kitezh_logger import err_logger  # локальный импорт во избежание циклов
+
     rows_db = db.execute(
         "SELECT tech_name, display_name, is_required, required_condition"
         " FROM investmap_fields ORDER BY id"
     ).fetchall()
 
-    # Нормализуем ключи row один раз
+    # Нормализуем ключи row один раз по display_name (русские заголовки Excel)
+    # БАГ #3 FIX: было normalized.get(tech_name.lower()) — теперь по display_name
     normalized = {k.strip().lower(): v for k, v in row.items()}
 
     filled  = []
@@ -424,10 +438,15 @@ def calc_portal_score_v2(row: dict, db) -> dict:
         is_required        = (rec["is_required"] or "").strip().lower()
         required_condition = (rec["required_condition"] or "").strip()
 
+        # БАГ #2 FIX: поля с is_required='нет' не участвуют в подсчёте совсем
+        if is_required == 'нет':
+            continue
+
         # Условное поле — проверяем, выполнено ли условие
         if "если" in is_required and required_condition:
-            # Паттерн: «parent_tech_name = нужное_значение»
-            # Поддерживаем как «=», так и «==»
+            # БАГ #1 FIX: required_condition хранится в формате
+            # «display_name = нужное_значение» (русский язык, как в Excel).
+            # Поддерживаем разделители «=» и «==».
             parts = re.split(r"\s*={1,2}\s*", required_condition, maxsplit=1)
             if len(parts) == 2:
                 parent_key   = parts[0].strip().lower()
@@ -439,10 +458,18 @@ def calc_portal_score_v2(row: dict, db) -> dict:
                     # Условие НЕ выполнено → поле не нужно
                     skipped.append(display_name)
                     continue
-            # Если паттерн не распознан — считаем поле обязательным (безопасный путь)
+            else:
+                # БАГ #4 FIX: логируем нераспознанный паттерн
+                err_logger.warning(
+                    'calc_portal_score_v2: не распознан required_condition '
+                    '| tech_name=%s | required_condition=%r',
+                    tech_name, required_condition
+                )
+                # Безопасный путь: считаем поле обязательным
 
         # Обязательное поле (или условие выполнено) — проверяем заполненность
-        value = normalized.get(tech_name.lower())
+        # БАГ #3 FIX: ищем по display_name.lower(), не по tech_name
+        value = normalized.get(display_name.lower())
         if _is_empty(value):
             missing.append(display_name)
         else:
