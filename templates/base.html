@@ -10,6 +10,7 @@
 {# ║           scheduled / applying; кнопки только для admin     ║ #}
 {# ║  v2.25.1: FIX-2+FIX-3 seconds_left, download_error hide    ║ #}
 {# ║  v2.25.2: FIX-2 download_error → hideBanner в poll()       ║ #}
+{# ║  v2.25.3: FIX счётчик онлайна — d.count → d.online         ║ #}
 {# ╚══════════════════════════════════════════════════════════════╝ #}
 <html lang="ru">
 <head>
@@ -816,7 +817,7 @@ document.addEventListener('DOMContentLoaded', function () {
     .then(function(r){ return r.ok ? r.json() : null; })
     .then(function(d){
       if (!d) return;
-      var cnt = d.count || 0;
+      var cnt = d.online || 0;
       var users = d.users || [];
       if (prevVal !== null && cnt !== prevVal) {
         el.classList.add('bump');
