@@ -17,6 +17,8 @@
 # ║  v2.2.1: _MIN_DELAY 1→0; delay=0 разрешён                   ║
 # ║  v2.2.2: FIX fire_at_ts пересчитывается ПОСЛЕ скачивания     ║
 # ║  v2.2.3: stderr=None в Popen → _updater виден в консоли bat  ║
+# ║  v2.2.4: FIX _lock_is_stale — split PermissionError/         ║
+# ║           ProcessLookupError; убран некорректный locals().get ║
 # ╚═══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, jsonify, request as flask_request, session, Response, stream_with_context
@@ -109,11 +111,12 @@ def _lock_is_stale() -> bool:
             return False
         os.kill(pid, 0)   # если процесс жив — исключения не будет
         return False      # процесс жив — лок активен
-    except (ProcessLookupError, PermissionError):
-        # ProcessLookupError: PID не существует — лок устарел
-        # PermissionError (на Windows для чужого PID): считаем процесс живым
-        if isinstance(locals().get('e') or Exception(), PermissionError):
-            return False
+    except PermissionError:
+        # Windows: os.kill() бросает PermissionError для живого
+        # чужого процесса → лок активен, не трогаем
+        return False
+    except ProcessLookupError:
+        # PID не существует → лок устарел → удаляем
         try:
             os.remove(_LOCK_FILE)
         except Exception:
