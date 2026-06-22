@@ -1000,7 +1000,7 @@
                  d.status === 'skipped'   ? '–' :
                  d.status === 'error'     ? '✗' : '·';
       li.className   = 'fl-' + (d.status || 'unknown');
-      li.textContent = icon + ' ' + (d.file || d.path || '');
+      li.textContent = icon + ' ' + (d.path || '');
       _sseFileLog.appendChild(li);
       _sseFileLog.scrollTop = _sseFileLog.scrollHeight;
     });
