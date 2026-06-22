@@ -11,6 +11,7 @@
 # ╚════════════════════════════════════════════════════════════════════════╝
 from __future__ import annotations
 
+import importlib.util
 import urllib.request
 import urllib.error
 import json
@@ -411,30 +412,47 @@ def extract_and_apply(zip_path: str, force: bool = False):
     return updated, unchanged, skipped, errors, bat_updated
 
 
+def get_current_version() -> str | None:
+    """Читает версию из changelog.py через importlib.util.
+    Устойчиво к комментариям и любому форматированию файла.
+    """
+    path = os.path.join(BASE_DIR, 'changelog.py')
+    try:
+        spec   = importlib.util.spec_from_file_location('_kitezh_changelog', path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        changelog = getattr(module, 'CHANGELOG', [])
+        if changelog:
+            return changelog[0].get('version')
+        return None
+    except Exception as e:
+        print(f'[Внимание] Не удалось прочитать changelog.py: {e}')
+        return None
+
+
 def load_changelog():
-    """Читает CHANGELOG из changelog.py через exec в изолированном namespace.
+    """Читает CHANGELOG из changelog.py через importlib.util.
     Устойчиво к комментариям, любым кавычкам и форматированию файла.
     """
-    changelog_path = os.path.join(BASE_DIR, "changelog.py")
-    if not os.path.exists(changelog_path):
+    path = os.path.join(BASE_DIR, 'changelog.py')
+    if not os.path.exists(path):
         return None, None
     try:
-        ns: dict = {}
-        with open(changelog_path, encoding="utf-8") as f:
-            code = f.read()
-        exec(compile(code, changelog_path, "exec"), ns, ns)
+        spec   = importlib.util.spec_from_file_location('_kitezh_changelog', path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
 
-        cl = ns.get("CHANGELOG")
+        cl = getattr(module, 'CHANGELOG', [])
         if not cl:
             return None, None
 
         latest  = cl[0]
-        version = latest.get("version", "")
-        body    = "\n".join(f"- {c}" for c in latest.get("changes", []))
+        version = latest.get('version', '')
+        body    = "\n".join(f"- {c}" for c in latest.get('changes', []))
         return version, body
 
     except Exception as e:
-        _log(f"  [Внимание] Не удалось прочитать changelog.py: {e}")
+        _log(f'  [Внимание] Не удалось прочитать changelog.py: {e}')
         return None, None
 
 
@@ -492,7 +510,6 @@ def run_sync_changelog():
         return
     _log("  Синхронизация changelog с GitHub...")
     try:
-        import importlib.util
         spec   = importlib.util.spec_from_file_location("sync_changelog", sync_path)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
