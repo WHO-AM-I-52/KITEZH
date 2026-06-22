@@ -17,7 +17,15 @@
 
 import os
 import traceback
+import warnings
 from datetime import timedelta, datetime, date
+
+warnings.filterwarnings(
+    'ignore',
+    message='Workbook contains no default style',
+    category=UserWarning,
+    module='openpyxl',
+)
 
 from flask import Flask, jsonify, render_template, request as flask_request, session
 
