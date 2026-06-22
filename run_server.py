@@ -18,6 +18,7 @@ import os
 import sys
 import subprocess
 import signal
+import time
 
 BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
 PID_FILE      = os.path.join(BASE_DIR, '_server.pid')
@@ -108,6 +109,11 @@ except KeyboardInterrupt:
         proc.wait(timeout=5)
     except Exception:
         proc.kill()
+
+# Даём werkzeug время закрыть сокет и дописать последние access-логи.
+# Без паузы лог-строки от последних polling-запросов клиентов
+# вклиниваются в stdin cmd-сессии и ломают set /p меню в .bat.
+time.sleep(1.5)
 
 try:
     os.remove(PID_FILE)
