@@ -613,7 +613,9 @@ document.addEventListener('DOMContentLoaded', function () {
     var bulkTbody     = document.getElementById('im-bulk-tbody');
     var uploadAllBtn  = document.getElementById('im-upload-all-btn');
 
-    if (!fileInput) return;
+    /* Все четыре элемента гарантированно в DOM — вкладка скрыта через
+       CSS .tab-pane, но сами элементы присутствуют. Ранний return убран. */
+    if (!fileInput || !bulkTable || !bulkTbody || !uploadAllBtn) return;
 
     /* Regex для извлечения номера из имени файла: «№NNN» или «#NNN» */
     var RE_NUM = /[№#]\s*(\d+)/;
@@ -665,8 +667,10 @@ document.addEventListener('DOMContentLoaded', function () {
         bulkTbody.appendChild(tr);
       });
 
-      bulkTable.style.display    = '';
-      uploadAllBtn.style.display = '';
+      /* FIX: явно задаём display:block — CSS-правило display:none
+         не снимается пустой строкой '' */
+      bulkTable.style.display    = 'block';
+      uploadAllBtn.style.display = 'block';
     });
 
 
