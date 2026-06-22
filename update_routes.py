@@ -19,6 +19,8 @@
 # ║  v2.2.3: stderr=None в Popen → _updater виден в консоли bat  ║
 # ║  v2.2.4: FIX _lock_is_stale — split PermissionError/         ║
 # ║           ProcessLookupError; убран некорректный locals().get ║
+# ║  v2.2.5: FIX fallback done-событие если _updater завершился  ║
+# ║           без отправки done payload (буферизация / краш)      ║
 # ╚═══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, jsonify, request as flask_request, session, Response, stream_with_context
@@ -282,10 +284,12 @@ def api_update_stream():
                 cwd=BASE_DIR,
             )
         except Exception as e:
-            yield _sse_format('error', {'message': str(e), 'phase': 'apply'})
+            yield _sse_format('error', {'message': str(e), 'phase': 'apply'})\
+            
             return
 
         last_heartbeat = time.time()
+        done_received = False  # трекер: получен ли done-payload от _updater.py
 
         for raw_line in proc_apply.stdout:
             if time.time() - last_heartbeat >= 15:
@@ -312,6 +316,7 @@ def api_update_stream():
                             'path':   msg.get('path', ''),
                         })
                     elif t == 'done':
+                        done_received = True
                         yield _sse_format('done', {
                             'updated':   msg.get('updated', 0),
                             'unchanged': msg.get('unchanged', 0),
@@ -329,6 +334,16 @@ def api_update_stream():
             yield _sse_format('error', {
                 'message': f'Ошибка установки (rc={rc_apply})',
                 'phase': 'apply',
+            })
+        elif not done_received:
+            # Процесс завершился успешно, но done не пришёл —
+            # отдаём синтетический done чтобы UI не завис
+            yield _sse_format('done', {
+                'updated':   0,
+                'unchanged': 0,
+                'skipped':   0,
+                'errors':    0,
+                'message':   'Установка завершена (отчёт недоступен)',
             })
 
     return Response(
