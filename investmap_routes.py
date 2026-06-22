@@ -5,14 +5,17 @@
 # ║           can_investmap_rules — анализ (правила)             ║
 # ║  Маршруты: /investmap (плитки),                             ║
 # ║             /investmap/v1 (анализ ГИС ЭКОНОМИКА),           ║
-# ║             /investmap/v2 (заглушка),                       ║
+# ║             /investmap/v2 GET (заглушка),                   ║
+# ║             /investmap/v2 POST (batch-оценка v2),           ║
 # ║             /investmap/convert, /investmap/analyze           ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, render_template, request, jsonify, flash, g
 
 from auth_utils import login_required, permission_required
+from db import get_db
 from kitezh_logger import err_logger
+from portal_analysis.portal_checker import calc_portal_score_v2
 from tools.investmap_export import convert_excel_to_text
 from tools.investmap_analyzer import analyze, build_summary_sms
 
@@ -39,7 +42,7 @@ def investmap_v1():
 @login_required
 @permission_required('can_view_investmap')
 def investmap_v2():
-    """Анализ заполняемости v2 — заглушка (логика придёт в Карточке #5)."""
+    """Анализ заполняемости v2 — заглушка (шаблон обновится в Карточке #5в)."""
     user = getattr(g, 'user', {}).get('login', 'unknown')
     try:
         return render_template('investmap_v2.html')
@@ -49,6 +52,57 @@ def investmap_v2():
         )
         flash('Ошибка при загрузке страницы анализа v2.', 'error')
         return render_template('investmap_v2.html'), 500
+
+
+@investmap_bp.route('/investmap/v2', methods=['POST'])
+@login_required
+@permission_required('can_investmap_rules')
+def investmap_v2_post():
+    """
+    Batch-оценка площадок через calc_portal_score_v2.
+
+    POST /investmap/v2
+    Content-Type: multipart/form-data
+    file: .xlsx
+
+    Возвращает JSON:
+    {
+        'results': list[dict],  # score/filled/total/missing/skipped
+        'count': int,
+        'error': null
+    }
+
+    Для формата 2 (список площадок) итерирует каждую строку.
+    Для форматов 1/3 (одна площадка) оборачивает результат в список.
+    """
+    f = request.files.get('file')
+    if not f:
+        return jsonify({'error': 'Файл не передан', 'results': [], 'count': 0}), 400
+    if not f.filename.lower().endswith('.xlsx'):
+        return jsonify({'error': 'Поддерживается только формат .xlsx', 'results': [], 'count': 0}), 400
+
+    user = getattr(g, 'user', {}).get('login', 'unknown')
+    try:
+        file_bytes = f.read()
+        export = convert_excel_to_text(file_bytes)
+
+        if export.get('error'):
+            return jsonify({'results': [], 'count': 0, 'error': export['error']}), 400
+
+        data = export.get('data', {})
+        fmt  = export.get('format')
+        db   = get_db()
+
+        if fmt == 2 and isinstance(data, list):
+            results = [calc_portal_score_v2(r, db) for r in data]
+        else:
+            results = [calc_portal_score_v2(data, db)]
+
+        return jsonify({'results': results, 'count': len(results), 'error': None})
+
+    except Exception as exc:
+        err_logger.exception('investmap_v2 POST error | user=%s | %s', user, exc)
+        return jsonify({'results': [], 'count': 0, 'error': 'Внутренняя ошибка сервера'}), 500
 
 
 # ── Конвертация и анализ ───────────────────────────────────────────────────
