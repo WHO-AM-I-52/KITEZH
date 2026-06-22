@@ -21,6 +21,8 @@
 # ║           ProcessLookupError; убран некорректный locals().get ║
 # ║  v2.2.5: FIX fallback done-событие если _updater завершился  ║
 # ║           без отправки done payload (буферизация / краш)      ║
+# ║  v2.2.6: FIX write _pre_update.json in SSE flow so banner    ║
+# ║           shows for all users (downloading/scheduled/applying)║
 # ╚═══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, jsonify, request as flask_request, session, Response, stream_with_context
@@ -65,6 +67,22 @@ def _clear_pre_update():
     try:
         if os.path.exists(_PRE_UPDATE_FILE):
             os.remove(_PRE_UPDATE_FILE)
+    except Exception:
+        pass
+
+
+def _pre_update_write(patch: dict):
+    """Создаёт или патчит _pre_update.json.
+    Если файл уже есть — обновляет только переданные ключи.
+    """
+    try:
+        data = {}
+        if os.path.exists(_PRE_UPDATE_FILE):
+            with open(_PRE_UPDATE_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        data.update(patch)
+        with open(_PRE_UPDATE_FILE, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False)
     except Exception:
         pass
 
@@ -201,7 +219,21 @@ def api_update_stream():
     except (ValueError, TypeError):
         delay = 0
 
+    # Захватываем данные сессии ДО первого yield (session недоступен внутри генератора)
+    _scheduled_by = session.get('full_name', session.get('username', ''))
+
     def _generate():
+        # ── Точка 1: уведомляем всех пользователей — начинаем скачивание ──
+        _pre_update_write({
+            'phase':          'downloading',
+            'scheduled_by':   _scheduled_by,
+            'scheduled_at':   datetime.now().isoformat(),
+            'fire_at_ts':     time.time(),
+            'delay':          delay,
+            'force':          force,
+            'download_error': None,
+        })
+
         # ── Фаза 1: скачивание ──────────────────────────────────────────
         cmd_dl = [sys.executable, _UPDATER, '--download-only', '--stream-json']
         if force:
@@ -217,6 +249,7 @@ def api_update_stream():
                 cwd=BASE_DIR,
             )
         except Exception as e:
+            _clear_pre_update()
             yield _sse_format('error', {'message': str(e), 'phase': 'download'})
             return
 
@@ -248,6 +281,13 @@ def api_update_stream():
         rc_dl = proc_dl.returncode
 
         if rc_dl != 0:
+            _pre_update_write({
+                'phase':          'download_failed',
+                'download_error': f'Ошибка скачивания (rc={rc_dl})',
+            })
+            # Небольшая пауза чтобы баннер успел показать ошибку, потом чистим
+            time.sleep(5)
+            _clear_pre_update()
             yield _sse_format('error', {
                 'message': f'Ошибка скачивания (rc={rc_dl})',
                 'phase': 'download',
@@ -256,6 +296,16 @@ def api_update_stream():
 
         # Гарантированный 100% после завершения скачивания
         yield _sse_format('download_pct', {'pct': 100, 'downloaded_mb': 0, 'total_mb': 0})
+
+        # ── Точка 2: скачивание завершено — обновляем phase ──
+        if delay > 0:
+            fire_at_ts = time.time() + delay
+            _pre_update_write({
+                'phase':      'scheduled',
+                'fire_at_ts': fire_at_ts,
+            })
+        else:
+            _pre_update_write({'phase': 'applying'})
 
         # ── Фаза 1.5: задержка (delay сек) перед установкой ────
         if delay > 0:
@@ -268,6 +318,9 @@ def api_update_stream():
                     last_heartbeat = time.time()
                 yield _sse_format('delay_tick', {'remaining': remaining})
                 time.sleep(1)
+
+        # ── Точка 3: перед запуском apply — фиксируем фазу applying ──
+        _pre_update_write({'phase': 'applying'})
 
         # ── Фаза 2: установка ──────────────────────────────────────────
         cmd_apply = [sys.executable, _UPDATER, '--apply-only', '--stream-json']
@@ -284,8 +337,8 @@ def api_update_stream():
                 cwd=BASE_DIR,
             )
         except Exception as e:
-            yield _sse_format('error', {'message': str(e), 'phase': 'apply'})\
-            
+            _clear_pre_update()
+            yield _sse_format('error', {'message': str(e), 'phase': 'apply'})
             return
 
         last_heartbeat = time.time()
@@ -329,6 +382,9 @@ def api_update_stream():
 
         proc_apply.wait()
         rc_apply = proc_apply.returncode
+
+        # ── Точка 4: обновление завершено — удаляем _pre_update.json ──
+        _clear_pre_update()
 
         if rc_apply not in (0, 2):
             yield _sse_format('error', {
