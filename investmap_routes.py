@@ -7,11 +7,13 @@
 # ║             /investmap/v1 (анализ ГИС ЭКОНОМИКА),           ║
 # ║             /investmap/v2 GET (заглушка),                   ║
 # ║             /investmap/v2 POST (batch-оценка v2),           ║
+# ║             /investmap/v2/rules (CRUD правил),              ║
 # ║             /investmap/convert, /investmap/analyze           ║
 # ╚══════════════════════════════════════════════════════════════╝
 
-from flask import Blueprint, render_template, request, jsonify, flash, g
+from flask import Blueprint, render_template, request, jsonify, flash, g, redirect, url_for
 
+from activity_log import log_action
 from auth_utils import login_required, permission_required
 from db import get_db
 from kitezh_logger import err_logger
@@ -103,6 +105,100 @@ def investmap_v2_post():
     except Exception as exc:
         err_logger.exception('investmap_v2 POST error | user=%s | %s', user, exc)
         return jsonify({'results': [], 'count': 0, 'error': 'Внутренняя ошибка сервера'}), 500
+
+
+# ── CRUD-редактор правил investmap_rules ──────────────────────────────────
+
+@investmap_bp.route('/investmap/v2/rules')
+@login_required
+@permission_required('can_investmap_rules')
+def investmap_v2_rules():
+    """Список правил рекомендаций."""
+    db = get_db()
+    rules = db.execute("""
+        SELECT r.id, r.source_field, r.source_value,
+               r.target_field, r.recommended_text,
+               sf.display_name AS source_display,
+               tf.display_name AS target_display
+        FROM investmap_rules r
+        LEFT JOIN investmap_fields sf ON sf.tech_name = r.source_field
+        LEFT JOIN investmap_fields tf ON tf.tech_name = r.target_field
+        ORDER BY r.id
+    """).fetchall()
+    fields = db.execute(
+        "SELECT tech_name, display_name FROM investmap_fields ORDER BY display_name"
+    ).fetchall()
+    return render_template('investmap_v2_rules.html', rules=rules, fields=fields)
+
+
+@investmap_bp.route('/investmap/v2/rules/add', methods=['POST'])
+@login_required
+@permission_required('can_investmap_rules')
+def investmap_v2_rules_add():
+    """Добавить новое правило рекомендации."""
+    source_field     = request.form.get('source_field', '').strip()
+    source_value     = request.form.get('source_value', '').strip()
+    target_field     = request.form.get('target_field', '').strip()
+    recommended_text = request.form.get('recommended_text', '').strip()
+
+    if not all([source_field, source_value, target_field, recommended_text]):
+        flash('Все поля обязательны.', 'error')
+        return redirect(url_for('investmap.investmap_v2_rules'))
+
+    user = getattr(g, 'user', {}).get('login', 'unknown')
+    db = get_db()
+    db.execute(
+        """INSERT INTO investmap_rules
+           (source_field, source_value, target_field, recommended_text)
+           VALUES (?, ?, ?, ?)""",
+        (source_field, source_value, target_field, recommended_text)
+    )
+    db.commit()
+    log_action(user, 'investmap_rules_add',
+               f'source={source_field}:{source_value} → target={target_field}')
+    flash('Правило добавлено.', 'success')
+    return redirect(url_for('investmap.investmap_v2_rules'))
+
+
+@investmap_bp.route('/investmap/v2/rules/delete/<int:rule_id>', methods=['POST'])
+@login_required
+@permission_required('can_investmap_rules')
+def investmap_v2_rules_delete(rule_id):
+    """Удалить правило рекомендации."""
+    user = getattr(g, 'user', {}).get('login', 'unknown')
+    db = get_db()
+    db.execute("DELETE FROM investmap_rules WHERE id = ?", (rule_id,))
+    db.commit()
+    log_action(user, 'investmap_rules_delete', f'rule_id={rule_id}')
+    flash('Правило удалено.', 'success')
+    return redirect(url_for('investmap.investmap_v2_rules'))
+
+
+@investmap_bp.route('/investmap/v2/rules/values')
+@login_required
+@permission_required('can_investmap_rules')
+def investmap_v2_rules_values():
+    """
+    AJAX: вернуть список значений классификатора для выбранного source_field.
+
+    GET /investmap/v2/rules/values?field=<tech_name>
+    Возвращает JSON: list[str]
+    """
+    tech_name = request.args.get('field', '').strip()
+    if not tech_name:
+        return jsonify([])
+    db = get_db()
+    row = db.execute(
+        "SELECT classifier_num FROM investmap_fields WHERE tech_name = ?",
+        (tech_name,)
+    ).fetchone()
+    if not row or not row['classifier_num']:
+        return jsonify([])
+    values = db.execute(
+        "SELECT value FROM investmap_classifiers WHERE classifier_num = ? ORDER BY value",
+        (row['classifier_num'],)
+    ).fetchall()
+    return jsonify([v['value'] for v in values])
 
 
 # ── Конвертация и анализ ───────────────────────────────────────────────────
