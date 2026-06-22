@@ -18,12 +18,7 @@
   .cls-info { background: var(--surface2) !important; border-color: var(--border) !important; color: var(--text) !important; }
 
   /* ── Массовая загрузка investmap ── */
-  #im-bulk-table { display: none; }
-  #im-bulk-table .im-num-input {
-    width: 90px;
-    text-align: center;
-  }
-  #im-upload-all-btn { display: none; }
+  .im-num-input { width: 90px; text-align: center; }
   .im-status-ok   { color: #198754; font-weight: 600; }
   .im-status-err  { color: #dc3545; font-weight: 600; }
   .im-status-wait { color: var(--text-muted, #6c757d); }
@@ -435,27 +430,27 @@
             <i class="bi bi-upload me-1"></i>Массовая загрузка справочников
           </h6>
 
-          {# Кнопка выбора файлов #}
           <div class="mb-2">
             <label class="form-label fw-bold" style="font-size:12px">Выбрать файлы CSV</label>
             <input type="file" id="im-file-input"
                    class="form-control form-control-sm"
-                   accept=".csv" multiple>
+                   accept=".csv,.CSV"
+                   multiple>
             <div class="form-text" style="font-size:11px">
-              Можно выбрать сразу несколько файлов. Номер справочника
-              подставляется автоматически из имени файла (если содержит «№NNN»).
+              Можно выбрать сразу несколько файлов.
+              Номер справочника подставляется автоматически если имя файла содержит «№NNN».
             </div>
           </div>
 
-          {# Таблица файлов #}
-          <div id="im-bulk-table" class="mt-2">
+          {# Таблица файлов — скрыта через JS, не через CSS display:none #}
+          <div id="im-bulk-table" class="mt-2" style="display:none">
             <div style="max-height:360px;overflow-y:auto">
               <table class="table table-sm table-hover mb-0" style="font-size:12px">
                 <thead>
                   <tr>
                     <th class="cls-th">Файл</th>
                     <th class="cls-th" style="width:110px">№ справочника</th>
-                    <th class="cls-th" style="width:90px">Статус</th>
+                    <th class="cls-th" style="width:110px">Статус</th>
                   </tr>
                 </thead>
                 <tbody id="im-bulk-tbody"></tbody>
@@ -463,9 +458,9 @@
             </div>
           </div>
 
-          {# Кнопка «Загрузить всё» #}
           <button id="im-upload-all-btn"
-                  class="btn btn-sm btn-primary w-100 mt-3">
+                  class="btn btn-sm btn-primary w-100 mt-3"
+                  style="display:none">
             <i class="bi bi-cloud-upload me-1"></i>Загрузить всё
           </button>
 
@@ -527,7 +522,7 @@
   <p class="small text-muted mb-2">
     Если в форме обращения появляется новое обязательное поле — администратор получает
     уведомления по всем карточкам, где оно не заполнено.
-    Уведомления отображаются в разделе <a href="{{ url_for('misc.notifications') }}">{Уведомления}</a>.
+    Уведомления отображаются в разделе <a href="{{ url_for('misc.notifications') }}">{{Уведомления}}</a>.
   </p>
   <div class="cls-info alert border small mb-0 p-2">
     <strong>Текущие обязательные поля:</strong>
@@ -584,11 +579,10 @@ document.addEventListener('DOMContentLoaded', function () {
       }
     }
 
+    /* Глобальный change-листенер — только для result-cb / select-all-results */
     document.addEventListener('change', function (e) {
-      if (e.target.classList.contains('result-cb')) {
-        syncBulk();
-        return;
-      }
+      if (e.target.id === 'im-file-input') return; /* не перехватывать событие investmap */
+      if (e.target.classList.contains('result-cb')) { syncBulk(); return; }
       if (e.target.id === 'select-all-results') {
         var cbs = Array.from(document.querySelectorAll('.result-cb'));
         cbs.forEach(function (cb) { cb.checked = e.target.checked; });
@@ -600,7 +594,6 @@ document.addEventListener('DOMContentLoaded', function () {
     if (resultTabLink) {
       resultTabLink.addEventListener('shown.bs.tab', function () { syncBulk(); });
     }
-
     syncBulk();
 
 
@@ -608,19 +601,15 @@ document.addEventListener('DOMContentLoaded', function () {
        3. Массовая загрузка справочников investmap
     ═══════════════════════════════════════════════════════════════ */
 
-    var fileInput     = document.getElementById('im-file-input');
-    var bulkTable     = document.getElementById('im-bulk-table');
-    var bulkTbody     = document.getElementById('im-bulk-tbody');
-    var uploadAllBtn  = document.getElementById('im-upload-all-btn');
+    var fileInput    = document.getElementById('im-file-input');
+    var bulkTable    = document.getElementById('im-bulk-table');
+    var bulkTbody    = document.getElementById('im-bulk-tbody');
+    var uploadAllBtn = document.getElementById('im-upload-all-btn');
 
-    /* Все четыре элемента гарантированно в DOM — вкладка скрыта через
-       CSS .tab-pane, но сами элементы присутствуют. Ранний return убран. */
     if (!fileInput || !bulkTable || !bulkTbody || !uploadAllBtn) return;
 
-    /* Regex для извлечения номера из имени файла: «№NNN» или «#NNN» */
     var RE_NUM = /[№#]\s*(\d+)/;
 
-    /* При выборе файлов — строим таблицу */
     fileInput.addEventListener('change', function () {
       var files = Array.from(fileInput.files);
 
@@ -634,21 +623,18 @@ document.addEventListener('DOMContentLoaded', function () {
       bulkTbody.innerHTML = '';
 
       files.forEach(function (file, idx) {
-        /* Автопарсинг номера из имени файла */
-        var match     = RE_NUM.exec(file.name);
-        var autoNum   = match ? match[1] : '';
+        var match   = RE_NUM.exec(file.name);
+        var autoNum = match ? match[1] : '';
 
-        var tr        = document.createElement('tr');
+        var tr = document.createElement('tr');
         tr.dataset.idx = idx;
 
-        /* Ячейка: имя файла */
-        var tdName    = document.createElement('td');
+        var tdName = document.createElement('td');
         tdName.style.wordBreak = 'break-all';
         tdName.textContent     = file.name;
 
-        /* Ячейка: поле ввода номера */
-        var tdNum     = document.createElement('td');
-        var numInput  = document.createElement('input');
+        var tdNum    = document.createElement('td');
+        var numInput = document.createElement('input');
         numInput.type        = 'number';
         numInput.min         = '1';
         numInput.className   = 'form-control form-control-sm im-num-input';
@@ -656,8 +642,7 @@ document.addEventListener('DOMContentLoaded', function () {
         numInput.value       = autoNum;
         tdNum.appendChild(numInput);
 
-        /* Ячейка: статус */
-        var tdStatus  = document.createElement('td');
+        var tdStatus = document.createElement('td');
         tdStatus.className   = 'im-status-wait';
         tdStatus.textContent = '—';
 
@@ -667,33 +652,23 @@ document.addEventListener('DOMContentLoaded', function () {
         bulkTbody.appendChild(tr);
       });
 
-      /* FIX: явно задаём display:block — CSS-правило display:none
-         не снимается пустой строкой '' */
       bulkTable.style.display    = 'block';
       uploadAllBtn.style.display = 'block';
     });
 
 
-    /* При нажатии «Загрузить всё» — AJAX-цикл */
     uploadAllBtn.addEventListener('click', function () {
       var files = Array.from(fileInput.files);
       var rows  = Array.from(bulkTbody.querySelectorAll('tr'));
-
       if (files.length === 0) return;
 
-      /* Блокируем кнопку на время загрузки */
-      uploadAllBtn.disabled    = true;
-      uploadAllBtn.innerHTML   = '<span class="spinner-border spinner-border-sm me-1"></span>Загружаю...';
+      uploadAllBtn.disabled  = true;
+      uploadAllBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Загружаю...';
 
-      /* Последовательная загрузка (промис-цепочка) */
       var chain = Promise.resolve();
-
       files.forEach(function (file, idx) {
-        chain = chain.then(function () {
-          return uploadOne(file, rows[idx]);
-        });
+        chain = chain.then(function () { return uploadOne(file, rows[idx]); });
       });
-
       chain.then(function () {
         uploadAllBtn.disabled  = false;
         uploadAllBtn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i>Загрузить всё';
@@ -701,31 +676,26 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
 
-    /**
-     * Загружает один файл через POST /admin/classifiers/investmap/upload/<num>
-     * Обновляет статус в строке таблицы.
-     */
     function uploadOne(file, tr) {
       var numInput = tr.querySelector('.im-num-input');
       var tdStatus = tr.cells[2];
       var num      = numInput ? numInput.value.trim() : '';
 
-      /* Валидация номера */
       if (!num || isNaN(parseInt(num, 10)) || parseInt(num, 10) < 1) {
         tdStatus.className   = 'im-status-err';
         tdStatus.textContent = '❌ Укажите № справочника';
         return Promise.resolve();
       }
 
-      tdStatus.className   = 'im-status-wait';
-      tdStatus.innerHTML   = '<span class="spinner-border spinner-border-sm"></span>';
+      tdStatus.className = 'im-status-wait';
+      tdStatus.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
 
       var formData = new FormData();
       formData.append('file', file);
 
       return fetch('/admin/classifiers/investmap/upload/' + encodeURIComponent(num), {
-        method: 'POST',
-        body:   formData,
+        method:  'POST',
+        body:    formData,
         headers: { 'X-Requested-With': 'XMLHttpRequest' }
       })
       .then(function (resp) {
