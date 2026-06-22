@@ -6,7 +6,7 @@
 {# ╚══════════════════════════════════════════════════════════════╝ #}
 
 {% block content %}
-{# ─── Шапка ──────────────────────────────────────────────────── #}
+{# ─── Шапка ──────────────────────────────────────────── #}
 <div class="d-flex align-items-center gap-2 mb-3">
   <a href="/investmap" class="btn btn-sm btn-outline-secondary me-1">
     <i class="bi bi-arrow-left"></i> Назад
@@ -16,7 +16,7 @@
   <span class="badge ms-1" style="background:#1B5E7B;font-size:11px">v2 · Портал</span>
 </div>
 
-{# ─── Загрузка файла ─────────────────────────────────────────── #}
+{# ─── Загрузка файла ──────────────────────────────────────── #}
 <div class="row g-3 mb-3">
   <div class="col-12 col-lg-5">
     <div class="card h-100">
@@ -118,7 +118,7 @@
   </div>
 </div>
 
-{# ─── Навигатор площадок ─────────────────────────────────────── #}
+{# ─── Навигатор площадок ───────────────────────────────────────── #}
 <div id="plotNav" class="d-none mb-3">
   <div class="card">
     <div class="card-body py-2 px-3 d-flex align-items-center gap-3">
@@ -140,7 +140,7 @@
   </div>
 </div>
 
-{# ─── Блок результатов (скрыт до загрузки) ──────────────────── #}
+{# ─── Блок результатов (скрыт до загрузки) ──────────────────────── #}
 <div id="resultsBlock" class="d-none">
 
   {# Score-кружок + прогресс-бар #}
@@ -267,7 +267,7 @@
   var allData    = null;
   var currentIdx = 0;
 
-  /* ─── Drag-and-drop ──────────────────────────────────────────── */
+  /* ─── Drag-and-drop ──────────────────────────────────────────────── */
   dropzone.addEventListener('click', function(){ fileInput.click(); });
   dropzone.addEventListener('dragover', function(e){
     e.preventDefault();
@@ -315,7 +315,7 @@
     resetResults();
   });
 
-  /* ─── Отправка формы (Анализировать) ────────────────────────── */
+  /* ─── Отправка формы (Анализировать) ────────────────────────────── */
   analyzeBtn.addEventListener('click', function(){
     if (!selectedFile) return;
     var fd = new FormData();
@@ -335,17 +335,20 @@
       initNav(list);
       renderPlot(list[0]);
 
-      /* Заполняем textarea текстом для ИИ если бэкенд вернул export.text */
-      if (resp.export && resp.export.text){
-        setAiText(resp.export.text, resp.export.format || 'txt');
-      } else if (list[0] && list[0].export && list[0].export.text){
-        setAiText(list[0].export.text, (list[0].export.format || 'txt'));
+      /* Заполняем textarea: текст площадки + результат анализа */
+      var exportText = (resp.export && resp.export.text) ? resp.export.text
+                     : (list[0] && list[0].export && list[0].export.text) ? list[0].export.text
+                     : '';
+      var fmt = (resp.export && resp.export.format) ? resp.export.format : 'txt';
+      if (exportText) {
+        var analysisBlock = buildAnalysisBlock(list[0]);
+        setAiText(exportText + (analysisBlock ? ('\n\n' + analysisBlock) : ''), fmt);
       }
     })
     .catch(function(e){ setLoading(false); showError('Сетевая ошибка: ' + e); });
   });
 
-  /* ─── Кнопка «Для ИИ» ───────────────────────────────────────── */
+  /* ─── Кнопка «Для ИИ» ────────────────────────────────────────────── */
   aiBtn.addEventListener('click', function(){
     if (!selectedFile) return;
     var fd = new FormData();
@@ -365,7 +368,7 @@
     .catch(function(e){ setLoading(false); showError('Сетевая ошибка: ' + e); });
   });
 
-  /* ─── Копировать ─────────────────────────────────────────────── */
+  /* ─── Копировать ─────────────────────────────────────────────────── */
   copyBtn.addEventListener('click', function(){
     var txt = resultText.value;
     if (!txt) return;
@@ -398,7 +401,36 @@
     aiTextBlock.classList.remove('d-none');
   }
 
-  /* ─── Навигатор площадок ─────────────────────────────────────── */
+  /* ─── Формируем блок результата анализа для вставки в textarea ───── */
+  function buildAnalysisBlock(d) {
+    if (!d) return '';
+    var score   = typeof d.score   === 'number' ? d.score   : 0;
+    var filled  = typeof d.filled  === 'number' ? d.filled  : 0;
+    var total   = typeof d.total   === 'number' ? d.total   : 0;
+    var missing = Array.isArray(d.missing) ? d.missing : [];
+    var skipped = Array.isArray(d.skipped) ? d.skipped : [];
+    var cat     = d.category || '';
+
+    var lines = [];
+    lines.push('━━━ РЕЗУЛЬТАТ АНАЛИЗА ━━━');
+    lines.push('Score: ' + score + '%' + (cat ? ' (' + cat + ')' : ''));
+    lines.push('Заполнено полей: ' + filled + ' из ' + total);
+    lines.push('Незаполненных (учитывается в счёте): ' + missing.length);
+    if (missing.length > 0) {
+      missing.forEach(function(f) {
+        lines.push('  • ' + fieldName(f));
+      });
+    }
+    lines.push('Пропущенных (не учитывается в счёте): ' + skipped.length);
+    if (skipped.length > 0) {
+      skipped.forEach(function(f) {
+        lines.push('  • ' + fieldName(f));
+      });
+    }
+    return lines.join('\n');
+  }
+
+  /* ─── Навигатор площадок ───────────────────────────────────────────── */
   function initNav(list){
     navTotal.textContent   = list.length;
     navCurrent.textContent = 1;
@@ -422,7 +454,7 @@
     resultsBlock.scrollIntoView({behavior:'smooth', block:'start'});
   }
 
-  /* ─── Цвет score ─────────────────────────────────────────────── */
+  /* ─── Цвет score ───────────────────────────────────────────────────── */
   function scoreColor(s){
     if (s >= 85) return '#198754';
     if (s >= 65) return '#ffc107';
@@ -430,7 +462,7 @@
     return '#dc3545';
   }
 
-  /* ─── Рендер одной площадки ──────────────────────────────────── */
+  /* ─── Рендер одной площадки ──────────────────────────────────────── */
   function renderPlot(d){
     var score   = typeof d.score === 'number' ? d.score : 0;
     var missing = Array.isArray(d.missing) ? d.missing : [];
@@ -438,7 +470,6 @@
     var total   = typeof d.total === 'number' ? d.total : (missing.length + (typeof d.filled === 'number' ? d.filled : 0));
     var filled  = typeof d.filled === 'number' ? d.filled : (total - missing.length);
 
-    /* Score-кружок */
     var col    = scoreColor(score);
     var circle = document.getElementById('scoreCircle');
     circle.style.borderColor = col;
@@ -455,16 +486,13 @@
     scoreLabel.textContent = d.category ? (catMap[d.category] || d.category) : '';
     scoreLabel.style.color = col;
 
-    /* Прогресс-бар */
     var bar = document.getElementById('progressBar');
     bar.style.width      = score + '%';
     bar.style.background = col;
     bar.setAttribute('aria-valuenow', score);
 
-    /* Заголовок площадки */
     document.getElementById('plotTitle').textContent = d.id ? ('\ud83d\udccd ' + d.id) : '';
 
-    /* Счётчики в шапке */
     document.getElementById('statFilled').textContent  = filled;
     document.getElementById('statTotal').textContent   = total;
     document.getElementById('statMissing').textContent = missing.length;
@@ -472,13 +500,9 @@
     uploadHint.classList.add('d-none');
     summaryStats.classList.remove('d-none');
 
-    /* Сводная таблица (аналог blocksTable v1) */
     renderSummaryTable(score, filled, total, missing.length, skipped.length, col);
-
-    /* Аккордеон missing (аналог missingAccordion v1) */
     renderMissingAccordion(missing);
 
-    /* Таблица skipped */
     var skippedBody  = document.getElementById('skippedBody');
     var skippedEmpty = document.getElementById('skippedEmpty');
     document.getElementById('skippedCount').textContent = skipped.length;
@@ -501,7 +525,7 @@
     resultsBlock.classList.remove('d-none');
   }
 
-  /* ─── Сводная таблица (аналог blocksTable v1) ────────────────── */
+  /* ─── Сводная таблица ─────────────────────────────────────────────── */
   function renderSummaryTable(score, filled, total, missingCnt, skippedCnt, col){
     var tbody = document.getElementById('summaryTableBody');
     tbody.innerHTML = '';
@@ -528,7 +552,7 @@
     });
   }
 
-  /* ─── Аккордеон missing (аналог missingAccordion v1) ─────────── */
+  /* ─── Аккордеон missing ───────────────────────────────────────────── */
   function renderMissingAccordion(missing){
     var accordion    = document.getElementById('missingAccordion');
     var missingEmpty = document.getElementById('missingEmpty');
@@ -543,7 +567,6 @@
     missingEmpty.classList.add('d-none');
     document.getElementById('missingCard').style.display = '';
 
-    /* Группируем по category (если поля — объекты с category) — иначе один блок */
     var groups = {};
     missing.forEach(function(f){
       var cat = (f && f.category) ? f.category : '\u041d\u0435\u0437\u0430\u043f\u043e\u043b\u043d\u0435\u043d\u043d\u044b\u0435 \u043f\u043e\u043b\u044f';
@@ -579,7 +602,7 @@
     });
   }
 
-  /* ─── Вспомогательные функции ────────────────────────────────── */
+  /* ─── Вспомогательные функции ──────────────────────────────────────── */
   function fieldName(f){
     if (typeof f === 'string') return f;
     if (f && f.display_name) return f.display_name;
