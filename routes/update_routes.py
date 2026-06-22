@@ -939,3 +939,67 @@ def api_update_pre_status():
     except Exception:
         _clear_pre_update()
         return jsonify({'scheduled': False}), 200
+
+
+# ─── Результат применённого обновления (one-shot, только админ) ───
+
+@update_bp.route('/api/update/result')
+def api_update_result():
+    """Симптом 2: уведомление админа об успешном перезапуске.
+
+    После перезагрузки сервера base.html опрашивает этот роут.
+    Если _update_result.json существует — возвращаем его, логируем
+    факт применения и удаляем файл (one-shot), чтобы тост
+    показался ровно один раз.
+    """
+    if session.get('role') != 'admin':
+        return jsonify({'available': False}), 200
+
+    if not os.path.exists(_UPDATE_RESULT_FILE):
+        return jsonify({'available': False}), 200
+
+    try:
+        with open(_UPDATE_RESULT_FILE, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+    except Exception:
+        # Битый файл — удаляем и сообщаем, что нечего показывать
+        try:
+            os.remove(_UPDATE_RESULT_FILE)
+        except Exception:
+            pass
+        return jsonify({'available': False}), 200
+
+    # Логируем факт применения обновления (правило #6).
+    try:
+        conn = get_db()
+        log_action(conn, session['user_id'], 'update_applied',
+                   detail=(
+                       f"Обновление применено: "
+                       f"updated={data.get('updated', 0)} "
+                       f"unchanged={data.get('unchanged', 0)} "
+                       f"skipped={data.get('skipped', 0)} "
+                       f"errors={data.get('errors', 0)} "
+                       f"by={data.get('applied_by', '')}"
+                   ))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+    # one-shot: удаляем файл после первого чтения
+    try:
+        os.remove(_UPDATE_RESULT_FILE)
+    except Exception:
+        pass
+
+    return jsonify({
+        'available':   True,
+        'ok':          data.get('ok', True),
+        'updated':     data.get('updated', 0),
+        'unchanged':   data.get('unchanged', 0),
+        'skipped':     data.get('skipped', 0),
+        'errors':      data.get('errors', 0),
+        'message':     data.get('message', ''),
+        'finished_at': data.get('finished_at', ''),
+        'applied_by':  data.get('applied_by', ''),
+    })
