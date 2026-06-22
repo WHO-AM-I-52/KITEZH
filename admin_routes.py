@@ -23,6 +23,8 @@
 # ║         раздельные except для UnicodeDecodeError/ValueError   ║
 # ║  v4.4: fix field_name=None → fallback 'classifier_{num}'      ║
 # ║         при отсутствии записи в investmap_fields              ║
+# ║  v4.5: investmap_classifier_upload_ajax — POST /upload/<num>  ║
+# ║         AJAX-эндпоинт для массовой загрузки из JS (→ JSON)    ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 import csv
@@ -306,7 +308,7 @@ def classifiers():
     )
 
 
-# ─── Investmap: загрузка справочника ────────────────────────────────────────────────────────────────────────────
+# ─── Investmap: загрузка справочника (форма, redirect) ──────────────────────────────────────────────────────
 @admin_bp.route('/admin/classifiers/investmap/upload', methods=['POST'])
 @login_required
 @permission_required('can_investmap_rules')
@@ -325,116 +327,133 @@ def investmap_classifier_upload():
     user = session.get('username', f'id={session.get("user_id")}')
     conn = get_db()
     try:
-        field_row = conn.execute(
-            "SELECT display_name FROM investmap_fields WHERE classifier_num=? LIMIT 1",
-            (num,)
-        ).fetchone()
-        # Fallback: если справочник не описан в investmap_fields — используем имя по номеру
-        field_name = (field_row['display_name'] if field_row else None) or f'classifier_{num}'
-
-        inserted = 0
-
-        if fname.endswith('.xlsx'):
-            wb = openpyxl.load_workbook(io.BytesIO(f.read()), read_only=True, data_only=True)
-            ws = wb.active
-            for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True)):
-                if not row or row[0] is None:
-                    continue
-                value = str(row[0]).strip()
-                if not value:
-                    continue
-                conn.execute(
-                    "INSERT OR REPLACE INTO investmap_classifiers "
-                    "(classifier_num, field_name, sort_order, value) VALUES (?, ?, ?, ?)",
-                    (num, field_name, i, value)
-                )
-                inserted += 1
-
-        elif fname.endswith('.csv'):
-            for encoding in ('utf-8-sig', 'cp1251', 'utf-8'):
-                try:
-                    content = f.read().decode(encoding)
-                    f.seek(0)
-                    break
-                except (UnicodeDecodeError, AttributeError):
-                    f.seek(0)
-                    continue
-            else:
-                flash('Не удалось определить кодировку файла. '
-                      'Сохрани CSV в UTF-8 и попробуй снова.', 'danger')
-                return redirect(url_for('admin.classifiers'))
-            reader = csv.reader(io.StringIO(content), delimiter=';')
-            next(reader)  # пропустить заголовок
-            for row in reader:
-                if len(row) < 2:
-                    continue
-                # пропускать удалённые элементы (3-я колонка == 'Удалён')
-                if len(row) >= 3 and row[2].strip().strip('"') == 'Удалён':
-                    continue
-                try:
-                    sort_order = int(row[0].strip().strip('"'))
-                except ValueError as exc:
-                    err_logger.warning(
-                        'investmap upload: bad sort_order | num=%s file=%s user=%s | row=%r | %s',
-                        num, fname, user, row, exc
-                    )
-                    continue
-                value = row[1].strip().strip('"')
-                if not value:
-                    continue
-                conn.execute(
-                    "INSERT OR REPLACE INTO investmap_classifiers "
-                    "(classifier_num, field_name, sort_order, value) VALUES (?, ?, ?, ?)",
-                    (num, field_name, sort_order, value)
-                )
-                inserted += 1
-
+        inserted = _investmap_parse_and_insert(conn, f, fname, str(num))
         conn.commit()
         log_action(conn, session['user_id'], 'investmap_classifier_upload',
                    detail=f'Справочник №{num}: загружено {inserted} значений')
         conn.commit()
         flash(f'Справочник №{num}: загружено {inserted} значений', 'success')
-
     except UnicodeDecodeError:
         conn.rollback()
-        err_logger.exception(
-            'investmap upload: encoding error | num=%s file=%s user=%s',
-            num, fname, user
-        )
-        flash(
-            'Ошибка при загрузке: не удалось распознать кодировку файла. '
-            'Убедитесь, что файл сохранён в кодировке CP1251 или UTF-8.',
-            'error'
-        )
-
+        err_logger.exception('investmap upload: encoding error | num=%s file=%s user=%s', num, fname, user)
+        flash('Ошибка при загрузке: не удалось распознать кодировку файла.', 'error')
     except ValueError:
         conn.rollback()
-        err_logger.exception(
-            'investmap upload: ValueError | num=%s file=%s user=%s',
-            num, fname, user
-        )
-        flash(
-            'Ошибка при загрузке: некорректные данные в файле. '
-            'Проверьте формат столбца с порядковым номером.',
-            'error'
-        )
-
+        err_logger.exception('investmap upload: ValueError | num=%s file=%s user=%s', num, fname, user)
+        flash('Ошибка при загрузке: некорректные данные в файле.', 'error')
     except Exception:
         conn.rollback()
-        err_logger.exception(
-            'investmap upload: unexpected error | num=%s file=%s user=%s',
-            num, fname, user
-        )
-        flash(
-            'Ошибка при загрузке: внутренний сбой. '
-            'Попробуйте ещё раз или обратитесь к администратору.',
-            'error'
-        )
-
+        err_logger.exception('investmap upload: unexpected error | num=%s file=%s user=%s', num, fname, user)
+        flash('Ошибка при загрузке: внутренний сбой.', 'error')
     finally:
         conn.close()
 
     return redirect(url_for('admin.classifiers') + '#tab-investmap')
+
+
+# ─── Investmap: AJAX-загрузка справочника (num в URL → JSON) ────────────────────────────────────────────────
+@admin_bp.route('/admin/classifiers/investmap/upload/<int:num>', methods=['POST'])
+@login_required
+@permission_required('can_investmap_rules')
+def investmap_classifier_upload_ajax(num):
+    """AJAX-вариант загрузки справочника: POST /admin/classifiers/investmap/upload/<num>
+    Принимает multipart/form-data с полем 'file' (CSV).
+    Возвращает JSON: {count: N, error: null} или {count: 0, error: '...'}
+    """
+    f = request.files.get('file')
+    fname = f.filename.lower() if f else ''
+    if not f or not (fname.endswith('.xlsx') or fname.endswith('.csv')):
+        return jsonify({'count': 0, 'error': 'Поддерживаются только .csv и .xlsx'}), 400
+
+    user = session.get('username', f'id={session.get("user_id")}')
+    conn = get_db()
+    try:
+        inserted = _investmap_parse_and_insert(conn, f, fname, str(num))
+        conn.commit()
+        log_action(conn, session['user_id'], 'investmap_classifier_upload',
+                   detail=f'Справочник №{num} (AJAX): загружено {inserted} значений')
+        conn.commit()
+        return jsonify({'count': inserted, 'error': None})
+    except UnicodeDecodeError:
+        conn.rollback()
+        err_logger.exception('investmap upload ajax: encoding error | num=%s file=%s user=%s', num, fname, user)
+        return jsonify({'count': 0, 'error': 'Не удалось распознать кодировку файла'}), 400
+    except ValueError:
+        conn.rollback()
+        err_logger.exception('investmap upload ajax: ValueError | num=%s file=%s user=%s', num, fname, user)
+        return jsonify({'count': 0, 'error': 'Некорректные данные в файле'}), 400
+    except Exception:
+        conn.rollback()
+        err_logger.exception('investmap upload ajax: unexpected error | num=%s file=%s user=%s', num, fname, user)
+        return jsonify({'count': 0, 'error': 'Внутренняя ошибка сервера'}), 500
+    finally:
+        conn.close()
+
+
+def _investmap_parse_and_insert(conn, f, fname, num):
+    """Общая логика парсинга CSV/XLSX и вставки в investmap_classifiers.
+    Возвращает количество вставленных строк."""
+    field_row = conn.execute(
+        "SELECT display_name FROM investmap_fields WHERE classifier_num=? LIMIT 1",
+        (num,)
+    ).fetchone()
+    field_name = (field_row['display_name'] if field_row else None) or f'classifier_{num}'
+
+    inserted = 0
+
+    if fname.endswith('.xlsx'):
+        wb = openpyxl.load_workbook(io.BytesIO(f.read()), read_only=True, data_only=True)
+        ws = wb.active
+        for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True)):
+            if not row or row[0] is None:
+                continue
+            value = str(row[0]).strip()
+            if not value:
+                continue
+            conn.execute(
+                "INSERT OR REPLACE INTO investmap_classifiers "
+                "(classifier_num, field_name, sort_order, value) VALUES (?, ?, ?, ?)",
+                (num, field_name, i, value)
+            )
+            inserted += 1
+
+    elif fname.endswith('.csv'):
+        content = None
+        for encoding in ('utf-8-sig', 'cp1251', 'utf-8'):
+            try:
+                content = f.read().decode(encoding)
+                f.seek(0)
+                break
+            except (UnicodeDecodeError, AttributeError):
+                f.seek(0)
+                continue
+        if content is None:
+            raise UnicodeDecodeError('utf-8', b'', 0, 1, 'Не удалось определить кодировку')
+
+        # Автодетект разделителя: ';' или ','
+        delimiter = ';' if content.count(';') >= content.count(',') else ','
+        reader = csv.reader(io.StringIO(content), delimiter=delimiter)
+        next(reader, None)  # пропустить заголовок
+        for row in reader:
+            if len(row) < 2:
+                continue
+            if len(row) >= 3 and row[2].strip().strip('"') == 'Удалён':
+                continue
+            try:
+                sort_order = int(row[0].strip().strip('"'))
+            except ValueError:
+                continue
+            value = row[1].strip().strip('"')
+            if not value:
+                continue
+            conn.execute(
+                "INSERT OR REPLACE INTO investmap_classifiers "
+                "(classifier_num, field_name, sort_order, value) VALUES (?, ?, ?, ?)",
+                (num, field_name, sort_order, value)
+            )
+            inserted += 1
+
+    return inserted
 
 
 # ─── Investmap: очистка справочника ─────────────────────────────────────────────────────────────────────────────
@@ -894,7 +913,7 @@ def saved_filters():
             "ORDER BY sf.sort_order,sf.id"
         ).fetchall()
         employees = conn.execute(
-            "SELECT id,full_name FROM users WHERE role IN ('employee','admin') "
+                "SELECT id,full_name FROM users WHERE role IN ('employee','admin') "
             "ORDER BY full_name"
         ).fetchall()
         districts = [
@@ -983,16 +1002,10 @@ def apply_saved_filter(fid):
 
 
 # ─── /api/console ─────────────────────────────────────────────────────────────────────────────────────────────────────────
-# Управление консолью через браузер — запасной выход при потере иконки трея.
-# Роуты: GET /api/console/status, POST /api/console/show, POST /api/console/hide
-# Безопасно: только для администраторов (@admin_required).
-# Windows only — на других OS возвращает ok=false без падения.
-
 @admin_bp.route('/api/console/status')
 @login_required
 @admin_required
 def api_console_status():
-    """GET — возвращает текущее состояние консоли."""
     try:
         from tray import get_console_visible
         visible = get_console_visible()
@@ -1005,7 +1018,6 @@ def api_console_status():
 @login_required
 @admin_required
 def api_console_show():
-    """POST — показывает консоль."""
     try:
         from tray import show_console
         ok = show_console()
@@ -1018,7 +1030,6 @@ def api_console_show():
 @login_required
 @admin_required
 def api_console_hide():
-    """POST — скрывает консоль."""
     try:
         from tray import hide_console
         ok = hide_console()
