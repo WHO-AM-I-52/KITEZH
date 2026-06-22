@@ -16,8 +16,14 @@
 import sqlite3
 import shutil
 import os
+import sys
 
-BASE_DIR     = os.path.dirname(os.path.abspath(__file__))
+# Корень проекта — из paths.py (единый источник правды), устойчиво к переносу в updater/.
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+for _p in (_THIS_DIR, os.path.dirname(_THIS_DIR)):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+from paths import PROJECT_ROOT as BASE_DIR
 DB_DIR       = os.path.join(BASE_DIR, "db")
 SRC_DB       = os.path.join(DB_DIR, "database.db")
 TEMPLATE_DB  = os.path.join(DB_DIR, "db_template.db")

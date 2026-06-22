@@ -2,12 +2,18 @@ import urllib.request
 import json
 import re
 import os
+import sys
 from datetime import datetime
 
 REPO_OWNER = "WHO-AM-I-52"
 REPO_NAME = "SONAR"
 BRANCH = "main"
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# Корень проекта — из paths.py (единый источник правды), устойчиво к переносу в updater/.
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+for _p in (_THIS_DIR, os.path.dirname(_THIS_DIR)):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+from paths import PROJECT_ROOT as BASE_DIR
 CHANGELOG_PATH = os.path.join(BASE_DIR, "changelog.py")
 ROADMAP_PATH   = os.path.join(BASE_DIR, "roadmap.py")
 

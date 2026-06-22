@@ -24,7 +24,14 @@ from datetime import datetime
 
 REPO_OWNER    = "WHO-AM-I-52"
 REPO_NAME     = "KITEZH"
-BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
+# Корень проекта берём из paths.py (единый источник правды), а не из __file__.
+# Это позволяет безопасно перенести модуль в подпакет updater/ без поломки
+# путей применения патчей (dest = os.path.join(BASE_DIR, rel_path)).
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+for _p in (_THIS_DIR, os.path.dirname(_THIS_DIR)):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+from paths import PROJECT_ROOT as BASE_DIR
 API_BASE      = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}"
 COMMIT_FILE   = os.path.join(BASE_DIR, "_last_commit.txt")
 BRANCH_FILE   = os.path.join(BASE_DIR, "_branch.txt")
