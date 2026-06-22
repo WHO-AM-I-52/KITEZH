@@ -12,7 +12,7 @@ from core.auth_utils import login_required
 from utils.form_utils import build_values, get_classifiers, ALL_FIELDS, REQUIRED_FIELDS, add_workdays
 from utils.validators import allowed_file, validate_inn
 from core.activity_log import log_action
-from ocr_utils import extract_anketa_fields
+from services.ocr_utils import extract_anketa_fields
 from core.request_history import save_history
 from phonebook_routes import sync_request_to_phonebook
 from tray import notify_error

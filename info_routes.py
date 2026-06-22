@@ -19,8 +19,8 @@ from db import get_db, BASE_DIR
 from core.auth_utils import login_required
 from core.activity_log import log_action
 from changelog import CHANGELOG
-from roadmap import ROADMAP
-from dashboard import build_dash
+from services.roadmap import ROADMAP
+from services.dashboard import build_dash
 from datetime import datetime
 import os
 

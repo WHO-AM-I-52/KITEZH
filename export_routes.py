@@ -13,13 +13,13 @@ from db import get_db
 from core.auth_utils import login_required, get_user_perm
 from core.activity_log import log_action
 
-from export_excel import build_report_wb, build_minek_wb, build_full_wb
-from export_import import process_import_full, process_import_sites
+from services.export_excel import build_report_wb, build_minek_wb, build_full_wb
+from services.export_import import process_import_full, process_import_sites
 
 # Реэкспорт для обратной совместимости: внешний код, импортировавший эти имена
 # из export_routes, продолжит работать (validate_site_record и helpers).
-from export_import import validate_site_record, _parse_coords_point  # noqa: F401
-from export_helpers import (  # noqa: F401
+from services.export_import import validate_site_record, _parse_coords_point  # noqa: F401
+from services.export_helpers import (  # noqa: F401
     _short_fio, _std_border, _hex_to_argb, _fmt_date,
     _parse_date_for_db, _is_empty_cell, _parse_numeric_for_db,
     _mln_to_mld, _contact_cell, _apply_cell_value, _gen_request_number,

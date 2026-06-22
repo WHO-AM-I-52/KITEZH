@@ -141,7 +141,7 @@ from ai_routes         import ai_bp
 from quality_checks    import quality_bp
 from admin_sql_routes  import admin_sql_bp
 from portal_analysis.portal_analysis_routes import portal_analysis_bp
-import backup_scheduler
+import services.backup_scheduler as backup_scheduler
 
 for bp in [
     phonebook_bp, search_bp,

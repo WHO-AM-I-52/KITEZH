@@ -29,7 +29,7 @@ from werkzeug.utils import secure_filename
 from db import get_db
 from core.auth_utils import login_required, admin_required
 from core.activity_log import log_action
-from ocr_utils import extract_anketa_fields
+from services.ocr_utils import extract_anketa_fields
 
 logger = logging.getLogger(__name__)
 
