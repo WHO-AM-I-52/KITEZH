@@ -1013,7 +1013,7 @@
 
     es.addEventListener('done', function(e) {
       var d = JSON.parse(e.data);
-      // ── FIX: показываем баннер отчёта, даём 3 сек прочитать, потом рестарт ──
+      // ── показываем баннер отчёта, даём 3 сек прочитать, потом запускаем ожидание рестарта ──
       _sseDone(d);
       _sseClose();
       setTimeout(function() {
@@ -1084,25 +1084,42 @@
   }
 
   // ── Ожидание перезапуска сервера ─────────────────────────────────────────
+  // Двухфазная логика:
+  // Фаза 1 — ждём пока /ping НЕ отвечает (сервер остановился)
+  // Фаза 2 — ждём пока /ping снова отвечает (сервер поднялся)
 
   function _pollRestart() {
-    var attempts    = 0;
-    var maxAttempts = 40;
+    var _serverWasDown = false;
+    var attempts       = 0;
+    var maxAttempts    = 60;  // 120 сек
+
     var t = setInterval(function() {
       attempts++;
       fetch('/ping', {cache: 'no-store', credentials: 'same-origin'})
         .then(function(r) {
-          if (r.ok) {
+          if (!_serverWasDown) {
+            // Сервер ещё не падал — ждём
+            return;
+          }
+          // Сервер поднялся после падения — перезагружаем
+          if (r.ok || r.status === 204) {
             clearInterval(t);
             _updSetStatus(
-              '<i class="bi bi-check-circle-fill me-1 text-success"></i>Обновление завершено! Перезагрузка…',
-              'ok'
+              '<i class="bi bi-check-circle-fill me-1 text-success"></i>' +
+              'Обновление завершено! Перезагрузка…', 'ok'
             );
-            // ── FIX: задержка 1.5с перед reload, чтобы статус был виден ──
             setTimeout(function() { location.reload(); }, 1500);
           }
         })
-        .catch(function() {});
+        .catch(function() {
+          // /ping не отвечает → сервер остановился
+          _serverWasDown = true;
+          _updSetStatus(
+            '<span class="spin"><i class="bi bi-arrow-repeat"></i></span>' +
+            ' Сервер перезапускается…', 'progress'
+          );
+        });
+
       if (attempts >= maxAttempts) {
         clearInterval(t);
         _updSetStatus(
