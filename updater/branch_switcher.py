@@ -33,7 +33,7 @@ def switch(target_branch: str):
     print(f"[OK] Ветка переключена на: {target_branch}")
 
     # Запускаем _updater.py — он прочитает _branch.txt и скачает нужную ветку
-    updater_path = os.path.join(BASE_DIR, "_updater.py")
+    updater_path = os.path.join(BASE_DIR, "updater", "_updater.py")
     result = subprocess.run(
         [sys.executable, updater_path],
         cwd=BASE_DIR,

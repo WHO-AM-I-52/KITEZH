@@ -97,6 +97,11 @@ BAT_NAME = "start KITEZH.bat"
 # _updater.py защищён — самообновление небезопасно во время работы
 PROTECTED_DIRS  = {"uploads", "reports", "WPy", "Bacup", "db"}
 PROTECTED_FILES = {"_updater.py", ".env"}
+# Защищённые по ИМЕНИ файла (независимо от расположения в дереве).
+# _updater.py теперь живёт в пакете updater/, поэтому защиту по первому
+# сегменту пути (top) дополняем защитой по basename, чтобы работающий
+# updater/_updater.py НЕ перезаписывался сам себя во время апдейта.
+PROTECTED_BASENAMES = {"_updater.py"}
 
 SPINNER = ["||", "|/", "--", "\\/"]
 
@@ -106,6 +111,8 @@ def should_skip(rel_path: str) -> bool:
     top  = p.split("/")[0]
     base = os.path.basename(p)
     if top in PROTECTED_DIRS or top in PROTECTED_FILES:
+        return True
+    if base in PROTECTED_BASENAMES:
         return True
     if base in {"database.db", "database.db-wal", "database.db-shm"}:
         return True
@@ -523,7 +530,7 @@ def ensure_github_release():
 
 def run_sync_changelog():
     """Синхронизирует changelog.py с GitHub Releases после обновления."""
-    sync_path = os.path.join(BASE_DIR, "sync_changelog.py")
+    sync_path = os.path.join(BASE_DIR, "updater", "sync_changelog.py")
     if not os.path.exists(sync_path):
         _log("  [Changelog] sync_changelog.py не найден — пропуск.")
         return
