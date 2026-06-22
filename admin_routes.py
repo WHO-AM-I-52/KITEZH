@@ -35,11 +35,11 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify
 
 from db import get_db
-from auth_utils import (
+from core.auth_utils import (
     login_required, admin_required, hash_pw,
     ALL_PERMISSIONS, ADMIN_PERMISSIONS, load_permissions_to_session,
 )
-from activity_log import get_activity_log, get_perm_audit, ACTION_LABELS, log_action
+from core.activity_log import get_activity_log, get_perm_audit, ACTION_LABELS, log_action
 
 # Подмодули декомпозиции
 import admin_deps

@@ -8,7 +8,7 @@
 
 from flask import Blueprint, render_template, request, session, redirect, url_for, flash
 from db import get_db
-from auth_utils import login_required, hash_pw, check_pw
+from core.auth_utils import login_required, hash_pw, check_pw
 
 settings_bp = Blueprint('settings', __name__)
 

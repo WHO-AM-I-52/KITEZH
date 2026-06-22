@@ -10,8 +10,8 @@ from flask import (
 from datetime import datetime
 
 from db import get_db
-from auth_utils import hash_pw, check_pw, is_legacy_hash, load_permissions_to_session
-from limiter import limiter
+from core.auth_utils import hash_pw, check_pw, is_legacy_hash, load_permissions_to_session
+from core.limiter import limiter
 
 auth_bp = Blueprint('auth', __name__)
 

@@ -13,9 +13,9 @@ import openpyxl
 from flask import render_template, request, redirect, url_for, session, flash, jsonify
 
 from db import get_db
-from auth_utils import login_required, admin_required, permission_required
-from activity_log import log_action
-from kitezh_logger import err_logger
+from core.auth_utils import login_required, admin_required, permission_required
+from core.activity_log import log_action
+from core.kitezh_logger import err_logger
 
 
 def _investmap_parse_and_insert(conn, f, fname, num):

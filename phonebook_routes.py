@@ -23,8 +23,8 @@
 from flask import (Blueprint, render_template, request,
                    redirect, url_for, flash, jsonify, session)
 from db import get_db
-from auth_utils import login_required, admin_required, permission_required
-from activity_log import log_action
+from core.auth_utils import login_required, admin_required, permission_required
+from core.activity_log import log_action
 
 phonebook_bp = Blueprint('phonebook', __name__)
 

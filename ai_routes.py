@@ -27,8 +27,8 @@ from flask import Blueprint, request, jsonify, render_template, session
 from werkzeug.utils import secure_filename
 
 from db import get_db
-from auth_utils import login_required, admin_required
-from activity_log import log_action
+from core.auth_utils import login_required, admin_required
+from core.activity_log import log_action
 from ocr_utils import extract_anketa_fields
 
 logger = logging.getLogger(__name__)

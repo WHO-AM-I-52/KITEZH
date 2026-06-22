@@ -5,7 +5,7 @@
 
 from flask import Blueprint, jsonify, session
 from db import get_db
-from auth_utils import login_required
+from core.auth_utils import login_required
 
 preview_bp = Blueprint('preview', __name__)
 

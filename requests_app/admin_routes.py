@@ -9,8 +9,8 @@ from datetime import datetime
 from flask import request, redirect, url_for, session, flash, abort
 
 from db import get_db
-from auth_utils import login_required
-from activity_log import log_action
+from core.auth_utils import login_required
+from core.activity_log import log_action
 from . import requests_bp
 
 
@@ -55,7 +55,7 @@ def generate_request_number(conn, subject_type_id):
 @requests_bp.route('/request/<int:rid>/confirm', methods=['POST'])
 @login_required
 def confirm_request(rid):
-    from auth_utils import get_user_perm
+    from core.auth_utils import get_user_perm
     if session.get('role') != 'admin' and not get_user_perm('can_confirm'):
         flash('Недостаточно прав', 'error')
         return redirect(url_for('requests.index'))

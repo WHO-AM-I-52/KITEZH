@@ -31,8 +31,8 @@ from flask import Flask, jsonify, render_template, request as flask_request, ses
 
 from db import BASE_DIR, run_migrations
 from migrations import init_db, migrate_db, migrate_districts
-from context_processors import inject_globals
-from kitezh_logger import err_logger
+from core.context_processors import inject_globals
+from core.kitezh_logger import err_logger
 
 app = Flask(__name__)
 
@@ -40,7 +40,7 @@ app = Flask(__name__)
 _MAINTENANCE_FLAG = os.path.join(BASE_DIR, '.maintenance')
 
 # ─── SECRET_KEY ─────────────────────────────────────────────────────────────────────────────
-from limiter import limiter
+from core.limiter import limiter
 import secrets as _secrets
 _KEY_FILE = os.path.join(BASE_DIR, '_secret.key')
 _env_key  = os.environ.get('SECRET_KEY')

@@ -11,7 +11,7 @@ import json
 from flask import render_template, request, redirect, url_for, session, flash
 
 from db import get_db
-from auth_utils import login_required
+from core.auth_utils import login_required
 
 
 def _build_filter_query(p):

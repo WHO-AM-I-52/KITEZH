@@ -10,8 +10,8 @@
 from flask import Blueprint, request, send_file, jsonify, session
 
 from db import get_db
-from auth_utils import login_required, get_user_perm
-from activity_log import log_action
+from core.auth_utils import login_required, get_user_perm
+from core.activity_log import log_action
 
 from export_excel import build_report_wb, build_minek_wb, build_full_wb
 from export_import import process_import_full, process_import_sites

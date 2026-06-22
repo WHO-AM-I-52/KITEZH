@@ -10,7 +10,7 @@ from datetime import datetime
 import openpyxl
 
 from db import get_db
-from activity_log import log_action
+from core.activity_log import log_action
 from export_helpers import (
     STATUS_IMPORT_MAP, REQUIRED_FOR_CREATE,
     STUB_PAYMENT_MAX, VRI_INCOMPATIBLE_WITH_AGRI,

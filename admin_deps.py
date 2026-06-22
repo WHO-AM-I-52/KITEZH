@@ -13,7 +13,7 @@ import importlib.util
 
 from flask import render_template, request, jsonify
 
-from auth_utils import login_required, admin_required
+from core.auth_utils import login_required, admin_required
 
 # requirements.txt лежит рядом с этим файлом (корень проекта)
 _REQUIREMENTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'requirements.txt')

@@ -26,8 +26,8 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 from db import get_db, UPLOADS_DIR
-from auth_utils import login_required, admin_required
-from activity_log import log_action
+from core.auth_utils import login_required, admin_required
+from core.activity_log import log_action
 
 pb_import_bp = Blueprint('pb_import', __name__)
 

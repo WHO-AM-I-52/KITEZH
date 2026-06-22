@@ -16,8 +16,8 @@
 
 from flask import Blueprint, render_template, session, jsonify, request as flask_request, redirect, url_for
 from db import get_db, BASE_DIR
-from auth_utils import login_required
-from activity_log import log_action
+from core.auth_utils import login_required
+from core.activity_log import log_action
 from changelog import CHANGELOG
 from roadmap import ROADMAP
 from dashboard import build_dash

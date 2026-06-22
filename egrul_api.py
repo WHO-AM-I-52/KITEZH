@@ -22,8 +22,8 @@ import requests as http
 from flask import Blueprint, request, jsonify, session
 
 from db import get_db
-from auth_utils import login_required
-from activity_log import log_action
+from core.auth_utils import login_required
+from core.activity_log import log_action
 
 # ─── НАСТРОЙКИ ──────────────────────────────────────────────────────────────
 

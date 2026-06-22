@@ -38,7 +38,7 @@
 
 from flask import Blueprint, jsonify, request as flask_request, session, Response, stream_with_context
 from db import BASE_DIR
-from activity_log import log_action
+from core.activity_log import log_action
 from db import get_db
 from datetime import datetime
 import os
