@@ -29,26 +29,20 @@ API_BASE      = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}"
 COMMIT_FILE   = os.path.join(BASE_DIR, "_last_commit.txt")
 BRANCH_FILE   = os.path.join(BASE_DIR, "_branch.txt")
 ZIP_PATH      = os.path.join(BASE_DIR, "_kitezh_update.zip")
-LOG_FILE      = os.path.join(BASE_DIR, "_updater_log.txt")
+LOGS_DIR      = os.path.join(BASE_DIR, "logs")
+LOG_FILE      = os.path.join(LOGS_DIR, "_updater_log.txt")
 FALLBACK_KB   = 600
 
 # ── Флаг --stream-json: JSON-строки прогресса в stdout для SSE-стрима ────────
 STREAM_JSON = "--stream-json" in sys.argv
 
 def _log_to_file(msg: str):
-    """Пишет строку с меткой времени в _updater_log.txt.
+    """Пишет строку с меткой времени в logs/_updater_log.txt.
     Вызывается из _log() — всегда, независимо от режима.
-    Ротация: если файл > 200 КБ — обрезается до последних 100 КБ.
+    Файл накапливается; папка logs/ создаётся автоматически если не существует.
     """
     try:
-        # Ротация
-        if os.path.exists(LOG_FILE) and \
-           os.path.getsize(LOG_FILE) > 200 * 1024:
-            with open(LOG_FILE, 'rb') as f:
-                f.seek(-100 * 1024, 2)
-                tail = f.read()
-            with open(LOG_FILE, 'wb') as f:
-                f.write(tail)
+        os.makedirs(LOGS_DIR, exist_ok=True)
         ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         with open(LOG_FILE, 'a', encoding='utf-8') as f:
             f.write(f"[{ts}] {msg}\n")
@@ -277,9 +271,7 @@ def _print_progress(downloaded: int, estimated_kb: int, spinner_idx: int):
         pct    = downloaded / (estimated_kb * 1024) * 100
         filled = int(pct / 5)
         bar    = "█" * filled + "░" * (20 - filled)
-        # Текстовый прогресс в консоль (bat-окно) — всегда через stderr
         print(f"  [{bar}] {pct:4.0f}%  {size_kb} / ~{estimated_kb} КБ", end="\r", flush=True, file=sys.stderr)
-        # JSON-прогресс для SSE-стрима — только в stdout
         _sjson({
             "type":          "download_pct",
             "pct":           round(min(pct, 100), 1),
@@ -289,7 +281,6 @@ def _print_progress(downloaded: int, estimated_kb: int, spinner_idx: int):
     else:
         spin = SPINNER[spinner_idx % len(SPINNER)]
         print(f"  [{spin}] Скачано: {size_kb} КБ...", end="\r", flush=True, file=sys.stderr)
-        # Если размер неизвестен — отдаём pct=-1 как сигнал «неопределённо»
         _sjson({
             "type":          "download_pct",
             "pct":           -1,
@@ -306,9 +297,6 @@ def download_zip(zip_path: str):
     url = f"{API_BASE}/zipball/{BRANCH}"
     req = urllib.request.Request(url, headers=_headers())
     _log("  Скачиваем архив обновления...")
-    # GitHub zipball отдаёт 302 → codeload.github.com (другой хост).
-    # urllib не следует cross-origin redirect по умолчанию —
-    # создаём opener с явным HTTPRedirectHandler.
     opener = urllib.request.build_opener(urllib.request.HTTPRedirectHandler())
     with opener.open(req, timeout=60) as r:
         show_rate_limit(r.headers)
@@ -328,10 +316,9 @@ def download_zip(zip_path: str):
                 downloaded  += len(chunk)
                 spinner_idx += 1
                 _print_progress(downloaded, estimated_kb, spinner_idx)
-    print(file=sys.stderr)  # перевод строки после \r прогресса
+    print(file=sys.stderr)
     size_kb = os.path.getsize(zip_path) // 1024
     _log(f"  Архив обновления скачан: {size_kb} КБ")
-    # Финальный 100% после завершения скачивания
     _sjson({
         "type":          "download_pct",
         "pct":           100,
@@ -367,14 +354,13 @@ def extract_and_apply(zip_path: str, force: bool = False):
             return 0, 0, 0, 0, False
         repo_root = os.path.join(tmp_dir, entries[0])
 
-        # ── Предварительный подсчёт файлов для прогресс-бара установки ──
         all_files = []
         for dirpath, dirnames, filenames in os.walk(repo_root):
             for fname in filenames:
                 rel_dir  = os.path.relpath(dirpath, repo_root)
                 rel_path = fname if rel_dir == "." else os.path.join(rel_dir, fname)
                 all_files.append((dirpath, fname, rel_path))
-        total_files = max(len(all_files), 1)  # защита от деления на ноль
+        total_files = max(len(all_files), 1)
 
         _log("  Применяем обновления...")
         processed = 0
@@ -595,7 +581,6 @@ def _cmd_apply_only(force: bool = False):
         _log(f"  [ОШИБКА] Архив {ZIP_PATH} не найден. Сначала выполни --download-only.")
         sys.exit(1)
 
-    # Для --apply-only SHA считываем заново (zip уже скачан, но SHA надо сохранить)
     remote_sha = get_remote_sha()
 
     apply_ok = False
@@ -623,7 +608,6 @@ def _cmd_apply_only(force: bool = False):
         _log(f"  Ошибок при записи    : {errors}")
     _log("")
 
-    # JSON-итог для SSE-стрима — реальный счётчик errors передаётся в UI
     _sjson({
         "type":      "done",
         "updated":   updated,
@@ -670,11 +654,11 @@ def main():
 
     if "--download-only" in sys.argv:
         _cmd_download_only()
-        return  # sys.exit внутри
+        return
 
     if "--apply-only" in sys.argv:
         _cmd_apply_only(force=force_mode)
-        return  # sys.exit внутри
+        return
 
     # ── Обычный режим: скачать + применить за один запуск ──
     _log("  Подключаемся к GitHub...")
