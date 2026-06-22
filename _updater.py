@@ -9,6 +9,7 @@
 # ║  Не трогает БД и файлы пользователя.                               ║
 # ║  get_commits_between: список коммитов для панели обновлений          ║
 # ╚════════════════════════════════════════════════════════════════════════╝
+from __future__ import annotations
 
 import urllib.request
 import urllib.error
