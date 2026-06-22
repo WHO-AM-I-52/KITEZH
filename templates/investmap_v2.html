@@ -288,7 +288,8 @@
     .then(function(resp){
       setLoading(false);
       if (resp.error){ showError('Ошибка: ' + resp.error); return; }
-      var list = Array.isArray(resp) ? resp : [resp];
+      /* fix #5в: сервер возвращает {results:[...], count:N, error:null} */
+      var list = Array.isArray(resp.results) ? resp.results : [resp];
       allData    = list;
       currentIdx = 0;
       initNav(list);
@@ -334,7 +335,7 @@
     var score   = typeof d.score === 'number' ? d.score : 0;
     var missing = Array.isArray(d.missing) ? d.missing : [];
     var skipped = Array.isArray(d.skipped) ? d.skipped : [];
-    var total   = typeof d.total_fields === 'number' ? d.total_fields : (missing.length + (typeof d.filled === 'number' ? d.filled : 0));
+    var total   = typeof d.total === 'number' ? d.total : (missing.length + (typeof d.filled === 'number' ? d.filled : 0));
     var filled  = typeof d.filled === 'number' ? d.filled : (total - missing.length);
 
     /* Score-кружок */
