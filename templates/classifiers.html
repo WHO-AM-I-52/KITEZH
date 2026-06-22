@@ -16,6 +16,17 @@
   body[data-theme="zone"] .result-row-selected { background: #251e08 !important; }
   .cls-th { background: var(--surface2) !important; color: var(--text) !important; }
   .cls-info { background: var(--surface2) !important; border-color: var(--border) !important; color: var(--text) !important; }
+
+  /* ── Массовая загрузка investmap ── */
+  #im-bulk-table { display: none; }
+  #im-bulk-table .im-num-input {
+    width: 90px;
+    text-align: center;
+  }
+  #im-upload-all-btn { display: none; }
+  .im-status-ok   { color: #198754; font-weight: 600; }
+  .im-status-err  { color: #dc3545; font-weight: 600; }
+  .im-status-wait { color: var(--text-muted, #6c757d); }
 </style>
 
 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -416,30 +427,57 @@
   {# ===== СПРАВОЧНИКИ ИНВЕСТ. КАРТЫ ===== #}
   <div class="tab-pane fade" id="tab-investmap">
     <div class="row g-3 mt-2">
+
+      {# ── Левая колонка: загрузка ── #}
       <div class="col-md-5">
         <div class="card p-3">
           <h6 class="mb-3" style="color:#1B5E7B">
-            <i class="bi bi-upload me-1"></i>Загрузить справочник
+            <i class="bi bi-upload me-1"></i>Массовая загрузка справочников
           </h6>
-          <form action="{{ url_for('admin.investmap_classifier_upload') }}" method="post" enctype="multipart/form-data">
-            <div class="mb-2">
-              <label class="form-label fw-bold" style="font-size:12px">№ справочника</label>
-              <input type="number" name="classifier_num" class="form-control form-control-sm"
-                     placeholder="например 441" required>
+
+          {# Кнопка выбора файлов #}
+          <div class="mb-2">
+            <label class="form-label fw-bold" style="font-size:12px">Выбрать файлы CSV</label>
+            <input type="file" id="im-file-input"
+                   class="form-control form-control-sm"
+                   accept=".csv" multiple>
+            <div class="form-text" style="font-size:11px">
+              Можно выбрать сразу несколько файлов. Номер справочника
+              подставляется автоматически из имени файла (если содержит «№NNN»).
             </div>
-            <div class="mb-2">
-              <label class="form-label fw-bold" style="font-size:12px">Файл Excel (.xlsx)</label>
-              <input type="file" name="file" class="form-control form-control-sm" accept=".xlsx" required>
+          </div>
+
+          {# Таблица файлов #}
+          <div id="im-bulk-table" class="mt-2">
+            <div style="max-height:360px;overflow-y:auto">
+              <table class="table table-sm table-hover mb-0" style="font-size:12px">
+                <thead>
+                  <tr>
+                    <th class="cls-th">Файл</th>
+                    <th class="cls-th" style="width:110px">№ справочника</th>
+                    <th class="cls-th" style="width:90px">Статус</th>
+                  </tr>
+                </thead>
+                <tbody id="im-bulk-tbody"></tbody>
+              </table>
             </div>
-            <button type="submit" class="btn btn-sm btn-primary w-100">
-              <i class="bi bi-upload me-1"></i>Загрузить
-            </button>
-          </form>
-          <div class="form-text mt-2" style="font-size:11px">
-            Столбец A — порядковый номер, столбец B — значение. Первая строка — заголовок.
+          </div>
+
+          {# Кнопка «Загрузить всё» #}
+          <button id="im-upload-all-btn"
+                  class="btn btn-sm btn-primary w-100 mt-3">
+            <i class="bi bi-cloud-upload me-1"></i>Загрузить всё
+          </button>
+
+          <div class="cls-info alert border mt-3 mb-0 p-2" style="font-size:11px">
+            <i class="bi bi-info-circle text-muted me-1"></i>
+            CSV UTF-8, разделитель «;» или «,». Столбец A — порядковый номер,
+            столбец B — значение. Первая строка — заголовок.
           </div>
         </div>
       </div>
+
+      {# ── Правая колонка: загруженные справочники ── #}
       <div class="col-md-7">
         <div class="card p-3">
           <h6 class="mb-2" style="color:#1B5E7B">
@@ -517,8 +555,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     openTabByHash(window.location.hash);
 
-    /* ── 2. Bulk-delete ────────────────────────────────────────────────────────── */
-
+    /* ── 2. Bulk-delete (итоги работы) ── */
     function syncBulk() {
       var btn      = document.getElementById('bulk-delete-btn');
       var idsInput = document.getElementById('bulk-delete-ids');
@@ -561,12 +598,155 @@ document.addEventListener('DOMContentLoaded', function () {
 
     var resultTabLink = document.querySelector('#classTab a[href="#tab-result"]');
     if (resultTabLink) {
-      resultTabLink.addEventListener('shown.bs.tab', function () {
-        syncBulk();
-      });
+      resultTabLink.addEventListener('shown.bs.tab', function () { syncBulk(); });
     }
 
     syncBulk();
+
+
+    /* ═══════════════════════════════════════════════════════════════
+       3. Массовая загрузка справочников investmap
+    ═══════════════════════════════════════════════════════════════ */
+
+    var fileInput     = document.getElementById('im-file-input');
+    var bulkTable     = document.getElementById('im-bulk-table');
+    var bulkTbody     = document.getElementById('im-bulk-tbody');
+    var uploadAllBtn  = document.getElementById('im-upload-all-btn');
+
+    if (!fileInput) return;
+
+    /* Regex для извлечения номера из имени файла: «№NNN» или «#NNN» */
+    var RE_NUM = /[№#]\s*(\d+)/;
+
+    /* При выборе файлов — строим таблицу */
+    fileInput.addEventListener('change', function () {
+      var files = Array.from(fileInput.files);
+
+      if (files.length === 0) {
+        bulkTable.style.display    = 'none';
+        uploadAllBtn.style.display = 'none';
+        bulkTbody.innerHTML        = '';
+        return;
+      }
+
+      bulkTbody.innerHTML = '';
+
+      files.forEach(function (file, idx) {
+        /* Автопарсинг номера из имени файла */
+        var match     = RE_NUM.exec(file.name);
+        var autoNum   = match ? match[1] : '';
+
+        var tr        = document.createElement('tr');
+        tr.dataset.idx = idx;
+
+        /* Ячейка: имя файла */
+        var tdName    = document.createElement('td');
+        tdName.style.wordBreak = 'break-all';
+        tdName.textContent     = file.name;
+
+        /* Ячейка: поле ввода номера */
+        var tdNum     = document.createElement('td');
+        var numInput  = document.createElement('input');
+        numInput.type        = 'number';
+        numInput.min         = '1';
+        numInput.className   = 'form-control form-control-sm im-num-input';
+        numInput.placeholder = 'напр. 303';
+        numInput.value       = autoNum;
+        tdNum.appendChild(numInput);
+
+        /* Ячейка: статус */
+        var tdStatus  = document.createElement('td');
+        tdStatus.className   = 'im-status-wait';
+        tdStatus.textContent = '—';
+
+        tr.appendChild(tdName);
+        tr.appendChild(tdNum);
+        tr.appendChild(tdStatus);
+        bulkTbody.appendChild(tr);
+      });
+
+      bulkTable.style.display    = '';
+      uploadAllBtn.style.display = '';
+    });
+
+
+    /* При нажатии «Загрузить всё» — AJAX-цикл */
+    uploadAllBtn.addEventListener('click', function () {
+      var files = Array.from(fileInput.files);
+      var rows  = Array.from(bulkTbody.querySelectorAll('tr'));
+
+      if (files.length === 0) return;
+
+      /* Блокируем кнопку на время загрузки */
+      uploadAllBtn.disabled    = true;
+      uploadAllBtn.innerHTML   = '<span class="spinner-border spinner-border-sm me-1"></span>Загружаю...';
+
+      /* Последовательная загрузка (промис-цепочка) */
+      var chain = Promise.resolve();
+
+      files.forEach(function (file, idx) {
+        chain = chain.then(function () {
+          return uploadOne(file, rows[idx]);
+        });
+      });
+
+      chain.then(function () {
+        uploadAllBtn.disabled  = false;
+        uploadAllBtn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i>Загрузить всё';
+      });
+    });
+
+
+    /**
+     * Загружает один файл через POST /admin/classifiers/investmap/upload/<num>
+     * Обновляет статус в строке таблицы.
+     */
+    function uploadOne(file, tr) {
+      var numInput = tr.querySelector('.im-num-input');
+      var tdStatus = tr.cells[2];
+      var num      = numInput ? numInput.value.trim() : '';
+
+      /* Валидация номера */
+      if (!num || isNaN(parseInt(num, 10)) || parseInt(num, 10) < 1) {
+        tdStatus.className   = 'im-status-err';
+        tdStatus.textContent = '❌ Укажите № справочника';
+        return Promise.resolve();
+      }
+
+      tdStatus.className   = 'im-status-wait';
+      tdStatus.innerHTML   = '<span class="spinner-border spinner-border-sm"></span>';
+
+      var formData = new FormData();
+      formData.append('file', file);
+
+      return fetch('/admin/classifiers/investmap/upload/' + encodeURIComponent(num), {
+        method: 'POST',
+        body:   formData,
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      })
+      .then(function (resp) {
+        return resp.json().then(function (data) {
+          return { ok: resp.ok, data: data };
+        }).catch(function () {
+          return { ok: resp.ok, data: { error: 'Ошибка разбора ответа' } };
+        });
+      })
+      .then(function (result) {
+        if (result.ok && !result.data.error) {
+          var cnt = result.data.count !== undefined ? result.data.count : '?';
+          tdStatus.className   = 'im-status-ok';
+          tdStatus.textContent = '✅ ' + cnt + ' записей';
+        } else {
+          var msg = (result.data && result.data.error) ? result.data.error : 'Ошибка сервера';
+          tdStatus.className   = 'im-status-err';
+          tdStatus.textContent = '❌ ' + msg;
+        }
+      })
+      .catch(function (err) {
+        tdStatus.className   = 'im-status-err';
+        tdStatus.textContent = '❌ ' + (err.message || 'Сетевая ошибка');
+      });
+    }
 
   })();
 });
