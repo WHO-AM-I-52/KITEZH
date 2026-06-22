@@ -28,6 +28,9 @@
 # ║  v2.2.8: FIX запись _pre_update.json СИНХРОННО до          ║
 # ║           запуска SSE-генератора — не-админы гарантированно  ║
 # ║           получают редирект на игру                          ║
+# ║  v2.2.9: FIX _run_bat_restart sleep 10→3, os._exit(0)→42;   ║
+# ║           _shutdown thread daemon=True→False — гарантия      ║
+# ║           вызова os._exit(42) до завершения процесса         ║
 # ╚═══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, jsonify, request as flask_request, session, Response, stream_with_context
@@ -161,7 +164,8 @@ def _lock_clear():
 
 def _run_bat_restart():
     """Запускает 'start KITEZH.bat' в отдельном окне (Windows),
-    затем через 10 сек закрывает текущий процесс.
+    затем через 3 сек закрывает текущий процесс с кодом 42.
+    Код 42 → .bat делает goto :start_server.
     """
     bat_path = os.path.join(BASE_DIR, _BAT_NAME)
     try:
@@ -172,8 +176,8 @@ def _run_bat_restart():
         )
     except Exception:
         pass
-    time.sleep(10)
-    os._exit(0)
+    time.sleep(3)
+    os._exit(42)
 
 
 # ─── SSE-утилита ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -423,7 +427,7 @@ def api_update_stream():
             def _shutdown():
                 time.sleep(2)   # даём done-событию дойти до браузера
                 os._exit(42)    # код 42 = авторестарт через .bat
-            threading.Thread(target=_shutdown, daemon=True).start()
+            threading.Thread(target=_shutdown, daemon=False).start()
 
     return Response(
         stream_with_context(_generate()),
