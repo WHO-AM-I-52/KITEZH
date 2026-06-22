@@ -1046,8 +1046,40 @@
     es.addEventListener('heartbeat', function() {});
 
     es.onerror = function() {
+      // Если done-панель уже видна — обновление завершено,
+      // игнорируем onerror (штатное закрытие потока)
       if (!_sseDonePanel.classList.contains('d-none')) return;
+
       _sseClose();
+
+      // Определяем: был ли apply-прогресс > 0?
+      // Если да — сервер, вероятно, перезапускается.
+      // Если нет — скорее всего сетевая ошибка до старта.
+      var applyPct = parseFloat(_sseApplyBar.style.width) || 0;
+      var dlPct    = parseFloat(_sseDlBar.style.width)    || 0;
+
+      if (applyPct > 0) {
+          // Apply начался → сервер, вероятно, перезапускается
+          _sseHideBars();
+          _updSetStatus(
+              '<span class="spin"><i class="bi bi-arrow-repeat"></i></span>' +
+              ' Ожидаем перезапуска сервера…',
+              'progress'
+          );
+          _pollRestart();
+      } else if (dlPct > 0) {
+          // Download шёл, apply не начался → ошибка в середине
+          _sseHideBars();
+          _sseDoneIcon.className  = 'bi bi-exclamation-triangle-fill text-warning';
+          _sseDoneTitle.textContent = 'Поток прерван во время скачивания';
+          _sseDoneNote.textContent  =
+              'Попробуйте обновить страницу и запустить повторно.';
+          _sseDonePanel.classList.remove('d-none');
+          _setBtnsEnabled(true);
+      } else {
+          // Поток закрылся до начала работы → сетевая ошибка
+          _setBtnsEnabled(true);
+      }
     };
   }
 
