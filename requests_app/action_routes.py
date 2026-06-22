@@ -13,7 +13,7 @@ from werkzeug.utils import secure_filename
 from db import get_db, UPLOADS_DIR, STATUS_NORM_DAYS, _add_workdays
 from auth_utils import login_required, permission_required
 from activity_log import log_action
-from validators import allowed_file
+from utils.validators import allowed_file
 from . import requests_bp
 
 

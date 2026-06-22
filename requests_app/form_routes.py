@@ -9,8 +9,8 @@ from werkzeug.utils import secure_filename
 
 from db import get_db, UPLOADS_DIR, UPLOADS_TMP
 from auth_utils import login_required
-from form_utils import build_values, get_classifiers, ALL_FIELDS, REQUIRED_FIELDS, add_workdays
-from validators import allowed_file, validate_inn
+from utils.form_utils import build_values, get_classifiers, ALL_FIELDS, REQUIRED_FIELDS, add_workdays
+from utils.validators import allowed_file, validate_inn
 from activity_log import log_action
 from ocr_utils import extract_anketa_fields
 from request_history import save_history

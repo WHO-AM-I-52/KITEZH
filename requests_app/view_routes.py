@@ -5,7 +5,7 @@ from db import get_db
 from auth_utils import login_required, admin_required
 from request_history import get_history, rollback_history
 from activity_log import log_action
-from form_utils import denormalize_from_base, FIELD_UNIT_KEY
+from utils.form_utils import denormalize_from_base, FIELD_UNIT_KEY
 from . import requests_bp
 
 # ─── Issue #48: поля, которые денормализуются в карточке ──────────────────
