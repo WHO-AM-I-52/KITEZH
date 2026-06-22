@@ -566,13 +566,37 @@ def api_update_check():
 
 # ─── Общая логика рабочего потока: download → таймер → apply ─────────────────
 
-def _build_timer_worker(delay: int, force: bool, user_id: int):
+def _parse_apply_stats(stdout: str) -> dict:
+    """Извлекает счётчики из текстового отчёта _updater.py --apply-only
+    (без --stream-json). Строки вида 'Обновлено файлов : N'.
+    Возвращает dict с ключами updated/unchanged/skipped/errors.
+    """
+    import re
+    stats = {'updated': 0, 'unchanged': 0, 'skipped': 0, 'errors': 0}
+    patterns = {
+        'updated':   r'Обновлено файлов\s*:\s*(\d+)',
+        'unchanged': r'Без изменений\s*:\s*(\d+)',
+        'skipped':   r'Пропущено[^:]*:\s*(\d+)',
+        'errors':    r'Ошибок при записи\s*:\s*(\d+)',
+    }
+    for key, pat in patterns.items():
+        m = re.search(pat, stdout or '')
+        if m:
+            try:
+                stats[key] = int(m.group(1))
+            except ValueError:
+                pass
+    return stats
+
+
+def _build_timer_worker(delay: int, force: bool, user_id: int, applied_by: str = ''):
     """Ретурнит целевую функцию для threading.Thread.
     Флоу: phase=downloading → --download-only → rc=0 → phase=scheduled →
            таймер delay сек (отсчёт от момента завершения скачивания) →
            phase=applying → --apply-only → rc=0/2 → рестарт.
     rc=1 при download: ошибка записывается в pre-update.json, лок удаляется,
     баннер НЕ показывается.
+    applied_by: имя инициатора — пишется в _update_result.json (симптом 2).
     """
     def _worker():
         # ── Фаза 1: скачиваем архив ──
@@ -648,9 +672,11 @@ def _build_timer_worker(delay: int, force: bool, user_id: int):
         cmd_apply = [sys.executable, _UPDATER, '--apply-only']
         if force:
             cmd_apply.append('--force')
+        apply_out = ''
         try:
             res_apply = subprocess.run(cmd_apply, capture_output=True, text=True, timeout=300)
             rc_apply  = res_apply.returncode
+            apply_out = (res_apply.stdout or '') + (res_apply.stderr or '')
         except Exception:
             rc_apply = 1
         finally:
@@ -659,6 +685,18 @@ def _build_timer_worker(delay: int, force: bool, user_id: int):
                 os.remove(_MAINTENANCE_FLAG)
             except Exception:
                 pass
+
+        # ── Симптом 2: фиксируем итог ДО рестарта (только при успехе) —
+        # админ увидит тост после перезагрузки (через /api/update/result).
+        if rc_apply in (0, 2):
+            _stats = _parse_apply_stats(apply_out)
+            _stats['message'] = (
+                f"Обновлено: {_stats['updated']} | "
+                f"Без изменений: {_stats['unchanged']} | "
+                f"Пропущено: {_stats['skipped']}"
+                + (f" | Ошибок: {_stats['errors']}" if _stats['errors'] else "")
+            )
+            _write_update_result(_stats, applied_by=applied_by)
 
         try:
             open(_RESTART_FLAG, 'w').close()
@@ -738,6 +776,7 @@ def api_update_schedule():
         delay=delay,
         force=force,
         user_id=session['user_id'],
+        applied_by=session.get('full_name', session.get('username', '')),
     )
     threading.Thread(target=worker, daemon=True).start()
 
@@ -812,6 +851,7 @@ def _schedule_internal(delay: int, force: bool):
         delay=delay,
         force=force,
         user_id=session['user_id'],
+        applied_by=session.get('full_name', session.get('username', '')),
     )
     threading.Thread(target=worker, daemon=True).start()
     return jsonify({'ok': True, 'delay': delay, 'fire_at_ts': fire_at_ts_estimate,
