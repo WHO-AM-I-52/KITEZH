@@ -30,6 +30,7 @@ from db import get_db
 from core.auth_utils import login_required, admin_required
 from core.activity_log import log_action
 from services.ocr_utils import extract_anketa_fields
+from paths import PROJECT_ROOT
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +39,9 @@ ai_bp = Blueprint("ai", __name__, url_prefix="/ai")
 OLLAMA_URL   = "http://localhost:11434/api/chat"
 OLLAMA_MODEL = "qwen2.5"
 
-_UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "uploads", "ocr_tmp")
+# Путь от КОРНЯ проекта (paths.PROJECT_ROOT), а не от __file__ модуля:
+# модуль живёт в routes/, поэтому __file__ указывал бы на routes/uploads/.
+_UPLOAD_FOLDER = os.path.join(PROJECT_ROOT, "uploads", "ocr_tmp")
 os.makedirs(_UPLOAD_FOLDER, exist_ok=True)
 
 ALLOWED_EXTENSIONS = {".pdf", ".docx", ".doc", ".jpg", ".jpeg", ".png"}

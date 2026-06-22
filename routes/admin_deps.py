@@ -14,9 +14,12 @@ import importlib.util
 from flask import render_template, request, jsonify
 
 from core.auth_utils import login_required, admin_required
+from paths import PROJECT_ROOT
 
-# requirements.txt лежит рядом с этим файлом (корень проекта)
-_REQUIREMENTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'requirements.txt')
+# requirements.txt лежит в КОРНЕ проекта (paths.PROJECT_ROOT).
+# Раньше модуль лежал в корне и брал путь от __file__; теперь модуль
+# в routes/, поэтому берём корень из единого источника правды.
+_REQUIREMENTS = os.path.join(PROJECT_ROOT, 'requirements.txt')
 
 # Маппинг: имя дистрибутива pip (как в requirements.txt)
 #          → реальное import-имя модуля
@@ -132,7 +135,7 @@ def register(admin_bp):
                 capture_output=True,
                 text=True,
                 timeout=300,
-                cwd=os.path.dirname(os.path.abspath(__file__)),
+                cwd=PROJECT_ROOT,
             )
             output = (result.stdout + result.stderr).strip()
             ok     = result.returncode == 0

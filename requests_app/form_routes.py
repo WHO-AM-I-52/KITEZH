@@ -14,7 +14,7 @@ from utils.validators import allowed_file, validate_inn
 from core.activity_log import log_action
 from services.ocr_utils import extract_anketa_fields
 from core.request_history import save_history
-from phonebook_routes import sync_request_to_phonebook
+from routes.phonebook_routes import sync_request_to_phonebook
 from tray import notify_error
 from core.kitezh_logger import err_logger
 from . import requests_bp

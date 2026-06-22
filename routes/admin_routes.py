@@ -42,9 +42,9 @@ from core.auth_utils import (
 from core.activity_log import get_activity_log, get_perm_audit, ACTION_LABELS, log_action
 
 # Подмодули декомпозиции
-import admin_deps
-import admin_classifiers
-import admin_filters
+from routes import admin_deps
+from routes import admin_classifiers
+from routes import admin_filters
 
 admin_bp = Blueprint('admin', __name__)
 
