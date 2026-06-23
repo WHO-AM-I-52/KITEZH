@@ -48,7 +48,7 @@
             <i class="bi bi-clipboard2-data me-1"></i>Анализировать
           </button>
           <button class="btn btn-outline-secondary" id="aiBtn" disabled
-                  title="Сформировать текст для ИИ">
+                  title="Только текст площадки без скоринга — для отправки в ИИ-чат">
             <i class="bi bi-robot me-1"></i>Для ИИ
           </button>
         </div>
@@ -338,9 +338,7 @@
       renderPlot(list[0]);
 
       /* Заполняем textarea: текст площадки + результат анализа */
-      var exportText = (resp.export && resp.export.text) ? resp.export.text
-                     : (list[0] && list[0].export && list[0].export.text) ? list[0].export.text
-                     : '';
+      var exportText = resp.export ? resp.export.text : '';
       var fmt = (resp.export && resp.export.format) ? resp.export.format : 'txt';
       if (exportText) {
         var analysisBlock = buildAnalysisBlock(list[0]);
@@ -436,7 +434,7 @@
   function initNav(list){
     navTotal.textContent   = list.length;
     navCurrent.textContent = 1;
-    navName.textContent    = list[0] ? ('\u2014 ' + (list[0].id || '')) : '';
+    navName.textContent    = list[0] ? ('— ' + (list[0].id || '')) : '';
     plotNav.classList.toggle('d-none', list.length <= 1);
     navPrev.disabled = true;
     navNext.disabled = list.length <= 1;
@@ -449,7 +447,7 @@
     if (!allData || idx < 0 || idx >= allData.length) return;
     currentIdx = idx;
     navCurrent.textContent = idx + 1;
-    navName.textContent    = allData[idx] ? ('\u2014 ' + (allData[idx].id || '')) : '';
+    navName.textContent    = allData[idx] ? ('— ' + (allData[idx].id || '')) : '';
     navPrev.disabled = idx === 0;
     navNext.disabled = idx === allData.length - 1;
     renderPlot(allData[idx]);
@@ -486,10 +484,10 @@
     circle.textContent       = score + '%';
 
     var catMap = {
-      '\u0432\u044b\u0441\u043e\u043a\u0430\u044f': '\u0412\u044b\u0441\u043e\u043a\u0430\u044f \u0437\u0430\u043f\u043e\u043b\u043d\u044f\u0435\u043c\u043e\u0441\u0442\u044c',
-      '\u0441\u0440\u0435\u0434\u043d\u044f\u044f': '\u0421\u0440\u0435\u0434\u043d\u044f\u044f \u0437\u0430\u043f\u043e\u043b\u043d\u044f\u0435\u043c\u043e\u0441\u0442\u044c',
-      '\u043d\u0438\u0437\u043a\u0430\u044f':  '\u041d\u0438\u0437\u043a\u0430\u044f \u0437\u0430\u043f\u043e\u043b\u043d\u044f\u0435\u043c\u043e\u0441\u0442\u044c',
-      '\u043a\u0440\u0438\u0442\u0438\u0447\u0435\u0441\u043a\u0430\u044f': '\u041a\u0440\u0438\u0442\u0438\u0447\u0435\u0441\u043a\u0430\u044f \u0437\u0430\u043f\u043e\u043b\u043d\u044f\u0435\u043c\u043e\u0441\u0442\u044c'
+      'высокая':    'Высокая заполняемость',
+      'средняя':    'Средняя заполняемость',
+      'низкая':     'Низкая заполняемость',
+      'критическая': 'Критическая заполняемость'
     };
     var scoreLabel = document.getElementById('scoreLabel');
     scoreLabel.textContent = d.category ? (catMap[d.category] || d.category) : '';
@@ -500,7 +498,7 @@
     bar.style.background = col;
     bar.setAttribute('aria-valuenow', score);
 
-    document.getElementById('plotTitle').textContent = d.id ? ('\ud83d\udccd ' + d.id) : '';
+    document.getElementById('plotTitle').textContent = d.id ? ('📍 ' + d.id) : '';
 
     document.getElementById('statFilled').textContent  = filled;
     document.getElementById('statTotal').textContent   = total;
@@ -539,18 +537,18 @@
     var tbody = document.getElementById('summaryTableBody');
     tbody.innerHTML = '';
     var rows = [
-      ['Score (\u0437\u0430\u043f\u043e\u043b\u043d\u044f\u0435\u043c\u043e\u0441\u0442\u044c)',
+      ['Score (заполняемость)',
        '<span class="fw-semibold" style="color:' + col + '">' + score + '%</span>'],
-      ['\u0417\u0430\u043f\u043e\u043b\u043d\u0435\u043d\u043e \u043f\u043e\u043b\u0435\u0439',
-       '<span class="fw-semibold text-success">' + filled + '</span> \u0438\u0437 ' + total],
-      ['\u041d\u0435\u0437\u0430\u043f\u043e\u043b\u043d\u0435\u043d\u043e (\u0443\u0447\u0438\u0442\u044b\u0432\u0430\u0435\u0442\u0441\u044f)',
+      ['Заполнено полей',
+       '<span class="fw-semibold text-success">' + filled + '</span> из ' + total],
+      ['Незаполнено (учитывается)',
        missingCnt > 0
          ? '<span class="badge bg-warning text-dark">' + missingCnt + '</span>'
-         : '<span class="text-success">\u2713 \u043d\u0435\u0442</span>'],
-      ['\u041f\u0440\u043e\u043f\u0443\u0449\u0435\u043d\u043e (\u043d\u0435 \u0443\u0447\u0438\u0442\u044b\u0432\u0430\u0435\u0442\u0441\u044f)',
+         : '<span class="text-success">✓ нет</span>'],
+      ['Пропущено (не учитывается)',
        skippedCnt > 0
          ? '<span class="badge bg-secondary">' + skippedCnt + '</span>'
-         : '<span class="text-muted">\u043d\u0435\u0442</span>']
+         : '<span class="text-muted">нет</span>']
     ];
     rows.forEach(function(r){
       var tr = document.createElement('tr');
@@ -578,7 +576,7 @@
 
     var groups = {};
     missing.forEach(function(f){
-      var cat = (f && f.category) ? f.category : '\u041d\u0435\u0437\u0430\u043f\u043e\u043b\u043d\u0435\u043d\u043d\u044b\u0435 \u043f\u043e\u043b\u044f';
+      var cat = (f && f.category) ? f.category : 'Незаполненные поля';
       if (!groups[cat]) groups[cat] = [];
       groups[cat].push(f);
     });
@@ -593,7 +591,7 @@
         '<h2 class="accordion-header">' +
           '<button class="accordion-button' + (idx === 0 ? '' : ' collapsed') + ' py-2" type="button" ' +
                   'data-bs-toggle="collapse" data-bs-target="#' + bodyId + '" style="font-size:13px">' +
-            '<span style="color:#ffc107;margin-right:8px">\u25cf</span>' +
+            '<span style="color:#ffc107;margin-right:8px">●</span>' +
             escHtml(cat) +
             ' <span class="badge bg-warning text-dark ms-2">' + items.length + '</span>' +
           '</button>' +
