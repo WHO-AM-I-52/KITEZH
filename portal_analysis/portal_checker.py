@@ -14,6 +14,18 @@
     #   'missing': ['Поле X', 'Поле Y'],
     #   'skipped': ['Поле Z']   # не нужны по условию
     # }
+
+    from portal_analysis.portal_checker import calc_portal_score_v2
+    result = calc_portal_score_v2(row_dict, db)
+    # result == {
+    #   'score': 85,
+    #   'filled': 17,
+    #   'total': 20,
+    #   'missing': [{'field': 'Геопривязка', 'hint': 'Укажите координаты...'}, ...],
+    #   'skipped': ['Поле Z']
+    # }
+    # Та же логика что calc_portal_score (PORTAL_FIELDS + CONDITIONAL_SKIP),
+    # но missing[] обогащён подсказками hint из таблицы investmap_rules.
 """
 
 import re
@@ -191,8 +203,8 @@ CONDITIONAL_SKIP = {
 
     # ── Водоснабжение ───────────────────────────────────────────────────────
     ('водоснабжение — наличие', 'нет'):               _WATER_SUPPLY_ALL,
-    ('водоснабжение — наличие', 'да'):                _WATER_SUPPLY_CHILDREN_VOZM,   # тариф ТП не нужен при «да»
-    ('водоснабжение — наличие', 'возможно создание'): _WATER_SUPPLY_CHILDREN_DA,     # мощности не нужны при «возможно создание»
+    ('водоснабжение — наличие', 'да'):                _WATER_SUPPLY_CHILDREN_VOZM,
+    ('водоснабжение — наличие', 'возможно создание'): _WATER_SUPPLY_CHILDREN_DA,
 
     # ── Водоотведение ───────────────────────────────────────────────────────
     ('водоотведение — наличие', 'нет'):               _WATER_DRAIN_ALL,
@@ -238,9 +250,9 @@ PORTAL_FIELDS = [
     # ── Сведения об объекте ─────────────────────────────────────────────────
     'Название площадки',
     'Преференциальный режим',
-    'Наименование объекта преференциального режима',   # всегда в total; портал считает missing при 'Отсутствует'
+    'Наименование объекта преференциального режима',
     'Объект инфраструктуры поддержки',
-    'Наименование объекта инфраструктуры поддержки',   # всегда в total; портал считает missing при 'Без льгот'
+    'Наименование объекта инфраструктуры поддержки',
     'Регион',
     'Муниципальное образование',
     'Адрес объекта',
@@ -251,21 +263,21 @@ PORTAL_FIELDS = [
     'Форма сделки',
     'Стоимость объекта, руб. (покупки или месячной аренды)',
     'Стоимость, руб./год за кв. м',
-    'min и max сроки аренды (если применимо), лет',    # child: форма сделки = аренда
+    'min и max сроки аренды (если применимо), лет',
     'Порядок определения стоимости (для всех форм сделки)',
     # ── Параметры ЗУ (child: формат = земельный участок) ───────────────────
     'Свободная площадь ЗУ, га',
     'Варианты разрешенного использования',
     'Межевание земельного участка',
     'Категория земель',
-    # ── Параметры здания/помещения (child: формат = здания и сооружения / помещение)
+    # ── Параметры здания/помещения ──────────────────────────────────────────
     'Свободная площадь здания, сооружения, помещения, кв. м',
     'Кадастровый номер здания, сооружения, помещения',
     'Технические характеристики здания, сооружения, помещения',
     # ── Контакты ────────────────────────────────────────────────────────────
     'Наименование собственника / администратора объекта',
     'Телефон контактного лица, e-mail',
-    # ── Технологическое присоединение: Водоснабжение ───────────────────────
+    # ── Водоснабжение ───────────────────────────────────────────────────────
     'Водоснабжение — Наличие',
     'Водоснабжение — Тариф на потребление, руб./куб. м',
     'Водоснабжение — Тариф на транспортировку, руб./куб. м',
@@ -310,7 +322,7 @@ PORTAL_FIELDS = [
     # ── Транспортная доступность ─────────────────────────────────────────────
     'Наличие подъездных путей',
     'Наличие ж/д',
-    'Иные характеристики (транспортная доступность)',   # child: наличие ж/д = да
+    'Иные характеристики (транспортная доступность)',
     'Наличие парковки грузового транспорта',
     # ── Дополнительные сведения ──────────────────────────────────────────────
     'Описание процедуры подачи заявки',
@@ -322,7 +334,7 @@ PORTAL_FIELDS = [
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# БЛОК 4: Основная функция расчёта
+# БЛОК 4: Основная функция расчёта (V1)
 # ──────────────────────────────────────────────────────────────────────────────
 
 def calc_portal_score(row: dict) -> dict:
@@ -379,41 +391,40 @@ def calc_portal_score(row: dict) -> dict:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# БЛОК 5: v2 — расчёт по полям из БД (таблица investmap_fields)
+# БЛОК 5: V2 — логика V1 + подсказки hint из investmap_rules
+#
+# Отличия от V1:
+#   - missing[] возвращается как list[dict]: {'field': str, 'hint': str|None}
+#   - hint берётся из таблицы investmap_rules по совпадению source_field/source_value
+#   - Подсчёт score, PORTAL_FIELDS и CONDITIONAL_SKIP — идентичны V1
 # ──────────────────────────────────────────────────────────────────────────────
 
-# v1.5.10: маппинг INTEGER → TEXT для is_required.
-# БД хранит 0/1 вместо 'нет'/'да'/'условно'.
-# При TEXT-значениях ключи '0'/'1' не совпадут → значение проходит насквозь.
-_IS_REQ_MAP = {'0': 'нет', '1': 'да', '2': 'условно'}
-
-
 def _resolve_hint(
-    target_tech: str,
+    target_field_lower: str,
     rules_map: dict,
     normalized: dict,
     tech_to_display: dict,
 ) -> 'str | None':
     """
-    Ищет подходящее правило investmap_rules для поля target_tech.
-
-    Перебирает кандидатов из rules_map[target_tech].
-    Для каждого правила проверяет: normalized[source_display_name].lower() == source_value_lower.
-    Возвращает recommended_text первого совпавшего правила или None.
+    Ищет подходящее правило investmap_rules для целевого поля.
 
     Args:
-        target_tech:     tech_name целевого поля (lower)
-        rules_map:       {target_tech_lower: [(source_tech_lower, source_val_lower, text)]}
-        normalized:      {display_name_lower: value} из row площадки
-        tech_to_display: {tech_name_lower: display_name} — для резолюции source_field
+        target_field_lower: название целевого поля в lower (как в PORTAL_FIELDS)
+        rules_map:          {target_lower: [(source_lower, source_val_lower, text)]}
+        normalized:         {field_lower: value} из row площадки
+        tech_to_display:    {tech_name_lower: display_name} — для резолюции
+                            source_field когда правила хранят tech_name.
+                            Передай пустой dict если source_field = display_name.
     """
-    candidates = rules_map.get(target_tech)
+    candidates = rules_map.get(target_field_lower)
     if not candidates:
         return None
     for s_field, s_value, r_text in candidates:
-        source_display = tech_to_display.get(s_field, s_field)
+        # Пробуем найти source_field сначала как display_name,
+        # затем через tech_to_display (если правила хранят tech_name)
+        source_key = tech_to_display.get(s_field, s_field)
         actual = _strip_html(
-            str(normalized.get(source_display.lower(), '') or '')
+            str(normalized.get(source_key.lower(), '') or '')
         ).strip().lower()
         if actual == s_value:
             return r_text
@@ -422,139 +433,87 @@ def _resolve_hint(
 
 def calc_portal_score_v2(row: dict, db) -> dict:
     """
-    Рассчитывает заполняемость площадки по полям из БД (таблица investmap_fields).
+    Рассчитывает заполняемость площадки.
 
-    В отличие от calc_portal_score(), не использует хардкод PORTAL_FIELDS —
-    берёт актуальный список полей из БД (116 записей).
+    Логика подсчёта score — идентична calc_portal_score() (V1):
+    использует хардкод PORTAL_FIELDS и CONDITIONAL_SKIP.
 
-    Ключи row — display_name (русские заголовки Excel, как возвращает
-    convert_excel_to_text). Поиск значений ведётся по display_name.lower().
-
-    Логика skipped:
-        Если is_required содержит «если» — поле условное.
-        required_condition хранит условие в формате «display_name = значение»
-        (русский язык, как в Excel-выгрузке).
-        Если условие НЕ выполнено → поле пропускается (skipped).
-
-    Баги исправлены (Карточка #7):
-        #1 — required_condition парсится по display_name, не tech_name
-        #2 — поля с is_required='нет' полностью пропускаются (не влияют на score)
-        #3 — поиск значений в row по display_name.lower()
-        #4 — warning-лог при нераспознанном паттерне required_condition
-
-    Фикс v1.5.10:
-        is_required хранит INTEGER (0/1) вместо TEXT → AttributeError на .strip().
-        Защитный каст str() + маппинг _IS_REQ_MAP {'0':'нет','1':'да','2':'условно'}.
-
-    Карточка #4 — investmap_rules:
-        Второй SQL-запрос к investmap_rules строит rules_map по target_field (tech_name).
-        _resolve_hint() проверяет source_field/source_value по фактическим значениям row.
-        missing возвращается как list[dict]: {'field': display_name, 'hint': str | None}.
-        hint — recommended_text из первого совпавшего правила.
-        Поля без правил или без совпадения: hint=None.
-        filled[], skipped[] — формат не изменился (list[str]).
+    Дополнительно: каждое missing-поле обогащается подсказкой hint
+    из таблицы investmap_rules (что конкретно нужно добавить/изменить).
 
     Args:
         row: словарь с полями площадки (ключи — display_name, регистр не важен)
-        db:  объект соединения SQLite (Flask g.db или get_db())
+        db:  объект соединения SQLite — используется только для чтения investmap_rules
+             и investmap_fields (tech_name → display_name для резолюции правил)
 
     Returns:
         {
             'score':   int 0..100,
             'filled':  int,
             'total':   int,          # total = filled + missing (skipped не считаются)
-            'missing': list[dict],   # [{'field': display_name, 'hint': str|None}, ...]
-            'skipped': list[str],    # display_name полей, пропущенных по условию (N/A)
+            'missing': list[dict],   # [{'field': str, 'hint': str|None}, ...]
+            'skipped': list[str],    # поля, пропущенные по CONDITIONAL_SKIP
         }
     """
-    from core.kitezh_logger import err_logger  # локальный импорт во избежание циклов
-
-    # ── Запрос 1: поля площадки из investmap_fields ────────────────────────
-    rows_db = db.execute(
-        "SELECT tech_name, display_name, is_required, required_condition"
-        " FROM investmap_fields ORDER BY id"
+    # ── Запрос к investmap_fields: только для резолюции tech_name → display_name
+    # (нужно потому что source_field в investmap_rules хранится как tech_name)
+    fields_rows = db.execute(
+        "SELECT tech_name, display_name FROM investmap_fields"
     ).fetchall()
+    tech_to_display: dict = {
+        (r['tech_name'] or '').strip().lower(): (r['display_name'] or '').strip()
+        for r in fields_rows
+    }
 
-    # ── Запрос 2: правила из investmap_rules ──────────────────────────────
-    # source_field и target_field хранятся как tech_name (из UI investmap_v2_rules).
+    # ── Запрос к investmap_rules: правила подсказок
     rules_rows = db.execute(
         "SELECT source_field, source_value, target_field, recommended_text"
         " FROM investmap_rules"
     ).fetchall()
 
-    # Вспомогательный словарь: tech_name_lower → display_name
-    tech_to_display: dict = {
-        (r['tech_name'] or '').strip().lower(): (r['display_name'] or '').strip()
-        for r in rows_db
-    }
-
-    # rules_map: target_tech_lower → [(source_tech_lower, source_val_lower, text)]
+    # rules_map: target_lower → [(source_lower, source_val_lower, text)]
     rules_map: dict = {}
     for rr in rules_rows:
-        t_field = (rr['target_field'] or '').strip().lower()
-        s_field = (rr['source_field'] or '').strip().lower()
-        s_value = (rr['source_value'] or '').strip().lower()
-        r_text  = (rr['recommended_text'] or '').strip() or None
-        rules_map.setdefault(t_field, []).append((s_field, s_value, r_text))
+        # target_field хранится как tech_name → резолюция через tech_to_display
+        t_tech   = (rr['target_field'] or '').strip().lower()
+        t_display = tech_to_display.get(t_tech, t_tech)  # → display_name или сам tech
+        s_field  = (rr['source_field'] or '').strip().lower()
+        s_value  = (rr['source_value'] or '').strip().lower()
+        r_text   = (rr['recommended_text'] or '').strip() or None
+        rules_map.setdefault(t_display.lower(), []).append((s_field, s_value, r_text))
 
-    # Нормализуем ключи row один раз по display_name (русские заголовки Excel)
-    # БАГ #3 FIX: было normalized.get(tech_name.lower()) — теперь по display_name
+    # ── Нормализация row ──────────────────────────────────────────────────
     normalized = {k.strip().lower(): v for k, v in row.items()}
 
+    # ── Логика V1: CONDITIONAL_SKIP ───────────────────────────────────────
+    skip_fields: set = set()
+    for (parent_field, parent_value), child_fields in CONDITIONAL_SKIP.items():
+        actual_value = _strip_html(
+            str(normalized.get(parent_field, '') or '')
+        ).strip().lower()
+        if actual_value == parent_value:
+            skip_fields.update(f.lower() for f in child_fields)
+
+    # ── Логика V1: итерация по PORTAL_FIELDS ─────────────────────────────
     filled  = []
     missing = []
     skipped = []
 
-    for rec in rows_db:
-        tech_name          = (rec['tech_name'] or '').strip()
-        display_name       = (rec['display_name'] or '').strip()
-        # v1.5.10 fix: is_required хранит INTEGER (0/1) → AttributeError на .strip()
-        # str() защищает от int; _IS_REQ_MAP нормализует 0/1 → 'нет'/'да'/'условно'
-        _raw_req           = str(rec['is_required'] or '').strip().lower()
-        is_required        = _IS_REQ_MAP.get(_raw_req, _raw_req)
-        required_condition = (rec['required_condition'] or '').strip()
-
-        # БАГ #2 FIX: поля с is_required='нет' не участвуют в подсчёте совсем
-        if is_required == 'нет':
+    for field in PORTAL_FIELDS:
+        field_lower = field.strip().lower()
+        if field_lower in skip_fields:
+            skipped.append(field)
             continue
-
-        # Условное поле — проверяем, выполнено ли условие
-        if 'если' in is_required and required_condition:
-            # БАГ #1 FIX: required_condition хранится в формате
-            # «display_name = нужное_значение» (русский язык, как в Excel).
-            # Поддерживаем разделители «=» и «==».
-            parts = re.split(r'\s*={1,2}\s*', required_condition, maxsplit=1)
-            if len(parts) == 2:
-                parent_key   = parts[0].strip().lower()
-                expected_val = parts[1].strip().lower()
-                actual_val   = _strip_html(
-                    str(normalized.get(parent_key, '') or '')
-                ).strip().lower()
-                if actual_val != expected_val:
-                    # Условие НЕ выполнено → поле не нужно
-                    skipped.append(display_name)
-                    continue
-            else:
-                # БАГ #4 FIX: логируем нераспознанный паттерн
-                err_logger.warning(
-                    'calc_portal_score_v2: не распознан required_condition '
-                    '| tech_name=%s | required_condition=%r',
-                    tech_name, required_condition
-                )
-                # Безопасный путь: считаем поле обязательным
-
-        # Обязательное поле (или условие выполнено) — проверяем заполненность
-        # БАГ #3 FIX: ищем по display_name.lower(), не по tech_name
-        value = normalized.get(display_name.lower())
+        value = normalized.get(field_lower)
         if _is_empty(value):
-            # Карточка #4: обогащаем hint из investmap_rules
-            hint = _resolve_hint(tech_name.lower(), rules_map, normalized, tech_to_display)
-            missing.append({'field': display_name, 'hint': hint})
+            # V2: обогащаем hint из investmap_rules
+            hint = _resolve_hint(field_lower, rules_map, normalized, tech_to_display)
+            missing.append({'field': field, 'hint': hint})
         else:
-            filled.append(display_name)
+            filled.append(field)
 
     total = len(filled) + len(missing)
-    score = round(len(filled) / max(total, 1) * 100)
+    score = round(100 * len(filled) / total) if total > 0 else 0
 
     return {
         'score':   score,
