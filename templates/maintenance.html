@@ -932,12 +932,12 @@ window.addEventListener('load', function() { initSwitcher(); });
   var counter=document.getElementById('attemptCount'),returnBtn=document.getElementById('returnBtn');
   var toast=document.getElementById('toast'),modalBackdrop=document.getElementById('modal-backdrop');
   var modalTimer=document.getElementById('modalTimer');
-  var attempts=0,POLL_MS=10000,serverOnline=false,returnTimer=null,modalCountdown=null;
+  var attempts=0,POLL_MS=1500,serverOnline=false,returnTimer=null,modalCountdown=null;
   window.goBack=function(){clearTimeout(returnTimer);clearInterval(modalCountdown);location.href='/';};
   window.dismissModal=function(){clearInterval(modalCountdown);modalBackdrop.classList.remove('show');};
   function showToast(){toast.classList.add('show');setTimeout(function(){toast.classList.remove('show');},10000);}
   function showModal(){
-    var sec=15;modalTimer.textContent='Автопереход через '+sec+' сек…';
+    var sec=2;modalTimer.textContent='Автопереход через '+sec+' сек…';
     modalBackdrop.classList.add('show');
     modalCountdown=setInterval(function(){sec--;if(sec<=0){clearInterval(modalCountdown);goBack();}else modalTimer.textContent='Автопереход через '+sec+' сек…';},1000);
   }
