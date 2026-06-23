@@ -110,6 +110,7 @@ if exist "%APP_DIR%db\database.db" (
 )
 
 
+
 "%PYTHON%" -c "import os,glob;files=sorted(glob.glob('db/backups/database_*.db'));[os.remove(f) for f in files[:-5]]"
 echo.
 
@@ -154,7 +155,7 @@ if exist "%APP_DIR%_restart.flag" (
 if exist "%APP_DIR%update.bat" (
   if exist "%APP_DIR%updater\_updater.py" (
     echo  Проверка обновлений на GitHub...
-    "%PYTHON%" "%APP_DIR%updater\_updater.py" --check
+    "%PYTHON%" "%APP_DIR%updater\_updater.py" --check >nul 2>&1
     set "CHECK_RESULT=!ERRORLEVEL!"
     echo.
 
@@ -277,6 +278,7 @@ set KITEZH_TRAY=%KITEZH_TRAY%
 set PYTHONUTF8=1
 set PYTHONPATH=%APP_DIR%
 cd /d "%APP_DIR%"
+
 
 "%PYTHON%" run_server.py
 set "EXIT_CODE=!ERRORLEVEL!"
