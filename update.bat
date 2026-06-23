@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul
-setlocal
+setlocal enabledelayedexpansion
 
 :: ============================================================
 ::  KITEZH - Скачивание архива обновления с GitHub
@@ -53,8 +53,9 @@ echo  Python: %PYTHON%
 echo.
 
 
+
 "%PYTHON%" "%UPDATER%"
-set UPDATER_EXIT=%ERRORLEVEL%
+set "UPDATER_EXIT=!ERRORLEVEL!"
 
 echo.
 pause
