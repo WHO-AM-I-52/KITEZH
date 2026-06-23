@@ -262,22 +262,30 @@ def check_for_updates() -> int:
 # ─── Размер архива ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 def get_zip_size_kb() -> int:
+    # Пытаемся получить реальный Content-Length через GET с редиректом на CDN.
+    # HEAD к /zipball/{BRANCH} не возвращает Content-Length — GitHub отвечает
+    # 302 на CDN, а HEAD к CDN тоже не гарантирует заголовок.
+    # GET через opener с HTTPRedirectHandler следует редиректу до CDN-URL,
+    # который отдаёт Content-Length; читаем 0 байт и закрываем соединение.
     url = f"{API_BASE}/zipball/{BRANCH}"
     try:
-        req = urllib.request.Request(url, headers=_headers(), method="HEAD")
-        with urllib.request.urlopen(req, timeout=15) as r:
+        opener = urllib.request.build_opener(urllib.request.HTTPRedirectHandler())
+        req = urllib.request.Request(url, headers=_headers())
+        with opener.open(req, timeout=15) as r:
             cl = r.headers.get("Content-Length")
             if cl and int(cl) > 0:
                 return int(cl) // 1024
     except Exception:
         pass
+    # Фоллбэк: метаданные репозитория. data["size"] — размер git-объектов в КБ,
+    # что меньше реального zip-архива; коэффициент 1.15 даёт реалистичную оценку.
     try:
         req = urllib.request.Request(API_BASE, headers=_headers())
         with urllib.request.urlopen(req, timeout=15) as r:
             data = json.loads(r.read().decode())
             size_kb = data.get("size", 0)
             if size_kb > 0:
-                return max(int(size_kb * 0.65), 50)
+                return max(int(size_kb * 1.15), 50)
     except Exception:
         pass
     return FALLBACK_KB
