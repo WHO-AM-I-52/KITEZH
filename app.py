@@ -93,12 +93,23 @@ def health():
     return jsonify({'status': 'ok'})
 
 
+@app.route('/maintenance-status')
+def maintenance_status():
+    """Возвращает текущее состояние режима ТО.
+    503 — режим ТО активен, пользователи остаются на maintenance.html.
+    200 — режим ТО снят, можно показывать уведомление и возвращать в систему."""
+    if os.path.exists(_MAINTENANCE_FLAG):
+        return jsonify({'status': 'maintenance'}), 503
+    return jsonify({'status': 'ok'})
+
+
 @app.before_request
 def check_maintenance():
     """Если .maintenance существует — отдаём страницу ТО для всех запросов.
     Исключения:
       role == admin  — админ всегда проходит (управляет режимом ТО)
       /health        — JS-пуллер на странице ТО
+      /maintenance-status — проверка снятия режима ТО
       /static/       — статика (CSS, JS, шрифты)
       /maintenance/  — роуты управления ТО (авторизация внутри)
       /ping          — хеартбит онлайн-присутствия
@@ -111,6 +122,7 @@ def check_maintenance():
         return
     path = flask_request.path
     if (path == '/health'
+            or path == '/maintenance-status'
             or path.startswith('/static/')
             or path.startswith('/maintenance/')
             or path == '/ping'
