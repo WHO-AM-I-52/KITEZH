@@ -419,6 +419,7 @@
     if (missing.length > 0) {
       missing.forEach(function(f) {
         lines.push('  • ' + fieldName(f));
+        if (fieldHint(f)) lines.push('    → ' + fieldHint(f));
       });
     }
     lines.push('Пропущенных (не учитывается в счёте): ' + skipped.length);
@@ -599,9 +600,14 @@
         '<div id="' + bodyId + '" class="accordion-collapse collapse' + (idx === 0 ? ' show' : '') + '">' +
           '<div class="accordion-body py-2">' +
             items.map(function(f){
+              var hint = fieldHint(f);
               return '<div class="d-flex align-items-start gap-2 py-1" style="font-size:13px">' +
                 '<i class="bi bi-exclamation-circle text-warning mt-1" style="flex-shrink:0"></i>' +
-                '<span>' + escHtml(fieldName(f)) + '</span></div>';
+                '<div>' +
+                  '<strong>' + escHtml(fieldName(f)) + '</strong>' +
+                  (hint ? '<div><small class="text-muted">' + escHtml(hint) + '</small></div>' : '') +
+                '</div>' +
+              '</div>';
             }).join('') +
           '</div>' +
         '</div>';
@@ -612,9 +618,15 @@
   /* ─── Вспомогательные функции ──────────────────────────────────────── */
   function fieldName(f){
     if (typeof f === 'string') return f;
+    if (f && f.field) return f.field;
     if (f && f.display_name) return f.display_name;
     if (f && f.key) return f.key;
     return String(f);
+  }
+
+  function fieldHint(f){
+    if (!f || typeof f === 'string') return '';
+    return f.recommended_text || f.hint || '';
   }
 
   function escHtml(s){
