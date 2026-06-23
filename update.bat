@@ -7,7 +7,7 @@ setlocal
 :: ============================================================
 
 set "APP_DIR=%~dp0"
-set "UPDATER=%APP_DIR%_updater.py"
+set "UPDATER=%APP_DIR%updater\_updater.py"
 set "PYTHON="
 
 :: [1] WPy\python313 (основной вариант)
@@ -51,6 +51,7 @@ if not defined PYTHON (
 
 echo  Python: %PYTHON%
 echo.
+
 
 "%PYTHON%" "%UPDATER%"
 set UPDATER_EXIT=%ERRORLEVEL%
