@@ -87,6 +87,7 @@ echo.
 echo [2/5] Proverka pip...
 
 set PYTHONUTF8=1
+
 "%PYTHON%" -m pip --version >nul 2>&1
 if errorlevel 1 (
   echo  pip ne nayden, ustanovka...
@@ -112,6 +113,14 @@ echo [3/5] Ustanovka zavisimostey iz requirements.txt...
 if not exist "%APP_DIR%requirements.txt" (
   echo  [WARN] requirements.txt ne nayden - propusk.
   goto :create_dirs
+)
+
+echo  Podgotovka sborochnyh instrumentov (setuptools, wheel)...
+"%PYTHON%" -m pip install setuptools wheel --target "%SITEPKG%" --quiet
+if errorlevel 1 (
+  echo  [OSHIBKA] Ne udalos ustanovit setuptools/wheel.
+  pause
+  exit /b 1
 )
 
 "%PYTHON%" -m pip install -r "%APP_DIR%requirements.txt" --target "%SITEPKG%" --quiet
