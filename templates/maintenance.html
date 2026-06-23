@@ -937,14 +937,14 @@ window.addEventListener('load', function() { initSwitcher(); });
   window.dismissModal=function(){clearInterval(modalCountdown);modalBackdrop.classList.remove('show');};
   function showToast(){toast.classList.add('show');setTimeout(function(){toast.classList.remove('show');},10000);}
   function showModal(){
-    var sec=30;modalTimer.textContent='Автопереход через '+sec+' сек…';
+    var sec=15;modalTimer.textContent='Автопереход через '+sec+' сек…';
     modalBackdrop.classList.add('show');
     modalCountdown=setInterval(function(){sec--;if(sec<=0){clearInterval(modalCountdown);goBack();}else modalTimer.textContent='Автопереход через '+sec+' сек…';},1000);
   }
   function onServerOnline(){
     if(serverOnline)return;serverOnline=true;
     dot.className='dot online';txt.textContent='Сервер онлайн';counter.textContent='';
-    returnBtn.style.display='flex';showToast();returnTimer=setTimeout(showModal,60000);
+    returnBtn.style.display='flex';showToast();returnTimer=setTimeout(showModal,0);
   }
   function poll(){
     attempts++;if(!serverOnline)counter.textContent='Попытка '+attempts;
