@@ -109,6 +109,7 @@ if exist "%APP_DIR%db\database.db" (
   echo  [ПРЕДУПРЕЖДЕНИЕ] db\database.db не найден
 )
 
+
 "%PYTHON%" -c "import os,glob;files=sorted(glob.glob('db/backups/database_*.db'));[os.remove(f) for f in files[:-5]]"
 echo.
 
@@ -151,9 +152,9 @@ if exist "%APP_DIR%_restart.flag" (
 
 :: Проверка обновлений на GitHub
 if exist "%APP_DIR%update.bat" (
-  if exist "%APP_DIR%_updater.py" (
+  if exist "%APP_DIR%updater\_updater.py" (
     echo  Проверка обновлений на GitHub...
-    "%PYTHON%" "%APP_DIR%_updater.py" --check
+    "%PYTHON%" "%APP_DIR%updater\_updater.py" --check
     set "CHECK_RESULT=!ERRORLEVEL!"
     echo.
 
