@@ -37,30 +37,85 @@
 
 ## Структура проекта
 
+Проект организован по пакетам: инфраструктура (`core/`), утилиты (`utils/`),
+бизнес-сервисы (`services/`), HTTP-маршруты (`routes/`) и подсистема
+обновления (`updater/`). Все runtime-пути берутся из единого `paths.py`.
+
 ```
 KITEZH/
-├── app.py                  # Точка входа, инициализация Flask
-├── db.py                   # Подключение к SQLite, миграции
-├── request_routes.py       # Маршруты обращений (список, создание, редактирование)
-├── search_routes.py        # Глобальный поиск
-├── admin_routes.py         # Административная панель
-├── auth_utils.py           # Авторизация и права доступа
-├── export_routes.py        # Экспорт в Excel
-├── ocr_utils.py            # OCR-распознавание документов
-├── dashboard.py            # Дашборд и аналитика
-├── info_routes.py          # Информационные страницы
-├── investmap_routes.py     # Инвестиционная карта
-├── phonebook_routes.py     # Телефонная книга
-├── phonebook_import.py     # Импорт контактов
-├── changelog.py            # История изменений
-├── activity_log.py         # Журнал действий пользователей
-├── form_utils.py           # Утилиты форм
-├── validators.py           # Валидация данных
-├── sync_changelog.py       # Синхронизация changelog с GitHub
-├── publish_release.py      # Публикация релизов
-├── _updater.py             # Ядро автообновления
+├── app.py                  # Точка входа, инициализация Flask, регистрация Blueprints
+├── run_server.py           # Запуск сервера (Waitress / dev)
+├── tray.py                 # Иконка в системном трее (Windows)
+├── paths.py                # Единый источник правды для всех runtime-путей
+├── db.py                   # Подключение к SQLite, нормативы, маппинги
+├── migrations.py           # Инициализация и миграции схемы БД
+├── spravochnik.py          # Справочник организаций
+├── changelog.py            # История изменений (CHANGELOG)
+├── publish_release.py      # Публикация релизов на GitHub
+│
+├── core/                   # Инфраструктурный слой
+│   ├── auth_utils.py           # Авторизация и права доступа
+│   ├── activity_log.py         # Журнал действий пользователей
+│   ├── kitezh_logger.py        # Логирование ошибок
+│   ├── limiter.py              # Ограничение частоты запросов
+│   ├── context_processors.py   # Контекст для шаблонов
+│   └── request_history.py      # История изменений обращений
+│
+├── utils/                  # Переиспользуемые утилиты
+│   ├── validators.py           # Валидация данных (ИНН, файлы)
+│   ├── field_validator.py      # Валидация полей форм
+│   ├── form_utils.py           # Утилиты форм
+│   └── github_utils.py         # Помощники для работы с GitHub API
+│
+├── services/               # Бизнес-сервисы
+│   ├── dashboard.py            # Дашборд и аналитика
+│   ├── ocr_utils.py            # OCR-распознавание документов
+│   ├── export_excel.py         # Экспорт отчётов в Excel
+│   ├── export_helpers.py       # Помощники экспорта
+│   ├── export_import.py        # Импорт/экспорт данных
+│   ├── backup_scheduler.py     # Планировщик резервных копий
+│   ├── restore_investmap.py    # Восстановление инвесткарты
+│   └── roadmap.py              # Дорожная карта (ROADMAP)
+│
+├── routes/                 # HTTP-маршруты (Flask Blueprints)
+│   ├── login_routes.py         # Авторизация (auth_bp)
+│   ├── search_routes.py        # Глобальный поиск (search_bp)
+│   ├── admin_routes.py         # Админ-панель (admin_bp)
+│   ├── admin_deps.py           #   ├─ роуты зависимостей
+│   ├── admin_classifiers.py    #   ├─ роуты классификаторов
+│   ├── admin_filters.py        #   └─ роуты сохранённых фильтров
+│   ├── admin_sql_routes.py     # SQL-консоль администратора
+│   ├── export_routes.py        # Экспорт в Excel (report_bp)
+│   ├── info_routes.py          # Информационные страницы (misc_bp)
+│   ├── update_routes.py        # Управление обновлениями (update_bp)
+│   ├── settings_routes.py      # Настройки (settings_bp)
+│   ├── preview_routes.py       # Предпросмотр документов (preview_bp)
+│   ├── investmap_routes.py     # Инвестиционная карта (investmap_bp)
+│   ├── phonebook_routes.py     # Телефонная книга (phonebook_bp)
+│   ├── phonebook_import.py     # Импорт контактов (pb_import_bp)
+│   ├── ai_routes.py            # ИИ-функции и OCR (ai_bp)
+│   ├── quality_checks.py       # Проверки качества данных (quality_bp)
+│   ├── okved_admin.py          # Управление ОКВЭД (okved_bp)
+│   ├── okved_api.py            # API ОКВЭД (okved_api_bp)
+│   └── egrul_api.py            # API ЕГРЮЛ (egrul_api_bp)
+│
+├── updater/                # Подсистема автообновления
+│   ├── _updater.py             # Ядро автообновления (скачивание/применение патчей)
+│   ├── branch_switcher.py      # Переключение веток
+│   ├── sync_changelog.py       # Синхронизация changelog/roadmap с GitHub
+│   └── make_db_template.py     # Генерация шаблона БД
+│
+├── requests_app/           # Пакет обращений (list/form/view/action/admin/misc)
+├── api/                    # REST API (requests_api → api_bp)
+├── portal_analysis/        # Анализ портала (portal_analysis_bp)
+│
 ├── templates/              # HTML-шаблоны (Jinja2)
-├── static/                 # Статические файлы (CSS, JS, изображения)
+├── static/                 # Статика (CSS, JS, изображения)
+├── db/                     # SQLite (database.db — не в репозитории)
+├── uploads/                # Загруженные файлы (не в репозитории)
+├── reports/                # Сгенерированные отчёты (не в репозитории)
+├── logs/                   # Логи приложения и обновлений
+│
 ├── requirements.txt        # Базовые зависимости Python
 ├── requirements-ocr.txt    # Зависимости для OCR (опционально)
 ├── start KITEZH.bat        # Запуск сервера (Windows, портативная версия)

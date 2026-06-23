@@ -427,7 +427,7 @@ def calc_portal_score_v2(row: dict, db) -> dict:
             'skipped': list,  # display_name полей, пропущенных по условию (N/A)
         }
     """
-    from kitezh_logger import err_logger  # локальный импорт во избежание циклов
+    from core.kitezh_logger import err_logger  # локальный импорт во избежание циклов
 
     rows_db = db.execute(
         "SELECT tech_name, display_name, is_required, required_condition"

@@ -7,7 +7,7 @@
 from flask import Blueprint, request, jsonify
 
 from db import get_db
-from auth_utils import login_required
+from core.auth_utils import login_required
 
 
 # ─── НАСТРОЙКИ BLUEPRINT ─────────────────────────────────────────────────────

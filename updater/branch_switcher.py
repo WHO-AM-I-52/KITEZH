@@ -9,7 +9,12 @@ import os
 import sys
 import subprocess
 
-BASE_DIR     = os.path.dirname(os.path.abspath(__file__))
+# Корень проекта — из paths.py (единый источник правды), устойчиво к переносу в updater/.
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+for _p in (_THIS_DIR, os.path.dirname(_THIS_DIR)):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+from paths import PROJECT_ROOT as BASE_DIR
 BRANCH_FILE  = os.path.join(BASE_DIR, "_branch.txt")
 RESTART_FLAG = os.path.join(BASE_DIR, "_restart.flag")
 LOCK_FILE    = os.path.join(BASE_DIR, "_updating.lock")
@@ -28,7 +33,7 @@ def switch(target_branch: str):
     print(f"[OK] Ветка переключена на: {target_branch}")
 
     # Запускаем _updater.py — он прочитает _branch.txt и скачает нужную ветку
-    updater_path = os.path.join(BASE_DIR, "_updater.py")
+    updater_path = os.path.join(BASE_DIR, "updater", "_updater.py")
     result = subprocess.run(
         [sys.executable, updater_path],
         cwd=BASE_DIR,

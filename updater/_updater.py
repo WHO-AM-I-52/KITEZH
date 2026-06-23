@@ -24,7 +24,14 @@ from datetime import datetime
 
 REPO_OWNER    = "WHO-AM-I-52"
 REPO_NAME     = "KITEZH"
-BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
+# Корень проекта берём из paths.py (единый источник правды), а не из __file__.
+# Это позволяет безопасно перенести модуль в подпакет updater/ без поломки
+# путей применения патчей (dest = os.path.join(BASE_DIR, rel_path)).
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+for _p in (_THIS_DIR, os.path.dirname(_THIS_DIR)):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+from paths import PROJECT_ROOT as BASE_DIR
 API_BASE      = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}"
 COMMIT_FILE   = os.path.join(BASE_DIR, "_last_commit.txt")
 BRANCH_FILE   = os.path.join(BASE_DIR, "_branch.txt")
@@ -90,6 +97,11 @@ BAT_NAME = "start KITEZH.bat"
 # _updater.py защищён — самообновление небезопасно во время работы
 PROTECTED_DIRS  = {"uploads", "reports", "WPy", "Bacup", "db"}
 PROTECTED_FILES = {"_updater.py", ".env"}
+# Защищённые по ИМЕНИ файла (независимо от расположения в дереве).
+# _updater.py теперь живёт в пакете updater/, поэтому защиту по первому
+# сегменту пути (top) дополняем защитой по basename, чтобы работающий
+# updater/_updater.py НЕ перезаписывался сам себя во время апдейта.
+PROTECTED_BASENAMES = {"_updater.py"}
 
 SPINNER = ["||", "|/", "--", "\\/"]
 
@@ -99,6 +111,8 @@ def should_skip(rel_path: str) -> bool:
     top  = p.split("/")[0]
     base = os.path.basename(p)
     if top in PROTECTED_DIRS or top in PROTECTED_FILES:
+        return True
+    if base in PROTECTED_BASENAMES:
         return True
     if base in {"database.db", "database.db-wal", "database.db-shm"}:
         return True
@@ -516,7 +530,7 @@ def ensure_github_release():
 
 def run_sync_changelog():
     """Синхронизирует changelog.py с GitHub Releases после обновления."""
-    sync_path = os.path.join(BASE_DIR, "sync_changelog.py")
+    sync_path = os.path.join(BASE_DIR, "updater", "sync_changelog.py")
     if not os.path.exists(sync_path):
         _log("  [Changelog] sync_changelog.py не найден — пропуск.")
         return

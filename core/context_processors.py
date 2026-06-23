@@ -25,7 +25,7 @@ def inject_globals():
             ).fetchone()[0]
 
             # fix #58: права хранятся как perm_can_view_all, не can_view_all
-            from auth_utils import get_user_perm
+            from core.auth_utils import get_user_perm
             try:
                 if session.get('role') == 'admin' or get_user_perm('can_view_all'):
                     active_requests_count = db.execute(
@@ -50,7 +50,7 @@ def inject_globals():
             # fix #59: гарантированное закрытие соединения
             db.close()
 
-    from auth_utils import ALL_PERMISSIONS, get_user_perm
+    from core.auth_utils import ALL_PERMISSIONS, get_user_perm
     perms = {key: get_user_perm(key) for key in ALL_PERMISSIONS}
 
     return dict(

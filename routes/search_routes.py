@@ -6,7 +6,7 @@
 
 from flask import Blueprint, request, jsonify, render_template, session
 from db import get_db
-from auth_utils import login_required
+from core.auth_utils import login_required
 
 search_bp = Blueprint('search', __name__)
 

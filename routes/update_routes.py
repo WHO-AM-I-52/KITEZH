@@ -38,7 +38,7 @@
 
 from flask import Blueprint, jsonify, request as flask_request, session, Response, stream_with_context
 from db import BASE_DIR
-from activity_log import log_action
+from core.activity_log import log_action
 from db import get_db
 from datetime import datetime
 import os
@@ -54,9 +54,10 @@ _MAINTENANCE_FLAG = os.path.join(BASE_DIR, '.maintenance')
 _FLAG_FILE        = os.path.join(BASE_DIR, '_update_available.json')
 _LOCK_FILE        = os.path.join(BASE_DIR, '_updating.lock')
 _RESTART_FLAG     = os.path.join(BASE_DIR, '_restart.flag')
-_UPDATER          = os.path.join(BASE_DIR, '_updater.py')
+_UPDATER          = os.path.join(BASE_DIR, 'updater', '_updater.py')
 _COMMIT_FILE      = os.path.join(BASE_DIR, '_last_commit.txt')
 _PRE_UPDATE_FILE  = os.path.join(BASE_DIR, '_pre_update.json')
+_UPDATE_RESULT_FILE = os.path.join(BASE_DIR, '_update_result.json')
 _BAT_NAME         = 'start KITEZH.bat'
 
 _MIN_DELAY = 0
@@ -78,6 +79,30 @@ def _clear_pre_update():
     try:
         if os.path.exists(_PRE_UPDATE_FILE):
             os.remove(_PRE_UPDATE_FILE)
+    except Exception:
+        pass
+
+
+def _write_update_result(stats: dict, applied_by: str = ''):
+    """Записывает итог применённого обновления в _update_result.json.
+    Файл переживает рестарт сервера и читается один раз роутом
+    /api/update/result — после чего удаляется (one-shot).
+    Позволяет уведомить администратора об успешном перезапуске
+    (симптом: «админа не уведомляет об успешной перезагрузке»).
+    """
+    payload = {
+        'ok':          stats.get('errors', 0) == 0,
+        'updated':     stats.get('updated', 0),
+        'unchanged':   stats.get('unchanged', 0),
+        'skipped':     stats.get('skipped', 0),
+        'errors':      stats.get('errors', 0),
+        'message':     stats.get('message', ''),
+        'finished_at': datetime.now().isoformat(),
+        'applied_by':  applied_by,
+    }
+    try:
+        with open(_UPDATE_RESULT_FILE, 'w', encoding='utf-8') as f:
+            json.dump(payload, f, ensure_ascii=False)
     except Exception:
         pass
 
@@ -233,6 +258,7 @@ def api_update_stream():
 
     # Захватываем данные сессии ДО первого yield (session недоступен внутри генератора)
     _scheduled_by = session.get('full_name', session.get('username', ''))
+    _applied_by   = _scheduled_by
 
     # ── Сразу помечаем что идёт обновление (для не-админов) ──
     try:
@@ -345,6 +371,14 @@ def api_update_stream():
         # ── Точка 3: перед запуском apply — фиксируем фазу applying ──
         _pre_update_write({'phase': 'applying'})
 
+        # ── Симптом 1: ставим флаг ТО — не-админы попадают на maintenance.html ──
+        # before_request в app.py при наличии .maintenance отдаёт страницу ТО
+        # (с играми) всем кроме админа; _startup() снимет флаг после рестарта.
+        try:
+            open(_MAINTENANCE_FLAG, 'w').close()
+        except Exception:
+            pass
+
         # ── Фаза 2: установка ──────────────────────────────────────────────────────────────────────
         cmd_apply = [sys.executable, _UPDATER, '--apply-only', '--stream-json']
         if force:
@@ -366,6 +400,7 @@ def api_update_stream():
 
         last_heartbeat = time.time()
         done_received = False  # трекер: получен ли done-payload от _updater.py
+        apply_stats   = {}     # накопленная статистика из done для _update_result.json
 
         for raw_line in proc_apply.stdout:
             if time.time() - last_heartbeat >= 15:
@@ -393,13 +428,14 @@ def api_update_stream():
                         })
                     elif t == 'done':
                         done_received = True
-                        yield _sse_format('done', {
+                        apply_stats = {
                             'updated':   msg.get('updated', 0),
                             'unchanged': msg.get('unchanged', 0),
                             'skipped':   msg.get('skipped', 0),
                             'errors':    msg.get('errors', 0),
                             'message':   msg.get('message', 'Готово'),
-                        })
+                        }
+                        yield _sse_format('done', apply_stats)
                 except json.JSONDecodeError:
                     pass
 
@@ -417,26 +453,39 @@ def api_update_stream():
         elif not done_received:
             # Процесс завершился успешно, но done не пришёл —
             # отдаём синтетический done чтобы UI не завис
-            yield _sse_format('done', {
+            apply_stats = {
                 'updated':   0,
                 'unchanged': 0,
                 'skipped':   0,
                 'errors':    0,
                 'message':   'Установка завершена (отчёт недоступен)',
-            })
+            }
+            yield _sse_format('done', apply_stats)
 
         # ── Точка 5: Flask завершается → .bat перезапустит сервер ──
         if rc_apply in (0, 2):
-            def _shutdown():
+            # Симптом 2: фиксируем итог ДО рестарта — админ увидит тост
+            # об успехе после перезагрузки (через /api/update/result).
+            _write_update_result(apply_stats, applied_by=_applied_by)
+
+            def _shutdown(rc):
                 time.sleep(2)
                 # Создаём _restart.flag — run_server.py увидит его
-                # и вернёт sys.exit(42) в .bat → goto :start_server
+                # и вернёт sys.exit(42) в .bat → goto :start_server.
                 try:
-                    open(os.path.join(BASE_DIR, '_restart.flag'), 'w').close()
+                    open(_RESTART_FLAG, 'w').close()
                 except Exception:
                     pass
-                os._exit(0)
-            threading.Thread(target=_shutdown, daemon=False).start()
+                # Симптом 3: код выхода — как в timer-флоу.
+                # rc=2 → bat обновлён → запускаем новый .bat явно;
+                # rc=0 → os._exit(42) → текущий .bat делает goto :start_server.
+                # Раньше был os._exit(0) — из-за чего .bat не видел код 42
+                # и сервер не перезапускался.
+                if rc == 2:
+                    _run_bat_restart()
+                else:
+                    os._exit(42)
+            threading.Thread(target=_shutdown, args=(rc_apply,), daemon=False).start()
 
     return Response(
         stream_with_context(_generate()),
@@ -517,13 +566,37 @@ def api_update_check():
 
 # ─── Общая логика рабочего потока: download → таймер → apply ─────────────────
 
-def _build_timer_worker(delay: int, force: bool, user_id: int):
+def _parse_apply_stats(stdout: str) -> dict:
+    """Извлекает счётчики из текстового отчёта _updater.py --apply-only
+    (без --stream-json). Строки вида 'Обновлено файлов : N'.
+    Возвращает dict с ключами updated/unchanged/skipped/errors.
+    """
+    import re
+    stats = {'updated': 0, 'unchanged': 0, 'skipped': 0, 'errors': 0}
+    patterns = {
+        'updated':   r'Обновлено файлов\s*:\s*(\d+)',
+        'unchanged': r'Без изменений\s*:\s*(\d+)',
+        'skipped':   r'Пропущено[^:]*:\s*(\d+)',
+        'errors':    r'Ошибок при записи\s*:\s*(\d+)',
+    }
+    for key, pat in patterns.items():
+        m = re.search(pat, stdout or '')
+        if m:
+            try:
+                stats[key] = int(m.group(1))
+            except ValueError:
+                pass
+    return stats
+
+
+def _build_timer_worker(delay: int, force: bool, user_id: int, applied_by: str = ''):
     """Ретурнит целевую функцию для threading.Thread.
     Флоу: phase=downloading → --download-only → rc=0 → phase=scheduled →
            таймер delay сек (отсчёт от момента завершения скачивания) →
            phase=applying → --apply-only → rc=0/2 → рестарт.
     rc=1 при download: ошибка записывается в pre-update.json, лок удаляется,
     баннер НЕ показывается.
+    applied_by: имя инициатора — пишется в _update_result.json (симптом 2).
     """
     def _worker():
         # ── Фаза 1: скачиваем архив ──
@@ -599,9 +672,11 @@ def _build_timer_worker(delay: int, force: bool, user_id: int):
         cmd_apply = [sys.executable, _UPDATER, '--apply-only']
         if force:
             cmd_apply.append('--force')
+        apply_out = ''
         try:
             res_apply = subprocess.run(cmd_apply, capture_output=True, text=True, timeout=300)
             rc_apply  = res_apply.returncode
+            apply_out = (res_apply.stdout or '') + (res_apply.stderr or '')
         except Exception:
             rc_apply = 1
         finally:
@@ -610,6 +685,18 @@ def _build_timer_worker(delay: int, force: bool, user_id: int):
                 os.remove(_MAINTENANCE_FLAG)
             except Exception:
                 pass
+
+        # ── Симптом 2: фиксируем итог ДО рестарта (только при успехе) —
+        # админ увидит тост после перезагрузки (через /api/update/result).
+        if rc_apply in (0, 2):
+            _stats = _parse_apply_stats(apply_out)
+            _stats['message'] = (
+                f"Обновлено: {_stats['updated']} | "
+                f"Без изменений: {_stats['unchanged']} | "
+                f"Пропущено: {_stats['skipped']}"
+                + (f" | Ошибок: {_stats['errors']}" if _stats['errors'] else "")
+            )
+            _write_update_result(_stats, applied_by=applied_by)
 
         try:
             open(_RESTART_FLAG, 'w').close()
@@ -689,6 +776,7 @@ def api_update_schedule():
         delay=delay,
         force=force,
         user_id=session['user_id'],
+        applied_by=session.get('full_name', session.get('username', '')),
     )
     threading.Thread(target=worker, daemon=True).start()
 
@@ -763,6 +851,7 @@ def _schedule_internal(delay: int, force: bool):
         delay=delay,
         force=force,
         user_id=session['user_id'],
+        applied_by=session.get('full_name', session.get('username', '')),
     )
     threading.Thread(target=worker, daemon=True).start()
     return jsonify({'ok': True, 'delay': delay, 'fire_at_ts': fire_at_ts_estimate,
@@ -850,3 +939,67 @@ def api_update_pre_status():
     except Exception:
         _clear_pre_update()
         return jsonify({'scheduled': False}), 200
+
+
+# ─── Результат применённого обновления (one-shot, только админ) ───
+
+@update_bp.route('/api/update/result')
+def api_update_result():
+    """Симптом 2: уведомление админа об успешном перезапуске.
+
+    После перезагрузки сервера base.html опрашивает этот роут.
+    Если _update_result.json существует — возвращаем его, логируем
+    факт применения и удаляем файл (one-shot), чтобы тост
+    показался ровно один раз.
+    """
+    if session.get('role') != 'admin':
+        return jsonify({'available': False}), 200
+
+    if not os.path.exists(_UPDATE_RESULT_FILE):
+        return jsonify({'available': False}), 200
+
+    try:
+        with open(_UPDATE_RESULT_FILE, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+    except Exception:
+        # Битый файл — удаляем и сообщаем, что нечего показывать
+        try:
+            os.remove(_UPDATE_RESULT_FILE)
+        except Exception:
+            pass
+        return jsonify({'available': False}), 200
+
+    # Логируем факт применения обновления (правило #6).
+    try:
+        conn = get_db()
+        log_action(conn, session['user_id'], 'update_applied',
+                   detail=(
+                       f"Обновление применено: "
+                       f"updated={data.get('updated', 0)} "
+                       f"unchanged={data.get('unchanged', 0)} "
+                       f"skipped={data.get('skipped', 0)} "
+                       f"errors={data.get('errors', 0)} "
+                       f"by={data.get('applied_by', '')}"
+                   ))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+    # one-shot: удаляем файл после первого чтения
+    try:
+        os.remove(_UPDATE_RESULT_FILE)
+    except Exception:
+        pass
+
+    return jsonify({
+        'available':   True,
+        'ok':          data.get('ok', True),
+        'updated':     data.get('updated', 0),
+        'unchanged':   data.get('unchanged', 0),
+        'skipped':     data.get('skipped', 0),
+        'errors':      data.get('errors', 0),
+        'message':     data.get('message', ''),
+        'finished_at': data.get('finished_at', ''),
+        'applied_by':  data.get('applied_by', ''),
+    })

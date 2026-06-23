@@ -31,8 +31,8 @@ from flask import Flask, jsonify, render_template, request as flask_request, ses
 
 from db import BASE_DIR, run_migrations
 from migrations import init_db, migrate_db, migrate_districts
-from context_processors import inject_globals
-from kitezh_logger import err_logger
+from core.context_processors import inject_globals
+from core.kitezh_logger import err_logger
 
 app = Flask(__name__)
 
@@ -40,7 +40,7 @@ app = Flask(__name__)
 _MAINTENANCE_FLAG = os.path.join(BASE_DIR, '.maintenance')
 
 # ─── SECRET_KEY ─────────────────────────────────────────────────────────────────────────────
-from limiter import limiter
+from core.limiter import limiter
 import secrets as _secrets
 _KEY_FILE = os.path.join(BASE_DIR, '_secret.key')
 _env_key  = os.environ.get('SECRET_KEY')
@@ -121,27 +121,27 @@ def check_maintenance():
 
 
 # ─── BLUEPRINTS ────────────────────────────────────────────────────────────────────────────────────
-from phonebook_routes  import phonebook_bp
-from search_routes     import search_bp
-from login_routes      import auth_bp
-from requests_app      import requests_bp
-from admin_routes      import admin_bp
-from export_routes     import report_bp
-from info_routes       import misc_bp
-from update_routes     import update_bp
-from okved_admin       import okved_bp
-from okved_api         import okved_api_bp
-from egrul_api         import egrul_api_bp
-from settings_routes   import settings_bp
-from preview_routes    import preview_bp
-from phonebook_import  import pb_import_bp
-from investmap_routes  import investmap_bp
-from api.requests_api  import api_bp
-from ai_routes         import ai_bp
-from quality_checks    import quality_bp
-from admin_sql_routes  import admin_sql_bp
+from routes.phonebook_routes import phonebook_bp
+from routes.search_routes    import search_bp
+from routes.login_routes     import auth_bp
+from requests_app            import requests_bp
+from routes.admin_routes     import admin_bp
+from routes.export_routes    import report_bp
+from routes.info_routes      import misc_bp
+from routes.update_routes    import update_bp
+from routes.okved_admin      import okved_bp
+from routes.okved_api        import okved_api_bp
+from routes.egrul_api        import egrul_api_bp
+from routes.settings_routes  import settings_bp
+from routes.preview_routes   import preview_bp
+from routes.phonebook_import import pb_import_bp
+from routes.investmap_routes import investmap_bp
+from api.requests_api        import api_bp
+from routes.ai_routes        import ai_bp
+from routes.quality_checks   import quality_bp
+from routes.admin_sql_routes import admin_sql_bp
 from portal_analysis.portal_analysis_routes import portal_analysis_bp
-import backup_scheduler
+import services.backup_scheduler as backup_scheduler
 
 for bp in [
     phonebook_bp, search_bp,

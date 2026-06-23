@@ -3,8 +3,8 @@ import os
 from flask import request, redirect, url_for, session, send_file
 
 from db import get_db, UPLOADS_DIR
-from auth_utils import login_required
-from activity_log import log_action
+from core.auth_utils import login_required
+from core.activity_log import log_action
 from . import requests_bp
 
 

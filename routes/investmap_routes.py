@@ -13,10 +13,10 @@
 
 from flask import Blueprint, render_template, request, jsonify, flash, g, redirect, url_for
 
-from activity_log import log_action
-from auth_utils import login_required, permission_required
+from core.activity_log import log_action
+from core.auth_utils import login_required, permission_required
 from db import get_db
-from kitezh_logger import err_logger
+from core.kitezh_logger import err_logger
 from portal_analysis.portal_checker import calc_portal_score_v2
 from tools.investmap_export import convert_excel_to_text
 from tools.investmap_analyzer import analyze, build_summary_sms

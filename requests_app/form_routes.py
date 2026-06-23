@@ -8,15 +8,15 @@ from flask import render_template, request, redirect, url_for, session, flash
 from werkzeug.utils import secure_filename
 
 from db import get_db, UPLOADS_DIR, UPLOADS_TMP
-from auth_utils import login_required
-from form_utils import build_values, get_classifiers, ALL_FIELDS, REQUIRED_FIELDS, add_workdays
-from validators import allowed_file, validate_inn
-from activity_log import log_action
-from ocr_utils import extract_anketa_fields
-from request_history import save_history
-from phonebook_routes import sync_request_to_phonebook
+from core.auth_utils import login_required
+from utils.form_utils import build_values, get_classifiers, ALL_FIELDS, REQUIRED_FIELDS, add_workdays
+from utils.validators import allowed_file, validate_inn
+from core.activity_log import log_action
+from services.ocr_utils import extract_anketa_fields
+from core.request_history import save_history
+from routes.phonebook_routes import sync_request_to_phonebook
 from tray import notify_error
-from kitezh_logger import err_logger
+from core.kitezh_logger import err_logger
 from . import requests_bp
 
 _PRESERVE_FIELDS = [

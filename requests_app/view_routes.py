@@ -2,10 +2,10 @@ from datetime import date
 from flask import render_template, redirect, url_for, session, flash
 
 from db import get_db
-from auth_utils import login_required, admin_required
-from request_history import get_history, rollback_history
-from activity_log import log_action
-from form_utils import denormalize_from_base, FIELD_UNIT_KEY
+from core.auth_utils import login_required, admin_required
+from core.request_history import get_history, rollback_history
+from core.activity_log import log_action
+from utils.form_utils import denormalize_from_base, FIELD_UNIT_KEY
 from . import requests_bp
 
 # ─── Issue #48: поля, которые денормализуются в карточке ──────────────────

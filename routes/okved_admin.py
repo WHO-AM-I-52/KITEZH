@@ -14,7 +14,7 @@ from datetime import datetime
 import requests  # HTTP-запросы к API ФНС
 
 from db import get_db
-from auth_utils import login_required, admin_required
+from core.auth_utils import login_required, admin_required
 
 
 # ─── НАСТРОЙКИ BLUEPRINT И API ───────────────────────────────────────────────

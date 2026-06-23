@@ -8,7 +8,7 @@
 import sqlite3
 
 from db import DB_PATH
-from auth_utils import hash_pw
+from core.auth_utils import hash_pw
 from spravochnik import LEGAL_FORMS_DEFAULT, DISTRICTS_DEFAULT, SOURCE_TYPES_DEFAULT
 from db import get_db
 

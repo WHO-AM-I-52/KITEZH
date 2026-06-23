@@ -2,14 +2,23 @@ import urllib.request
 import json
 import re
 import os
+import sys
 from datetime import datetime
 
 REPO_OWNER = "WHO-AM-I-52"
 REPO_NAME = "SONAR"
 BRANCH = "main"
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CHANGELOG_PATH = os.path.join(BASE_DIR, "changelog.py")
-ROADMAP_PATH   = os.path.join(BASE_DIR, "roadmap.py")
+# Корень проекта — из paths.py (единый источник правды), устойчиво к переносу в updater/.
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+for _p in (_THIS_DIR, os.path.dirname(_THIS_DIR)):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+from paths import PROJECT_ROOT as BASE_DIR
+from paths import CHANGELOG_PATH, ROADMAP_PATH
+# CHANGELOG_PATH → <корень>/changelog.py (читается как `from changelog import CHANGELOG`).
+# ROADMAP_PATH  → <корень>/services/roadmap.py — ИМЕННО тот файл, что читает
+# приложение (`from services.roadmap import ROADMAP`). Раньше генератор писал в корень
+# (roadmap.py), который после переноса в services/ перестал читаться — отсюда десинхрон.
 
 
 def load_token():

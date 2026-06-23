@@ -3,7 +3,7 @@ import subprocess
 import threading
 from datetime import datetime
 
-from activity_log import log_action
+from core.activity_log import log_action
 from db import get_db
 
 BASE_DIR      = os.path.dirname(os.path.abspath(__file__))

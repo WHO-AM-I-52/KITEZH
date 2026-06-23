@@ -7,7 +7,7 @@
 from flask import render_template, redirect, url_for, session, request
 from . import requests_bp
 from db import get_db
-from auth_utils import login_required
+from core.auth_utils import login_required
 
 
 # ─── /requests — классический список (остаётся для обратной совместимости) ───────────

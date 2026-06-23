@@ -4,21 +4,23 @@
 # ╚═══════════════════════════════════════════════
 
 import sqlite3
-import os
 from datetime import date, timedelta
 
 # ─── ПУТИ ────────────────────────────────────────────────────────────────────────────────────
+# Единый источник правды для всех runtime-путей — paths.py (корень проекта).
+# Здесь они реэкспортируются для обратной совместимости: часть кода импортирует
+# BASE_DIR / REPORTS_DIR / DB_PATH / UPLOADS_DIR именно из db.
+from paths import (
+    BASE_DIR,
+    DB_PATH,
+    UPLOADS_DIR,
+    UPLOADS_TMP,
+    REPORTS_DIR,
+)
 
-BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
-DB_PATH     = os.path.join(BASE_DIR, 'db', 'database.db')
-UPLOADS_DIR = os.path.join(BASE_DIR, 'uploads')
-UPLOADS_TMP = os.path.join(BASE_DIR, 'uploads', 'tmp')
-REPORTS_DIR = os.path.join(BASE_DIR, 'reports')
 ALLOWED_EXT = {'pdf', 'ppt', 'pptx', 'doc', 'docx', 'xlsx', 'zip'}
 
-os.makedirs(UPLOADS_DIR, exist_ok=True)
-os.makedirs(UPLOADS_TMP, exist_ok=True)
-os.makedirs(REPORTS_DIR, exist_ok=True)
+# Каталоги гарантированно создаются в paths.py при импорте.
 
 
 # ─── НОРМАТИВЫ ПО ЭТАПАМ (рабочих дней) ──────────────────────────────────────

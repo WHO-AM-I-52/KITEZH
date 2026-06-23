@@ -205,6 +205,14 @@
     body[data-theme="zone"] #updBanner{background:linear-gradient(135deg,#3a2800,#6b4800)}
     /* сдвигаем page-wrap вниз когда баннер видим */
     body.upd-banner-visible .page-wrap{margin-top:calc(var(--topbar-h) + 44px)}
+    /* Тост об успешном обновлении */
+    #updResultToast{display:none;position:fixed;top:calc(var(--topbar-h) + 12px);right:16px;z-index:10000;max-width:380px;min-width:280px;background:linear-gradient(135deg,#166534,#15803d);color:#fff;border-radius:10px;padding:12px 14px;box-shadow:0 8px 32px rgba(0,0,0,.35);align-items:flex-start;gap:10px;animation:updBannerIn .35s ease}
+    #updResultToast.show{display:flex}
+    #updResultToast .urt-icon{font-size:20px;flex-shrink:0;line-height:1.2}
+    #updResultToast .urt-title{font-size:14px;font-weight:700}
+    #updResultToast .urt-text{font-size:12px;opacity:.9;margin-top:2px}
+    #updResultToast .urt-close{margin-left:auto;background:transparent;border:none;color:#fff;font-size:14px;cursor:pointer;opacity:.7;flex-shrink:0;padding:0 2px}
+    #updResultToast .urt-close:hover{opacity:1}
 
     /* ─── CSS-переменные тем ─────────────────────────────────────────────── */
     :root {
@@ -399,6 +407,16 @@
       <button class="ub-btn" id="updBannerNow" style="display:none">⚡ Сейчас</button>
     </div>
   </div>
+</div>
+
+{# Тост об успешном применённом обновлении (только admin, /api/update/result) #}
+<div id="updResultToast">
+  <span class="urt-icon">✅</span>
+  <div>
+    <div class="urt-title" id="updResultTitle">Обновление применено</div>
+    <div class="urt-text" id="updResultText"></div>
+  </div>
+  <button class="urt-close" id="updResultClose" aria-label="Закрыть">✕</button>
 </div>
 {% endif %}
 
@@ -971,5 +989,47 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 })();
 </script>
+
+{# Симптом 2: уведомление админа об успешном перезапуске #}
+{% if session.get('role') == 'admin' %}
+<script>
+(function(){
+  var toast = document.getElementById('updResultToast');
+  if (!toast) return;
+  var titleEl = document.getElementById('updResultTitle');
+  var textEl  = document.getElementById('updResultText');
+  var closeBtn= document.getElementById('updResultClose');
+  var hideTimer = null;
+
+  function hide(){
+    toast.classList.remove('show');
+    if (hideTimer){ clearTimeout(hideTimer); hideTimer = null; }
+  }
+  if (closeBtn) closeBtn.addEventListener('click', hide);
+
+  /* Однократный опрос при загрузке — роут сам удаляет _update_result.json (one-shot) */
+  fetch('/api/update/result', {credentials:'same-origin', cache:'no-store'})
+  .then(function(r){ return r.ok ? r.json() : null; })
+  .then(function(d){
+    if (!d || !d.available) return;
+    if (d.ok){
+      titleEl.textContent = '✅ Обновление применено';
+    } else {
+      titleEl.textContent = '⚠️ Обновление завершено с ошибками';
+    }
+    var parts = [];
+    if (typeof d.updated   === 'number') parts.push('обновлено ' + d.updated);
+    if (typeof d.unchanged === 'number') parts.push('без изменений ' + d.unchanged);
+    if (typeof d.skipped   === 'number') parts.push('пропущено ' + d.skipped);
+    if (d.errors) parts.push('ошибок ' + d.errors);
+    textEl.textContent = parts.join(' · ') + (d.applied_by ? (' — ' + d.applied_by) : '');
+    toast.classList.add('show');
+    /* Автоскрытие через 12 с (при ошибках оставляем висеть) */
+    if (d.ok){ hideTimer = setTimeout(hide, 12000); }
+  })
+  .catch(function(){ /* молча пропускаем */ });
+})();
+</script>
+{% endif %}
 </body>
 </html>

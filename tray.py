@@ -2,7 +2,8 @@
 # ║  tray.py                                                      ║
 # ║  Иконка KITEZH в системном трее Windows.                     ║
 # ║  Запускается из run_server.py если KITEZH_TRAY=1             ║
-# ║  notify_error(title, msg) — Windows-уведомление об ошибке    ║
+# ║  notify_error(title, msg) — печать в консоль + show_console  ║
+# ║    + balloon трея (если запущен)                             ║
 # ║  get_notify_level() — читает уровень из classifiers          ║
 # ║  show_console() / hide_console() — публичные, вызываются   ║
 # ║    из /api/console/* в admin_routes.py                       ║
@@ -11,6 +12,7 @@
 # ╚══════════════════════════════════════════════════════════════╝
 
 import os
+import sys
 import ctypes
 import threading
 import webbrowser
@@ -21,6 +23,10 @@ import webbrowser
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ICON_PATH = os.path.join(BASE_DIR, 'static', 'favicon.ico')
+# Флаг перезапуска — то же имя, что ждёт run_server.py (sys.exit(42) → .bat).
+RESTART_FLAG = os.path.join(BASE_DIR, '_restart.flag')
+# Папка логов — совпадает с core/kitezh_logger.py (logs внутри core/).
+LOGS_DIR = os.path.join(BASE_DIR, 'core', 'logs')
 
 _console_visible = True
 _tray_icon = None
@@ -67,15 +73,32 @@ def get_notify_level() -> str:
 
 def notify_error(title: str, message: str) -> None:
     """
-    Показывает Windows-уведомление через иконку трея.
-    Безопасно если трей не запущен или pystray недоступен.
+    Сообщает админу об ошибке.
+
+    Поведение (всегда, независимо от наличия трея):
+      1. Печатает заголовок и текст ошибки в консоль (stderr).
+      2. Показывает консольное окно через show_console() —
+         чтобы скрытое окно появилось и админ увидел ошибку.
+      3. Дополнительно, если трей доступен — показывает balloon-
+         уведомление трея (как раньше).
+    Все шаги обёрнуты в try/except — функция никогда не падает.
     """
-    if _tray_icon is None:
-        return
+    # 1. Печать в консоль — гарантированный канал.
     try:
-        _tray_icon.notify(message, title)
+        print(f"[ОШИБКА] {title}\n{message}", file=sys.stderr, flush=True)
     except Exception:
         pass
+    # 2. Показать консоль (если она была скрыта).
+    try:
+        show_console()
+    except Exception:
+        pass
+    # 3. Дополнительно — balloon трея, если трей запущен.
+    if _tray_icon is not None:
+        try:
+            _tray_icon.notify(message, title)
+        except Exception:
+            pass
 
 
 # ─── ПУБЛИЧНЫЕ ФУНКЦИИ КОНСОЛИ ─────────────────────────────────────────────────────────────────
@@ -146,6 +169,40 @@ def _stop_server(icon, item):
     os._exit(0)
 
 
+def _open_logs(icon, item):
+    """Открывает папку логов (core/logs) в проводнике."""
+    try:
+        os.makedirs(LOGS_DIR, exist_ok=True)
+    except Exception:
+        pass
+    try:
+        # Windows: открывает папку в Проводнике.
+        os.startfile(LOGS_DIR)  # type: ignore[attr-defined]
+    except Exception:
+        # Fallback для не-Windows / отсутствия startfile.
+        try:
+            webbrowser.open('file://' + LOGS_DIR)
+        except Exception:
+            pass
+
+
+def _restart_server(icon, item):
+    """Перезапускает сервер: создаёт _restart.flag и выходит.
+    run_server.py обнаружит флаг после завершения процесса
+    и сделает sys.exit(42) → .bat снова запустит сервер."""
+    try:
+        with open(RESTART_FLAG, 'w', encoding='utf-8') as f:
+            f.write('tray')
+    except Exception:
+        pass
+    try:
+        icon.stop()
+    except Exception:
+        pass
+    show_console()
+    os._exit(0)
+
+
 def _make_menu():
     import pystray
     return pystray.Menu(
@@ -154,6 +211,9 @@ def _make_menu():
             lambda item: 'Скрыть консоль' if _console_visible else 'Показать консоль',
             _toggle_console,
         ),
+        pystray.Menu.SEPARATOR,
+        pystray.MenuItem('Открыть папку логов', _open_logs),
+        pystray.MenuItem('Перезапустить сервер', _restart_server),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem('Остановить KITEZH', _stop_server),
     )
