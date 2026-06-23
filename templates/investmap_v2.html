@@ -266,6 +266,7 @@
 
   var allData    = null;
   var currentIdx = 0;
+  var lastResp   = null;
 
   /* ─── Drag-and-drop ──────────────────────────────────────────────── */
   dropzone.addEventListener('click', function(){ fileInput.click(); });
@@ -332,6 +333,7 @@
       var list = Array.isArray(resp.results) ? resp.results : [resp];
       allData    = list;
       currentIdx = 0;
+      lastResp   = resp;
       initNav(list);
       renderPlot(list[0]);
 
@@ -451,6 +453,13 @@
     navPrev.disabled = idx === 0;
     navNext.disabled = idx === allData.length - 1;
     renderPlot(allData[idx]);
+    if (lastResp && !aiTextBlock.classList.contains('d-none')) {
+      setAiText(
+        (lastResp.export && lastResp.export.text ? lastResp.export.text : '') +
+        '\n\n' + buildAnalysisBlock(allData[idx]),
+        lastResp.export && lastResp.export.format ? lastResp.export.format : 'txt'
+      );
+    }
     resultsBlock.scrollIntoView({behavior:'smooth', block:'start'});
   }
 
@@ -633,6 +642,7 @@
     resultText.value = '';
     allData    = null;
     currentIdx = 0;
+    lastResp   = null;
   }
 
   function showError(msg){
