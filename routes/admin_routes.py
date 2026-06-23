@@ -30,9 +30,19 @@
 # ║         Blueprint admin_bp остаётся здесь; submodules        ║
 # ║         навешивают роуты через register(admin_bp), поэтому   ║
 # ║         endpoint-имена (admin.*) и url_for не меняются.      ║
+# ║  v4.7: backup_download — GET /admin/backup/download?type=     ║
+# ║         full|db|rules → ZIP-архив; log_action backup_download ║
 # ╚══════════════════════════════════════════════════════════════╝
 
-from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify
+import io
+import os
+import zipfile
+from datetime import datetime
+
+from flask import (
+    Blueprint, render_template, request, redirect, url_for,
+    session, flash, jsonify, send_file,
+)
 
 from db import get_db
 from core.auth_utils import (
@@ -296,3 +306,57 @@ def api_console_hide():
         return jsonify({'ok': ok, 'visible': False})
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)})
+
+
+# ─── Бэкап ────────────────────────────────────────────────────────────────────
+@admin_bp.route('/admin/backup/download')
+@login_required
+@admin_required
+def backup_download():
+    backup_type = request.args.get('type', 'full')
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    db_path     = os.path.join(base_dir, 'database.db')
+    rules_path  = os.path.join(base_dir, 'site_field_rules.json')
+    uploads_dir = os.path.join(base_dir, 'uploads')
+
+    date_str = datetime.now().strftime('%Y%m%d')
+
+    if backup_type == 'db':
+        zip_name     = f'kitezh_db_{date_str}.zip'
+        files_to_zip = [(db_path, 'database.db')]
+    elif backup_type == 'rules':
+        zip_name     = f'kitezh_rules_{date_str}.zip'
+        files_to_zip = [(rules_path, 'site_field_rules.json')]
+    else:
+        zip_name     = f'kitezh_full_{date_str}.zip'
+        files_to_zip = [(db_path, 'database.db'), (rules_path, 'site_field_rules.json')]
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for abs_path, arc_name in files_to_zip:
+            if os.path.exists(abs_path):
+                zf.write(abs_path, arc_name)
+
+        if backup_type == 'full' and os.path.isdir(uploads_dir):
+            for root, _, fnames in os.walk(uploads_dir):
+                for fname in fnames:
+                    full = os.path.join(root, fname)
+                    arc  = os.path.relpath(full, base_dir)
+                    zf.write(full, arc)
+
+    buf.seek(0)
+
+    conn = get_db()
+    try:
+        log_action(conn, session['user_id'], 'backup_download', detail=backup_type)
+        conn.commit()
+    finally:
+        conn.close()
+
+    return send_file(
+        buf,
+        mimetype='application/zip',
+        as_attachment=True,
+        download_name=zip_name,
+    )
