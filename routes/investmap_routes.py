@@ -44,16 +44,20 @@ def investmap_v1():
 @login_required
 @permission_required('can_view_investmap')
 def investmap_v2():
-    """Анализ заполняемости v2 — заглушка (шаблон обновится в Карточке #5в)."""
+    """Анализ заполняемости v2 — страница с кнопкой «Правила» и счётчиком правил."""
     user = getattr(g, 'user', {}).get('login', 'unknown')
     try:
-        return render_template('investmap_v2.html')
+        db = get_db()
+        rules_count = db.execute(
+            'SELECT COUNT(*) FROM investmap_rules'
+        ).fetchone()[0]
+        return render_template('investmap_v2.html', rules_count=rules_count)
     except Exception as exc:
         err_logger.exception(
             'investmap_v2 error | user=%s | %s', user, exc
         )
         flash('Ошибка при загрузке страницы анализа v2.', 'error')
-        return render_template('investmap_v2.html'), 500
+        return render_template('investmap_v2.html', rules_count=0), 500
 
 
 @investmap_bp.route('/investmap/v2', methods=['POST'])
