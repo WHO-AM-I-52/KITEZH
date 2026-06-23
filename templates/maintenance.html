@@ -946,11 +946,23 @@ window.addEventListener('load', function() { initSwitcher(); });
     dot.className='dot online';txt.textContent='Сервер онлайн';counter.textContent='';
     returnBtn.style.display='flex';showToast();returnTimer=setTimeout(showModal,0);
   }
+  function onServerOffline(){
+    if(!serverOnline)return;serverOnline=false;
+    clearInterval(modalCountdown);clearTimeout(returnTimer);
+    modalBackdrop.classList.remove('show');
+    returnBtn.style.display='none';
+    dot.className='dot offline';txt.textContent='Сервер недоступен…';
+  }
   function poll(){
     attempts++;if(!serverOnline)counter.textContent='Попытка '+attempts;
     fetch('/health',{cache:'no-store'})
-      .then(function(r){if(r.ok)onServerOnline();else{dot.className='dot offline';txt.textContent='Сервер недоступен…';if(!serverOnline)setTimeout(poll,POLL_MS);}})
-      .catch(function(){dot.className='dot offline';txt.textContent='Нет соединения…';if(!serverOnline)setTimeout(poll,POLL_MS);});
+      .then(function(r){
+        if(r.ok)onServerOnline();
+        else{onServerOffline();dot.className='dot offline';txt.textContent='Сервер недоступен…';setTimeout(poll,POLL_MS);}
+      })
+      .catch(function(){
+        onServerOffline();dot.className='dot offline';txt.textContent='Нет соединения…';setTimeout(poll,POLL_MS);
+      });
   }
   setTimeout(poll,POLL_MS);
 })();
