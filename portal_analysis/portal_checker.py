@@ -388,6 +388,38 @@ def calc_portal_score(row: dict) -> dict:
 _IS_REQ_MAP = {'0': 'нет', '1': 'да', '2': 'условно'}
 
 
+def _resolve_hint(
+    target_tech: str,
+    rules_map: dict,
+    normalized: dict,
+    tech_to_display: dict,
+) -> 'str | None':
+    """
+    Ищет подходящее правило investmap_rules для поля target_tech.
+
+    Перебирает кандидатов из rules_map[target_tech].
+    Для каждого правила проверяет: normalized[source_display_name].lower() == source_value_lower.
+    Возвращает recommended_text первого совпавшего правила или None.
+
+    Args:
+        target_tech:     tech_name целевого поля (lower)
+        rules_map:       {target_tech_lower: [(source_tech_lower, source_val_lower, text)]}
+        normalized:      {display_name_lower: value} из row площадки
+        tech_to_display: {tech_name_lower: display_name} — для резолюции source_field
+    """
+    candidates = rules_map.get(target_tech)
+    if not candidates:
+        return None
+    for s_field, s_value, r_text in candidates:
+        source_display = tech_to_display.get(s_field, s_field)
+        actual = _strip_html(
+            str(normalized.get(source_display.lower(), '') or '')
+        ).strip().lower()
+        if actual == s_value:
+            return r_text
+    return None
+
+
 def calc_portal_score_v2(row: dict, db) -> dict:
     """
     Рассчитывает заполняемость площадки по полям из БД (таблица investmap_fields).
@@ -414,6 +446,14 @@ def calc_portal_score_v2(row: dict, db) -> dict:
         is_required хранит INTEGER (0/1) вместо TEXT → AttributeError на .strip().
         Защитный каст str() + маппинг _IS_REQ_MAP {'0':'нет','1':'да','2':'условно'}.
 
+    Карточка #4 — investmap_rules:
+        Второй SQL-запрос к investmap_rules строит rules_map по target_field (tech_name).
+        _resolve_hint() проверяет source_field/source_value по фактическим значениям row.
+        missing возвращается как list[dict]: {'field': display_name, 'hint': str | None}.
+        hint — recommended_text из первого совпавшего правила.
+        Поля без правил или без совпадения: hint=None.
+        filled[], skipped[] — формат не изменился (list[str]).
+
     Args:
         row: словарь с полями площадки (ключи — display_name, регистр не важен)
         db:  объект соединения SQLite (Flask g.db или get_db())
@@ -422,17 +462,40 @@ def calc_portal_score_v2(row: dict, db) -> dict:
         {
             'score':   int 0..100,
             'filled':  int,
-            'total':   int,   # total = filled + missing (skipped не считаются)
-            'missing': list,  # display_name полей, которые нужны, но не заполнены
-            'skipped': list,  # display_name полей, пропущенных по условию (N/A)
+            'total':   int,          # total = filled + missing (skipped не считаются)
+            'missing': list[dict],   # [{'field': display_name, 'hint': str|None}, ...]
+            'skipped': list[str],    # display_name полей, пропущенных по условию (N/A)
         }
     """
     from core.kitezh_logger import err_logger  # локальный импорт во избежание циклов
 
+    # ── Запрос 1: поля площадки из investmap_fields ────────────────────────
     rows_db = db.execute(
         "SELECT tech_name, display_name, is_required, required_condition"
         " FROM investmap_fields ORDER BY id"
     ).fetchall()
+
+    # ── Запрос 2: правила из investmap_rules ──────────────────────────────
+    # source_field и target_field хранятся как tech_name (из UI investmap_v2_rules).
+    rules_rows = db.execute(
+        "SELECT source_field, source_value, target_field, recommended_text"
+        " FROM investmap_rules"
+    ).fetchall()
+
+    # Вспомогательный словарь: tech_name_lower → display_name
+    tech_to_display: dict = {
+        (r['tech_name'] or '').strip().lower(): (r['display_name'] or '').strip()
+        for r in rows_db
+    }
+
+    # rules_map: target_tech_lower → [(source_tech_lower, source_val_lower, text)]
+    rules_map: dict = {}
+    for rr in rules_rows:
+        t_field = (rr['target_field'] or '').strip().lower()
+        s_field = (rr['source_field'] or '').strip().lower()
+        s_value = (rr['source_value'] or '').strip().lower()
+        r_text  = (rr['recommended_text'] or '').strip() or None
+        rules_map.setdefault(t_field, []).append((s_field, s_value, r_text))
 
     # Нормализуем ключи row один раз по display_name (русские заголовки Excel)
     # БАГ #3 FIX: было normalized.get(tech_name.lower()) — теперь по display_name
@@ -443,29 +506,29 @@ def calc_portal_score_v2(row: dict, db) -> dict:
     skipped = []
 
     for rec in rows_db:
-        tech_name          = (rec["tech_name"] or "").strip()
-        display_name       = (rec["display_name"] or "").strip()
+        tech_name          = (rec['tech_name'] or '').strip()
+        display_name       = (rec['display_name'] or '').strip()
         # v1.5.10 fix: is_required хранит INTEGER (0/1) → AttributeError на .strip()
         # str() защищает от int; _IS_REQ_MAP нормализует 0/1 → 'нет'/'да'/'условно'
-        _raw_req           = str(rec["is_required"] or "").strip().lower()
+        _raw_req           = str(rec['is_required'] or '').strip().lower()
         is_required        = _IS_REQ_MAP.get(_raw_req, _raw_req)
-        required_condition = (rec["required_condition"] or "").strip()
+        required_condition = (rec['required_condition'] or '').strip()
 
         # БАГ #2 FIX: поля с is_required='нет' не участвуют в подсчёте совсем
         if is_required == 'нет':
             continue
 
         # Условное поле — проверяем, выполнено ли условие
-        if "если" in is_required and required_condition:
+        if 'если' in is_required and required_condition:
             # БАГ #1 FIX: required_condition хранится в формате
             # «display_name = нужное_значение» (русский язык, как в Excel).
             # Поддерживаем разделители «=» и «==».
-            parts = re.split(r"\s*={1,2}\s*", required_condition, maxsplit=1)
+            parts = re.split(r'\s*={1,2}\s*', required_condition, maxsplit=1)
             if len(parts) == 2:
                 parent_key   = parts[0].strip().lower()
                 expected_val = parts[1].strip().lower()
                 actual_val   = _strip_html(
-                    str(normalized.get(parent_key, "") or "")
+                    str(normalized.get(parent_key, '') or '')
                 ).strip().lower()
                 if actual_val != expected_val:
                     # Условие НЕ выполнено → поле не нужно
@@ -484,7 +547,9 @@ def calc_portal_score_v2(row: dict, db) -> dict:
         # БАГ #3 FIX: ищем по display_name.lower(), не по tech_name
         value = normalized.get(display_name.lower())
         if _is_empty(value):
-            missing.append(display_name)
+            # Карточка #4: обогащаем hint из investmap_rules
+            hint = _resolve_hint(tech_name.lower(), rules_map, normalized, tech_to_display)
+            missing.append({'field': display_name, 'hint': hint})
         else:
             filled.append(display_name)
 
@@ -492,9 +557,9 @@ def calc_portal_score_v2(row: dict, db) -> dict:
     score = round(len(filled) / max(total, 1) * 100)
 
     return {
-        "score":   score,
-        "filled":  len(filled),
-        "total":   total,
-        "missing": missing,
-        "skipped": skipped,
+        'score':   score,
+        'filled':  len(filled),
+        'total':   total,
+        'missing': missing,
+        'skipped': skipped,
     }
