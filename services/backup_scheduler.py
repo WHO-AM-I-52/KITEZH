@@ -6,7 +6,7 @@ from datetime import datetime
 from core.activity_log import log_action
 from db import get_db
 
-BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR      = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BACKUP_BAT    = os.path.join(BASE_DIR, "backup.bat")
 INTERVAL_SEC  = 3 * 60 * 60  # 3 часа
 
