@@ -955,7 +955,7 @@ window.addEventListener('load', function() { initSwitcher(); });
   }
   function poll(){
     attempts++;if(!serverOnline)counter.textContent='Попытка '+attempts;
-    fetch('/health',{cache:'no-store'})
+    fetch('/maintenance-status',{cache:'no-store'})
       .then(function(r){
         if(r.ok)onServerOnline();
         else{onServerOffline();dot.className='dot offline';txt.textContent='Сервер недоступен…';setTimeout(poll,POLL_MS);}
