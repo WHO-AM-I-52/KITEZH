@@ -2,11 +2,11 @@
 setlocal enabledelayedexpansion
 chcp 65001 >nul
 cd /d "%~dp0"
-title SONAR - Ustanovka
+title KITEZH - Ustanovka
 
 echo.
 echo ============================================================
-echo   SONAR - Ustanovka / pervonachalnaya nastroyka
+echo   KITEZH - Ustanovka / pervonachalnaya nastroyka
 echo ============================================================
 echo.
 
@@ -87,6 +87,7 @@ echo.
 echo [2/5] Proverka pip...
 
 set PYTHONUTF8=1
+
 
 "%PYTHON%" -m pip --version >nul 2>&1
 if errorlevel 1 (
@@ -185,7 +186,7 @@ echo.
 echo ============================================================
 echo   Ustanovka zavershena!
 echo.
-echo   Teper zapusti: start SONAR.bat
+echo   Teper zapusti: start KITEZH.bat
 echo ============================================================
 echo.
 pause
