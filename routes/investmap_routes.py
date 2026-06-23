@@ -109,7 +109,7 @@ def investmap_v2_post():
         else:
             results = [calc_portal_score_v2(data, db)]
 
-        log_action(db, g.user['id'], 'investmap_v2_score', detail=f'count={len(results)}')
+        log_action(user, 'investmap_v2_score', f'count={len(results)}')
 
         return jsonify({
             'results': results,
@@ -174,8 +174,8 @@ def investmap_v2_rules_add():
         (source_field, source_value, target_field, recommended_text)
     )
     db.commit()
-    log_action(db, g.user['id'], 'investmap_rules_add',
-               detail=f'source={source_field}:{source_value} → target={target_field}')
+    log_action(user, 'investmap_rules_add',
+               f'source={source_field}:{source_value} → target={target_field}')
     flash('Правило добавлено.', 'success')
     return redirect(url_for('investmap.investmap_v2_rules'))
 
@@ -189,7 +189,7 @@ def investmap_v2_rules_delete(rule_id):
     db = get_db()
     db.execute("DELETE FROM investmap_rules WHERE id = ?", (rule_id,))
     db.commit()
-    log_action(db, g.user['id'], 'investmap_rules_delete', detail=f'rule_id={rule_id}')
+    log_action(user, 'investmap_rules_delete', f'rule_id={rule_id}')
     flash('Правило удалено.', 'success')
     return redirect(url_for('investmap.investmap_v2_rules'))
 
@@ -237,8 +237,7 @@ def investmap_convert():
     user = getattr(g, 'user', {}).get('login', 'unknown')
     result = convert_excel_to_text(f.read())
     if not result.get('error'):
-        db = get_db()
-        log_action(db, g.user['id'], 'investmap_convert', detail=f'file={f.filename}')
+        log_action(user, 'investmap_convert', f'file={f.filename}')
     return jsonify(result)
 
 
