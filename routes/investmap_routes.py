@@ -105,6 +105,8 @@ def investmap_v2_post():
         else:
             results = [calc_portal_score_v2(data, db)]
 
+        log_action(user, 'investmap_v2_score', f'count={len(results)}')
+
         return jsonify({
             'results': results,
             'count':   len(results),
@@ -228,7 +230,10 @@ def investmap_convert():
     if not f.filename.lower().endswith('.xlsx'):
         return jsonify({'error': 'Поддерживается только формат .xlsx'}), 400
 
+    user = getattr(g, 'user', {}).get('login', 'unknown')
     result = convert_excel_to_text(f.read())
+    if not result.get('error'):
+        log_action(user, 'investmap_convert', f'file={f.filename}')
     return jsonify(result)
 
 
