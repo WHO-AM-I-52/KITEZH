@@ -88,7 +88,6 @@ echo [2/5] Proverka pip...
 
 set PYTHONUTF8=1
 
-
 "%PYTHON%" -m pip --version >nul 2>&1
 if errorlevel 1 (
   echo  pip ne nayden, ustanovka...
