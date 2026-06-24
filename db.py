@@ -541,6 +541,24 @@ def _migrate(conn):
         "CREATE INDEX IF NOT EXISTS idx_ltlinks_tag    ON letter_tag_links(tag_id)"
     )
 
+    # ════════════════════════════════════════════════════════════════
+    # Закреплённые заметки по обращению (📌 Заметка)
+    # ════════════════════════════════════════════════════════════════
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS pinned_notes (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            object_type TEXT    NOT NULL DEFAULT 'request',
+            object_id   INTEGER NOT NULL,
+            text        TEXT    NOT NULL DEFAULT '',
+            created_by  INTEGER NOT NULL REFERENCES users(id),
+            updated_at  TEXT    NOT NULL
+        )
+    """)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pinned_notes_obj "
+        "ON pinned_notes(object_type, object_id)"
+    )
+
     conn.commit()
 
 
