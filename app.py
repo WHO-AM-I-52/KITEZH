@@ -13,6 +13,7 @@
 # ║      feat: kitezh_logger — централизованный логгер         ║
 # ║      feat: portal_analysis_bp — анализ заполняемости       ║
 # ║      fix: threaded=True — SSE-стрим обновления работает     ║
+# ║      fix: _startup() чистит _pre_update.json при старте     ║
 # ╚═══════════════════════════════════════════════════════════════╝
 
 import os
@@ -38,6 +39,8 @@ app = Flask(__name__)
 
 # ─── MAINTENANCE FLAG ─────────────────────────────────────────────────────────────────────────────
 _MAINTENANCE_FLAG = os.path.join(BASE_DIR, '.maintenance')
+_PRE_UPDATE_FILE  = os.path.join(BASE_DIR, '_pre_update.json')
+_UPDATING_LOCK    = os.path.join(BASE_DIR, '_updating.lock')
 
 # ─── SECRET_KEY ─────────────────────────────────────────────────────────────────────────────
 from core.limiter import limiter
@@ -203,11 +206,24 @@ def handle_500(exc):
 
 # ─── ИНИЦИАЛИЗАЦИЯ БД И ПЛАНИРОВЩИКА ────────────────────────────────────────────────────────
 def _startup():
+    # Чистим .maintenance — снимаем режим ТО если остался после краша
     if os.path.exists(_MAINTENANCE_FLAG):
         try:
             os.remove(_MAINTENANCE_FLAG)
         except Exception:
             pass
+
+    # Чистим _pre_update.json и _updating.lock — если остались после краша/
+    # нештатного завершения, JS в changelog.html увидит phase=downloading/applying
+    # и автоматически запустит SSE-стрим обновления без нажатия кнопки.
+    for _stale in (_PRE_UPDATE_FILE, _UPDATING_LOCK):
+        try:
+            os.remove(_stale)
+        except FileNotFoundError:
+            pass
+        except Exception:
+            pass
+
     init_db()
     migrate_db()
     migrate_districts()
