@@ -240,6 +240,29 @@ CONDITIONAL_SKIP = {
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# БЛОК 2а: Алиасы ключей xlsx → canonical PORTAL_FIELDS / CONDITIONAL_SKIP
+#
+# Причина: в xlsx заголовки содержат суффикс «(Да/Нет)» и используют пробел
+# вместо тире, а PORTAL_FIELDS / CONDITIONAL_SKIP ожидают canonical-форму
+# с тире «—». Без алиасов нормализация возвращала None для всех полей Наличие,
+# CONDITIONAL_SKIP не срабатывал, дочерние поля уходили в missing.
+# Добавлено: fix(portal_checker) 24.06.2026
+# ──────────────────────────────────────────────────────────────────────────────
+
+_FIELD_ALIASES: dict[str, str] = {
+    'водоснабжение наличие (да/нет)':    'водоснабжение — наличие',
+    'водоотведение наличие (да/нет)':    'водоотведение — наличие',
+    'газоснабжение наличие (да/нет)':    'газоснабжение — наличие',
+    'электроснабжение наличие (да/нет)': 'электроснабжение — наличие',
+    'теплоснабжение наличие (да/нет)':   'теплоснабжение — наличие',
+    'вывоз тко наличие (да/нет)':        'вывоз тко — наличие',
+    'наличие ж/д (да/нет)':              'наличие ж/д',
+    'наличие подъездных путей (да/нет)': 'наличие подъездных путей',
+    'межевание зу':                      'межевание земельного участка',
+}
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # БЛОК 3: Список всех полей площадки
 # Источник: PORTAL_LOGIC.md раздел 4 (методичка 29.03.2024, Таблица 5)
 # Включены только обязательные (*) поля + дочерние обязательные.
@@ -353,7 +376,11 @@ def calc_portal_score(row: dict) -> dict:
             'skipped': list,  # поля, пропущенные по условию (N/A)
         }
     """
-    normalized = {k.strip().lower(): v for k, v in row.items()}
+    normalized = {}
+    for k, v in row.items():
+        key = k.strip().lower()
+        key = _FIELD_ALIASES.get(key, key)
+        normalized[key] = v
 
     skip_fields: set = set()
     for (parent_field, parent_value), child_fields in CONDITIONAL_SKIP.items():
@@ -482,8 +509,12 @@ def calc_portal_score_v2(row: dict, db) -> dict:
         r_text   = (rr['recommended_text'] or '').strip() or None
         rules_map.setdefault(t_display.lower(), []).append((s_field, s_value, r_text))
 
-    # ── Нормализация row ──────────────────────────────────────────────────
-    normalized = {k.strip().lower(): v for k, v in row.items()}
+    # ── Нормализация row с алиасами ───────────────────────────────────────
+    normalized = {}
+    for k, v in row.items():
+        key = k.strip().lower()
+        key = _FIELD_ALIASES.get(key, key)
+        normalized[key] = v
 
     # ── Логика V1: CONDITIONAL_SKIP ───────────────────────────────────────
     skip_fields: set = set()
