@@ -592,7 +592,7 @@
       <a href="/admin/users" class="sb-link {{ 'active' if 'users' in request.path }}">
         <i class="bi bi-people"></i><span class="sb-lbl">Пользователи</span>
       </a>
-      <a href="{{ url_for('ai.ocr_status') }}" class="sb-link {{ 'active' if request.path=='/ai/ocr-status' }}">
+      <a href="{{ url_for('admin.ocr_status') }}" class="sb-link {{ 'active' if request.path=='/admin/ocr-status' }}">
         <i class="bi bi-cpu-fill"></i><span class="sb-lbl">Статус OCR</span>
       </a>
 
