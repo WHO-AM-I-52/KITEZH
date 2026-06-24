@@ -338,35 +338,35 @@ def api_tags():
     return jsonify([{'id': r['id'], 'name': r['name']} for r in rows])
 
 
-# ─── AUTOCOMPLETE КОНТРАГЕНТОВ (#13) ────────────────────────────────────────────────────────────
+# ─── AUTOCOMPLETE КОНТРАГЕНТОВ (#13) ───────────────────────────────────────────────────────
 
-@letters_bp.route('/api/counterparties', methods=['GET'])
-def api_counterparties_get():
+@letters_bp.route('/api/counterparties', methods=['GET', 'POST'])
+def api_counterparties():
     if _login_required():
-        return jsonify([])
-    q = request.args.get('q', '').strip()
-    db = get_db()
-    if q:
-        rows = db.execute(
-            'SELECT id, name FROM counterparties WHERE name LIKE ? ORDER BY name LIMIT 20',
-            (f'%{q}%',),
-        ).fetchall()
-    else:
-        rows = db.execute(
-            'SELECT id, name FROM counterparties ORDER BY name LIMIT 20'
-        ).fetchall()
-    return jsonify([{'id': r['id'], 'name': r['name']} for r in rows])
-
-
-@letters_bp.route('/api/counterparties', methods=['POST'])
-def api_counterparties_post():
-    if _login_required():
+        if request.method == 'GET':
+            return jsonify([])
         return jsonify({'error': 'unauthorized'}), 401
+
+    db = get_db()
+
+    if request.method == 'GET':
+        q = request.args.get('q', '').strip()
+        if q:
+            rows = db.execute(
+                'SELECT id, name FROM counterparties WHERE name LIKE ? ORDER BY name LIMIT 20',
+                (f'%{q}%',),
+            ).fetchall()
+        else:
+            rows = db.execute(
+                'SELECT id, name FROM counterparties ORDER BY name LIMIT 20'
+            ).fetchall()
+        return jsonify([{'id': r['id'], 'name': r['name']} for r in rows])
+
+    # POST
     data = request.get_json(silent=True) or {}
     name = (data.get('name') or request.form.get('name', '')).strip()
     if not name:
         return jsonify({'error': 'name required'}), 400
-    db = get_db()
     row = db.execute(
         'SELECT id, name FROM counterparties WHERE name = ?', (name,)
     ).fetchone()
@@ -382,7 +382,7 @@ def api_counterparties_post():
     return jsonify({'id': cur.lastrowid, 'name': name}), 201
 
 
-# ─── ШАБЛОНЫ ПИСЕМ (#12) ─────────────────────────────────────────────────────────────────────────────
+# ─── ШАБЛОНЫ ПИСЕМ (#12) ───────────────────────────────────────────────────────────────────────────
 
 @letters_bp.route('/templates')
 def list_templates():
