@@ -8,6 +8,7 @@
 # ║  Режим --stream-json:   JSON-строки прогресса в stdout для SSE-стрима   ║
 # ║  Не трогает БД и файлы пользователя.                               ║
 # ║  get_commits_between: список коммитов для панели обновлений          ║
+# ║  fix: _log() больше не дублирует вывод в stderr+stdout одновременно  ║
 # ╚════════════════════════════════════════════════════════════════════════╝
 from __future__ import annotations
 
@@ -24,9 +25,6 @@ from datetime import datetime
 
 REPO_OWNER    = "WHO-AM-I-52"
 REPO_NAME     = "KITEZH"
-# Корень проекта берём из paths.py (единый источник правды), а не из __file__.
-# Это позволяет безопасно перенести модуль в подпакет updater/ без поломки
-# путей применения патчей (dest = os.path.join(BASE_DIR, rel_path)).
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 for _p in (_THIS_DIR, os.path.dirname(_THIS_DIR)):
     if _p not in sys.path:
@@ -45,10 +43,7 @@ FALLBACK_KB   = 600
 STREAM_JSON = "--stream-json" in sys.argv
 
 def _log_to_file(msg: str):
-    """Пишет строку с меткой времени в logs/_updater_log.txt.
-    Вызывается из _log() — всегда, независимо от режима.
-    Файл накапливается; папка logs/ создаётся автоматически если не существует.
-    """
+    """Пишет строку с меткой времени в logs/_updater_log.txt."""
     try:
         os.makedirs(LOGS_DIR, exist_ok=True)
         ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -59,10 +54,7 @@ def _log_to_file(msg: str):
 
 
 def _log_public(phase: str, detail: str):
-    """Пишет JSONL-строку в публичный лог-файл (для UI-прогресса).
-    Формат: {"ts": "HH:MM:SS", "phase": "...", "detail": "..."}
-    Файл сбрасывается в начале каждого запуска — хранит только текущую сессию.
-    """
+    """Пишет JSONL-строку в публичный лог-файл (для UI-прогресса)."""
     try:
         os.makedirs(LOGS_DIR, exist_ok=True)
         ts = datetime.now().strftime('%H:%M:%S')
@@ -74,20 +66,20 @@ def _log_public(phase: str, detail: str):
 
 
 def _log(msg: str):
-    """Всегда пишет в stderr (виден в консоли bat даже когда stdout перехвачен Flask).
-    В обычном режиме (без --stream-json) дублирует в stdout — для запуска вручную.
+    """Пишет строку в лог-файл и в консоль.
+    STREAM_JSON=True  → только stderr (stdout занят JSON-строками для SSE).
+    STREAM_JSON=False → только stdout (запуск вручную через update.bat).
+    Запись в оба потока одновременно приводила к дублированию строк в консоли,
+    т.к. cmd.exe отображает stdout и stderr в одном окне.
     """
     _log_to_file(msg)
-    print(msg, file=sys.stderr, flush=True)
-    if not STREAM_JSON:
+    if STREAM_JSON:
+        print(msg, file=sys.stderr, flush=True)
+    else:
         print(msg, flush=True)
 
 def _sjson(obj: dict):
-    """Выводит JSON-строку в stdout если включён --stream-json.
-    Использует flush=True чтобы буфер не задерживал данные.
-    Без --stream-json — полный no-op, поведение не меняется.
-    OSError подавляется — возникает когда pipe Flask-а закрыт раньше времени.
-    """
+    """Выводит JSON-строку в stdout если включён --stream-json."""
     if STREAM_JSON:
         try:
             print(json.dumps(obj, ensure_ascii=False), flush=True)
@@ -95,7 +87,7 @@ def _sjson(obj: dict):
             pass
 
 
-# ── Читаем активную ветку из _branch.txt (по умолчанию main) ───────────────────────────────────────────────
+# ── Читаем активную ветку из _branch.txt (по умолчанию main) ───────────────
 def load_branch() -> str:
     if os.path.exists(BRANCH_FILE):
         try:
@@ -110,14 +102,8 @@ BRANCH = load_branch()
 
 BAT_NAME = "start KITEZH.bat"
 
-# update.bat намеренно НЕ защищён — обновляется автоматически как обычный файл
-# _updater.py защищён — самообновление небезопасно во время работы
 PROTECTED_DIRS  = {"uploads", "reports", "WPy", "Bacup", "db"}
 PROTECTED_FILES = {"_updater.py", ".env"}
-# Защищённые по ИМЕНИ файла (независимо от расположения в дереве).
-# _updater.py теперь живёт в пакете updater/, поэтому защиту по первому
-# сегменту пути (top) дополняем защитой по basename, чтобы работающий
-# updater/_updater.py НЕ перезаписывался сам себя во время апдейта.
 PROTECTED_BASENAMES = {"_updater.py"}
 
 SPINNER = ["||", "|/", "--", "\\/"]
@@ -192,13 +178,8 @@ def show_rate_limit(headers):
           (f" (сброс в {reset_str})" if reset_str else ""))
 
 
-# ─── Список коммитов между двумя SHA ────────────────────────────────────────────────────────────────────────────────────
-
 def get_commits_between(local_sha: str, remote_sha: str) -> list:
-    """Возвращает список коммитов между local_sha и remote_sha (до 20 шт.).
-    Каждый элемент: {'sha': str, 'message': str, 'date': str}.
-    Используется панелью обновлений в changelog.html.
-    """
+    """Возвращает список коммитов между local_sha и remote_sha (до 20 шт.)."""
     try:
         data = get_json(f"{API_BASE}/compare/{local_sha}...{remote_sha}")
         commits = []
@@ -208,14 +189,12 @@ def get_commits_between(local_sha: str, remote_sha: str) -> list:
             date_raw = c.get("commit", {}).get("author", {}).get("date", "")
             date_str = date_raw[:10] if date_raw else ""
             commits.append({"sha": sha, "message": msg, "date": date_str})
-        commits.reverse()  # новые сверху
+        commits.reverse()
         return commits
     except Exception as e:
         _log(f"  [Внимание] Не удалось получить список коммитов: {e}")
         return []
 
-
-# ─── Проверка обновлений по SHA ───────────────────────────────────────────────────────────────────
 
 def get_remote_sha() -> str | None:
     try:
@@ -276,14 +255,7 @@ def check_for_updates() -> int:
         return 1
 
 
-# ─── Размер архива ─────────────────────────────────────────────────────────────────────────────────────────────────────────
-
 def get_zip_size_kb() -> int:
-    # Пытаемся получить реальный Content-Length через GET с редиректом на CDN.
-    # HEAD к /zipball/{BRANCH} не возвращает Content-Length — GitHub отвечает
-    # 302 на CDN, а HEAD к CDN тоже не гарантирует заголовок.
-    # GET через opener с HTTPRedirectHandler следует редиректу до CDN-URL,
-    # который отдаёт Content-Length; читаем 0 байт и закрываем соединение.
     url = f"{API_BASE}/zipball/{BRANCH}"
     try:
         opener = urllib.request.build_opener(urllib.request.HTTPRedirectHandler())
@@ -294,8 +266,6 @@ def get_zip_size_kb() -> int:
                 return int(cl) // 1024
     except Exception:
         pass
-    # Фоллбэк: метаданные репозитория. data["size"] — размер git-объектов в КБ,
-    # что меньше реального zip-архива; коэффициент 1.15 даёт реалистичную оценку.
     try:
         req = urllib.request.Request(API_BASE, headers=_headers())
         with urllib.request.urlopen(req, timeout=15) as r:
@@ -375,12 +345,7 @@ def download_zip(zip_path: str):
 
 
 def extract_and_apply(zip_path: str, force: bool = False):
-    """Распаковывает архив, копирует только изменившиеся файлы.
-    force=True — перезаписывает ВСЕ файлы (кроме защищённых), не сравнивая содержимое.
-    При STREAM_JSON=True пишет JSON-строки прогресса в stdout.
-
-    Возвращает: (updated, unchanged, skipped, errors, bat_updated)
-    """
+    """Распаковывает архив, копирует только изменившиеся файлы."""
     updated     = 0
     unchanged   = 0
     skipped     = 0
@@ -471,9 +436,6 @@ def extract_and_apply(zip_path: str, force: bool = False):
 
 
 def get_current_version() -> str | None:
-    """Читает версию из changelog.py через importlib.util.
-    Устойчиво к комментариям и любому форматированию файла.
-    """
     path = os.path.join(BASE_DIR, 'changelog.py')
     try:
         spec   = importlib.util.spec_from_file_location('_kitezh_changelog', path)
@@ -489,9 +451,6 @@ def get_current_version() -> str | None:
 
 
 def load_changelog():
-    """Читает CHANGELOG из changelog.py через importlib.util.
-    Устойчиво к комментариям, любым кавычкам и форматированию файла.
-    """
     path = os.path.join(BASE_DIR, 'changelog.py')
     if not os.path.exists(path):
         return None, None
@@ -576,9 +535,6 @@ def run_sync_changelog():
         _log(f"  [Changelog] Ошибка синхронизации: {e}")
 
 
-# ─── Режим --download-only ────────────────────────────────────────────────────────────────────────────────────────────
-# Только скачивает zip-архив в ZIP_PATH; не применяет файлы.
-# Выход: 0 = успех, 1 = ошибка
 def _cmd_download_only():
     _log_to_file("=" * 56)
     _log_to_file(
@@ -619,9 +575,6 @@ def _cmd_download_only():
         sys.exit(1)
 
 
-# ─── Режим --apply-only ───────────────────────────────────────────────────────────────────────────────────────────────
-# Применяет уже скачанный ZIP_PATH; удаляет архив после установки.
-# Выход: 0 = успех, 1 = ошибка, 2 = успех + обновлён bat (нужен ручной рестарт)
 def _cmd_apply_only(force: bool = False):
     _log_to_file("=" * 56)
     _log_to_file(
