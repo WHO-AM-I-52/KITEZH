@@ -35,6 +35,8 @@
 # ║           run_server.py видит флаг → sys.exit(42) → .bat     ║
 # ║           делает goto :start_server → авторестарт            ║
 # ║  v2.3.1: /api/update/public-log — публичный лог прогресса   ║
+# ║  v2.3.2: FIX _shutdown удаляет .maintenance перед os._exit  ║
+# ║           — иначе ТО не снималось после рестарта сервера     ║
 # ╚═══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, jsonify, request as flask_request, session, Response, stream_with_context
@@ -85,12 +87,22 @@ def _clear_pre_update():
         pass
 
 
+def _clear_maintenance():
+    """Снимает флаг технического обслуживания (.maintenance).
+    Вызывается после успешного применения обновления — перед рестартом
+    и при старте сервера (на случай если предыдущий процесс упал не сняв флаг).
+    """
+    try:
+        if os.path.exists(_MAINTENANCE_FLAG):
+            os.remove(_MAINTENANCE_FLAG)
+    except Exception:
+        pass
+
+
 def _write_update_result(stats: dict, applied_by: str = ''):
     """Записывает итог применённого обновления в _update_result.json.
     Файл переживает рестарт сервера и читается один раз роутом
     /api/update/result — после чего удаляется (one-shot).
-    Позволяет уведомить администратора об успешном перезапуске
-    (симптом: «админа не уведомляет об успешной перезагрузке»).
     """
     payload = {
         'ok':          stats.get('errors', 0) == 0,
@@ -126,9 +138,6 @@ def _pre_update_write(patch: dict):
 
 
 def _lock_write(phase: str):
-    """Записывает JSON-лок с PID текущего процесса и фазой.
-    Позволяет _lock_is_stale() инвалидировать лок аварийно упавшего процесса.
-    """
     payload = {
         'pid':        os.getpid(),
         'started_at': datetime.now().isoformat(),
@@ -142,7 +151,6 @@ def _lock_write(phase: str):
 
 
 def _lock_update_phase(phase: str):
-    """Обновляет только поле phase в существующем локе."""
     try:
         data = {}
         if os.path.exists(_LOCK_FILE):
@@ -156,9 +164,6 @@ def _lock_update_phase(phase: str):
 
 
 def _lock_is_stale() -> bool:
-    """Возвращает True если лок существует, но PID уже мёрт.
-    В этом случае автоматически удаляет лок-файл.
-    """
     if not os.path.exists(_LOCK_FILE):
         return False
     try:
@@ -167,14 +172,11 @@ def _lock_is_stale() -> bool:
         pid = int(data.get('pid', 0))
         if pid <= 0:
             return False
-        os.kill(pid, 0)   # если процесс жив — исключения не будет
-        return False      # процесс жив — лок активен
+        os.kill(pid, 0)
+        return False
     except PermissionError:
-        # Windows: os.kill() бросает PermissionError для живого
-        # чужого процесса → лок активен, не трогаем
         return False
     except ProcessLookupError:
-        # PID не существует → лок устарел → удаляем
         try:
             os.remove(_LOCK_FILE)
         except Exception:
@@ -193,10 +195,8 @@ def _lock_clear():
 
 
 def _run_bat_restart():
-    """Запускает 'start KITEZH.bat' в отдельном окне (Windows),
-    затем через 3 сек закрывает текущий процесс с кодом 42.
-    Код 42 → .bat делает goto :start_server.
-    """
+    """Снимает ТО, запускает новый .bat, завершает текущий процесс с кодом 42."""
+    _clear_maintenance()
     bat_path = os.path.join(BASE_DIR, _BAT_NAME)
     try:
         subprocess.Popen(
@@ -210,19 +210,13 @@ def _run_bat_restart():
     os._exit(42)
 
 
-# ─── SSE-утилита ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+# ─── SSE-утилита ──────────────────────────────────────────────────────────────
 
 def _sse_format(event: str, data: dict) -> str:
-    """Формирует одно SSE-сообщение.
-    Формат:
-        event: <event_name>
-        data: <json>
-        (пустая строка)
-    """
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
-# ─── SSE-стрим прогресса обновления ──────────────────────────────────────────────────────────────
+# ─── SSE-стрим прогресса обновления ──────────────────────────────────────────
 
 @update_bp.route('/api/update/stream')
 def api_update_stream():
@@ -231,16 +225,8 @@ def api_update_stream():
     Параметры запроса (GET):
       force=1       — принудительная перезапись всех файлов
       delay=N       — пауза (сек, 0–3600) между скачиванием и установкой
-                      (позволяет кнопке «Обновить» заменить /api/update/schedule)
 
-    События (event: download_pct | apply_pct | apply_file | done | error | heartbeat):
-
-      download_pct  {pct: 0-100, downloaded_mb: float, total_mb: float}
-      apply_pct     {pct: 0-100, current: int, total: int}
-      apply_file    {status: 'updated'|'unchanged'|'skipped', path: str}
-      done          {updated: int, unchanged: int, skipped: int, errors: int, message: str}
-      error         {message: str, phase: 'download'|'apply'|'delay'}
-      heartbeat     {} — каждые 15 сек пока ждём subprocess или delay
+    События: download_pct | apply_pct | apply_file | done | error | heartbeat
     """
     if session.get('role') != 'admin':
         def _forbidden():
@@ -251,18 +237,16 @@ def api_update_stream():
 
     force = flask_request.args.get('force') == '1'
 
-    # Параметр delay: пауза между скачиванием и установкой (сек)
     try:
         delay = int(flask_request.args.get('delay', 0))
         delay = max(0, min(_MAX_DELAY, delay))
     except (ValueError, TypeError):
         delay = 0
 
-    # Захватываем данные сессии ДО первого yield (session недоступен внутри генератора)
     _scheduled_by = session.get('full_name', session.get('username', ''))
     _applied_by   = _scheduled_by
 
-    # ── Сразу помечаем что идёт обновление (для не-админов) ──
+    # Сразу помечаем что идёт обновление (для не-админов)
     try:
         _PRE_UPDATE = os.path.join(BASE_DIR, '_pre_update.json')
         with open(_PRE_UPDATE, 'w', encoding='utf-8') as _f:
@@ -274,7 +258,6 @@ def api_update_stream():
         pass
 
     def _generate():
-        # ── Точка 1: уведомляем всех пользователей — начинаем скачивание ──
         _pre_update_write({
             'phase':          'downloading',
             'scheduled_by':   _scheduled_by,
@@ -285,7 +268,7 @@ def api_update_stream():
             'download_error': None,
         })
 
-        # ── Фаза 1: скачивание ──────────────────────────────────────────────────────────────────────
+        # ── Фаза 1: скачивание ────────────────────────────────────────────────
         cmd_dl = [sys.executable, _UPDATER, '--download-only', '--stream-json']
         if force:
             cmd_dl.append('--force')
@@ -294,7 +277,7 @@ def api_update_stream():
             proc_dl = subprocess.Popen(
                 cmd_dl,
                 stdout=subprocess.PIPE,
-                stderr=None,   # stderr наследуется от родителя → виден в консоли bat
+                stderr=None,
                 text=True,
                 bufsize=1,
                 cwd=BASE_DIR,
@@ -336,7 +319,6 @@ def api_update_stream():
                 'phase':          'download_failed',
                 'download_error': f'Ошибка скачивания (rc={rc_dl})',
             })
-            # Небольшая пауза чтобы баннер успел показать ошибку, потом чистим
             time.sleep(5)
             _clear_pre_update()
             yield _sse_format('error', {
@@ -345,10 +327,8 @@ def api_update_stream():
             })
             return
 
-        # Гарантированный 100% после завершения скачивания
         yield _sse_format('download_pct', {'pct': 100, 'downloaded_mb': 0, 'total_mb': 0})
 
-        # ── Точка 2: скачивание завершено — обновляем phase ──
         if delay > 0:
             fire_at_ts = time.time() + delay
             _pre_update_write({
@@ -358,7 +338,6 @@ def api_update_stream():
         else:
             _pre_update_write({'phase': 'applying'})
 
-        # ── Фаза 1.5: задержка (delay сек) перед установкой ────
         if delay > 0:
             yield _sse_format('delay', {'seconds': delay})
             deadline = time.time() + delay
@@ -370,18 +349,15 @@ def api_update_stream():
                 yield _sse_format('delay_tick', {'remaining': remaining})
                 time.sleep(1)
 
-        # ── Точка 3: перед запуском apply — фиксируем фазу applying ──
         _pre_update_write({'phase': 'applying'})
 
-        # ── Симптом 1: ставим флаг ТО — не-админы попадают на maintenance.html ──
-        # before_request в app.py при наличии .maintenance отдаёт страницу ТО
-        # (с играми) всем кроме админа; _startup() снимет флаг после рестарта.
+        # Ставим флаг ТО — не-админы попадают на maintenance.html
         try:
             open(_MAINTENANCE_FLAG, 'w').close()
         except Exception:
             pass
 
-        # ── Фаза 2: установка ──────────────────────────────────────────────────────────────────────
+        # ── Фаза 2: установка ────────────────────────────────────────────────
         cmd_apply = [sys.executable, _UPDATER, '--apply-only', '--stream-json']
         if force:
             cmd_apply.append('--force')
@@ -390,19 +366,20 @@ def api_update_stream():
             proc_apply = subprocess.Popen(
                 cmd_apply,
                 stdout=subprocess.PIPE,
-                stderr=None,   # stderr наследуется от родителя → виден в консоли bat
+                stderr=None,
                 text=True,
                 bufsize=1,
                 cwd=BASE_DIR,
             )
         except Exception as e:
             _clear_pre_update()
+            _clear_maintenance()  # снимаем ТО если apply не запустился
             yield _sse_format('error', {'message': str(e), 'phase': 'apply'})
             return
 
         last_heartbeat = time.time()
-        done_received = False  # трекер: получен ли done-payload от _updater.py
-        apply_stats   = {}     # накопленная статистика из done для _update_result.json
+        done_received = False
+        apply_stats   = {}
 
         for raw_line in proc_apply.stdout:
             if time.time() - last_heartbeat >= 15:
@@ -444,17 +421,16 @@ def api_update_stream():
         proc_apply.wait()
         rc_apply = proc_apply.returncode
 
-        # ── Точка 4: обновление завершено — удаляем _pre_update.json ──
         _clear_pre_update()
 
         if rc_apply not in (0, 2):
+            # Установка упала — снимаем ТО чтобы сервер не завис
+            _clear_maintenance()
             yield _sse_format('error', {
                 'message': f'Ошибка установки (rc={rc_apply})',
                 'phase': 'apply',
             })
         elif not done_received:
-            # Процесс завершился успешно, но done не пришёл —
-            # отдаём синтетический done чтобы UI не завис
             apply_stats = {
                 'updated':   0,
                 'unchanged': 0,
@@ -464,27 +440,21 @@ def api_update_stream():
             }
             yield _sse_format('done', apply_stats)
 
-        # ── Точка 5: Flask завершается → .bat перезапустит сервер ──
         if rc_apply in (0, 2):
-            # Симптом 2: фиксируем итог ДО рестарта — админ увидит тост
-            # об успехе после перезагрузки (через /api/update/result).
             _write_update_result(apply_stats, applied_by=_applied_by)
 
             def _shutdown(rc):
                 time.sleep(2)
-                # Создаём _restart.flag — run_server.py увидит его
-                # и вернёт sys.exit(42) в .bat → goto :start_server.
                 try:
                     open(_RESTART_FLAG, 'w').close()
                 except Exception:
                     pass
-                # Симптом 3: код выхода — как в timer-флоу.
-                # rc=2 → bat обновлён → запускаем новый .bat явно;
-                # rc=0 → os._exit(42) → текущий .bat делает goto :start_server.
-                # Раньше был os._exit(0) — из-за чего .bat не видел код 42
-                # и сервер не перезапускался.
+                # FIX v2.3.2: снимаем .maintenance ПЕРЕД выходом —
+                # иначе новый Flask-процесс стартует с активным ТО
+                # и /maintenance-status продолжает отдавать 503 вечно.
+                _clear_maintenance()
                 if rc == 2:
-                    _run_bat_restart()
+                    _run_bat_restart()  # _run_bat_restart тоже вызывает _clear_maintenance()
                 else:
                     os._exit(42)
             threading.Thread(target=_shutdown, args=(rc_apply,), daemon=False).start()
@@ -499,7 +469,7 @@ def api_update_stream():
     )
 
 
-# ─── Проверка обновлений ────────────────────────────────────────────────────────────────────────────────────────
+# ─── Проверка обновлений ──────────────────────────────────────────────────────
 
 @update_bp.route('/api/update/check')
 def api_update_check():
@@ -569,10 +539,6 @@ def api_update_check():
 # ─── Общая логика рабочего потока: download → таймер → apply ─────────────────
 
 def _parse_apply_stats(stdout: str) -> dict:
-    """Извлекает счётчики из текстового отчёта _updater.py --apply-only
-    (без --stream-json). Строки вида 'Обновлено файлов : N'.
-    Возвращает dict с ключами updated/unchanged/skipped/errors.
-    """
     import re
     stats = {'updated': 0, 'unchanged': 0, 'skipped': 0, 'errors': 0}
     patterns = {
@@ -592,16 +558,8 @@ def _parse_apply_stats(stdout: str) -> dict:
 
 
 def _build_timer_worker(delay: int, force: bool, user_id: int, applied_by: str = ''):
-    """Ретурнит целевую функцию для threading.Thread.
-    Флоу: phase=downloading → --download-only → rc=0 → phase=scheduled →
-           таймер delay сек (отсчёт от момента завершения скачивания) →
-           phase=applying → --apply-only → rc=0/2 → рестарт.
-    rc=1 при download: ошибка записывается в pre-update.json, лок удаляется,
-    баннер НЕ показывается.
-    applied_by: имя инициатора — пишется в _update_result.json (симптом 2).
-    """
+    """Флоу: downloading → scheduled → applying → рестарт."""
     def _worker():
-        # ── Фаза 1: скачиваем архив ──
         _lock_update_phase('downloading')
         cmd_dl = [sys.executable, _UPDATER, '--download-only']
         if force:
@@ -635,8 +593,7 @@ def _build_timer_worker(delay: int, force: bool, user_id: int, applied_by: str =
             _lock_clear()
             return
 
-        # ── Фаза 2: пересчитываем fire_at_ts ПОСЛЕ скачивания ──
-        fire_at_ts = time.time() + delay  # FIX: точка отсчёта — завершение download
+        fire_at_ts = time.time() + delay
         try:
             with open(_PRE_UPDATE_FILE, 'r', encoding='utf-8') as f:
                 pre = json.load(f)
@@ -651,7 +608,6 @@ def _build_timer_worker(delay: int, force: bool, user_id: int, applied_by: str =
             pass
         _lock_update_phase('scheduled')
 
-        # ── Фаза 3: ждём delay секунд (с момента завершения скачивания) ──
         while time.time() < fire_at_ts:
             if not os.path.exists(_PRE_UPDATE_FILE):
                 _lock_clear()
@@ -665,7 +621,6 @@ def _build_timer_worker(delay: int, force: bool, user_id: int, applied_by: str =
         _clear_pre_update()
         _lock_update_phase('applying')
 
-        # ── Фаза 4: применяем архив ──
         try:
             open(_MAINTENANCE_FLAG, 'w').close()
         except Exception:
@@ -683,13 +638,9 @@ def _build_timer_worker(delay: int, force: bool, user_id: int, applied_by: str =
             rc_apply = 1
         finally:
             _lock_clear()
-            try:
-                os.remove(_MAINTENANCE_FLAG)
-            except Exception:
-                pass
+            # FIX v2.3.2: снимаем ТО в finally — гарантированно даже при краше
+            _clear_maintenance()
 
-        # ── Симптом 2: фиксируем итог ДО рестарта (только при успехе) —
-        # админ увидит тост после перезагрузки (через /api/update/result).
         if rc_apply in (0, 2):
             _stats = _parse_apply_stats(apply_out)
             _stats['message'] = (
@@ -713,16 +664,10 @@ def _build_timer_worker(delay: int, force: bool, user_id: int, applied_by: str =
     return _worker
 
 
-# ─── Запланированное обновление (баннер для всех пользователей) ─────────────────────────────────
+# ─── Запланированное обновление ──────────────────────────────────────────────
 
 @update_bp.route('/api/update/schedule', methods=['POST'])
 def api_update_schedule():
-    """POST {delay: N, force: bool}
-    delay: секунд от момента завершения скачивания (0–3600).
-    force: перезаписать все файлы.
-    Используется когда нужен баннер ожидания для всех пользователей системы.
-    Для немедленного обновления с SSE-прогрессом используй /api/update/stream.
-    """
     if session.get('role') != 'admin':
         return jsonify({'error': 'forbidden'}), 403
 
@@ -745,10 +690,7 @@ def api_update_schedule():
     force      = bool(body.get('force', False))
     delay      = max(0, min(_MAX_DELAY, delay))
 
-    scheduled_at = datetime.now().isoformat()
-
-    # fire_at_ts здесь — предварительная оценка для отображения до скачивания.
-    # Воркер пересчитает точное значение после завершения download.
+    scheduled_at        = datetime.now().isoformat()
     fire_at_ts_estimate = time.time() + delay
 
     payload = {
@@ -790,11 +732,10 @@ def api_update_schedule():
     })
 
 
-# ─── Обратная совместимость: /apply и /apply-force ────────────────────────────────────────────────────
+# ─── Обратная совместимость: /apply и /apply-force ────────────────────────────
 
 @update_bp.route('/api/update/apply', methods=['POST'])
 def api_update_apply():
-    """shortcut: delay=1, force=False"""
     if session.get('role') != 'admin':
         return jsonify({'error': 'forbidden'}), 403
     return _schedule_internal(delay=1, force=False)
@@ -802,14 +743,12 @@ def api_update_apply():
 
 @update_bp.route('/api/update/apply-force', methods=['POST'])
 def api_update_apply_force():
-    """shortcut: delay=1, force=True"""
     if session.get('role') != 'admin':
         return jsonify({'error': 'forbidden'}), 403
     return _schedule_internal(delay=1, force=True)
 
 
 def _schedule_internal(delay: int, force: bool):
-    """core schedule без чтения request body — используется /apply и /apply-force."""
     if os.path.exists(_LOCK_FILE):
         if _lock_is_stale():
             pass
@@ -860,7 +799,7 @@ def _schedule_internal(delay: int, force: bool):
                     'message': f'Запущено. Скачиваем архив... потом перезапуск через ~{delay}с.'})
 
 
-# ─── Отмена запланированного обновления ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+# ─── Отмена запланированного обновления ──────────────────────────────────────
 
 @update_bp.route('/api/update/schedule/cancel', methods=['POST'])
 def api_update_schedule_cancel():
@@ -891,10 +830,10 @@ def api_update_schedule_cancel():
     return jsonify({'ok': True, 'message': 'Обновление отменено'})
 
 
-# ─── Статус текущего обновления ──────────────────────────────────────────────────────────────────────────────────────
+# ─── Статус текущего обновления ──────────────────────────────────────────────
 
 @update_bp.route('/api/update/status')
-@update_bp.route('/api/update-status')  # алиас: обратная совместимость с base.html
+@update_bp.route('/api/update-status')
 def api_update_status():
     if session.get('role') != 'admin':
         return jsonify({'error': 'forbidden'}), 403
@@ -909,13 +848,10 @@ def api_update_status():
     return jsonify({'in_progress': in_progress, 'phase': phase})
 
 
-# ─── Статус предобновления (публичный для всех авторизованных) ──────────────────
+# ─── Статус предобновления (публичный для всех авторизованных) ────────────────
 
 @update_bp.route('/api/update/pre-status')
 def api_update_pre_status():
-    """v2.0: добавлены phase и download_error.
-    phase: downloading | scheduled | applying | download_failed
-    """
     if 'user_id' not in session:
         return jsonify({'scheduled': False}), 200
 
@@ -943,17 +879,10 @@ def api_update_pre_status():
         return jsonify({'scheduled': False}), 200
 
 
-# ─── Результат применённого обновления (one-shot, только админ) ───
+# ─── Результат применённого обновления (one-shot, только админ) ──────────────
 
 @update_bp.route('/api/update/result')
 def api_update_result():
-    """Симптом 2: уведомление админа об успешном перезапуске.
-
-    После перезагрузки сервера base.html опрашивает этот роут.
-    Если _update_result.json существует — возвращаем его, логируем
-    факт применения и удаляем файл (one-shot), чтобы тост
-    показался ровно один раз.
-    """
     if session.get('role') != 'admin':
         return jsonify({'available': False}), 200
 
@@ -964,14 +893,12 @@ def api_update_result():
         with open(_UPDATE_RESULT_FILE, 'r', encoding='utf-8') as f:
             data = json.load(f)
     except Exception:
-        # Битый файл — удаляем и сообщаем, что нечего показывать
         try:
             os.remove(_UPDATE_RESULT_FILE)
         except Exception:
             pass
         return jsonify({'available': False}), 200
 
-    # Логируем факт применения обновления (правило #6).
     try:
         conn = get_db()
         log_action(conn, session['user_id'], 'update_applied',
@@ -988,7 +915,6 @@ def api_update_result():
     except Exception:
         pass
 
-    # one-shot: удаляем файл после первого чтения
     try:
         os.remove(_UPDATE_RESULT_FILE)
     except Exception:
@@ -1011,10 +937,6 @@ def api_update_result():
 
 @update_bp.route('/api/update/public-log')
 def api_update_public_log():
-    """Публичный лог хода обновления — доступен без авторизации.
-    Читает logs/_update_public_log.json (JSONL, одна запись на строку).
-    Возвращает последние 50 записей.
-    """
     if not os.path.exists(_PUBLIC_LOG_FILE):
         return jsonify({'ok': True, 'entries': []})
     try:
