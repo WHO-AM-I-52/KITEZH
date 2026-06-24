@@ -540,6 +540,23 @@ def _migrate(conn):
         "CREATE INDEX IF NOT EXISTS idx_ltlinks_tag    ON letter_tag_links(tag_id)"
     )
 
+    # ── Контрагенты (Карточка #13) ──────────────────────────────
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS counterparties (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            name       TEXT NOT NULL UNIQUE,
+            created_at TEXT
+        )
+    """)
+    if not _has_column(conn, 'letters', 'direction'):
+        conn.execute(
+            "ALTER TABLE letters ADD COLUMN direction TEXT NOT NULL DEFAULT 'out'"
+        )
+    if not _has_column(conn, 'letters', 'counterparty_id'):
+        conn.execute(
+            "ALTER TABLE letters ADD COLUMN counterparty_id INTEGER REFERENCES counterparties(id)"
+        )
+
     # ════════════════════════════════════════════════════════════════
     # Шаблоны писем (#12)
     # ════════════════════════════════════════════════════════════════
