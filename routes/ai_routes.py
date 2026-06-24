@@ -4,8 +4,7 @@
 # ║ fix #66 [2/2]: логирование ocr_error, маршрут /ai/ocr-upload   ║
 # ║ feat #67 [2/3]: маршрут POST /ai/ocr-preview (без сохранения  ║
 # ║             в БД), ocr-upload обновлён под Tuple[Dict,str,str]  ║
-# ║ feat #68: GET /ai/ocr-status — панель статуса OCR-движка      ║
-# ║           POST /ai/ocr-test  — тестовый запуск OCR            ║
+# ║ feat #68: GET /ai/ocr-status — 301 → /admin/ocr-status         ║
 # ║ fix: убрана проверка Tesseract — не используется в проекте    ║
 # ║ fix: _save_and_parse — ext берётся до secure_filename()       ║
 # ║ feat: _write_ocr_log() — каждый OCR пишется в ocr_log      ║
@@ -23,7 +22,7 @@ import threading
 import logging
 import requests as http_requests
 from datetime import datetime
-from flask import Blueprint, request, jsonify, render_template, session
+from flask import Blueprint, request, jsonify, render_template, session, redirect
 from werkzeug.utils import secure_filename
 
 from db import get_db
@@ -70,7 +69,7 @@ SYSTEM_PROMPT = (
 
 
 def _safe(val) -> str:
-    """Конвертирует любое значение БД в строку или пустую строку."""
+    """Converts any DB value to string or empty string."""
     if val is None:
         return ""
     return str(val).strip()
@@ -284,7 +283,7 @@ def _ask_ollama(investor_profile: dict, site_requests: list) -> dict:
     return json.loads(content[start:end])
 
 
-# ─── ВСПОМОГАТЕЛЬНЫЕ ────────────────────────────────────────────────────────────
+# ─── ВСПОМОГАТЕЛЬНЫЕ ─────────────────────────────────────────────────────────────────────────────────
 
 def _save_and_parse(file_storage) -> tuple:
     ext = os.path.splitext(file_storage.filename)[1].lower()
@@ -338,7 +337,7 @@ def _log_ocr_error(filename: str, detail: str) -> None:
         logger.warning("_log_ocr_error: %s", e)
 
 
-# ─── МАРШРУТЫ ИИ-ПОДБОРА ──────────────────────────────────────────────────────────
+# ─── МАРШРУТЫ ИИ-ПОДБОРА ──────────────────────────────────────────────────────────────────────────────
 
 @ai_bp.route("/match", methods=["GET"])
 @login_required
@@ -374,7 +373,7 @@ def match_result():
     return jsonify(result)
 
 
-# ─── API: получить все обращения для ИИ (JSON) ────────────────────────────────
+# ─── API: получить все обращения для ИИ (JSON) ──────────────────────────────────────────
 
 @ai_bp.route("/site-requests", methods=["GET"])
 @login_required
@@ -448,7 +447,7 @@ def get_site_requests_api():
     })
 
 
-# ─── OCR-ЗАГРУЗКА ─────────────────────────────────────────────────────────────────────
+# ─── OCR-ЗАГРУЗКА ─────────────────────────────────────────────────────────────────────────────────────────
 
 @ai_bp.route("/ocr-upload", methods=["POST"])
 @login_required
@@ -500,71 +499,12 @@ def ocr_preview():
     return jsonify({"ok": True, "raw_text": raw_text, "fields": fields, "msg": msg})
 
 
-# ─── OCR-СТАТУС (#68) ─────────────────────────────────────────────────────────────
-
-def _check_ocr_deps() -> dict:
-    status = {}
-    for key, mod, attr in [
-        ('easyocr',    'easyocr',    '__version__'),
-        ('pdfplumber', 'pdfplumber', '__version__'),
-        ('docx',       'docx',       '__version__'),
-        ('pillow',     'PIL',        '__version__'),
-    ]:
-        try:
-            m = __import__(mod)
-            status[key] = {'ok': True, 'version': getattr(m, attr, '—')}
-        except ImportError:
-            pip_name = _OCR_INSTALL_WHITELIST.get(key, key)
-            status[key] = {'ok': False, 'error': f'Не установлен (pip install {pip_name})'}
-        except Exception as e:
-            status[key] = {'ok': False, 'error': str(e)}
-    return status
-
+# ─── OCR-СТАТУС: редирект 301 → /admin/ocr-status ────────────────────────────────────────
 
 @ai_bp.route("/ocr-status", methods=["GET"])
 @admin_required
 def ocr_status():
-    deps = _check_ocr_deps()
-    conn = get_db()
-    try:
-        errors_7d = conn.execute(
-            "SELECT COUNT(*) FROM activity_log "
-            "WHERE action='ocr_error' AND created_at >= datetime('now','-7 days')"
-        ).fetchone()[0]
-        recent_errors = conn.execute(
-            "SELECT al.created_at, al.detail, u.full_name "
-            "FROM activity_log al LEFT JOIN users u ON al.user_id = u.id "
-            "WHERE al.action='ocr_error' ORDER BY al.created_at DESC LIMIT 10"
-        ).fetchall()
-        recent_errors = [dict(r) for r in recent_errors]
-        last_ocr = conn.execute(
-            "SELECT created_at FROM activity_log "
-            "WHERE action IN ('ocr_upload','ocr_preview') "
-            "ORDER BY created_at DESC LIMIT 1"
-        ).fetchone()
-        last_ocr_dt = last_ocr['created_at'] if last_ocr else None
-        ocr_logs = conn.execute(
-            """
-            SELECT ol.id, ol.created_at, ol.filename, ol.msg, ol.ok,
-                   ol.raw_text, ol.fields_json, u.full_name AS user_name
-            FROM ocr_log ol LEFT JOIN users u ON ol.user_id = u.id
-            ORDER BY ol.created_at DESC LIMIT 20
-            """
-        ).fetchall()
-        ocr_logs = [dict(r) for r in ocr_logs]
-    finally:
-        conn.close()
-    all_ok = all(v['ok'] for v in deps.values())
-    return render_template(
-        'ocr_status.html',
-        deps=deps,
-        errors_7d=errors_7d,
-        recent_errors=recent_errors,
-        last_ocr_dt=last_ocr_dt,
-        all_ok=all_ok,
-        checked_at=datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
-        ocr_logs=ocr_logs,
-    )
+    return redirect("/admin/ocr-status", 301)
 
 
 @ai_bp.route("/ocr-test", methods=["POST"])
@@ -583,7 +523,7 @@ def ocr_test():
         return jsonify({'ok': False, 'error': str(e)})
 
 
-# ─── OCR-УСТАНОВКА: ФОН ПОТОК + POLLING ────────────────────────────────────
+# ─── OCR-УСТАНОВКА: ФОН ПОТОК + POLLING ──────────────────────────────────────────
 
 def _run_pip_install(pkg_key: str, pip_package: str, user_id) -> None:
     """Запускается в отдельном потоке. Обновляет _install_jobs по завершении."""
