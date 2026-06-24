@@ -23,6 +23,32 @@
                      placeholder="напр.: Исх.123/2026">
             </div>
 
+            <!-- Направление + Контрагент (#13) -->
+            <div class="col-12">
+              <label class="form-label">Направление</label>
+              <div class="btn-group w-100" role="group" id="directionGroup">
+                <input type="radio" class="btn-check" name="direction" id="dirOut" value="out" autocomplete="off" checked>
+                <label class="btn btn-outline-primary" for="dirOut" onclick="onDirectionChange('out')">→ Исходящее</label>
+                <input type="radio" class="btn-check" name="direction" id="dirIn" value="in" autocomplete="off">
+                <label class="btn btn-outline-secondary" for="dirIn" onclick="onDirectionChange('in')">← Входящее</label>
+              </div>
+            </div>
+
+            <div class="col-12">
+              <label class="form-label" id="cpLabel">Кому</label>
+              <div class="input-group">
+                <input type="text" id="cpInput" class="form-control"
+                       placeholder="Начните ввод названия..."
+                       autocomplete="off">
+                <button type="button" class="btn btn-outline-success" title="Добавить нового контрагента"
+                        onclick="addCounterparty()">+</button>
+              </div>
+              <div id="cpSuggestions" class="list-group mt-1"
+                   style="display:none; position:absolute; z-index:1060; min-width:260px"></div>
+              <input type="hidden" id="fCounterpartyId" name="counterparty_id" value="">
+            </div>
+            <!-- /Направление + Контрагент -->
+
             <div class="col-12">
               <label class="form-label d-flex align-items-center justify-content-between">
                 <span>Тема</span>
@@ -88,6 +114,61 @@
 </div>
 
 <script>
+// ─── Направление (#13) ───
+
+function onDirectionChange(dir) {
+  document.getElementById('cpLabel').textContent = (dir === 'out') ? 'Кому' : 'От кого';
+}
+
+let _cpTimer = null;
+
+function fetchCpSuggestions(q) {
+  fetch('/letters/api/counterparties?q=' + encodeURIComponent(q))
+    .then(r => r.json())
+    .then(items => {
+      const box = document.getElementById('cpSuggestions');
+      box.innerHTML = '';
+      if (!items.length) { box.style.display = 'none'; return; }
+      items.forEach(item => {
+        const a = document.createElement('a');
+        a.href = '#';
+        a.className = 'list-group-item list-group-item-action py-1 px-2';
+        a.textContent = item.name;
+        a.addEventListener('click', function (e) {
+          e.preventDefault();
+          document.getElementById('cpInput').value = item.name;
+          document.getElementById('fCounterpartyId').value = item.id;
+          hideCpSuggestions();
+        });
+        box.appendChild(a);
+      });
+      box.style.display = 'block';
+    });
+}
+
+function hideCpSuggestions() {
+  const box = document.getElementById('cpSuggestions');
+  if (box) { box.style.display = 'none'; box.innerHTML = ''; }
+}
+
+function addCounterparty() {
+  const name = document.getElementById('cpInput').value.trim();
+  if (!name) return;
+  fetch('/letters/api/counterparties', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name: name}),
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (data.id) {
+        document.getElementById('cpInput').value = data.name;
+        document.getElementById('fCounterpartyId').value = data.id;
+        hideCpSuggestions();
+      }
+    });
+}
+
 // ─── Теги ───
 
 let _currentTags = [];
@@ -133,37 +214,57 @@ let _acTimer = null;
 
 document.addEventListener('DOMContentLoaded', function () {
   const tagInput = document.getElementById('tagInput');
-  if (!tagInput) return;
+  if (tagInput) {
+    tagInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        addTagFromInput();
+      } else if (e.key === 'Escape') {
+        hideSuggestions();
+      }
+    });
+    tagInput.addEventListener('input', function () {
+      clearTimeout(_acTimer);
+      const q = this.value.trim();
+      if (!q) { hideSuggestions(); return; }
+      _acTimer = setTimeout(() => fetchSuggestions(q), 200);
+    });
+  }
 
-  tagInput.addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      addTagFromInput();
-    } else if (e.key === 'Escape') {
-      hideSuggestions();
-    }
-  });
-
-  tagInput.addEventListener('input', function () {
-    clearTimeout(_acTimer);
-    const q = this.value.trim();
-    if (!q) { hideSuggestions(); return; }
-    _acTimer = setTimeout(() => fetchSuggestions(q), 200);
-  });
+  const cpInput = document.getElementById('cpInput');
+  if (cpInput) {
+    cpInput.addEventListener('input', function () {
+      clearTimeout(_cpTimer);
+      document.getElementById('fCounterpartyId').value = '';
+      const q = this.value.trim();
+      if (!q) { hideCpSuggestions(); return; }
+      _cpTimer = setTimeout(() => fetchCpSuggestions(q), 200);
+    });
+    cpInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') hideCpSuggestions();
+    });
+  }
 
   document.addEventListener('click', function (e) {
     if (!e.target.closest('#tagInput') && !e.target.closest('#tagSuggestions')) {
       hideSuggestions();
+    }
+    if (!e.target.closest('#cpInput') && !e.target.closest('#cpSuggestions')) {
+      hideCpSuggestions();
     }
     if (!e.target.closest('#tplBtn') && !e.target.closest('#tplDropdown')) {
       hideTplDropdown();
     }
   });
 
-  // Сброс дропдауна шаблонов при закрытии модала
   document.getElementById('letterModal').addEventListener('hidden.bs.modal', function () {
     hideTplDropdown();
     hideSuggestions();
+    hideCpSuggestions();
+    document.getElementById('cpInput').value = '';
+    document.getElementById('fCounterpartyId').value = '';
+    document.getElementById('dirOut').checked = true;
+    document.getElementById('cpLabel').textContent = 'Кому';
   });
 });
 
