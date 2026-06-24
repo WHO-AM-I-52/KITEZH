@@ -41,7 +41,7 @@
         <dt class="col-sm-3">Срок</dt>
         <dd class="col-sm-9">
           {% if task.deadline %}
-            <span class="{% if task.deadline < now().date().isoformat() and task.status not in ('done','cancelled') %}text-danger fw-bold{% endif %}">
+            <span class="{% if task.deadline < today and task.status not in ('done','cancelled') %}text-danger fw-bold{% endif %}">
               {{ task.deadline }}
             </span>
           {% else %}—{% endif %}
