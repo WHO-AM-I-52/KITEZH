@@ -152,57 +152,41 @@ if exist "%APP_DIR%_restart.flag" (
 )
 
 :: Проверка обновлений на GitHub
-if exist "%APP_DIR%update.bat" (
-  if exist "%APP_DIR%updater\_updater.py" (
-    echo  Проверка обновлений на GitHub...
-    "%PYTHON%" "%APP_DIR%updater\_updater.py" --check >nul 2>&1
-    set "CHECK_RESULT=!ERRORLEVEL!"
-    echo.
+if exist "%APP_DIR%updater\_updater.py" (
+  echo  Проверка обновлений на GitHub...
+  "%PYTHON%" "%APP_DIR%updater\_updater.py" --check >nul 2>&1
+  set "CHECK_RESULT=!ERRORLEVEL!"
+  echo.
 
-    if "!CHECK_RESULT!"=="0" (
-      echo  [OK] Установлена актуальная версия. Обновление пропущено.
+  if "!CHECK_RESULT!"=="0" (
+    echo  [OK] Установлена актуальная версия. Обновление пропущено.
+    echo.
+  ) else if "!CHECK_RESULT!"=="2" (
+    echo  [!] Не удалось проверить обновления. Запустить всё равно?
+    set "UPD=x"
+    set /p UPD=  Скачать архив обновления с GitHub? [Ввод=да / 0=нет]: 
+    if "!UPD!"=="x" (
       echo.
-    ) else if "!CHECK_RESULT!"=="2" (
-      echo  [!] Не удалось проверить обновления. Запустить всё равно?
-      set "UPD=x"
-      set /p UPD=  Скачать архив обновления с GitHub? [Ввод=да / 0=нет]: 
-      if "!UPD!"=="x" (
-        echo.
-        call "%APP_DIR%update.bat"
-        cd /d "%APP_DIR%"
-        echo.
-      ) else if not "!UPD!"=="0" (
-        echo.
-        call "%APP_DIR%update.bat"
-        cd /d "%APP_DIR%"
-        echo.
-      )
-    ) else (
-      set "UPD=x"
-      set /p UPD=  Скачать архив обновления с GitHub? [Ввод=да / 0=нет]: 
-      if "!UPD!"=="x" (
-        echo.
-        call "%APP_DIR%update.bat"
-        cd /d "%APP_DIR%"
-        echo.
-      ) else if not "!UPD!"=="0" (
-        echo.
-        call "%APP_DIR%update.bat"
-        cd /d "%APP_DIR%"
-        echo.
-      )
+      "%PYTHON%" "%APP_DIR%updater\_updater.py"
+      cd /d "%APP_DIR%"
+      echo.
+    ) else if not "!UPD!"=="0" (
+      echo.
+      "%PYTHON%" "%APP_DIR%updater\_updater.py"
+      cd /d "%APP_DIR%"
+      echo.
     )
   ) else (
     set "UPD=x"
     set /p UPD=  Скачать архив обновления с GitHub? [Ввод=да / 0=нет]: 
     if "!UPD!"=="x" (
       echo.
-      call "%APP_DIR%update.bat"
+      "%PYTHON%" "%APP_DIR%updater\_updater.py"
       cd /d "%APP_DIR%"
       echo.
     ) else if not "!UPD!"=="0" (
       echo.
-      call "%APP_DIR%update.bat"
+      "%PYTHON%" "%APP_DIR%updater\_updater.py"
       cd /d "%APP_DIR%"
       echo.
     )
@@ -278,6 +262,7 @@ set KITEZH_TRAY=%KITEZH_TRAY%
 set PYTHONUTF8=1
 set PYTHONPATH=%APP_DIR%
 cd /d "%APP_DIR%"
+
 
 
 "%PYTHON%" run_server.py
