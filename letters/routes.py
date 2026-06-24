@@ -4,7 +4,7 @@ from flask import (
 )
 from datetime import datetime
 from db import get_db
-from activity_log import log_action
+from core.activity_log import log_action
 
 letters_bp = Blueprint(
     'letters',

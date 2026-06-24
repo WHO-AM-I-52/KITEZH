@@ -2,7 +2,7 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session, abort
 from datetime import datetime
 from db import get_db
-from activity_log import log_action
+from core.activity_log import log_action
 from functools import wraps
 
 tasks_bp = Blueprint('tasks', __name__, url_prefix='/tasks',
@@ -82,7 +82,6 @@ def my_tasks():
     query += ' ORDER BY t.deadline ASC, t.created_at DESC'
     tasks = db.execute(query, params).fetchall()
 
-    # Исполнители для каждой задачи
     assignees_map = {}
     for t in tasks:
         rows = db.execute('''
@@ -284,7 +283,7 @@ def close_task(id):
     if not _can_change_status(task, assignee_ids, user_id, role):
         abort(403)
 
-    action    = request.form.get('action', 'done')   # 'done' или 'cancelled'
+    action    = request.form.get('action', 'done')
     new_status = 'done' if action == 'done' else 'cancelled'
     if new_status not in ALLOWED_TRANSITIONS.get(task['status'], []):
         abort(400)
