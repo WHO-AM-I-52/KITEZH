@@ -44,6 +44,16 @@
                      placeholder="Краткое описание">
             </div>
 
+            <div class="col-md-6">
+              <label class="form-label">Исполнитель</label>
+              <select id="fExecutor" name="executor_id" class="form-select">
+                <option value="">— не выбран —</option>
+                {% for u in users %}
+                <option value="{{ u.id }}">{{ u.full_name or u.username }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
             <div class="col-12">
               <label class="form-label">Примечание</label>
               <textarea id="fNote" name="note" class="form-control" rows="3"
@@ -180,7 +190,7 @@ function hideSuggestions() {
   if (box) { box.style.display = 'none'; box.innerHTML = ''; }
 }
 
-// ─── Шаблоны писем (#12) ───
+// ─── Шаблоны писем ───
 
 let _tplLoaded = false;
 
@@ -221,11 +231,9 @@ function loadTemplates(q) {
         return;
       }
 
-      // поле поиска
       const searchRow = document.createElement('div');
       searchRow.className = 'list-group-item py-1 px-2';
-      searchRow.innerHTML = '<input type="text" class="form-control form-control-sm"
-                              id="tplSearch" placeholder="Поиск шаблона...">';
+      searchRow.innerHTML = '<input type="text" class="form-control form-control-sm" id="tplSearch" placeholder="Поиск шаблона...">';
       dd.appendChild(searchRow);
 
       const listWrap = document.createElement('div');
@@ -251,7 +259,6 @@ function loadTemplates(q) {
       renderItems(items);
       _tplLoaded = true;
 
-      // live-поиск в дропдауне
       let _tplTimer = null;
       dd.querySelector('#tplSearch').addEventListener('input', function () {
         clearTimeout(_tplTimer);
