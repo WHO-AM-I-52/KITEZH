@@ -15,6 +15,7 @@
 {# ║  v2.25.5: remove OCR link from sidebar                      ║ #}
 {# ║  v2.26.0: letters_bp — ссылка «Журнал писем» в сайдбаре    ║ #}
 {# ║  v2.27.0: tasks_bp — ссылки «Задачи» в сайдбаре (#9)       ║ #}
+{# ║  v2.27.1: FIX letters.letters_index→list_letters; tasks     ║ #}
 {# ╚══════════════════════════════════════════════════════════════╝ #}
 <html lang="ru">
 <head>
@@ -573,7 +574,7 @@
       </a>
       {% endif %}
 
-      <a href="{{ url_for('letters.letters_index') }}" class="sb-link {{ 'active' if request.endpoint and request.endpoint.startswith('letters') }}">
+      <a href="{{ url_for('letters.list_letters') }}" class="sb-link {{ 'active' if request.endpoint and request.endpoint.startswith('letters') }}">
         <i class="bi bi-envelope-paper"></i><span class="sb-lbl">Журнал писем</span>
       </a>
 
@@ -593,10 +594,6 @@
 
       <a href="{{ url_for('tasks.assigned_by_me') }}" class="sb-link {{ 'active' if request.endpoint == 'tasks.assigned_by_me' }}">
         <i class="bi bi-send"></i><span class="sb-lbl">Я поставил</span>
-      </a>
-
-      <a href="{{ url_for('tasks.new_task') }}" class="sb-link {{ 'active' if request.endpoint == 'tasks.new_task' }}">
-        <i class="bi bi-plus-circle"></i><span class="sb-lbl">Новая задача</span>
       </a>
 
     </div>
