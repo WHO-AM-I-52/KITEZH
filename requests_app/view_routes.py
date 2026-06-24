@@ -110,6 +110,18 @@ def view_request(rid):
         (rid,)
     ).fetchall()
 
+    # ─ Соисполнители (#77)
+    coexecutors = conn.execute(
+        "SELECT ce.user_id, u.full_name, ce.assigned_at, "
+        "ab.full_name AS assigned_by_name "
+        "FROM request_coexecutors ce "
+        "JOIN users u  ON u.id  = ce.user_id "
+        "JOIN users ab ON ab.id = ce.assigned_by "
+        "WHERE ce.request_id = ? "
+        "ORDER BY ce.assigned_at",
+        (rid,)
+    ).fetchall()
+
     conn.close()
 
     display_vals = _build_display_vals(req)
@@ -124,6 +136,7 @@ def view_request(rid):
         all_users=all_users,
         all_districts=all_districts,
         review_chain=review_chain,
+        coexecutors=coexecutors,
         today_str=str(date.today()),
     )
 
