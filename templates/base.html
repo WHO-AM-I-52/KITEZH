@@ -12,6 +12,7 @@
 {# ║  v2.25.2: FIX-2 download_error → hideBanner в poll()       ║ #}
 {# ║  v2.25.3: FIX счётчик онлайна — d.count → d.online         ║ #}
 {# ║  v2.25.4: pre-status poll 3s→10s; guard online-users login  ║ #}
+{# ║  v2.25.5: remove OCR link from sidebar                      ║ #}
 {# ╚══════════════════════════════════════════════════════════════╝ #}
 <html lang="ru">
 <head>
@@ -591,9 +592,6 @@
       </a>
       <a href="/admin/users" class="sb-link {{ 'active' if 'users' in request.path }}">
         <i class="bi bi-people"></i><span class="sb-lbl">Пользователи</span>
-      </a>
-      <a href="{{ url_for('admin.ocr_status') }}" class="sb-link {{ 'active' if request.path=='/admin/ocr-status' }}">
-        <i class="bi bi-cpu-fill"></i><span class="sb-lbl">Статус OCR</span>
       </a>
 
     </div>
