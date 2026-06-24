@@ -29,6 +29,13 @@ def _can_delete():
     return session.get('role') == 'admin'
 
 
+def _can_delete_template(template):
+    return (
+        template['created_by'] == session.get('user_id')
+        or session.get('role') == 'admin'
+    )
+
+
 def _normalize_tag(name: str) -> str:
     return name.lower().strip()
 
@@ -79,12 +86,12 @@ def _get_users(conn):
     ).fetchall()
 
 
-# ─── СПИСОК ──────────────────────────────────────────────────────────────────
+# ─── СПИСОК ────────────────────────────────────────────────────────────────────────────
 
 @letters_bp.route('/')
 def list_letters():
     if _login_required():
-        return redirect(url_for('login'))
+        return redirect(url_for('auth.login'))
 
     db = get_db()
     date_from  = request.args.get('date_from', '').strip()
@@ -167,12 +174,12 @@ def list_letters():
     )
 
 
-# ─── СОЗДАНИЕ ────────────────────────────────────────────────────────────────
+# ─── СОЗДАНИЕ ──────────────────────────────────────────────────────────────────────────
 
 @letters_bp.route('/create', methods=['POST'])
 def create_letter():
     if _login_required():
-        return redirect(url_for('login'))
+        return redirect(url_for('auth.login'))
 
     db = get_db()
     date        = request.form.get('date', '').strip()
@@ -203,12 +210,12 @@ def create_letter():
     return redirect(url_for('letters.list_letters'))
 
 
-# ─── РЕДАКТИРОВАНИЕ ──────────────────────────────────────────────────────────
+# ─── РЕДАКТИРОВАНИЕ ───────────────────────────────────────────────────────────────────────
 
 @letters_bp.route('/<int:id>/edit', methods=['GET', 'POST'])
 def edit_letter(id):
     if _login_required():
-        return redirect(url_for('login'))
+        return redirect(url_for('auth.login'))
 
     db = get_db()
     letter = db.execute('SELECT * FROM letters WHERE id = ?', (id,)).fetchone()
@@ -256,7 +263,7 @@ def edit_letter(id):
     return redirect(url_for('letters.list_letters'))
 
 
-# ─── УДАЛЕНИЕ ────────────────────────────────────────────────────────────────
+# ─── УДАЛЕНИЕ ──────────────────────────────────────────────────────────────────────────
 
 @letters_bp.route('/<int:id>/delete', methods=['POST'])
 def delete_letter(id):
@@ -273,7 +280,7 @@ def delete_letter(id):
     return redirect(url_for('letters.list_letters'))
 
 
-# ─── AUTOCOMPLETE ТЕГОВ ──────────────────────────────────────────────────────
+# ─── AUTOCOMPLETE ТЕГОВ ─────────────────────────────────────────────────────────────────────
 
 @letters_bp.route('/api/tags')
 def api_tags():
@@ -291,3 +298,140 @@ def api_tags():
             'SELECT id, name FROM letter_tags ORDER BY name LIMIT 20'
         ).fetchall()
     return jsonify([{'id': r['id'], 'name': r['name']} for r in rows])
+
+
+# ─── ШАБЛОНЫ ПИСЕМ (#12) ───────────────────────────────────────────────────────────────
+
+@letters_bp.route('/templates')
+def list_templates():
+    if _login_required():
+        return redirect(url_for('auth.login'))
+
+    db = get_db()
+    user_id = session['user_id']
+    role = session.get('role')
+
+    if role == 'admin':
+        rows = db.execute(
+            '''
+            SELECT t.id, t.name, t.subject, t.body, t.is_shared, t.created_by,
+                   u.username AS author
+            FROM letter_templates t
+            LEFT JOIN users u ON u.id = t.created_by
+            ORDER BY t.name
+            '''
+        ).fetchall()
+    else:
+        rows = db.execute(
+            '''
+            SELECT t.id, t.name, t.subject, t.body, t.is_shared, t.created_by,
+                   u.username AS author
+            FROM letter_templates t
+            LEFT JOIN users u ON u.id = t.created_by
+            WHERE t.is_shared = 1 OR t.created_by = ?
+            ORDER BY t.name
+            ''',
+            (user_id,),
+        ).fetchall()
+
+    templates = []
+    for r in rows:
+        templates.append({
+            'id':         r['id'],
+            'name':       r['name'],
+            'subject':    r['subject'],
+            'body':       r['body'],
+            'is_shared':  r['is_shared'],
+            'created_by': r['created_by'],
+            'author':     r['author'],
+            'can_delete': (
+                r['created_by'] == user_id or role == 'admin'
+            ),
+        })
+
+    return render_template('letters/templates.html', templates=templates)
+
+
+@letters_bp.route('/templates/create', methods=['POST'])
+def create_template():
+    if _login_required():
+        return redirect(url_for('auth.login'))
+
+    name      = request.form.get('name', '').strip()
+    subject   = request.form.get('subject', '').strip()
+    body      = request.form.get('body', '').strip()
+    is_shared = 1 if request.form.get('is_shared') else 0
+
+    if not name:
+        return redirect(url_for('letters.list_templates'))
+
+    db = get_db()
+    cur = db.execute(
+        '''
+        INSERT INTO letter_templates (name, subject, body, created_by, is_shared)
+        VALUES (?, ?, ?, ?, ?)
+        ''',
+        (name, subject, body, session['user_id'], is_shared),
+    )
+    db.commit()
+    log_action(db, session['user_id'], 'letter_template_create', cur.lastrowid)
+    return redirect(url_for('letters.list_templates'))
+
+
+@letters_bp.route('/templates/<int:id>/delete', methods=['POST'])
+def delete_template(id):
+    if _login_required():
+        return redirect(url_for('auth.login'))
+
+    db = get_db()
+    tmpl = db.execute(
+        'SELECT id, created_by FROM letter_templates WHERE id = ?', (id,)
+    ).fetchone()
+
+    if tmpl is None or not _can_delete_template(tmpl):
+        return redirect(url_for('letters.list_templates'))
+
+    db.execute('DELETE FROM letter_templates WHERE id = ?', (id,))
+    db.commit()
+    log_action(db, session['user_id'], 'letter_template_delete', id)
+    return redirect(url_for('letters.list_templates'))
+
+
+@letters_bp.route('/api/templates')
+def api_templates():
+    if _login_required():
+        return jsonify([])
+
+    q = request.args.get('q', '').strip()
+    user_id = session['user_id']
+    role = session.get('role')
+    db = get_db()
+
+    if role == 'admin':
+        base_where = 'WHERE 1=1'
+        params = []
+    else:
+        base_where = 'WHERE (t.is_shared = 1 OR t.created_by = ?)'
+        params = [user_id]
+
+    if q:
+        base_where += ' AND t.name LIKE ?'
+        params.append(f'%{q}%')
+
+    rows = db.execute(
+        f'''
+        SELECT t.id, t.name, t.subject, t.body
+        FROM letter_templates t
+        {base_where}
+        ORDER BY t.name
+        LIMIT 30
+        ''',
+        params,
+    ).fetchall()
+
+    return jsonify([{
+        'id':      r['id'],
+        'name':    r['name'],
+        'subject': r['subject'],
+        'body':    r['body'],
+    } for r in rows])
