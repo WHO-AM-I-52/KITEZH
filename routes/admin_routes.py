@@ -33,6 +33,7 @@
 # ║  v4.7: backup_download — GET /admin/backup/download?type=     ║
 # ║         full|db|rules → ZIP-архив; log_action backup_download ║
 # ║  v4.8: ocr_status — GET /admin/ocr-status (перенос из ai)     ║
+# ║  v4.9: refactor — шаблон перенесён в templates/admin/         ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 import io
@@ -427,7 +428,7 @@ def ocr_status():
         conn.close()
     all_ok = all(v['ok'] for v in deps.values())
     return render_template(
-        'ocr_status.html',
+        'admin/ocr_status.html',
         deps=deps,
         errors_7d=errors_7d,
         recent_errors=recent_errors,
