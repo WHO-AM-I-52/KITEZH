@@ -59,7 +59,7 @@ else:
         app.secret_key = _new_key
 
 # ─── Настройки сессий ───────────────────────────────────────────────────────────────────────────
-app.config['PERMANENT_SESSION_LIFETIME']   = timedelta(minutes=15)
+app.config['PERMANENT_SESSION_LIFETIME']   = timedelta(hours=8)
 app.config['SESSION_REFRESH_EACH_REQUEST'] = True
 
 # ─── LIMITER ────────────────────────────────────────────────────────────────────────────────────
