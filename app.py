@@ -14,6 +14,7 @@
 # ║      feat: portal_analysis_bp — анализ заполняемости       ║
 # ║      fix: threaded=True — SSE-стрим обновления работает     ║
 # ║      fix: _startup() чистит _pre_update.json при старте     ║
+# ║      feat: letters_bp — журнал исходящих писем             ║
 # ╚═══════════════════════════════════════════════════════════════╝
 
 import os
@@ -156,6 +157,7 @@ from routes.ai_routes        import ai_bp
 from routes.quality_checks   import quality_bp
 from routes.admin_sql_routes import admin_sql_bp
 from portal_analysis.portal_analysis_routes import portal_analysis_bp
+from letters import letters_bp
 import services.backup_scheduler as backup_scheduler
 
 for bp in [
@@ -169,6 +171,7 @@ for bp in [
     quality_bp,
     admin_sql_bp,
     portal_analysis_bp,
+    letters_bp,
 ]:
     app.register_blueprint(bp)
 
