@@ -114,7 +114,6 @@ def _backfill_review_deadline(conn):
     if not _has_column(conn, 'requests', 'review_deadline'):
         return
 
-    # Нормативы этапов в рабочих днях (сколько дней даётся на текущий этап)
     stage_norms = STATUS_NORM_DAYS
 
     rows = conn.execute("""
@@ -558,6 +557,39 @@ def _migrate(conn):
         "CREATE INDEX IF NOT EXISTS idx_pinned_notes_obj "
         "ON pinned_notes(object_type, object_id)"
     )
+
+    # ════════════════════════════════════════════════════════════════
+    # Таблицы модуля «Задачи» (MVP, #9)
+    # ════════════════════════════════════════════════════════════════
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS tasks (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            title       TEXT    NOT NULL DEFAULT '',
+            description TEXT             DEFAULT '',
+            source      TEXT             DEFAULT '',
+            deadline    TEXT,
+            status      TEXT    NOT NULL DEFAULT 'new',
+            result      TEXT             DEFAULT '',
+            created_by  INTEGER NOT NULL REFERENCES users(id),
+            created_at  TEXT    NOT NULL,
+            closed_at   TEXT
+        )
+    """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS task_assignees (
+            task_id     INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+            user_id     INTEGER NOT NULL REFERENCES users(id),
+            assigned_at TEXT    NOT NULL,
+            assigned_by INTEGER NOT NULL REFERENCES users(id),
+            PRIMARY KEY (task_id, user_id)
+        )
+    """)
+
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status     ON tasks(status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_created_by ON tasks(created_by)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_deadline   ON tasks(deadline)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_task_assignees_u ON task_assignees(user_id)")
 
     conn.commit()
 
