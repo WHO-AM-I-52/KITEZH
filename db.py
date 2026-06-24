@@ -541,6 +541,23 @@ def _migrate(conn):
     )
 
     # ════════════════════════════════════════════════════════════════
+    # Шаблоны писем (#12)
+    # ════════════════════════════════════════════════════════════════
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS letter_templates (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            name       TEXT    NOT NULL,
+            subject    TEXT    NOT NULL DEFAULT '',
+            body       TEXT    NOT NULL DEFAULT '',
+            created_by INTEGER REFERENCES users(id),
+            is_shared  INTEGER NOT NULL DEFAULT 1
+        )
+    """)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_ltpl_shared ON letter_templates(is_shared)"
+    )
+
+    # ════════════════════════════════════════════════════════════════
     # Закреплённые заметки по обращению (📌 Заметка)
     # ════════════════════════════════════════════════════════════════
     conn.execute("""
