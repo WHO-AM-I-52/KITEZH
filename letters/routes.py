@@ -170,6 +170,7 @@ def list_letters():
         date_to=date_to,
         tag_filter=tag_filter,
         can_delete=_can_delete(),
+        can_manage_templates=(session.get('role') == 'admin'),
         users=users,
     )
 
