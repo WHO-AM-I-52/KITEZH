@@ -17,7 +17,7 @@ from utils.validators import allowed_file
 from . import requests_bp
 
 
-# ─── КОНСТАНТЫ ──────────────────────────────────────────────────────────────────────────────
+# ─── КОНСТАНТЫ ──────────────────────────────────────────────────────────────────────────────────
 
 _VALID_STATUSES = (
     'draft', 'registered', 'in_progress',
@@ -44,7 +44,7 @@ _STATUS_AT_FIELD = {
 _MAX_REVIEWERS = 5
 
 
-# ─── ХЕЛПЕР: уведомление ответственному лицу ──────────────────────────────────
+# ─── ХЕЛПЕР: уведомление ответственному лицу ──────────────────
 
 def _notify_responsible(conn, req, message):
     rid = req['id']
@@ -76,7 +76,7 @@ def _calc_deadline(status: str, transition_date_str: str) -> str | None:
         return None
 
 
-# ─── СМЕНА СТАТУСА ────────────────────────────────────────────────────────────────────────
+# ─── СМЕНА СТАТУСА ────────────────────────────────────────────────────────────────────────────
 
 @requests_bp.route('/request/<int:rid>/status', methods=['POST'])
 @login_required
@@ -110,7 +110,6 @@ def change_status(rid):
         upd_fields.append('review_deadline=?')
         upd_vals.append(deadline)
     elif ns in ('closed',):
-        # Закрытое обращение — deadline не нужен
         upd_fields.append('review_deadline=?')
         upd_vals.append(None)
 
@@ -241,7 +240,7 @@ def change_status(rid):
     return redirect(url_for('requests.view_request', rid=rid))
 
 
-# ─── РЕШЕНИЕ ПРОВЕРЯЮЩЕГО ─────────────────────────────────────────────────────────
+# ─── РЕШЕНИЕ ПРОВЕРЯЮЩЕГО ────────────────────────────────────────────────
 
 @requests_bp.route('/request/<int:rid>/reviewer_decision', methods=['POST'])
 @login_required
@@ -350,7 +349,7 @@ def reviewer_decision(rid):
     return redirect(url_for('requests.view_request', rid=rid))
 
 
-# ─── ЗАГРУЗКА ОТВЕТА ─────────────────────────────────────────────────────────────────────
+# ─── ЗАГРУЗКА ОТВЕТА ───────────────────────────────────────────────────────────────────────────
 
 @requests_bp.route('/request/<int:rid>/answer', methods=['POST'])
 @login_required
@@ -392,7 +391,7 @@ def answer_request(rid):
     return redirect(url_for('requests.view_request', rid=rid))
 
 
-# ─── УДАЛЕНИЕ ───────────────────────────────────────────────────────────────────────────────
+# ─── УДАЛЕНИЕ ─────────────────────────────────────────────────────────────────────────────────
 
 @requests_bp.route('/request/<int:rid>/delete', methods=['POST'])
 @login_required
@@ -449,3 +448,35 @@ def bulk_delete_requests():
     conn.close()
     flash(f'Удалено обращений: {len(deleted_labels)}', 'success')
     return redirect(url_for('requests.index'))
+
+
+# ─── ЗАКРЕПЛЁННАЯ ЗАМЕТКА ─────────────────────────────────────────────────────────────────
+
+@requests_bp.route('/requests/<int:rid>/note', methods=['POST'])
+@login_required
+def save_pinned_note(rid):
+    text = request.form.get('text', '').strip()
+    now  = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    user_id = session['user_id']
+    conn = get_db()
+    conn.execute(
+        """
+        INSERT INTO pinned_notes (object_type, object_id, text, created_by, updated_at)
+        VALUES ('request', ?, ?, ?, ?)
+        ON CONFLICT DO NOTHING
+        """,
+        (rid, text, user_id, now)
+    )
+    # upsert: обновляем если запись уже есть
+    conn.execute(
+        """
+        UPDATE pinned_notes
+        SET text=?, updated_at=?
+        WHERE object_type='request' AND object_id=? AND created_by=?
+        """,
+        (text, now, rid, user_id)
+    )
+    log_action(conn, user_id, 'note_save', rid, 'Заметка сохранена')
+    conn.commit()
+    conn.close()
+    return redirect(url_for('requests.view_request', rid=rid))
