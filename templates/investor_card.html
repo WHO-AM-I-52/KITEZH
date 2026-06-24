@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}Карточка инвестора — {{ inn }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  <div class="d-flex align-items-center gap-3 mb-4">
+    <h4 class="mb-0">
+      🏢 {% if investor_name %}{{ investor_name }}{% else %}Инвестор{% endif %}
+      <span class="text-muted fs-6">(ИНН: {{ inn }})</span>
+    </h4>
+    <a href="{{ url_for('misc.investor_card', inn=inn) }}"
+       class="btn btn-sm btn-outline-secondary ms-auto">🔄 Обновить</a>
+  </div>
+
+  {# ── 1. Обращения ──────────────────────────────────────────────── #}
+  {% if requests %}
+  <div class="card mb-3">
+    <div class="card-header fw-semibold">📋 Обращения ({{ requests|length }})</div>
+    <div class="card-body p-0">
+      <table class="table table-sm table-hover mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Номер</th><th>Тема</th><th>Статус</th><th>Дата</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in requests %}
+          <tr>
+            <td><a href="{{ url_for('requests.view', req_id=r.id) }}">{{ r.request_number }}</a></td>
+            <td>{{ r.subject }}</td>
+            <td>{{ r.status }}</td>
+            <td>{{ r.request_date }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── 2. Контакты из справочника ───────────────────────────────── #}
+  <!-- TODO: link by inn — таблица phonebook отсутствует в схеме БД -->
+  {% if phonebook_contacts %}
+  <div class="card mb-3">
+    <div class="card-header fw-semibold">📞 Контакты из справочника ({{ phonebook_contacts|length }})</div>
+    <div class="card-body p-0">
+      <table class="table table-sm table-hover mb-0">
+        <thead class="table-light">
+          <tr><th>ФИО</th><th>Должность</th><th>Телефон</th></tr>
+        </thead>
+        <tbody>
+          {% for c in phonebook_contacts %}
+          <tr>
+            <td>{{ c.full_name }}</td>
+            <td>{{ c.position }}</td>
+            <td>{{ c.phone }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── 3. Письма ──────────────────────────────────────────────────────── #}
+  {% if letters %}
+  <div class="card mb-3">
+    <div class="card-header fw-semibold">✉️ Письма ({{ letters|length }})</div>
+    <div class="card-body p-0">
+      <table class="table table-sm table-hover mb-0">
+        <thead class="table-light">
+          <tr><th>Дата</th><th>Номер</th><th>Тема</th><th>Теги</th></tr>
+        </thead>
+        <tbody>
+          {% for l in letters %}
+          <tr>
+            <td>{{ l.date }}</td>
+            <td>{{ l.number }}</td>
+            <td>{{ l.subject }}</td>
+            <td>{{ l.tags or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── 4. Задачи ────────────────────────────────────────────────────────── #}
+  {% if tasks %}
+  <div class="card mb-3">
+    <div class="card-header fw-semibold">✅ Задачи ({{ tasks|length }})</div>
+    <div class="card-body p-0">
+      <table class="table table-sm table-hover mb-0">
+        <thead class="table-light">
+          <tr><th>Заголовок</th><th>Статус</th><th>Срок</th></tr>
+        </thead>
+        <tbody>
+          {% for t in tasks %}
+          <tr>
+            <td>{{ t.title }}</td>
+            <td>{{ t.status }}</td>
+            <td>{{ t.deadline or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if not requests and not phonebook_contacts and not letters and not tasks %}
+  <div class="alert alert-secondary">Данные по ИНН <strong>{{ inn }}</strong> не найдены.</div>
+  {% endif %}
+
+</div>
+{% endblock %}
