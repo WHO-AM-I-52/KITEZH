@@ -1,4 +1,4 @@
-# tasks/routes.py — Blueprint «Задачи» (MVP, карточка #9)
+# tasks/routes.py — Blueprint «Задачи»
 from flask import Blueprint, render_template, request, redirect, url_for, session, abort
 from datetime import datetime, date
 from db import get_db
@@ -8,7 +8,6 @@ from functools import wraps
 tasks_bp = Blueprint('tasks', __name__, url_prefix='/tasks',
                      template_folder='templates/tasks')
 
-# ─── Допустимые переходы статусов ────────────────────────────────────────
 ALLOWED_TRANSITIONS = {
     'new':         ['in_progress', 'cancelled'],
     'in_progress': ['review', 'cancelled'],
@@ -25,8 +24,17 @@ STATUS_LABELS = {
     'cancelled':   'Отменено',
 }
 
+REQUEST_STATUS_LABELS = {
+    'draft':     'Черновик',
+    'new':       'Новое',
+    'in_work':   'В работе',
+    'pending':   'Ожидает',
+    'done':      'Выполнено',
+    'closed':    'Закрыто',
+    'cancelled': 'Отменено',
+}
 
-# ─── Декоратор ────────────────────────────────────────────────────────────────────────────
+
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -59,82 +67,126 @@ def _can_assign(task, user_id, role):
     return task['created_by'] == user_id or role in ('admin', 'manager')
 
 
-# ─── РОУТЫ ────────────────────────────────────────────────────────────────────────────
+# ─── РОУТЫ ───────────────────────────────────────────────
 
 @tasks_bp.route('/my')
 @login_required
 def my_tasks():
-    user_id = session['user_id']
+    user_id       = session['user_id']
     status_filter = request.args.get('status', '')
+    type_filter   = request.args.get('type', '')   # 'task' | 'request' | ''
+    search        = request.args.get('q', '').strip()
     db = get_db()
-    try:
-        query = '''
-            SELECT t.*,
-                   u.full_name AS creator_name
-            FROM tasks t
-            JOIN task_assignees ta ON ta.task_id = t.id
-            LEFT JOIN users u ON u.id = t.created_by
-            WHERE ta.user_id = ?
-        '''
-        params = [user_id]
-        if status_filter:
-            query += ' AND t.status = ?'
-            params.append(status_filter)
-        query += ' ORDER BY t.deadline ASC, t.created_at DESC'
-        tasks = db.execute(query, params).fetchall()
 
-        assignees_map = {}
-        for t in tasks:
-            rows = db.execute('''
-                SELECT u.full_name FROM task_assignees ta
-                JOIN users u ON u.id = ta.user_id
-                WHERE ta.task_id = ?
-            ''', (t['id'],)).fetchall()
-            assignees_map[t['id']] = [r['full_name'] for r in rows]
-    finally:
-        db.close()
+    # ─── 1. Задачи ────────────────────────────────────────────
+    task_query = '''
+        SELECT t.id, t.title, t.source, t.deadline, t.status,
+               'task' AS item_type, t.created_at
+        FROM tasks t
+        JOIN task_assignees ta ON ta.task_id = t.id
+        WHERE ta.user_id = ?
+    '''
+    task_params = [user_id]
+    if status_filter and type_filter in ('task', ''):
+        task_query += ' AND t.status = ?'
+        task_params.append(status_filter)
+    if search:
+        task_query += ' AND (t.title LIKE ? OR t.source LIKE ?)'
+        task_params += [f'%{search}%', f'%{search}%']
+
+    # ─── 2. Обращения ─────────────────────────────────────
+    req_query = '''
+        SELECT r.id,
+               COALESCE(r.project_name, r.applicant_short_name,
+                        r.applicant_full_name, 'Обращение #' || r.id) AS title,
+               r.request_number AS source,
+               r.review_deadline AS deadline,
+               r.status,
+               'request' AS item_type,
+               r.created_at
+        FROM requests r
+        WHERE r.status NOT IN ('done','closed','cancelled')
+          AND (r.responsible_id = ? OR r.reviewer_id = ? OR r.assigned_to = ?)
+    '''
+    req_params = [user_id, user_id, user_id]
+    if status_filter and type_filter in ('request', ''):
+        req_query += ' AND r.status = ?'
+        req_params.append(status_filter)
+    if search:
+        req_query += ''' AND (
+            r.project_name LIKE ? OR r.applicant_short_name LIKE ?
+            OR r.applicant_full_name LIKE ? OR r.request_number LIKE ?
+        )'''
+        req_params += [f'%{search}%'] * 4
+
+    rows = []
+    if type_filter in ('task', ''):
+        rows += db.execute(task_query, task_params).fetchall()
+    if type_filter in ('request', ''):
+        rows += db.execute(req_query, req_params).fetchall()
+
+    # Сортировка: просроченные вверх, потом по deadline ASC, null — в конец
+    today_s = date.today().isoformat()
+
+    def sort_key(r):
+        dl = r['deadline'] or '9999-99-99'
+        overdue = dl < today_s and r['status'] not in ('done', 'cancelled', 'closed')
+        return (0 if overdue else 1, dl)
+
+    rows.sort(key=sort_key)
+
+    # Карта задач: assignees_map
+    task_ids = [r['id'] for r in rows if r['item_type'] == 'task']
+    assignees_map = {}
+    for tid in task_ids:
+        arows = db.execute('''
+            SELECT u.full_name FROM task_assignees ta
+            JOIN users u ON u.id = ta.user_id WHERE ta.task_id = ?
+        ''', (tid,)).fetchall()
+        assignees_map[tid] = [a['full_name'] for a in arows]
+
+    all_users = db.execute('SELECT id, full_name FROM users ORDER BY full_name').fetchall()
 
     return render_template(
         'my.html',
-        tasks=tasks,
+        rows=rows,
         assignees_map=assignees_map,
+        all_users=all_users,
         status_filter=status_filter,
+        type_filter=type_filter,
+        search=search,
         STATUS_LABELS=STATUS_LABELS,
-        today=date.today().isoformat(),
+        REQUEST_STATUS_LABELS=REQUEST_STATUS_LABELS,
+        today=today_s,
     )
 
 
 @tasks_bp.route('/assigned-by-me')
 @login_required
 def assigned_by_me():
-    user_id = session['user_id']
+    user_id       = session['user_id']
     status_filter = request.args.get('status', '')
     db = get_db()
-    try:
-        query = '''
-            SELECT t.*,
-                   u.full_name AS creator_name
-            FROM tasks t
-            LEFT JOIN users u ON u.id = t.created_by
-            WHERE t.created_by = ?
-        '''
-        params = [user_id]
-        if status_filter:
-            query += ' AND t.status = ?'
-            params.append(status_filter)
-        query += ' ORDER BY t.deadline ASC, t.created_at DESC'
-        tasks = db.execute(query, params).fetchall()
+    query = '''
+        SELECT t.*, u.full_name AS creator_name
+        FROM tasks t
+        LEFT JOIN users u ON u.id = t.created_by
+        WHERE t.created_by = ?
+    '''
+    params = [user_id]
+    if status_filter:
+        query += ' AND t.status = ?'
+        params.append(status_filter)
+    query += ' ORDER BY t.deadline ASC, t.created_at DESC'
+    tasks = db.execute(query, params).fetchall()
 
-        assignees_map = {}
-        for t in tasks:
-            rows = db.execute('''
-                SELECT u.full_name FROM task_assignees ta
-                JOIN users u ON u.id = ta.user_id
-                WHERE ta.task_id = ?
-            ''', (t['id'],)).fetchall()
-            assignees_map[t['id']] = [r['full_name'] for r in rows]
-    finally:
-        db.close()
+    assignees_map = {}
+    for t in tasks:
+        arows = db.execute('''
+            SELECT u.full_name FROM task_assignees ta
+            JOIN users u ON u.id = ta.user_id WHERE ta.task_id = ?
+        ''', (t['id'],)).fetchall()
+        assignees_map[t['id']] = [a['full_name'] for a in arows]
 
     return render_template(
         'assigned_by.html',
@@ -149,46 +201,43 @@ def assigned_by_me():
 @tasks_bp.route('/create', methods=['POST'])
 @login_required
 def create_task():
-    user_id = session['user_id']
-    title = request.form.get('title', '').strip()
+    user_id      = session['user_id']
+    title        = request.form.get('title', '').strip()
     if not title:
         abort(400)
     description  = request.form.get('description', '').strip()
     source       = request.form.get('source', '').strip()
     deadline     = request.form.get('deadline', '').strip() or None
     assignee_ids = request.form.getlist('assignee_ids[]')
-    now = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
+    now          = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
 
     db = get_db()
-    try:
-        cur = db.execute(
+    cur = db.execute(
+        '''
+        INSERT INTO tasks (title, description, source, deadline, status,
+                           created_by, created_at)
+        VALUES (?, ?, ?, ?, 'new', ?, ?)
+        ''',
+        (title, description, source, deadline, user_id, now)
+    )
+    task_id = cur.lastrowid
+
+    for uid in assignee_ids:
+        try:
+            uid = int(uid)
+        except (ValueError, TypeError):
+            continue
+        db.execute(
             '''
-            INSERT INTO tasks (title, description, source, deadline, status,
-                               created_by, created_at)
-            VALUES (?, ?, ?, ?, 'new', ?, ?)
+            INSERT OR IGNORE INTO task_assignees
+                (task_id, user_id, assigned_at, assigned_by)
+            VALUES (?, ?, ?, ?)
             ''',
-            (title, description, source, deadline, user_id, now)
+            (task_id, uid, now, user_id)
         )
-        task_id = cur.lastrowid
 
-        for uid in assignee_ids:
-            try:
-                uid = int(uid)
-            except (ValueError, TypeError):
-                continue
-            db.execute(
-                '''
-                INSERT OR IGNORE INTO task_assignees
-                    (task_id, user_id, assigned_at, assigned_by)
-                VALUES (?, ?, ?, ?)
-                ''',
-                (task_id, uid, now, user_id)
-            )
-
-        log_action(db, user_id, 'task_create', task_id)
-        db.commit()
-    finally:
-        db.close()
+    log_action(db, user_id, 'task_create', task_id)
+    db.commit()
     return redirect(url_for('tasks.task_detail', id=task_id))
 
 
@@ -198,51 +247,39 @@ def task_detail(id):
     user_id = session['user_id']
     role    = session.get('role', 'user')
     db = get_db()
-    try:
-        task = db.execute('SELECT * FROM tasks WHERE id = ?', (id,)).fetchone()
-        if task is None:
-            abort(404)
+    task = db.execute('SELECT * FROM tasks WHERE id = ?', (id,)).fetchone()
+    if task is None:
+        abort(404)
 
-        assignee_ids = _get_assignee_ids(id, db)
+    assignee_ids = _get_assignee_ids(id, db)
 
-        if request.method == 'POST':
-            if not _can_edit(task, user_id, role):
-                abort(403)
-            title       = request.form.get('title', '').strip() or task['title']
-            description = request.form.get('description', task['description'] or '')
-            deadline    = request.form.get('deadline', '').strip() or None
-            source      = request.form.get('source', task['source'] or '')
-            db.execute(
-                '''
-                UPDATE tasks SET title=?, description=?, deadline=?, source=?
-                WHERE id=?
-                ''',
-                (title, description, deadline, source, id)
-            )
-            log_action(db, user_id, 'task_edit', id)
-            db.commit()
-            return redirect(url_for('tasks.task_detail', id=id))
+    if request.method == 'POST':
+        if not _can_edit(task, user_id, role):
+            abort(403)
+        title       = request.form.get('title', '').strip() or task['title']
+        description = request.form.get('description', task['description'] or '')
+        deadline    = request.form.get('deadline', '').strip() or None
+        source      = request.form.get('source', task['source'] or '')
+        db.execute(
+            'UPDATE tasks SET title=?, description=?, deadline=?, source=? WHERE id=?',
+            (title, description, deadline, source, id)
+        )
+        log_action(db, user_id, 'task_edit', id)
+        db.commit()
+        return redirect(url_for('tasks.task_detail', id=id))
 
-        # GET
-        assignees = db.execute('''
-            SELECT u.id, u.full_name FROM task_assignees ta
-            JOIN users u ON u.id = ta.user_id
-            WHERE ta.task_id = ?
-        ''', (id,)).fetchall()
-        all_users = db.execute(
-            'SELECT id, full_name FROM users ORDER BY full_name'
-        ).fetchall()
-        creator = db.execute(
-            'SELECT full_name FROM users WHERE id = ?', (task['created_by'],)
-        ).fetchone()
+    assignees = db.execute('''
+        SELECT u.id, u.full_name FROM task_assignees ta
+        JOIN users u ON u.id = ta.user_id WHERE ta.task_id = ?
+    ''', (id,)).fetchall()
+    all_users = db.execute('SELECT id, full_name FROM users ORDER BY full_name').fetchall()
+    creator   = db.execute('SELECT full_name FROM users WHERE id = ?', (task['created_by'],)).fetchone()
 
-        can_edit          = _can_edit(task, user_id, role)
-        can_change_status = _can_change_status(task, assignee_ids, user_id, role)
-        can_assign        = _can_assign(task, user_id, role)
-        can_delete        = role == 'admin'
-        next_statuses     = ALLOWED_TRANSITIONS.get(task['status'], [])
-    finally:
-        db.close()
+    can_edit          = _can_edit(task, user_id, role)
+    can_change_status = _can_change_status(task, assignee_ids, user_id, role)
+    can_assign        = _can_assign(task, user_id, role)
+    can_delete        = role == 'admin'
+    next_statuses     = ALLOWED_TRANSITIONS.get(task['status'], [])
 
     return render_template(
         'detail.html',
@@ -268,16 +305,13 @@ def delete_task(id):
     if role != 'admin':
         abort(403)
     db = get_db()
-    try:
-        task = db.execute('SELECT id FROM tasks WHERE id = ?', (id,)).fetchone()
-        if task is None:
-            abort(404)
-        db.execute('DELETE FROM task_assignees WHERE task_id = ?', (id,))
-        db.execute('DELETE FROM tasks WHERE id = ?', (id,))
-        log_action(db, user_id, 'task_delete', id)
-        db.commit()
-    finally:
-        db.close()
+    task = db.execute('SELECT id FROM tasks WHERE id = ?', (id,)).fetchone()
+    if task is None:
+        abort(404)
+    db.execute('DELETE FROM task_assignees WHERE task_id = ?', (id,))
+    db.execute('DELETE FROM tasks WHERE id = ?', (id,))
+    log_action(db, user_id, 'task_delete', id)
+    db.commit()
     return redirect(url_for('tasks.my_tasks'))
 
 
@@ -287,24 +321,21 @@ def change_status(id):
     user_id = session['user_id']
     role    = session.get('role', 'user')
     db = get_db()
-    try:
-        task = db.execute('SELECT * FROM tasks WHERE id = ?', (id,)).fetchone()
-        if task is None:
-            abort(404)
+    task = db.execute('SELECT * FROM tasks WHERE id = ?', (id,)).fetchone()
+    if task is None:
+        abort(404)
 
-        assignee_ids = _get_assignee_ids(id, db)
-        if not _can_change_status(task, assignee_ids, user_id, role):
-            abort(403)
+    assignee_ids = _get_assignee_ids(id, db)
+    if not _can_change_status(task, assignee_ids, user_id, role):
+        abort(403)
 
-        new_status = request.form.get('status', '').strip()
-        if new_status not in ALLOWED_TRANSITIONS.get(task['status'], []):
-            abort(400)
+    new_status = request.form.get('status', '').strip()
+    if new_status not in ALLOWED_TRANSITIONS.get(task['status'], []):
+        abort(400)
 
-        db.execute('UPDATE tasks SET status=? WHERE id=?', (new_status, id))
-        log_action(db, user_id, 'task_status_change', id, detail=new_status)
-        db.commit()
-    finally:
-        db.close()
+    db.execute('UPDATE tasks SET status=? WHERE id=?', (new_status, id))
+    log_action(db, user_id, 'task_status_change', id, detail=new_status)
+    db.commit()
     return redirect(url_for('tasks.task_detail', id=id))
 
 
@@ -314,31 +345,27 @@ def close_task(id):
     user_id = session['user_id']
     role    = session.get('role', 'user')
     db = get_db()
-    try:
-        task = db.execute('SELECT * FROM tasks WHERE id = ?', (id,)).fetchone()
-        if task is None:
-            abort(404)
+    task = db.execute('SELECT * FROM tasks WHERE id = ?', (id,)).fetchone()
+    if task is None:
+        abort(404)
 
-        assignee_ids = _get_assignee_ids(id, db)
-        if not _can_change_status(task, assignee_ids, user_id, role):
-            abort(403)
+    assignee_ids = _get_assignee_ids(id, db)
+    if not _can_change_status(task, assignee_ids, user_id, role):
+        abort(403)
 
-        action     = request.form.get('action', 'done')
-        new_status = 'done' if action == 'done' else 'cancelled'
-        if new_status not in ALLOWED_TRANSITIONS.get(task['status'], []):
-            abort(400)
+    action     = request.form.get('action', 'done')
+    new_status = 'done' if action == 'done' else 'cancelled'
+    if new_status not in ALLOWED_TRANSITIONS.get(task['status'], []):
+        abort(400)
 
-        result = request.form.get('result', '').strip()
-        now    = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
-
-        db.execute(
-            'UPDATE tasks SET status=?, result=?, closed_at=? WHERE id=?',
-            (new_status, result, now, id)
-        )
-        log_action(db, user_id, 'task_close', id)
-        db.commit()
-    finally:
-        db.close()
+    result = request.form.get('result', '').strip()
+    now    = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
+    db.execute(
+        'UPDATE tasks SET status=?, result=?, closed_at=? WHERE id=?',
+        (new_status, result, now, id)
+    )
+    log_action(db, user_id, 'task_close', id)
+    db.commit()
     return redirect(url_for('tasks.task_detail', id=id))
 
 
@@ -348,33 +375,30 @@ def assign_user(id):
     user_id = session['user_id']
     role    = session.get('role', 'user')
     db = get_db()
+    task = db.execute('SELECT * FROM tasks WHERE id = ?', (id,)).fetchone()
+    if task is None:
+        abort(404)
+
+    if not _can_assign(task, user_id, role):
+        abort(403)
+
     try:
-        task = db.execute('SELECT * FROM tasks WHERE id = ?', (id,)).fetchone()
-        if task is None:
-            abort(404)
+        new_uid = int(request.form.get('user_id', 0))
+    except (ValueError, TypeError):
+        abort(400)
 
-        if not _can_assign(task, user_id, role):
-            abort(403)
+    if new_uid <= 0:
+        abort(400)
 
-        try:
-            new_uid = int(request.form.get('user_id', 0))
-        except (ValueError, TypeError):
-            abort(400)
-
-        if new_uid <= 0:
-            abort(400)
-
-        now = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
-        db.execute(
-            '''
-            INSERT OR IGNORE INTO task_assignees
-                (task_id, user_id, assigned_at, assigned_by)
-            VALUES (?, ?, ?, ?)
-            ''',
-            (id, new_uid, now, user_id)
-        )
-        log_action(db, user_id, 'task_assign', id)
-        db.commit()
-    finally:
-        db.close()
+    now = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
+    db.execute(
+        '''
+        INSERT OR IGNORE INTO task_assignees
+            (task_id, user_id, assigned_at, assigned_by)
+        VALUES (?, ?, ?, ?)
+        ''',
+        (id, new_uid, now, user_id)
+    )
+    log_action(db, user_id, 'task_assign', id)
+    db.commit()
     return redirect(url_for('tasks.task_detail', id=id))
