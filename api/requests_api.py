@@ -4,10 +4,11 @@
 # ║ POST /api/request/<id>/favorite — тоггл избранного         ║
 # ║ POST /api/check-duplicate   — проверка дублей (difflib)      ║
 # ║                                                               ║
-# ║ filter[overdue]=1 — просроченные по этапному review_deadline  ║
+# ║ filter[status]      — один статус (обратная совместимость) ║
+# ║ filter[status][]    — несколько статусов, IN (?,?,?)     ║
+# ║ filter[overdue]=1   — просроченные по этапному review_deadline ║
 # ║   Статусы-участники: все кроме draft и closed               ║
 # ║   Условие: review_deadline < date('now')                    ║
-# ║                                                               ║
 # ║ filter[district]=Борский — фильтр по preferred_districts     ║
 # ║                                                               ║
 # ║ Ответ GET: { data:[], total, page, pages, stats:{} }    ║
@@ -77,7 +78,7 @@ def _date_range(chip):
     return None, None
 
 
-# ─── УСЛОВИЕ ПРОСРОЧКИ ─────────────────────────────────────────────────────────
+# ─── УСЛОВИЕ ПРОСРОЧКИ ──────────────────────────────────────────────────────
 # Просроченное = активный статус (не draft, не closed) + review_deadline заполнен + deadline < сегодня
 _OVERDUE_SQL = (
     "r.status NOT IN ('closed','draft') "
@@ -111,10 +112,24 @@ def get_requests():
         where.append('r.created_by = ?')
         params.append(uid)
 
-    status = request.args.get('filter[status]', '').strip()
-    if status:
+    # ── МУЛЬТИ-ФИЛЬТР ПО СТАТУСУ ──────────────────────────────────────
+    # Поддержка двух способов передачи:
+    #   filter[status][]  — мульти (новый способ, IN-запрос)
+    #   filter[status]    — один статус (обратная совместимость)
+    statuses = [s.strip() for s in request.args.getlist('filter[status][]') if s.strip()]
+    if not statuses:
+        single = request.args.get('filter[status]', '').strip()
+        if single:
+            statuses = [single]
+
+    if len(statuses) == 1:
         where.append('r.status = ?')
-        params.append(status)
+        params.append(statuses[0])
+    elif len(statuses) > 1:
+        placeholders = ','.join('?' * len(statuses))
+        where.append(f'r.status IN ({placeholders})')
+        params.extend(statuses)
+    # если statuses пустой — фильтр не добавляется (graceful fallback)
 
     applicant = request.args.get('filter[applicant]', '').strip()
     if applicant:
@@ -134,7 +149,7 @@ def get_requests():
         """)
         params.extend([s, s, s, s, s, s])
 
-    # ── Фильтр по району (preferred_districts) ─────────────────────────────────
+    # ── Фильтр по району (preferred_districts) ────────────────────────────
     district = request.args.get('filter[district]', '').strip()
     if district:
         where.append('r.preferred_districts LIKE ?')
@@ -216,7 +231,7 @@ def get_requests():
         [uid] + params + [size, offset]
     ).fetchall()
 
-    # ── Статистика (всегда по всем записям)
+    # ── Статистика (всегда по всем записям, без фильтра)
     stats_where  = ''
     stats_params = []
     if role != 'admin' and not session.get('perm_can_view_all'):
