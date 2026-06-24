@@ -625,6 +625,30 @@ def _migrate(conn):
     conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_deadline   ON tasks(deadline)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_task_assignees_u ON task_assignees(user_id)")
 
+    # ════════════════════════════════════════════════════════════════
+    # Соисполнители обращений (Карточка #8)
+    # ════════════════════════════════════════════════════════════════
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS request_coexecutors (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            request_id  INTEGER NOT NULL
+                        REFERENCES requests(id) ON DELETE CASCADE,
+            user_id     INTEGER NOT NULL
+                        REFERENCES users(id) ON DELETE CASCADE,
+            assigned_by INTEGER REFERENCES users(id),
+            assigned_at TEXT NOT NULL,
+            UNIQUE(request_id, user_id)
+        )
+    """)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_coex_request "
+        "ON request_coexecutors(request_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_coex_user "
+        "ON request_coexecutors(user_id)"
+    )
+
     conn.commit()
 
 
