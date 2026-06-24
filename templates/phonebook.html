@@ -2,7 +2,7 @@
 {% block content %}
 
 {# ╔══════════════════════════════════════════════════════════════╗ #}
-{# ║  phonebook.html — Телефонный справочник (v2.6.1)            ║ #}
+{# ║  phonebook.html — Телефонный справочник (v2.6.2)            ║ #}
 {# ║  - Поиск по имени, орг., должности, тел., email, каб., notes║ #}
 {# ║  - AJAX live-поиск: без перезагрузки, фокус сохраняется     ║ #}
 {# ║  - Debounce 300мс, от 2 символов                            ║ #}
@@ -14,6 +14,7 @@
 {# ║  - AJAX подтягивание адреса при выборе организации          ║ #}
 {# ║  - Маски: рабочий +7, личный 8(9XX), email валидация        ║ #}
 {# ║  - Импорт из Excel (шаблон + загрузка) — v2.3.0             ║ #}
+{# ║  - Поле ИНН организации — v2.6.2                            ║ #}
 {# ╚══════════════════════════════════════════════════════════════╝ #}
 
 {# ─── МАКРОС определяем ПЕРВЫМ ─── #}
@@ -77,6 +78,12 @@
     <label class="form-label fw-bold">Эл. почта</label>
     <input type="email" name="email" class="form-control form-control-sm"
            value="{{ c.email if c else '' }}" placeholder="ivanov@example.com">
+  </div>
+  <div class="col-md-6">
+    <label class="form-label fw-bold">ИНН организации</label>
+    <input type="text" name="inn" class="form-control form-control-sm"
+           maxlength="12" placeholder="ИНН организации"
+           value="{{ c.inn if c else '' }}">
   </div>
   <div class="col-12">
     <label class="form-label fw-bold">Заметка</label>
@@ -256,6 +263,12 @@
                 <a href="mailto:{{ c.email }}" class="text-decoration-none">{{ c.email }}</a>
               </div>
               {% endif %}
+              {% if c.inn %}
+              <div>
+                <i class="bi bi-building-check text-secondary me-1"></i>
+                ИНН: {{ c.inn }}
+              </div>
+              {% endif %}
             </div>
             {% if c.notes %}
             <div class="mt-1 text-muted" style="font-size:11px;border-top:1px solid var(--border);padding-top:4px">
@@ -350,7 +363,7 @@
 
 <script>
 /* ── EN→RU ── */
-var EN_RU={'q':'й','w':'ц','e':'у','r':'к','t':'е','y':'н','u':'г','i':'ш','o':'щ','p':'з','[':'х',']':'ъ','a':'ф','s':'ы','d':'в','f':'а','g':'п','h':'р','j':'о','k':'л','l':'д',';':'ж',"'":"э",'z':'я','x':'ч','c':'с','v':'м','b':'и','n':'т','m':'ь',',':'б','.':'ю','Q':'Й','W':'Ц','E':'У','R':'К','T':'Е','Y':'Н','U':'Г','I':'Ш','O':'Щ','P':'З','{':'Х','}':'Ъ','A':'Ф','S':'Ы','D':'В','F':'А','G':'П','H':'Р','J':'О','K':'Л','L':'Д',':':'Ж','"':'Э','Z':'Я','X':'Ч','C':'С','V':'М','B':'И','N':'Т','M':'Ь','<':'Б','>':'Ю'};
+var EN_RU={'q':'й','w':'ц','e':'у','r':'к','t':'е','y':'н','u':'г','i':'ш','o':'щ','p':'з','[':'х',']':'ъ','a':'ф','s':'ы','d':'в','f':'а','g':'п','h':'р','j':'о','k':'л','l':'д',';':'ж',"'":'э','z':'я','x':'ч','c':'с','v':'м','b':'и','n':'т','m':'ь',',':'б','.':'ю','Q':'Й','W':'Ц','E':'У','R':'К','T':'Е','Y':'Н','U':'Г','I':'Ш','O':'Щ','P':'З','{':'Х','}':'Ъ','A':'Ф','S':'Ы','D':'В','F':'А','G':'П','H':'Р','J':'О','K':'Л','L':'Д',':':'Ж','"':'Э','Z':'Я','X':'Ч','C':'С','V':'М','B':'И','N':'Т','M':'Ь','<':'Б','>':'Ю'};
 function convertLayout(s){if(/[а-яёА-ЯЁ]/.test(s))return s;return s.split('').map(function(c){return EN_RU[c]||c;}).join('');}
 
 /* ── HTML helpers ── */
@@ -375,6 +388,7 @@ function buildCard(c,tokens){
   if(c.phone_work){ph+='<div><i class="bi bi-telephone text-success me-1"></i><a href="tel:'+escHtml(c.phone_work)+'" class="text-decoration-none">'+highlightText(c.phone_work,tokens)+'</a>';if(c.phone_ext)ph+='<span class="text-muted ms-1">доб. '+highlightText(c.phone_ext,tokens)+'</span>';ph+='</div>';}
   if(c.phone_personal)ph+='<div><i class="bi bi-phone text-primary me-1"></i><a href="tel:'+escHtml(c.phone_personal)+'" class="text-decoration-none">'+highlightText(c.phone_personal,tokens)+'</a></div>';
   if(c.email)ph+='<div><i class="bi bi-envelope text-danger me-1"></i><a href="mailto:'+escHtml(c.email)+'" class="text-decoration-none">'+highlightText(c.email,tokens)+'</a></div>';
+  if(c.inn)ph+='<div><i class="bi bi-building-check text-secondary me-1"></i>ИНН: '+highlightText(c.inn,tokens)+'</div>';
   ph+='</div>';
   var nh=c.notes?'<div class="mt-1 text-muted" style="font-size:11px;border-top:1px solid var(--border);padding-top:4px"><i class="bi bi-chat-left-text me-1"></i>'+highlightText(c.notes,tokens)+'</div>':'';
   return '<div class="col-md-6 col-lg-4"><div class="card pb-card h-100"><div class="card-body py-2 px-3"><div class="d-flex justify-content-between align-items-start"><div class="fw-bold" style="font-size:14px;color:#1a2a3a">'+highlightText(c.full_name,tokens)+'</div></div>'+posHtml+ph+nh+'</div></div></div>';
@@ -398,7 +412,7 @@ function histRender(){
   if(!arr.length){pbHistEl.style.display='none';return;}
   var html='<div class="pb-hist-header"><span><i class="bi bi-clock-history me-1"></i>Последние запросы</span><span class="pb-hist-clear" onclick="histClearAll()">Очистить</span></div>';
   arr.forEach(function(q){
-    html+='<div class="pb-hist-item" onclick="histPick('+JSON.stringify(q)+'")><i class="bi bi-search"></i><span>'+escHtml(q)+'</span><span class="pb-hist-del" onclick="event.stopPropagation();histRemoveAndRefresh('+JSON.stringify(q)+')"><i class="bi bi-x"></i></span></div>';
+    html+='<div class="pb-hist-item" onclick="histPick('+JSON.stringify(q)+')"><i class="bi bi-search"></i><span>'+escHtml(q)+'</span><span class="pb-hist-del" onclick="event.stopPropagation();histRemoveAndRefresh('+JSON.stringify(q)+')"><i class="bi bi-x"></i></span></div>';
   });
   pbHistEl.innerHTML=html;
   pbHistEl.style.display='block';
@@ -489,7 +503,7 @@ function applyPhoneMask(el,type){
 /* ── ИСПРАВЛЕНО v2.6.1: закрыта скобка в тернарном операторе ── */
 function fetchAddress(select){
   var opt=select.options[select.selectedIndex];
-  var address=opt?(opt.dataset.address||''):'';
+  var address=opt?(opt.dataset.address||')':'';
   var modal=select.closest('.modal-body,.card-body');
   if(modal){var f=modal.querySelector('.org-address-field');if(f)f.value=address;}
 }
