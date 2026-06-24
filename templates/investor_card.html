@@ -13,7 +13,7 @@
        class="btn btn-sm btn-outline-secondary ms-auto">🔄 Обновить</a>
   </div>
 
-  {# ── 1. Обращения ──────────────────────────────────────────────── #}
+  {# ── 1. Обращения ─────────────────────────────────────────── #}
   {% if requests %}
   <div class="card mb-3">
     <div class="card-header fw-semibold">📋 Обращения ({{ requests|length }})</div>
@@ -27,7 +27,7 @@
         <tbody>
           {% for r in requests %}
           <tr>
-            <td><a href="{{ url_for('requests.view', req_id=r.id) }}">{{ r.request_number }}</a></td>
+            <td><a href="{{ url_for('requests.view', rid=r.id) }}">{{ r.request_number }}</a></td>
             <td>{{ r.project_name or '—' }}</td>
             <td>{{ r.status }}</td>
             <td>{{ r.request_date }}</td>
@@ -39,7 +39,7 @@
   </div>
   {% endif %}
 
-  {# ── 2. Контакты из справочника ───────────────────────────────── #}
+  {# ── 2. Контакты из справочника ───────────────────────────── #}
   <!-- TODO: link by inn — таблица phonebook отсутствует в схеме БД -->
   {% if phonebook_contacts %}
   <div class="card mb-3">
@@ -63,7 +63,7 @@
   </div>
   {% endif %}
 
-  {# ── 3. Письма ──────────────────────────────────────────────────────── #}
+  {# ── 3. Письма ────────────────────────────────────────────── #}
   {% if letters %}
   <div class="card mb-3">
     <div class="card-header fw-semibold">✉️ Письма ({{ letters|length }})</div>
@@ -87,7 +87,7 @@
   </div>
   {% endif %}
 
-  {# ── 4. Задачи ────────────────────────────────────────────────────────── #}
+  {# ── 4. Задачи ────────────────────────────────────────────── #}
   {% if tasks %}
   <div class="card mb-3">
     <div class="card-header fw-semibold">✅ Задачи ({{ tasks|length }})</div>
