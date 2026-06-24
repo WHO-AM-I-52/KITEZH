@@ -13,13 +13,7 @@ from spravochnik import LEGAL_FORMS_DEFAULT, DISTRICTS_DEFAULT, SOURCE_TYPES_DEF
 from db import get_db
 
 # ──────────────────────────────────────────────────────────────────────────────
-# НОВЫЕ КОЛОНКИ requests (#53):
-#   registered_at, review_days, review_deadline
-#   responsible_id, responsible_not_in_system, responsible_name_external
-#   reviewer_id, reviewer_not_in_system, reviewer_name_external
-#   reviewer_decision, reviewer_comment, reviewer_decision_at
-#   sent_to_applicant_at, send_method
-#   applicant_feedback, applicant_feedback_at
+# НОВЫЕ КОЛОНКИ requests (#53)
 # ──────────────────────────────────────────────────────────────────────────────
 _NEW_REQUEST_COLS = [
     ('registered_at',                'TEXT'),
@@ -42,7 +36,6 @@ _NEW_REQUEST_COLS = [
 
 
 def _migrate_request_cols(conn):
-    """ADD COLUMN для всех новых колонок requests (#53)."""
     cols = {r[1] for r in conn.execute("PRAGMA table_info(requests)").fetchall()}
     for col, typ in _NEW_REQUEST_COLS:
         if col not in cols:
@@ -50,7 +43,6 @@ def _migrate_request_cols(conn):
 
 
 def _migrate_users_cols(conn):
-    """Единая точка миграции колонок users — используется и init_db, и migrate_db."""
     user_cols = {r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
     for col in [
         'can_create', 'can_edit_others', 'can_confirm', 'can_delete',
@@ -73,7 +65,6 @@ def _migrate_users_cols(conn):
 
 
 def _migrate_classifiers_tables(conn):
-    """Создаёт subject_types/result_types если отсутствуют (для старых БД)."""
     conn.executescript("""
 CREATE TABLE IF NOT EXISTS subject_types (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -89,7 +80,6 @@ CREATE TABLE IF NOT EXISTS result_types (
 
 
 def _migrate_districts_table(conn):
-    """Создаёт таблицу districts если отсутствует (нужна view_routes.py)."""
     conn.executescript("""
 CREATE TABLE IF NOT EXISTS districts (
     id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -98,7 +88,6 @@ CREATE TABLE IF NOT EXISTS districts (
     sort_order INTEGER DEFAULT 0
 );
 """)
-    # Наполнить из DISTRICTS_DEFAULT, если таблица пустая
     if not conn.execute("SELECT id FROM districts LIMIT 1").fetchone():
         for i, name in enumerate(DISTRICTS_DEFAULT):
             conn.execute(
@@ -108,7 +97,6 @@ CREATE TABLE IF NOT EXISTS districts (
 
 
 def _migrate_review_chain_table(conn):
-    """Создаёт таблицу review_chain если отсутствует (нужна view_routes.py)."""
     conn.executescript("""
 CREATE TABLE IF NOT EXISTS review_chain (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -126,44 +114,55 @@ CREATE INDEX IF NOT EXISTS idx_rc_request ON review_chain(request_id);
 
 
 def _migrate_letters_tables(conn):
-    """Создаёт таблицы журнала писем и добавляет executor_id если отсутствует."""
-    conn.executescript("""
-CREATE TABLE IF NOT EXISTS letters (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    date        TEXT NOT NULL,
-    number      TEXT,
-    subject     TEXT,
-    note        TEXT,
-    created_by  INTEGER NOT NULL REFERENCES users(id),
-    created_at  TEXT DEFAULT CURRENT_TIMESTAMP,
-    executor_id INTEGER REFERENCES users(id)
-);
-CREATE INDEX IF NOT EXISTS idx_letters_date ON letters(date);
-CREATE INDEX IF NOT EXISTS idx_letters_executor ON letters(executor_id);
+    """Создаёт таблицы letters/letter_tags/letter_tag_links и добавляет executor_id.
 
-CREATE TABLE IF NOT EXISTS letter_tags (
-    id   INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE
-);
-
-CREATE TABLE IF NOT EXISTS letter_tag_links (
-    letter_id INTEGER NOT NULL REFERENCES letters(id) ON DELETE CASCADE,
-    tag_id    INTEGER NOT NULL REFERENCES letter_tags(id) ON DELETE CASCADE,
-    PRIMARY KEY (letter_id, tag_id)
-);
-CREATE INDEX IF NOT EXISTS idx_ltl_letter ON letter_tag_links(letter_id);
-CREATE INDEX IF NOT EXISTS idx_ltl_tag    ON letter_tag_links(tag_id);
-""")
-    # Добавить executor_id в существующие БД где таблица уже есть
+    Используем execute() вместо executescript() — executescript()
+    делает неявный COMMIT и обрывает текущую транзакцию.
+    """
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS letters (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            date        TEXT NOT NULL,
+            number      TEXT,
+            subject     TEXT,
+            note        TEXT,
+            created_by  INTEGER NOT NULL,
+            created_at  TEXT DEFAULT CURRENT_TIMESTAMP,
+            executor_id INTEGER
+        )
+    """)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_letters_date ON letters(date)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_letters_executor ON letters(executor_id)"
+    )
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS letter_tags (
+            id   INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS letter_tag_links (
+            letter_id INTEGER NOT NULL,
+            tag_id    INTEGER NOT NULL,
+            PRIMARY KEY (letter_id, tag_id)
+        )
+    """)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_ltl_letter ON letter_tag_links(letter_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_ltl_tag ON letter_tag_links(tag_id)"
+    )
+    # Добавить executor_id в существующие БД где таблица уже есть без неё
     letter_cols = {r[1] for r in conn.execute("PRAGMA table_info(letters)").fetchall()}
     if 'executor_id' not in letter_cols:
-        conn.execute(
-            "ALTER TABLE letters ADD COLUMN executor_id INTEGER REFERENCES users(id)"
-        )
+        conn.execute("ALTER TABLE letters ADD COLUMN executor_id INTEGER")
 
 
 def _migrate_investmap_tables(conn):
-    """Таблицы для investmap v2: classifiers, fields (116 атрибутов RF), rules."""
     conn.executescript("""
 CREATE TABLE IF NOT EXISTS investmap_classifiers (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -189,7 +188,6 @@ CREATE TABLE IF NOT EXISTS investmap_rules (
     recommended_text TEXT NOT NULL
 );
 """)
-    # INSERT OR IGNORE 116 атрибутов из atributy_investkarta_RF_26.09.2025.xlsx
     fields = [
         ('global_id', 'global_id', 'integer', None, 0, None),
         ('system_object_id', 'Код во внешнем источнике', 'text', None, 0, None),
@@ -427,7 +425,6 @@ CREATE TABLE IF NOT EXISTS requests (
     answer_notes TEXT, answer_file TEXT, answer_system_number TEXT,
     request_files TEXT,
     edit_reason TEXT, updated_by INTEGER,
-    -- #53: цепочка статусов
     registered_at TEXT,
     review_days INTEGER,
     review_deadline TEXT,
@@ -455,22 +452,12 @@ CREATE INDEX  IF NOT EXISTS idx_okved_name ON okved(name);
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """)
 
-        # ── subject_types / result_types ─────────────────────────────────────────────
         _migrate_classifiers_tables(conn)
-
-        # ── districts ────────────────────────────────────────────────────────────────
         _migrate_districts_table(conn)
-
-        # ── review_chain ─────────────────────────────────────────────────────────────
         _migrate_review_chain_table(conn)
-
-        # ── investmap v2 ─────────────────────────────────────────────────────────────
         _migrate_investmap_tables(conn)
-
-        # ── letters ──────────────────────────────────────────────────────────────────
         _migrate_letters_tables(conn)
 
-        # ── Миграция requests ──────────────────────────────────────────────────────
         cols = {r[1] for r in conn.execute("PRAGMA table_info(requests)").fetchall()}
         for col in ['source_type', 'request_files', 'edit_reason', 'updated_by']:
             if col not in cols:
@@ -488,12 +475,9 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         }.items():
             if col not in cols:
                 conn.execute(f"ALTER TABLE requests ADD COLUMN {col} {typ}")
-        _migrate_request_cols(conn)  # #53: 16 новых колонок
-
-        # ── Миграция users ────────────────────────────────────────────────────────
+        _migrate_request_cols(conn)
         _migrate_users_cols(conn)
 
-        # ── admin ────────────────────────────────────────────────────────────────────────
         if not conn.execute("SELECT id FROM users WHERE username='admin'").fetchone():
             conn.execute(
                 "INSERT INTO users (username,password,full_name,role,"
@@ -503,7 +487,6 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
                 ('admin', hash_pw('admin123'), 'Администратор', 'admin')
             )
 
-        # ── Справочники ───────────────────────────────────────────────────────────────
         if not conn.execute("SELECT id FROM classifiers LIMIT 1").fetchone():
             for v in LEGAL_FORMS_DEFAULT:
                 conn.execute("INSERT INTO classifiers (category,value) VALUES ('legal_form',?)", (v,))
@@ -529,22 +512,12 @@ def migrate_db():
     conn = sqlite3.connect(DB_PATH, timeout=15)
     conn.row_factory = sqlite3.Row
     try:
-        # ── subject_types / result_types ─────────────────────────────────────────────
         _migrate_classifiers_tables(conn)
-
-        # ── districts ────────────────────────────────────────────────────────────────
         _migrate_districts_table(conn)
-
-        # ── review_chain ─────────────────────────────────────────────────────────────
         _migrate_review_chain_table(conn)
-
-        # ── investmap v2 ─────────────────────────────────────────────────────────────
         _migrate_investmap_tables(conn)
-
-        # ── letters ──────────────────────────────────────────────────────────────────
         _migrate_letters_tables(conn)
 
-        # ── requests ──────────────────────────────────────────────────────────────────────────
         cols = {r[1] for r in conn.execute("PRAGMA table_info(requests)").fetchall()}
         for col in ['request_files', 'source_type', 'edit_reason', 'updated_by']:
             if col not in cols:
@@ -559,9 +532,7 @@ def migrate_db():
         }.items():
             if col not in cols:
                 conn.execute(f"ALTER TABLE requests ADD COLUMN {col} {typ}")
-        _migrate_request_cols(conn)  # #53: 16 новых колонок
-
-        # ── users ───────────────────────────────────────────────────────────────────────
+        _migrate_request_cols(conn)
         _migrate_users_cols(conn)
 
         conn.execute("""
@@ -569,7 +540,6 @@ def migrate_db():
             WHERE role='employee' AND can_create=0
         """)
 
-        # ── login_log ─────────────────────────────────────────────────────────────────────
         conn.executescript("""
 CREATE TABLE IF NOT EXISTS login_log (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -583,7 +553,6 @@ CREATE INDEX IF NOT EXISTS idx_ll_user  ON login_log(user_id);
 CREATE INDEX IF NOT EXISTS idx_ll_event ON login_log(event);
 """)
 
-        # ── activity_log ────────────────────────────────────────────────────────────────
         conn.executescript("""
 CREATE TABLE IF NOT EXISTS activity_log (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -598,7 +567,6 @@ CREATE INDEX IF NOT EXISTS idx_al_request ON activity_log(request_id);
 CREATE INDEX IF NOT EXISTS idx_al_action  ON activity_log(action);
 """)
 
-        # ── phonebook ───────────────────────────────────────────────────────────────────
         conn.executescript("""
 CREATE TABLE IF NOT EXISTS phonebook_orgs (
     id      INTEGER PRIMARY KEY AUTOINCREMENT,
