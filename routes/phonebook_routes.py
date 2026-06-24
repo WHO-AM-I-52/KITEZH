@@ -1,5 +1,5 @@
 # phonebook_routes.py
-# Blueprint: телефонный справочник (v2.8.1)
+# Blueprint: телефонный справочник (v2.8.2)
 # Маршруты:
 #   GET  /phonebook                — список сотрудников с поиском  [can_view_phonebook]
 #   GET  /phonebook/search         — AJAX: поиск, возвращает JSON       [can_view_phonebook]
@@ -22,6 +22,9 @@
 #
 # v2.8.1:
 #   Поле inn добавлено в phonebook_add(), phonebook_edit(), phonebook_search() (#14)
+#
+# v2.8.2 (#76):
+#   sync_request_to_phonebook() теперь передаёт applicant_inn → phonebook.inn
 
 from flask import (Blueprint, render_template, request,
                    redirect, url_for, flash, jsonify, session)
@@ -321,6 +324,7 @@ def sync_request_to_phonebook(conn, form_data, request_id: int, user_id: int) ->
       contact_position                           → phonebook.position
       contact_phone                              → phonebook.phone_work
       contact_email                              → phonebook.email
+      applicant_inn                              → phonebook.inn
     """
     legal_form    = (form_data.get('applicant_legal_form') or '').strip()
     full_name_org = (form_data.get('applicant_full_name')  or '').strip()
@@ -329,6 +333,7 @@ def sync_request_to_phonebook(conn, form_data, request_id: int, user_id: int) ->
     contact_pos   = (form_data.get('contact_position')     or '').strip()
     phone_work    = (form_data.get('contact_phone')        or '').strip()
     email         = (form_data.get('contact_email')        or '').strip()
+    inn           = (form_data.get('applicant_inn')        or '').strip()
 
     org_name = f"{legal_form} {full_name_org}".strip()
     if not org_name:
@@ -360,9 +365,9 @@ def sync_request_to_phonebook(conn, form_data, request_id: int, user_id: int) ->
         if not exists:
             conn.execute(
                 """INSERT INTO phonebook
-                       (org_id, full_name, position, phone_work, email)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (org_id, contact_name, contact_pos, phone_work, email)
+                       (org_id, full_name, position, phone_work, email, inn)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (org_id, contact_name, contact_pos, phone_work, email, inn)
             )
             log_action(conn, user_id, 'create', request_id,
                        f'Справочник: добавлен контакт «{contact_name}» ({org_name}) '
