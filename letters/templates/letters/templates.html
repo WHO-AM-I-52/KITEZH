@@ -1,0 +1,104 @@
+{% extends 'base.html' %}
+{% block title %}Шаблоны писем{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h4 class="mb-0">📋 Шаблоны писем</h4>
+    <a href="{{ url_for('letters.list_letters') }}" class="btn btn-sm btn-outline-secondary">
+      &larr; К журналу
+    </a>
+  </div>
+
+  {# ─── ТАБЛИЦА ШАБЛОНОВ ─── #}
+  {% if templates %}
+  <div class="table-responsive mb-4">
+    <table class="table table-sm table-hover align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>Название</th>
+          <th>Тема письма</th>
+          <th class="text-center">Доступ</th>
+          <th>Автор</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in templates %}
+        <tr>
+          <td>
+            <strong>{{ t.name }}</strong>
+            {% if t.body %}
+            <div class="text-muted small text-truncate" style="max-width:320px;"
+                 title="{{ t.body }}">{{ t.body[:120] }}{% if t.body|length > 120 %}…{% endif %}</div>
+            {% endif %}
+          </td>
+          <td class="text-muted small">{{ t.subject or '—' }}</td>
+          <td class="text-center">
+            {% if t.is_shared %}
+              <span class="badge bg-success-subtle text-success">Общий</span>
+            {% else %}
+              <span class="badge bg-secondary-subtle text-secondary">Личный</span>
+            {% endif %}
+          </td>
+          <td class="text-muted small">{{ t.author or '—' }}</td>
+          <td class="text-end">
+            {% if t.can_delete %}
+            <form method="post"
+                  action="{{ url_for('letters.delete_template', id=t.id) }}"
+                  onsubmit="return confirm('Удалить шаблон «' + '{{ t.name }}' + '»?')">
+              <button type="submit" class="btn btn-sm btn-outline-danger">Удалить</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-muted">Шаблонов пока нет. Создайте первый!</p>
+  {% endif %}
+
+  {# ─── ФОРМА СОЗДАНИЯ ─── #}
+  <div class="card">
+    <div class="card-header">
+      <strong>✚ Новый шаблон</strong>
+    </div>
+    <div class="card-body">
+      <form method="post" action="{{ url_for('letters.create_template') }}">
+
+        <div class="mb-3">
+          <label class="form-label">Название <span class="text-danger">*</span></label>
+          <input type="text" name="name" class="form-control" required
+                 placeholder="Например: Ответ на запрос об инвестиционной площадке">
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Тема письма</label>
+          <input type="text" name="subject" class="form-control"
+                 placeholder="Например: О предоставлении земельных участков под инвестиционные цели">
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Текст письма</label>
+          <textarea name="body" class="form-control" rows="5"
+                    placeholder="Типовой текст письма..."></textarea>
+        </div>
+
+        <div class="mb-3 form-check">
+          <input type="checkbox" name="is_shared" id="is_shared"
+                 class="form-check-input" checked>
+          <label class="form-check-label" for="is_shared">
+            Общий шаблон (виден всем сотрудникам)
+          </label>
+        </div>
+
+        <button type="submit" class="btn btn-primary">Создать шаблон</button>
+      </form>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
