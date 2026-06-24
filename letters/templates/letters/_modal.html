@@ -1,0 +1,165 @@
+<div class="modal fade" id="letterModal" tabindex="-1" aria-labelledby="modalLetterTitle" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalLetterTitle">Письмо</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <form id="letterForm" method="post" action="">
+        <div class="modal-body">
+
+          <div class="row g-3">
+
+            <div class="col-md-4">
+              <label class="form-label">Дата <span class="text-danger">*</span></label>
+              <input type="date" id="fDate" name="date" class="form-control" required>
+            </div>
+
+            <div class="col-md-8">
+              <label class="form-label">Номер</label>
+              <input type="text" id="fNumber" name="number" class="form-control"
+                     placeholder="напр.: Исх.123/2026">
+            </div>
+
+            <div class="col-12">
+              <label class="form-label">Тема</label>
+              <input type="text" id="fSubject" name="subject" class="form-control"
+                     placeholder="Краткое описание">
+            </div>
+
+            <div class="col-12">
+              <label class="form-label">Примечание</label>
+              <textarea id="fNote" name="note" class="form-control" rows="3"
+                        placeholder="Дополнительная информация..."></textarea>
+            </div>
+
+            <div class="col-12">
+              <label class="form-label">Теги</label>
+              <div class="d-flex flex-wrap gap-1 mb-1" id="tagBadges"></div>
+              <div class="input-group">
+                <input type="text" id="tagInput" class="form-control"
+                       placeholder="Начните ввод или выберите тег..."
+                       autocomplete="off">
+                <button type="button" class="btn btn-outline-secondary" onclick="addTagFromInput()">Добавить</button>
+              </div>
+              <div id="tagSuggestions" class="list-group mt-1" style="display:none; position:absolute; z-index:1060; min-width:220px"></div>
+              <input type="hidden" id="fTags" name="tags" value="">
+              <small class="text-muted">Вводите тег и нажмите Enter или «Добавить». Можно через запятую.</small>
+            </div>
+
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+          <button type="submit" class="btn btn-primary">Сохранить</button>
+        </div>
+      </form>
+
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── Теги: внутреннее состояние ───
+
+let _currentTags = [];
+
+function updateTagBadges(tagList) {
+  _currentTags = tagList.slice();
+  const container = document.getElementById('tagBadges');
+  container.innerHTML = '';
+  _currentTags.forEach((tag, idx) => {
+    const span = document.createElement('span');
+    span.className = 'badge bg-secondary d-flex align-items-center gap-1';
+    span.style.cursor = 'default';
+    span.innerHTML = `${tag} <button type="button" class="btn-close btn-close-white" style="font-size:.6rem" onclick="removeTag(${idx})"></button>`;
+    container.appendChild(span);
+  });
+  document.getElementById('fTags').value = _currentTags.join(', ');
+}
+
+function addTag(name) {
+  const normalized = name.trim().toLowerCase();
+  if (!normalized) return;
+  if (_currentTags.includes(normalized)) return;
+  _currentTags.push(normalized);
+  updateTagBadges(_currentTags);
+}
+
+function removeTag(idx) {
+  _currentTags.splice(idx, 1);
+  updateTagBadges(_currentTags);
+}
+
+function addTagFromInput() {
+  const input = document.getElementById('tagInput');
+  const raw = input.value;
+  // поддерживаем запятую в поле (несколько тегов сразу)
+  raw.split(',').forEach(t => addTag(t));
+  input.value = '';
+  hideSuggestions();
+}
+
+// ─── autocomplete ───
+
+let _acTimer = null;
+
+document.addEventListener('DOMContentLoaded', function () {
+  const tagInput = document.getElementById('tagInput');
+  if (!tagInput) return;
+
+  tagInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addTagFromInput();
+    } else if (e.key === 'Escape') {
+      hideSuggestions();
+    }
+  });
+
+  tagInput.addEventListener('input', function () {
+    clearTimeout(_acTimer);
+    const q = this.value.trim();
+    if (!q) { hideSuggestions(); return; }
+    _acTimer = setTimeout(() => fetchSuggestions(q), 200);
+  });
+
+  document.addEventListener('click', function (e) {
+    if (!e.target.closest('#tagInput') && !e.target.closest('#tagSuggestions')) {
+      hideSuggestions();
+    }
+  });
+});
+
+function fetchSuggestions(q) {
+  fetch('/letters/api/tags?q=' + encodeURIComponent(q))
+    .then(r => r.json())
+    .then(items => {
+      const box = document.getElementById('tagSuggestions');
+      box.innerHTML = '';
+      if (!items.length) { hideSuggestions(); return; }
+      items.forEach(item => {
+        const a = document.createElement('a');
+        a.href = '#';
+        a.className = 'list-group-item list-group-item-action py-1 px-2';
+        a.textContent = item.name;
+        a.addEventListener('click', function (e) {
+          e.preventDefault();
+          addTag(item.name);
+          document.getElementById('tagInput').value = '';
+          hideSuggestions();
+        });
+        box.appendChild(a);
+      });
+      box.style.display = 'block';
+    });
+}
+
+function hideSuggestions() {
+  const box = document.getElementById('tagSuggestions');
+  if (box) { box.style.display = 'none'; box.innerHTML = ''; }
+}
+</script>
