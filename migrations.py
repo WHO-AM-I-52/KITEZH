@@ -113,6 +113,35 @@ CREATE INDEX IF NOT EXISTS idx_rc_request ON review_chain(request_id);
 """)
 
 
+def _migrate_tasks_tables(conn):
+    """Создаёт таблицы tasks и task_assignees если их нет."""
+    conn.executescript("""
+CREATE TABLE IF NOT EXISTS tasks (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    title       TEXT NOT NULL,
+    description TEXT,
+    source      TEXT,
+    deadline    TEXT,
+    status      TEXT NOT NULL DEFAULT 'new',
+    result      TEXT,
+    created_by  INTEGER NOT NULL,
+    created_at  TEXT DEFAULT CURRENT_TIMESTAMP,
+    closed_at   TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_tasks_status     ON tasks(status);
+CREATE INDEX IF NOT EXISTS idx_tasks_created_by ON tasks(created_by);
+CREATE TABLE IF NOT EXISTS task_assignees (
+    task_id     INTEGER NOT NULL,
+    user_id     INTEGER NOT NULL,
+    assigned_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    assigned_by INTEGER,
+    PRIMARY KEY (task_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_ta_task ON task_assignees(task_id);
+CREATE INDEX IF NOT EXISTS idx_ta_user ON task_assignees(user_id);
+""")
+
+
 def _migrate_letters_tables(conn):
     """Создаёт таблицы letters/letter_tags/letter_tag_links.
     Порядок: сначала CREATE TABLE (без executor_id),
@@ -460,6 +489,7 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         _migrate_review_chain_table(conn)
         _migrate_investmap_tables(conn)
         _migrate_letters_tables(conn)
+        _migrate_tasks_tables(conn)  # ← tasks + task_assignees
 
         cols = {r[1] for r in conn.execute("PRAGMA table_info(requests)").fetchall()}
         for col in ['source_type', 'request_files', 'edit_reason', 'updated_by']:
@@ -520,6 +550,7 @@ def migrate_db():
         _migrate_review_chain_table(conn)
         _migrate_investmap_tables(conn)
         _migrate_letters_tables(conn)
+        _migrate_tasks_tables(conn)  # ← tasks + task_assignees
 
         cols = {r[1] for r in conn.execute("PRAGMA table_info(requests)").fetchall()}
         for col in ['request_files', 'source_type', 'edit_reason', 'updated_by']:
