@@ -94,96 +94,63 @@ def list_letters():
         return redirect(url_for('auth.login'))
 
     db = get_db()
-    date_from        = request.args.get('date_from', '').strip()
-    date_to          = request.args.get('date_to', '').strip()
-    tag_filter       = request.args.get('tag', '').strip()
-    direction_filter = request.args.get('direction', '').strip()
-
-    query = '''
-        SELECT l.id, l.date, l.number, l.subject, l.note,
-               l.created_by, l.created_at, l.executor_id,
-               l.direction, l.counterparty_id,
-               u_author.username   AS author,
-               u_exec.username     AS executor_username,
-               u_exec.full_name    AS executor_name,
-               cp.name             AS counterparty_name
-        FROM letters l
-        JOIN users u_author ON u_author.id = l.created_by
-        LEFT JOIN users u_exec ON u_exec.id = l.executor_id
-        LEFT JOIN counterparties cp ON cp.id = l.counterparty_id
-    '''
-    params = []
-    conditions = []
-
-    if date_from:
-        conditions.append('l.date >= ?')
-        params.append(date_from)
-    if date_to:
-        conditions.append('l.date <= ?')
-        params.append(date_to)
-    if tag_filter:
-        conditions.append('''
-            l.id IN (
-                SELECT ll.letter_id FROM letter_tag_links ll
-                JOIN letter_tags lt ON lt.id = ll.tag_id
-                WHERE lt.name LIKE ?
-            )
-        ''')
-        params.append(f'%{_normalize_tag(tag_filter)}%')
-    if direction_filter in ('in', 'out'):
-        conditions.append('l.direction = ?')
-        params.append(direction_filter)
-
-    if conditions:
-        query += ' WHERE ' + ' AND '.join(conditions)
-    query += ' ORDER BY l.date DESC, l.id DESC'
-
-    letters = db.execute(query, params).fetchall()
-
-    letters_with_tags = []
-    for letter in letters:
-        tags = _get_letter_tags(db, letter['id'])
-        executor_display = ''
-        if letter['executor_name']:
-            executor_display = letter['executor_name']
-        elif letter['executor_username']:
-            executor_display = letter['executor_username']
-        letters_with_tags.append({
-            'id':               letter['id'],
-            'date':             letter['date'],
-            'number':           letter['number'],
-            'subject':          letter['subject'],
-            'note':             letter['note'],
-            'created_by':       letter['created_by'],
-            'created_at':       letter['created_at'],
-            'author':           letter['author'],
-            'executor_id':      letter['executor_id'],
-            'executor_display': executor_display,
-            'direction':        letter['direction'] or 'out',
-            'counterparty_id':  letter['counterparty_id'],
-            'counterparty_name': letter['counterparty_name'] or '',
-            'tags':             tags,
-            'can_edit':         _can_edit(letter),
-        })
-
-    all_tags = db.execute(
-        'SELECT name FROM letter_tags ORDER BY name'
-    ).fetchall()
-
     users = _get_users(db)
 
     return render_template(
         'letters/list.html',
-        letters=letters_with_tags,
-        all_tags=[r['name'] for r in all_tags],
-        date_from=date_from,
-        date_to=date_to,
-        tag_filter=tag_filter,
-        direction_filter=direction_filter,
         can_delete=_can_delete(),
         can_manage_templates=(session.get('role') == 'admin'),
         users=users,
     )
+
+
+# ─── API: СПИСОК ПИСЕМ ДЛЯ TABULATOR ─────────────────────────────────────────
+
+@letters_bp.route('/api/list')
+def api_list():
+    if _login_required():
+        return jsonify([]), 401
+
+    db = get_db()
+    user_id = session.get('user_id')
+    role    = session.get('role')
+    can_del = _can_delete()
+
+    rows = db.execute(
+        '''
+        SELECT l.id, l.date, l.number, l.subject, l.note,
+               l.created_by, l.direction, l.counterparty_id,
+               l.executor_id,
+               u_exec.username  AS executor_username,
+               u_exec.full_name AS executor_name,
+               cp.name          AS counterparty_name
+        FROM letters l
+        LEFT JOIN users u_exec ON u_exec.id = l.executor_id
+        LEFT JOIN counterparties cp ON cp.id = l.counterparty_id
+        ORDER BY l.date DESC, l.id DESC
+        ''',
+    ).fetchall()
+
+    result = []
+    for r in rows:
+        tags = _get_letter_tags(db, r['id'])
+        executor_display = r['executor_name'] or r['executor_username'] or ''
+        can_edit = (r['created_by'] == user_id or role in ('admin', 'manager'))
+        result.append({
+            'id':                r['id'],
+            'date':              r['date'] or '',
+            'number':            r['number'] or '',
+            'direction':         r['direction'] or 'out',
+            'counterparty_name': r['counterparty_name'] or '',
+            'subject':           r['subject'] or '',
+            'note':              r['note'] or '',
+            'tags':              tags,
+            'executor_display':  executor_display,
+            'can_edit':          can_edit,
+            'can_delete':        can_del,
+        })
+
+    return jsonify(result)
 
 
 # ─── СОЗДАНИЕ ──────────────────────────────────────────────────────────────────────────────
