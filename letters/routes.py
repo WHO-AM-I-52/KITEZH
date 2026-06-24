@@ -177,7 +177,7 @@ def create_letter():
     _set_letter_tags(db, letter_id, tags)
     db.commit()
 
-    log_action(session['user_id'], 'letter_create', letter_id)
+    log_action(db, session['user_id'], 'letter_create', letter_id)
     return redirect(url_for('letters.list_letters'))
 
 
@@ -226,7 +226,7 @@ def edit_letter(id):
     _set_letter_tags(db, id, tags)
     db.commit()
 
-    log_action(session['user_id'], 'letter_edit', id)
+    log_action(db, session['user_id'], 'letter_edit', id)
     return redirect(url_for('letters.list_letters'))
 
 
@@ -235,7 +235,7 @@ def edit_letter(id):
 @letters_bp.route('/<int:id>/delete', methods=['POST'])
 def delete_letter(id):
     if _login_required():
-        return redirect(url_for('login'))
+        return redirect(url_for('letters.list_letters'))
     if not _can_delete():
         return redirect(url_for('letters.list_letters'))
 
@@ -243,7 +243,7 @@ def delete_letter(id):
     db.execute('DELETE FROM letters WHERE id = ?', (id,))
     db.commit()
 
-    log_action(session['user_id'], 'letter_delete', id)
+    log_action(db, session['user_id'], 'letter_delete', id)
     return redirect(url_for('letters.list_letters'))
 
 
