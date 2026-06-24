@@ -1,5 +1,5 @@
 # phonebook_routes.py
-# Blueprint: телефонный справочник (v2.8.0)
+# Blueprint: телефонный справочник (v2.8.1)
 # Маршруты:
 #   GET  /phonebook                — список сотрудников с поиском  [can_view_phonebook]
 #   GET  /phonebook/search         — AJAX: поиск, возвращает JSON       [can_view_phonebook]
@@ -19,6 +19,9 @@
 # Issue #PB-1 (v2.8.0):
 #   Добавлена sync_request_to_phonebook() — авто-создание орг. и контакта
 #   из формы обращения по нажатию чекбокса «Добавить в справочник».
+#
+# v2.8.1:
+#   Поле inn добавлено в phonebook_add(), phonebook_edit(), phonebook_search() (#14)
 
 from flask import (Blueprint, render_template, request,
                    redirect, url_for, flash, jsonify, session)
@@ -48,6 +51,7 @@ def _row_matches(row, tokens: list[str]) -> bool:
         row['email']         or '',
         row['room']          or '',
         row['notes']         or '',
+        row['inn']           or '',
     ]).lower()
     return all(t in haystack for t in tokens)
 
@@ -106,6 +110,7 @@ def phonebook_search():
             'phone_ext':      c['phone_ext'] or '',
             'phone_personal': c['phone_personal'] or '',
             'email':          c['email'] or '',
+            'inn':            c['inn'] or '',
             'notes':          c['notes'] or '',
             'org_name':       c['org_name'] or '',
         })
@@ -122,8 +127,8 @@ def phonebook_add():
     conn.execute("""
         INSERT INTO phonebook
             (org_id, position, room, full_name,
-             phone_work, phone_ext, phone_personal, email, notes)
-        VALUES (?,?,?,?,?,?,?,?,?)
+             phone_work, phone_ext, phone_personal, email, inn, notes)
+        VALUES (?,?,?,?,?,?,?,?,?,?)
     """, (
         d.get('org_id') or None,
         d.get('position', '').strip(),
@@ -133,6 +138,7 @@ def phonebook_add():
         d.get('phone_ext', '').strip(),
         d.get('phone_personal', '').strip(),
         d.get('email', '').strip(),
+        d.get('inn', '').strip(),
         d.get('notes', '').strip(),
     ))
     log_action(conn, session['user_id'], 'create', None,
@@ -161,6 +167,7 @@ def phonebook_edit():
             phone_ext     = ?,
             phone_personal= ?,
             email         = ?,
+            inn           = ?,
             notes         = ?
         WHERE id = ?
     """, (
@@ -172,6 +179,7 @@ def phonebook_edit():
         d.get('phone_ext', '').strip(),
         d.get('phone_personal', '').strip(),
         d.get('email', '').strip(),
+        d.get('inn', '').strip(),
         d.get('notes', '').strip(),
         cid,
     ))
@@ -267,7 +275,7 @@ def phonebook_orgs_delete():
         flash(f'Нельзя удалить: к организации привязано {count} сотрудников', 'error')
     else:
         row  = conn.execute(
-            "SELECT name FROM phonebook_orgs WHERE id=?\", (oid,)"
+            "SELECT name FROM phonebook_orgs WHERE id=?", (oid,)
         ).fetchone()
         name = row['name'] if row else f'ID:{oid}'
         conn.execute("DELETE FROM phonebook_orgs WHERE id=?", (oid,))
@@ -291,7 +299,7 @@ def org_address():
     return jsonify({'address': row['address'] if row else ''})
 
 
-# ── Issue #PB-1: Синхронизация из формы обращения ────────────────────────────
+# ── Issue #PB-1: Синхронизация из формы обращения ─────────────────────────────────────────────
 def sync_request_to_phonebook(conn, form_data, request_id: int, user_id: int) -> None:
     """
     Создаёт организацию и контакт в справочнике по данным формы обращения.
