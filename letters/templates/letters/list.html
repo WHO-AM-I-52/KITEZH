@@ -19,7 +19,7 @@
   </div>
 
   {# ФИЛЬТРЫ #}
-  <form method="get" class="row g-2 mb-3">
+  <form method="get" class="row g-2 mb-3" id="filterForm">
     <div class="col-auto">
       <input type="date" name="date_from" class="form-control form-control-sm"
              value="{{ date_from }}" placeholder="Дата с">
@@ -28,12 +28,21 @@
       <input type="date" name="date_to" class="form-control form-control-sm"
              value="{{ date_to }}" placeholder="Дата по">
     </div>
+    <div class="col-auto position-relative">
+      <input type="text" id="tagSearchInput" class="form-control form-control-sm"
+             placeholder="Тег..."
+             value="{{ tag_filter }}"
+             autocomplete="off"
+             style="min-width:160px">
+      <div id="tagFilterSuggestions" class="list-group shadow"
+           style="display:none; position:absolute; z-index:1050; min-width:180px; top:100%"></div>
+      <input type="hidden" id="tagFilterHidden" name="tag" value="{{ tag_filter }}">
+    </div>
     <div class="col-auto">
-      <select name="tag" class="form-select form-select-sm">
-        <option value="">— все теги —</option>
-        {% for t in all_tags %}
-          <option value="{{ t }}" {% if t == tag_filter %}selected{% endif %}>{{ t }}</option>
-        {% endfor %}
+      <select name="direction" class="form-select form-select-sm">
+        <option value="" {% if not direction_filter %}selected{% endif %}>— все —</option>
+        <option value="out" {% if direction_filter == 'out' %}selected{% endif %}>→ Исходящие</option>
+        <option value="in"  {% if direction_filter == 'in'  %}selected{% endif %}>← Входящие</option>
       </select>
     </div>
     <div class="col-auto">
@@ -49,10 +58,11 @@
       <thead class="table-light">
         <tr>
           <th style="width:110px">Дата</th>
-          <th style="width:140px">Номер</th>
+          <th style="width:120px">Номер</th>
+          <th style="width:90px">Напр. / Контрагент</th>
           <th>Тема</th>
           <th style="width:200px">Теги</th>
-          <th style="width:140px">Исполнитель</th>
+          <th style="width:130px">Исполнитель</th>
           <th style="width:110px">Действия</th>
         </tr>
       </thead>
@@ -61,6 +71,16 @@
         <tr>
           <td>{{ l.date }}</td>
           <td>{{ l.number }}</td>
+          <td>
+            {% if l.direction == 'in' %}
+              <span class="badge bg-info text-dark" title="Входящее">← Вх.</span>
+            {% else %}
+              <span class="badge bg-primary" title="Исходящее">→ Исх.</span>
+            {% endif %}
+            {% if l.counterparty_name %}
+              <br><small class="text-muted">{{ l.counterparty_name }}</small>
+            {% endif %}
+          </td>
           <td>
             {{ l.subject }}
             {% if l.note %}
@@ -123,6 +143,10 @@ function openCreateModal() {
   document.getElementById('fNote').value     = '';
   document.getElementById('fTags').value     = '';
   document.getElementById('fExecutor').value = '';
+  document.getElementById('cpInput').value   = '';
+  document.getElementById('fCounterpartyId').value = '';
+  document.getElementById('dirOut').checked  = true;
+  document.getElementById('cpLabel').textContent = 'Кому';
   updateTagBadges([]);
   _tplLoaded = false;
   _getModal().show();
@@ -140,11 +164,79 @@ function openEditModal(id) {
       document.getElementById('fNote').value     = data.note        || '';
       document.getElementById('fTags').value     = data.tags        || '';
       document.getElementById('fExecutor').value = data.executor_id || '';
+
+      // direction
+      const dir = data.direction || 'out';
+      document.getElementById('dirOut').checked = (dir === 'out');
+      document.getElementById('dirIn').checked  = (dir === 'in');
+      document.getElementById('cpLabel').textContent = (dir === 'out') ? 'Кому' : 'От кого';
+
+      // counterparty
+      document.getElementById('cpInput').value = data.counterparty_name || '';
+      document.getElementById('fCounterpartyId').value = data.counterparty_id || '';
+
       const tagList = data.tags ? data.tags.split(',').map(s => s.trim()).filter(Boolean) : [];
       updateTagBadges(tagList);
       _tplLoaded = false;
       _getModal().show();
     });
+}
+
+// ─── autocomplete тегов в фильтре ───
+let _tfTimer = null;
+
+document.addEventListener('DOMContentLoaded', function () {
+  const tfInput = document.getElementById('tagSearchInput');
+  if (!tfInput) return;
+
+  tfInput.addEventListener('input', function () {
+    clearTimeout(_tfTimer);
+    document.getElementById('tagFilterHidden').value = this.value;
+    const q = this.value.trim();
+    if (!q) { hideTagFilterSugg(); return; }
+    _tfTimer = setTimeout(() => fetchTagFilterSugg(q), 200);
+  });
+
+  tfInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { hideTagFilterSugg(); }
+    if (e.key === 'Escape') { hideTagFilterSugg(); }
+  });
+
+  document.addEventListener('click', function (e) {
+    if (!e.target.closest('#tagSearchInput') && !e.target.closest('#tagFilterSuggestions')) {
+      hideTagFilterSugg();
+    }
+  });
+});
+
+function fetchTagFilterSugg(q) {
+  fetch('/letters/api/tags?q=' + encodeURIComponent(q))
+    .then(r => r.json())
+    .then(items => {
+      const box = document.getElementById('tagFilterSuggestions');
+      box.innerHTML = '';
+      if (!items.length) { hideTagFilterSugg(); return; }
+      items.forEach(item => {
+        const a = document.createElement('a');
+        a.href = '#';
+        a.className = 'list-group-item list-group-item-action py-1 px-2 small';
+        a.textContent = item.name;
+        a.addEventListener('click', function (e) {
+          e.preventDefault();
+          document.getElementById('tagSearchInput').value = item.name;
+          document.getElementById('tagFilterHidden').value = item.name;
+          hideTagFilterSugg();
+          document.getElementById('filterForm').submit();
+        });
+        box.appendChild(a);
+      });
+      box.style.display = 'block';
+    });
+}
+
+function hideTagFilterSugg() {
+  const box = document.getElementById('tagFilterSuggestions');
+  if (box) { box.style.display = 'none'; box.innerHTML = ''; }
 }
 </script>
 {% endblock %}
