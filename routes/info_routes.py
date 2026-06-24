@@ -14,6 +14,7 @@
 # ║  v2.9.2: /api/online-users — алиас для /api/online           ║
 # ║  v3.0.0: /investor/<inn> — карточка инвестора (#13)          ║
 # ║  v3.0.1: fix — subject → project_name в запросе requests    ║
+# ║  v3.0.2: fix — phonebook_contacts запрос по inn (#14)        ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, render_template, session, jsonify, request as flask_request, redirect, url_for
@@ -264,8 +265,16 @@ def investor_card(inn):
         (inn,)
     ).fetchall()
 
-    # 2. phonebook — таблица отсутствует в схеме БД
-    phonebook_contacts = []  # TODO: link by inn
+    # 2. Контакты из phonebook по ИНН
+    phonebook_contacts = conn.execute(
+        """
+        SELECT full_name, position, phone_work
+        FROM phonebook
+        WHERE inn = ?
+        ORDER BY full_name
+        """,
+        (inn,)
+    ).fetchall()
 
     # 3. Письма — эвристика по note
     letters_rows = conn.execute(
