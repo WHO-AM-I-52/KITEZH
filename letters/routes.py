@@ -86,7 +86,7 @@ def _get_users(conn):
     ).fetchall()
 
 
-# ─── СПИСОК ────────────────────────────────────────────────────────────────────────────
+# ─── СПИСОК ──────────────────────────────────────────────────────────────────────────────────
 
 @letters_bp.route('/')
 def list_letters():
@@ -94,19 +94,23 @@ def list_letters():
         return redirect(url_for('auth.login'))
 
     db = get_db()
-    date_from  = request.args.get('date_from', '').strip()
-    date_to    = request.args.get('date_to', '').strip()
-    tag_filter = request.args.get('tag', '').strip()
+    date_from        = request.args.get('date_from', '').strip()
+    date_to          = request.args.get('date_to', '').strip()
+    tag_filter       = request.args.get('tag', '').strip()
+    direction_filter = request.args.get('direction', '').strip()
 
     query = '''
         SELECT l.id, l.date, l.number, l.subject, l.note,
                l.created_by, l.created_at, l.executor_id,
+               l.direction, l.counterparty_id,
                u_author.username   AS author,
                u_exec.username     AS executor_username,
-               u_exec.full_name    AS executor_name
+               u_exec.full_name    AS executor_name,
+               cp.name             AS counterparty_name
         FROM letters l
         JOIN users u_author ON u_author.id = l.created_by
         LEFT JOIN users u_exec ON u_exec.id = l.executor_id
+        LEFT JOIN counterparties cp ON cp.id = l.counterparty_id
     '''
     params = []
     conditions = []
@@ -122,10 +126,13 @@ def list_letters():
             l.id IN (
                 SELECT ll.letter_id FROM letter_tag_links ll
                 JOIN letter_tags lt ON lt.id = ll.tag_id
-                WHERE lt.name = ?
+                WHERE lt.name LIKE ?
             )
         ''')
-        params.append(_normalize_tag(tag_filter))
+        params.append(f'%{_normalize_tag(tag_filter)}%')
+    if direction_filter in ('in', 'out'):
+        conditions.append('l.direction = ?')
+        params.append(direction_filter)
 
     if conditions:
         query += ' WHERE ' + ' AND '.join(conditions)
@@ -152,6 +159,9 @@ def list_letters():
             'author':           letter['author'],
             'executor_id':      letter['executor_id'],
             'executor_display': executor_display,
+            'direction':        letter['direction'] or 'out',
+            'counterparty_id':  letter['counterparty_id'],
+            'counterparty_name': letter['counterparty_name'] or '',
             'tags':             tags,
             'can_edit':         _can_edit(letter),
         })
@@ -169,13 +179,14 @@ def list_letters():
         date_from=date_from,
         date_to=date_to,
         tag_filter=tag_filter,
+        direction_filter=direction_filter,
         can_delete=_can_delete(),
         can_manage_templates=(session.get('role') == 'admin'),
         users=users,
     )
 
 
-# ─── СОЗДАНИЕ ──────────────────────────────────────────────────────────────────────────
+# ─── СОЗДАНИЕ ──────────────────────────────────────────────────────────────────────────────
 
 @letters_bp.route('/create', methods=['POST'])
 def create_letter():
@@ -183,14 +194,19 @@ def create_letter():
         return redirect(url_for('auth.login'))
 
     db = get_db()
-    date        = request.form.get('date', '').strip()
-    number      = request.form.get('number', '').strip()
-    subject     = request.form.get('subject', '').strip()
-    note        = request.form.get('note', '').strip()
-    tags        = request.form.get('tags', '').strip()
-    executor_id = request.form.get('executor_id') or None
+    date             = request.form.get('date', '').strip()
+    number           = request.form.get('number', '').strip()
+    subject          = request.form.get('subject', '').strip()
+    note             = request.form.get('note', '').strip()
+    tags             = request.form.get('tags', '').strip()
+    executor_id      = request.form.get('executor_id') or None
+    direction        = request.form.get('direction', 'out').strip() or 'out'
+    counterparty_id  = request.form.get('counterparty_id') or None
+
     if executor_id:
         executor_id = int(executor_id)
+    if counterparty_id:
+        counterparty_id = int(counterparty_id)
 
     if not date:
         return redirect(url_for('letters.list_letters'))
@@ -198,10 +214,13 @@ def create_letter():
     created_at = datetime.utcnow().isoformat()
     cur = db.execute(
         '''
-        INSERT INTO letters (date, number, subject, note, created_by, created_at, executor_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO letters
+            (date, number, subject, note, created_by, created_at,
+             executor_id, direction, counterparty_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''',
-        (date, number, subject, note, session['user_id'], created_at, executor_id),
+        (date, number, subject, note, session['user_id'], created_at,
+         executor_id, direction, counterparty_id),
     )
     letter_id = cur.lastrowid
     _set_letter_tags(db, letter_id, tags)
@@ -211,7 +230,7 @@ def create_letter():
     return redirect(url_for('letters.list_letters'))
 
 
-# ─── РЕДАКТИРОВАНИЕ ───────────────────────────────────────────────────────────────────────
+# ─── РЕДАКТИРОВАНИЕ ─────────────────────────────────────────────────────────────────────────────
 
 @letters_bp.route('/<int:id>/edit', methods=['GET', 'POST'])
 def edit_letter(id):
@@ -228,34 +247,52 @@ def edit_letter(id):
 
     if request.method == 'GET':
         tags = _get_letter_tags(db, id)
+        cp_name = ''
+        if letter['counterparty_id']:
+            cp_row = db.execute(
+                'SELECT name FROM counterparties WHERE id = ?',
+                (letter['counterparty_id'],)
+            ).fetchone()
+            if cp_row:
+                cp_name = cp_row['name']
         return jsonify({
-            'id':          letter['id'],
-            'date':        letter['date'],
-            'number':      letter['number'],
-            'subject':     letter['subject'],
-            'note':        letter['note'],
-            'tags':        ', '.join(tags),
-            'executor_id': letter['executor_id'],
+            'id':               letter['id'],
+            'date':             letter['date'],
+            'number':           letter['number'],
+            'subject':          letter['subject'],
+            'note':             letter['note'],
+            'tags':             ', '.join(tags),
+            'executor_id':      letter['executor_id'],
+            'direction':        letter['direction'] or 'out',
+            'counterparty_id':  letter['counterparty_id'],
+            'counterparty_name': cp_name,
         })
 
-    date        = request.form.get('date', '').strip()
-    number      = request.form.get('number', '').strip()
-    subject     = request.form.get('subject', '').strip()
-    note        = request.form.get('note', '').strip()
-    tags        = request.form.get('tags', '').strip()
-    executor_id = request.form.get('executor_id') or None
+    date             = request.form.get('date', '').strip()
+    number           = request.form.get('number', '').strip()
+    subject          = request.form.get('subject', '').strip()
+    note             = request.form.get('note', '').strip()
+    tags             = request.form.get('tags', '').strip()
+    executor_id      = request.form.get('executor_id') or None
+    direction        = request.form.get('direction', 'out').strip() or 'out'
+    counterparty_id  = request.form.get('counterparty_id') or None
+
     if executor_id:
         executor_id = int(executor_id)
+    if counterparty_id:
+        counterparty_id = int(counterparty_id)
 
     if not date:
         return redirect(url_for('letters.list_letters'))
 
     db.execute(
         '''
-        UPDATE letters SET date=?, number=?, subject=?, note=?, executor_id=?
+        UPDATE letters
+        SET date=?, number=?, subject=?, note=?,
+            executor_id=?, direction=?, counterparty_id=?
         WHERE id=?
         ''',
-        (date, number, subject, note, executor_id, id),
+        (date, number, subject, note, executor_id, direction, counterparty_id, id),
     )
     _set_letter_tags(db, id, tags)
     db.commit()
@@ -264,7 +301,7 @@ def edit_letter(id):
     return redirect(url_for('letters.list_letters'))
 
 
-# ─── УДАЛЕНИЕ ──────────────────────────────────────────────────────────────────────────
+# ─── УДАЛЕНИЕ ──────────────────────────────────────────────────────────────────────────────
 
 @letters_bp.route('/<int:id>/delete', methods=['POST'])
 def delete_letter(id):
@@ -281,7 +318,7 @@ def delete_letter(id):
     return redirect(url_for('letters.list_letters'))
 
 
-# ─── AUTOCOMPLETE ТЕГОВ ─────────────────────────────────────────────────────────────────────
+# ─── AUTOCOMPLETE ТЕГОВ ─────────────────────────────────────────────────────────────────────────────────
 
 @letters_bp.route('/api/tags')
 def api_tags():
@@ -301,7 +338,51 @@ def api_tags():
     return jsonify([{'id': r['id'], 'name': r['name']} for r in rows])
 
 
-# ─── ШАБЛОНЫ ПИСЕМ (#12) ───────────────────────────────────────────────────────────────
+# ─── AUTOCOMPLETE КОНТРАГЕНТОВ (#13) ────────────────────────────────────────────────────────────
+
+@letters_bp.route('/api/counterparties', methods=['GET'])
+def api_counterparties_get():
+    if _login_required():
+        return jsonify([])
+    q = request.args.get('q', '').strip()
+    db = get_db()
+    if q:
+        rows = db.execute(
+            'SELECT id, name FROM counterparties WHERE name LIKE ? ORDER BY name LIMIT 20',
+            (f'%{q}%',),
+        ).fetchall()
+    else:
+        rows = db.execute(
+            'SELECT id, name FROM counterparties ORDER BY name LIMIT 20'
+        ).fetchall()
+    return jsonify([{'id': r['id'], 'name': r['name']} for r in rows])
+
+
+@letters_bp.route('/api/counterparties', methods=['POST'])
+def api_counterparties_post():
+    if _login_required():
+        return jsonify({'error': 'unauthorized'}), 401
+    data = request.get_json(silent=True) or {}
+    name = (data.get('name') or request.form.get('name', '')).strip()
+    if not name:
+        return jsonify({'error': 'name required'}), 400
+    db = get_db()
+    row = db.execute(
+        'SELECT id, name FROM counterparties WHERE name = ?', (name,)
+    ).fetchone()
+    if row:
+        return jsonify({'id': row['id'], 'name': row['name']})
+    created_at = datetime.utcnow().isoformat()
+    cur = db.execute(
+        'INSERT INTO counterparties (name, created_at) VALUES (?, ?)',
+        (name, created_at),
+    )
+    db.commit()
+    log_action(db, session['user_id'], 'counterparty_create', cur.lastrowid)
+    return jsonify({'id': cur.lastrowid, 'name': name}), 201
+
+
+# ─── ШАБЛОНЫ ПИСЕМ (#12) ─────────────────────────────────────────────────────────────────────────────
 
 @letters_bp.route('/templates')
 def list_templates():
