@@ -114,29 +114,23 @@ CREATE INDEX IF NOT EXISTS idx_rc_request ON review_chain(request_id);
 
 
 def _migrate_letters_tables(conn):
-    """Создаёт таблицы letters/letter_tags/letter_tag_links и добавляет executor_id.
-
-    Используем execute() вместо executescript() — executescript()
-    делает неявный COMMIT и обрывает текущую транзакцию.
+    """Создаёт таблицы letters/letter_tags/letter_tag_links.
+    Порядок: сначала CREATE TABLE (без executor_id),
+    потом ALTER TABLE добавляет executor_id если её нет,
+    затем создаётся индекс (колонка уже точно есть).
     """
+    # 1. Создаём таблицу letters без executor_id (безопасно если уже есть)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS letters (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            date        TEXT NOT NULL,
-            number      TEXT,
-            subject     TEXT,
-            note        TEXT,
-            created_by  INTEGER NOT NULL,
-            created_at  TEXT DEFAULT CURRENT_TIMESTAMP,
-            executor_id INTEGER
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            date       TEXT NOT NULL,
+            number     TEXT,
+            subject    TEXT,
+            note       TEXT,
+            created_by INTEGER NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
     """)
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_letters_date ON letters(date)"
-    )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_letters_executor ON letters(executor_id)"
-    )
     conn.execute("""
         CREATE TABLE IF NOT EXISTS letter_tags (
             id   INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -151,15 +145,24 @@ def _migrate_letters_tables(conn):
         )
     """)
     conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_letters_date ON letters(date)"
+    )
+    conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_ltl_letter ON letter_tag_links(letter_id)"
     )
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_ltl_tag ON letter_tag_links(tag_id)"
     )
-    # Добавить executor_id в существующие БД где таблица уже есть без неё
+
+    # 2. Добавляем executor_id если ещё нет
     letter_cols = {r[1] for r in conn.execute("PRAGMA table_info(letters)").fetchall()}
     if 'executor_id' not in letter_cols:
         conn.execute("ALTER TABLE letters ADD COLUMN executor_id INTEGER")
+
+    # 3. Индекс по executor_id создаём только после того как колонка точно есть
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_letters_executor ON letters(executor_id)"
+    )
 
 
 def _migrate_investmap_tables(conn):
