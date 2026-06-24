@@ -32,6 +32,7 @@
 # ║         endpoint-имена (admin.*) и url_for не меняются.      ║
 # ║  v4.7: backup_download — GET /admin/backup/download?type=     ║
 # ║         full|db|rules → ZIP-архив; log_action backup_download ║
+# ║  v4.8: ocr_status — GET /admin/ocr-status (перенос из ai)     ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 import io
@@ -359,4 +360,79 @@ def backup_download():
         mimetype='application/zip',
         as_attachment=True,
         download_name=zip_name,
+    )
+
+
+# ─── OCR-СТАТУС (перенесён из ai Blueprint) ───────────────────────────────────
+_OCR_INSTALL_WHITELIST_ADMIN = {
+    'easyocr':    'easyocr',
+    'pdfplumber':  'pdfplumber',
+    'docx':        'python-docx',
+    'pillow':      'Pillow',
+}
+
+
+def _check_ocr_deps() -> dict:
+    status = {}
+    for key, mod, attr in [
+        ('easyocr',    'easyocr',    '__version__'),
+        ('pdfplumber', 'pdfplumber', '__version__'),
+        ('docx',       'docx',       '__version__'),
+        ('pillow',     'PIL',        '__version__'),
+    ]:
+        try:
+            m = __import__(mod)
+            status[key] = {'ok': True, 'version': getattr(m, attr, '—')}
+        except ImportError:
+            pip_name = _OCR_INSTALL_WHITELIST_ADMIN.get(key, key)
+            status[key] = {'ok': False, 'error': f'Не установлен (pip install {pip_name})'}
+        except Exception as e:
+            status[key] = {'ok': False, 'error': str(e)}
+    return status
+
+
+@admin_bp.route('/admin/ocr-status', methods=['GET'])
+@login_required
+@admin_required
+def ocr_status():
+    deps = _check_ocr_deps()
+    conn = get_db()
+    try:
+        errors_7d = conn.execute(
+            "SELECT COUNT(*) FROM activity_log "
+            "WHERE action='ocr_error' AND created_at >= datetime('now','-7 days')"
+        ).fetchone()[0]
+        recent_errors = conn.execute(
+            "SELECT al.created_at, al.detail, u.full_name "
+            "FROM activity_log al LEFT JOIN users u ON al.user_id = u.id "
+            "WHERE al.action='ocr_error' ORDER BY al.created_at DESC LIMIT 10"
+        ).fetchall()
+        recent_errors = [dict(r) for r in recent_errors]
+        last_ocr = conn.execute(
+            "SELECT created_at FROM activity_log "
+            "WHERE action IN ('ocr_upload','ocr_preview') "
+            "ORDER BY created_at DESC LIMIT 1"
+        ).fetchone()
+        last_ocr_dt = last_ocr['created_at'] if last_ocr else None
+        ocr_logs = conn.execute(
+            """
+            SELECT ol.id, ol.created_at, ol.filename, ol.msg, ol.ok,
+                   ol.raw_text, ol.fields_json, u.full_name AS user_name
+            FROM ocr_log ol LEFT JOIN users u ON ol.user_id = u.id
+            ORDER BY ol.created_at DESC LIMIT 20
+            """
+        ).fetchall()
+        ocr_logs = [dict(r) for r in ocr_logs]
+    finally:
+        conn.close()
+    all_ok = all(v['ok'] for v in deps.values())
+    return render_template(
+        'ocr_status.html',
+        deps=deps,
+        errors_7d=errors_7d,
+        recent_errors=recent_errors,
+        last_ocr_dt=last_ocr_dt,
+        all_ok=all_ok,
+        checked_at=datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
+        ocr_logs=ocr_logs,
     )
