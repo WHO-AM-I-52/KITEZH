@@ -10,6 +10,7 @@
  ║  v1.7: добавлены карточки ready_to_send, sent_to_applicant,  ║
  ║         closed — теперь все 7 статусов + Просрочено + Всего  ║
  ║  v1.8: filter[district] from URL ?preferred_districts=...    ║
+ ║  v1.9: multi-select stat cards (#5)                          ║
  ╚══════════════════════════════════════════════════════════════╝
 #}
 
@@ -19,9 +20,9 @@
 .stat-card  { flex:1; min-width:120px; background:var(--surface); border-radius:10px;
               border-left:4px solid #aaa; padding:10px 12px; cursor:pointer;
               box-shadow:var(--card-shadow); transition:box-shadow .15s, transform .12s;
-              text-decoration:none; color:inherit; }
+              text-decoration:none; color:inherit; user-select:none; }
 .stat-card:hover  { box-shadow:0 4px 16px rgba(0,0,0,.12); transform:translateY(-1px); }
-.stat-card.active { box-shadow:0 0 0 2px var(--accent); }
+.stat-card.active { box-shadow:0 0 0 2.5px var(--accent); }
 .stat-card .sc-num  { font-size:24px; font-weight:700; line-height:1; }
 .stat-card .sc-lbl  { font-size:10px; color:var(--text-muted); margin-top:2px; }
 .stat-card.sc-all   { border-left-color:#1B5E7B; }
@@ -33,6 +34,17 @@
 .stat-card.sc-sent  { border-left-color:#20c997; }
 .stat-card.sc-closed{ border-left-color:#212529; }
 .stat-card.sc-over  { border-left-color:#dc3545; }
+
+/* Индикатор мульти-выбора */
+.stat-card.active::after {
+  content: '✓';
+  position: absolute;
+  top: 6px; right: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+}
+.stat-card { position: relative; }
 
 .filter-panel { background:var(--surface); border-radius:10px; padding:14px 16px 10px;
                box-shadow:var(--card-shadow); margin-bottom:12px; }
@@ -66,7 +78,17 @@
 .toolbar-right { margin-left:auto; display:flex; align-items:center; gap:8px; }
 .toolbar .total-badge { font-size:12px; color:var(--text-muted); }
 
-/* ─── Баннер активного фильтра по району ───────────────────── */
+/* ─── Баннер активного фильтра по статусам (мульти) ─────────── */
+#statusBanner {
+  display:none; align-items:center; gap:8px;
+  background:#fff8e1; border:1px solid #ffc107; border-radius:8px;
+  padding:6px 14px; margin-bottom:10px; font-size:13px;
+}
+#statusBanner.show { display:flex; }
+#statusBanner strong { color:#856404; }
+#statusBanner button { background:none; border:none; color:#856404; cursor:pointer; font-size:16px; line-height:1; padding:0; margin-left:auto; }
+
+/* ─── Баннер активного фильтра по району ───────────────────────── */
 #districtBanner {
   display:none; align-items:center; gap:8px;
   background:#e7f3ff; border:1px solid #0d6efd; border-radius:8px;
@@ -126,6 +148,13 @@
   <a href="/request/new" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>Новое обращение</a>
 </div>
 
+{# ─── Баннер мульти-статусного фильтра ─────────────────────────── #}
+<div id="statusBanner">
+  <i class="bi bi-funnel-fill" style="color:#856404"></i>
+  Фильтр по статусам: <strong id="statusBannerNames"></strong>
+  <button title="Сбросить фильтр по статусам" onclick="clearStatusFilter()">×</button>
+</div>
+
 {# ─── Баннер активного фильтра по району ───────────────────────── #}
 <div id="districtBanner">
   <i class="bi bi-geo-alt-fill" style="color:#0d6efd"></i>
@@ -134,31 +163,31 @@
 </div>
 
 <div class="stat-cards" id="statCards">
-  <div class="stat-card sc-all active" data-filter-status="" title="Все обращения">
+  <div class="stat-card sc-all active" data-filter-status="" title="Все обращения (кликните чтобы сбросить выбор)">
     <div class="sc-num" id="sc-all">—</div><div class="sc-lbl"><i class="bi bi-inbox"></i> Всего</div>
   </div>
-  <div class="stat-card sc-draft" data-filter-status="draft">
+  <div class="stat-card sc-draft" data-filter-status="draft" title="Можно выбрать несколько статусов">
     <div class="sc-num" id="sc-draft">—</div><div class="sc-lbl"><i class="bi bi-pencil-square"></i> Черновик</div>
   </div>
-  <div class="stat-card sc-reg" data-filter-status="registered">
+  <div class="stat-card sc-reg" data-filter-status="registered" title="Можно выбрать несколько статусов">
     <div class="sc-num" id="sc-registered">—</div><div class="sc-lbl"><i class="bi bi-hash"></i> Зарегистрировано</div>
   </div>
-  <div class="stat-card sc-work" data-filter-status="in_progress">
+  <div class="stat-card sc-work" data-filter-status="in_progress" title="Можно выбрать несколько статусов">
     <div class="sc-num" id="sc-in_progress">—</div><div class="sc-lbl"><i class="bi bi-person-workspace"></i> В работе</div>
   </div>
-  <div class="stat-card sc-rev" data-filter-status="under_review">
+  <div class="stat-card sc-rev" data-filter-status="under_review" title="Можно выбрать несколько статусов">
     <div class="sc-num" id="sc-under_review">—</div><div class="sc-lbl"><i class="bi bi-search"></i> На проверке</div>
   </div>
-  <div class="stat-card sc-ready" data-filter-status="ready_to_send">
+  <div class="stat-card sc-ready" data-filter-status="ready_to_send" title="Можно выбрать несколько статусов">
     <div class="sc-num" id="sc-ready_to_send">—</div><div class="sc-lbl"><i class="bi bi-envelope-check"></i> Готово к отправке</div>
   </div>
-  <div class="stat-card sc-sent" data-filter-status="sent_to_applicant">
+  <div class="stat-card sc-sent" data-filter-status="sent_to_applicant" title="Можно выбрать несколько статусов">
     <div class="sc-num" id="sc-sent_to_applicant">—</div><div class="sc-lbl"><i class="bi bi-send-check"></i> Отправлено</div>
   </div>
-  <div class="stat-card sc-closed" data-filter-status="closed">
+  <div class="stat-card sc-closed" data-filter-status="closed" title="Можно выбрать несколько статусов">
     <div class="sc-num" id="sc-closed">—</div><div class="sc-lbl"><i class="bi bi-check2-circle"></i> Закрыто</div>
   </div>
-  <div class="stat-card sc-over" data-filter-status="__overdue__">
+  <div class="stat-card sc-over" data-filter-status="__overdue__" title="Можно выбрать несколько статусов">
     <div class="sc-num" id="sc-overdue">—</div><div class="sc-lbl"><i class="bi bi-exclamation-triangle"></i> Просрочено</div>
   </div>
 </div>
@@ -267,12 +296,30 @@ const STATUS_MAP = {
   closed:            { text:'Закрыто',             cls:'status-closed' },
 };
 
+// Человекочитаемые названия статусов для баннера
+const STATUS_LABELS = {
+  draft:             'Черновик',
+  registered:        'Зарегистрировано',
+  in_progress:       'В работе',
+  under_review:      'На проверке',
+  ready_to_send:     'Готово к отправке',
+  sent_to_applicant: 'Отправлено',
+  closed:            'Закрыто',
+  __overdue__:       'Просрочено',
+};
+
 const state = {
-  status: '', dateFrom: '', dateTo: '', applicant: '',
+  // ── мульти-статус: массив значений (может включать '__overdue__')
+  statuses: [],
+  dateFrom: '', dateTo: '', applicant: '',
   search: '', employee: null, favorite: false, dateChip: '',
-  overdue: false, district: '',
+  district: '',
   sort: '', dir: 'desc',
 };
+
+// Вычисляемые флаги (не хранятся в state напрямую)
+function hasOverdue() { return state.statuses.includes('__overdue__'); }
+function realStatuses() { return state.statuses.filter(s => s !== '__overdue__'); }
 
 let _sortTriggered = false;
 
@@ -280,7 +327,17 @@ function buildParams(page, size) {
   const p = new URLSearchParams();
   p.set('page', page); p.set('size', size);
   if (state.sort) { p.set('sort', state.sort); p.set('dir', state.dir); }
-  if (state.status)    p.set('filter[status]',    state.status);
+
+  // ── мульти-статус
+  const rs = realStatuses();
+  if (rs.length === 1) {
+    // совместимость с backend: если один — передаём старым способом тоже
+    p.set('filter[status]', rs[0]);
+  } else if (rs.length > 1) {
+    rs.forEach(s => p.append('filter[status][]', s));
+  }
+  if (hasOverdue()) p.set('filter[overdue]', '1');
+
   if (state.dateFrom)  p.set('filter[date_from]', state.dateFrom);
   if (state.dateTo)    p.set('filter[date_to]',   state.dateTo);
   if (state.applicant) p.set('filter[applicant]', state.applicant);
@@ -288,7 +345,6 @@ function buildParams(page, size) {
   if (state.employee)  p.set('filter[employee]',  state.employee);
   if (state.favorite)  p.set('filter[favorite]',  '1');
   if (state.dateChip)  p.set('filter[date_chip]', state.dateChip);
-  if (state.overdue)   p.set('filter[overdue]',   '1');
   if (state.district)  p.set('filter[district]',  state.district);
   return p.toString();
 }
@@ -297,7 +353,45 @@ function fmtNum(v) {
   return (v == null || v === '' || v === 0) ? '<span style="color:var(--text-muted)">—</span>' : v;
 }
 
-// ── Инициализация state из URL-параметров (для перехода с дашборда) ─────────
+// ── Синхронизация select #fStatus с state.statuses ──────────────
+function syncStatusSelect() {
+  const rs = realStatuses();
+  const sel = document.getElementById('fStatus');
+  // select показывает первый статус если выбран ровно один; иначе — «Все»
+  sel.value = rs.length === 1 ? rs[0] : '';
+}
+
+// ── Обновление баннера мульти-статусного фильтра ─────────────────
+function updateStatusBanner() {
+  const banner = document.getElementById('statusBanner');
+  const names  = document.getElementById('statusBannerNames');
+  if (state.statuses.length > 0) {
+    names.textContent = state.statuses.map(s => STATUS_LABELS[s] || s).join(', ');
+    banner.classList.add('show');
+  } else {
+    banner.classList.remove('show');
+  }
+}
+
+// ── Обновление визуального состояния карточек ────────────────────
+function updateCardHighlights() {
+  document.querySelectorAll('.stat-card').forEach(card => {
+    const val = card.dataset.filterStatus;
+    const isAll = val === '';
+    if (state.statuses.length === 0) {
+      // ничего не выбрано → подсвечиваем «Всего»
+      card.classList.toggle('active', isAll);
+    } else {
+      if (isAll) {
+        card.classList.remove('active');
+      } else {
+        card.classList.toggle('active', state.statuses.includes(val));
+      }
+    }
+  });
+}
+
+// ── Инициализация state из URL-параметров ────────────────────────
 function initFromURL() {
   const params = new URLSearchParams(window.location.search);
   const district = (params.get('preferred_districts') || '').trim();
@@ -312,10 +406,17 @@ function initFromURL() {
 window.clearDistrictFilter = function() {
   state.district = '';
   document.getElementById('districtBanner').classList.remove('show');
-  // Убираем параметр из URL без перезагрузки
   const url = new URL(window.location.href);
   url.searchParams.delete('preferred_districts');
   window.history.replaceState({}, '', url);
+  table.replaceData();
+};
+
+window.clearStatusFilter = function() {
+  state.statuses = [];
+  updateCardHighlights();
+  syncStatusSelect();
+  updateStatusBanner();
   table.replaceData();
 };
 
@@ -334,7 +435,6 @@ function updateBulkBar() {
 }
 
 const tableColumns = [
-    // Чекбокс — только для админа
     ...(IS_ADMIN ? [{
       formatter: 'rowSelection',
       titleFormatter: 'rowSelection',
@@ -429,7 +529,6 @@ const tableColumns = [
     },
 ];
 
-// ── Читаем URL до создания таблицы ─────────────────────────────
 initFromURL();
 
 const table = new Tabulator('#requestsTable', {
@@ -474,7 +573,6 @@ const table = new Tabulator('#requestsTable', {
   },
 });
 
-/* ─── Row selection → обновляем bulkBar ─────────────────────────── */
 if (IS_ADMIN) {
   table.on('rowSelectionChanged', updateBulkBar);
   table.on('dataLoaded', function() { updateBulkBar(); });
@@ -527,8 +625,8 @@ function updateStatCards(stats) {
 function applyFilters() { table.replaceData(); }
 
 function resetAll() {
-  Object.assign(state, { status:'', dateFrom:'', dateTo:'', applicant:'',
-    search:'', employee:null, favorite:false, dateChip:'', overdue:false,
+  Object.assign(state, { statuses:[], dateFrom:'', dateTo:'', applicant:'',
+    search:'', employee:null, favorite:false, dateChip:'',
     district:'', sort:'', dir:'desc' });
   document.getElementById('fDateFrom').value  = '';
   document.getElementById('fDateTo').value    = '';
@@ -536,13 +634,13 @@ function resetAll() {
   document.getElementById('fApplicant').value = '';
   document.getElementById('fSearch').value    = '';
   document.getElementById('districtBanner').classList.remove('show');
+  document.getElementById('statusBanner').classList.remove('show');
   const url = new URL(window.location.href);
   url.searchParams.delete('preferred_districts');
   window.history.replaceState({}, '', url);
   document.querySelectorAll('.chip.active').forEach(c=>c.classList.remove('active'));
   document.querySelectorAll('.emp-chip.active').forEach(c=>c.classList.remove('active'));
-  document.querySelectorAll('.stat-card').forEach(c=>c.classList.remove('active'));
-  document.querySelector('.stat-card.sc-all').classList.add('active');
+  updateCardHighlights();
   table.clearSort();
   applyFilters();
 }
@@ -550,12 +648,16 @@ function resetAll() {
 function readForm() {
   state.dateFrom  = document.getElementById('fDateFrom').value;
   state.dateTo    = document.getElementById('fDateTo').value;
-  state.status    = document.getElementById('fStatus').value;
+  // select обновляет statuses только если выбрано одно значение
+  const sel = document.getElementById('fStatus').value;
+  if (sel) {
+    state.statuses = [sel];
+  }
   state.applicant = document.getElementById('fApplicant').value.trim();
   state.search    = document.getElementById('fSearch').value.trim();
 }
 
-document.getElementById('btnFind').addEventListener('click', function(){ readForm(); applyFilters(); });
+document.getElementById('btnFind').addEventListener('click', function(){ readForm(); updateCardHighlights(); updateStatusBanner(); applyFilters(); });
 document.getElementById('btnReset').addEventListener('click', function(){
   document.getElementById('fApplicant').value = '';
   document.getElementById('fSearch').value = '';
@@ -566,16 +668,20 @@ document.getElementById('btnResetAll').addEventListener('click', resetAll);
 
 ['fApplicant','fSearch','fDateFrom','fDateTo'].forEach(id => {
   document.getElementById(id).addEventListener('keydown', function(e){
-    if (e.key==='Enter') { readForm(); applyFilters(); }
+    if (e.key==='Enter') { readForm(); updateCardHighlights(); updateStatusBanner(); applyFilters(); }
   });
 });
+
+// select → одиночный выбор (синхронизируем карточки)
 document.getElementById('fStatus').addEventListener('change', function(){
-  state.status  = this.value;
-  state.overdue = false;
-  document.querySelectorAll('.stat-card').forEach(c=>c.classList.remove('active'));
-  const matchCard = document.querySelector(`.stat-card[data-filter-status="${this.value}"]`);
-  if (matchCard) matchCard.classList.add('active');
-  else document.querySelector('.stat-card.sc-all').classList.add('active');
+  const val = this.value;
+  if (val) {
+    state.statuses = [val];
+  } else {
+    state.statuses = [];
+  }
+  updateCardHighlights();
+  updateStatusBanner();
   applyFilters();
 });
 
@@ -605,20 +711,28 @@ document.querySelectorAll('.emp-chip').forEach(chip=>{
   });
 });
 
+// ── Клик по карточке статуса — МУЛЬТИ-ВЫБОР ─────────────────────
 document.querySelectorAll('.stat-card').forEach(card=>{
   card.addEventListener('click', function(){
     const val = this.dataset.filterStatus;
-    document.querySelectorAll('.stat-card').forEach(c=>c.classList.remove('active'));
-    this.classList.add('active');
-    if (val === '__overdue__') {
-      state.overdue = true;
-      state.status  = '';
+
+    if (val === '') {
+      // Карточка «Всего» — сбросить всё
+      state.statuses = [];
       document.getElementById('fStatus').value = '';
     } else {
-      state.overdue = false;
-      state.status  = val || '';
-      document.getElementById('fStatus').value = state.status;
+      // Toggle: добавить или убрать из массива
+      const idx = state.statuses.indexOf(val);
+      if (idx === -1) {
+        state.statuses.push(val);
+      } else {
+        state.statuses.splice(idx, 1);
+      }
+      syncStatusSelect();
     }
+
+    updateCardHighlights();
+    updateStatusBanner();
     applyFilters();
   });
 });
