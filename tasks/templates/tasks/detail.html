@@ -1,0 +1,221 @@
+{% extends 'base.html' %}
+{% block title %}Задача #{{ task.id }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width:860px">
+
+  {# ——— Шапка ——— #}
+  <nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{{ url_for('tasks.my_tasks') }}">Мои задачи</a></li>
+      <li class="breadcrumb-item active">#{{ task.id }} {{ task.title }}</li>
+    </ol>
+  </nav>
+
+  <div class="card shadow-sm mb-4">
+    <div class="card-body">
+
+      {# ——— Заголовок + статус ——— #}
+      <div class="d-flex justify-content-between align-items-start mb-3">
+        <div>
+          <h5 class="mb-1">{{ task.title }}</h5>
+          <small class="text-muted">Создал: {{ creator.full_name if creator else '—' }} &bull; {{ task.created_at[:10] }}</small>
+        </div>
+        {% set badge = {
+          'new':         'secondary',
+          'in_progress': 'primary',
+          'review':      'warning',
+          'done':        'success',
+          'cancelled':   'danger'
+        } %}
+        <span class="badge bg-{{ badge.get(task.status, 'secondary') }} fs-6">
+          {{ STATUS_LABELS.get(task.status, task.status) }}
+        </span>
+      </div>
+
+      {# ——— Основные поля ——— #}
+      <dl class="row mb-0">
+        <dt class="col-sm-3">Источник</dt>
+        <dd class="col-sm-9">{{ task.source or '—' }}</dd>
+
+        <dt class="col-sm-3">Срок</dt>
+        <dd class="col-sm-9">
+          {% if task.deadline %}
+            <span class="{% if task.deadline < now().date().isoformat() and task.status not in ('done','cancelled') %}text-danger fw-bold{% endif %}">
+              {{ task.deadline }}
+            </span>
+          {% else %}—{% endif %}
+        </dd>
+
+        <dt class="col-sm-3">Описание</dt>
+        <dd class="col-sm-9">{{ task.description or '—' }}</dd>
+
+        {% if task.result %}
+        <dt class="col-sm-3">Результат</dt>
+        <dd class="col-sm-9">{{ task.result }}</dd>
+        {% endif %}
+
+        {% if task.closed_at %}
+        <dt class="col-sm-3">Закрыта</dt>
+        <dd class="col-sm-9">{{ task.closed_at[:10] }}</dd>
+        {% endif %}
+
+        <dt class="col-sm-3">Исполнители</dt>
+        <dd class="col-sm-9">
+          {% if assignees %}
+            {% for a in assignees %}
+              <span class="badge bg-light text-dark border me-1">{{ a.full_name }}</span>
+            {% endfor %}
+          {% else %}
+            <span class="text-muted">Не назначены</span>
+          {% endif %}
+        </dd>
+      </dl>
+    </div>
+  </div>
+
+  {# ——— Блок действий ——— #}
+  <div class="d-flex flex-wrap gap-2 mb-4">
+
+    {# Смена статуса #}
+    {% if can_change_status and next_statuses %}
+      {% for ns in next_statuses %}
+        <form method="post" action="{{ url_for('tasks.change_status', id=task.id) }}">
+          <input type="hidden" name="status" value="{{ ns }}">
+          <button class="btn btn-sm btn-outline-primary" type="submit">
+            → {{ STATUS_LABELS.get(ns, ns) }}
+          </button>
+        </form>
+      {% endfor %}
+    {% endif %}
+
+    {# Закрыть / отменить #}
+    {% if can_change_status and task.status in ('in_progress', 'review') %}
+      <button class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#closeModal">
+        ✓ Закрыть
+      </button>
+    {% endif %}
+
+    {# Редактировать #}
+    {% if can_edit and task.status not in ('done', 'cancelled') %}
+      <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editModal">
+        ✏️ Редактировать
+      </button>
+    {% endif %}
+
+    {# Назначить #}
+    {% if can_assign and task.status not in ('done', 'cancelled') %}
+      <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#assignModal">
+        👤 Назначить
+      </button>
+    {% endif %}
+
+  </div>
+
+</div>
+
+{# ===== МОДАЛЬНЫЕ ОКНА ===== #}
+
+{# ——— Закрыть ——— #}
+<div class="modal fade" id="closeModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post" action="{{ url_for('tasks.close_task', id=task.id) }}">
+        <div class="modal-header">
+          <h5 class="modal-title">Завершить задачу</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Результат</label>
+            <textarea name="result" class="form-control" rows="3" placeholder="Кратко опишите что сделано..."></textarea>
+          </div>
+          <div class="mb-0">
+            <label class="form-label">Действие</label>
+            <div class="d-flex gap-2">
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="action" value="done" id="actDone" checked>
+                <label class="form-check-label" for="actDone">Выполнено</label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="action" value="cancelled" id="actCancel">
+                <label class="form-check-label" for="actCancel">Отменить</label>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Назад</button>
+          <button type="submit" class="btn btn-success">Подтвердить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{# ——— Редактировать ——— #}
+<div class="modal fade" id="editModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <form method="post" action="{{ url_for('tasks.task_detail', id=task.id) }}">
+        <div class="modal-header">
+          <h5 class="modal-title">Редактировать</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Заголовок</label>
+            <input type="text" name="title" class="form-control" value="{{ task.title }}" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Описание</label>
+            <textarea name="description" class="form-control" rows="4">{{ task.description or '' }}</textarea>
+          </div>
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Источник</label>
+              <input type="text" name="source" class="form-control" value="{{ task.source or '' }}">
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Срок</label>
+              <input type="date" name="deadline" class="form-control" value="{{ task.deadline or '' }}">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+          <button type="submit" class="btn btn-primary">Сохранить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{# ——— Назначить ——— #}
+<div class="modal fade" id="assignModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post" action="{{ url_for('tasks.assign_user', id=task.id) }}">
+        <div class="modal-header">
+          <h5 class="modal-title">Назначить исполнителя</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <select name="user_id" class="form-select">
+            {% for u in all_users %}
+              {% if u.id not in assignees|map(attribute='id')|list %}
+                <option value="{{ u.id }}">{{ u.full_name }}</option>
+              {% endif %}
+            {% endfor %}
+          </select>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+          <button type="submit" class="btn btn-info text-white">Назначить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
