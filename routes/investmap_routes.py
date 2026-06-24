@@ -75,10 +75,11 @@ def investmap_v2_post():
     {
         'results': list[dict],  # score/filled/total/missing/skipped
         'count': int,
+        'summary_sms': str | null,  # Сводный SMS (не null только при батче > 1)
         'export': {
             'format': int,
             'count': int,
-            'text': str         # текст площадки для передачи в ИИ
+            'text': str         # текст площадки для передачи в ИИ-чат
         },
         'error': null
     }
@@ -109,13 +110,16 @@ def investmap_v2_post():
         else:
             results = [calc_portal_score_v2(data, db)]
 
+        summary_sms = build_summary_sms(results) if len(results) > 1 else None
+
         log_action(db, getattr(g, 'user', {}).get('id'), 'investmap_v2_score',
                    detail=f'count={len(results)}')
 
         return jsonify({
-            'results': results,
-            'count':   len(results),
-            'export':  {
+            'results':     results,
+            'count':       len(results),
+            'summary_sms': summary_sms,
+            'export': {
                 'format': fmt,
                 'count':  export.get('count', len(results)),
                 'text':   export.get('text', ''),
@@ -128,7 +132,7 @@ def investmap_v2_post():
         return jsonify({'results': [], 'count': 0, 'error': 'Внутренняя ошибка сервера'}), 500
 
 
-# ── CRUD-редактор правил investmap_rules ──────────────────────────────────
+# ── CRUD-редактор правил investmap_rules ────────────────────────────────────────────
 
 @investmap_bp.route('/investmap/v2/rules')
 @login_required
@@ -223,7 +227,7 @@ def investmap_v2_rules_values():
     return jsonify([v['value'] for v in values])
 
 
-# ── Конвертация и анализ ───────────────────────────────────────────────────
+# ── Конвертация и анализ ─────────────────────────────────────────────────────
 
 @investmap_bp.route('/investmap/convert', methods=['POST'])
 @login_required
