@@ -125,6 +125,43 @@ CREATE INDEX IF NOT EXISTS idx_rc_request ON review_chain(request_id);
 """)
 
 
+def _migrate_letters_tables(conn):
+    """Создаёт таблицы журнала писем и добавляет executor_id если отсутствует."""
+    conn.executescript("""
+CREATE TABLE IF NOT EXISTS letters (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    date        TEXT NOT NULL,
+    number      TEXT,
+    subject     TEXT,
+    note        TEXT,
+    created_by  INTEGER NOT NULL REFERENCES users(id),
+    created_at  TEXT DEFAULT CURRENT_TIMESTAMP,
+    executor_id INTEGER REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_letters_date ON letters(date);
+CREATE INDEX IF NOT EXISTS idx_letters_executor ON letters(executor_id);
+
+CREATE TABLE IF NOT EXISTS letter_tags (
+    id   INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE IF NOT EXISTS letter_tag_links (
+    letter_id INTEGER NOT NULL REFERENCES letters(id) ON DELETE CASCADE,
+    tag_id    INTEGER NOT NULL REFERENCES letter_tags(id) ON DELETE CASCADE,
+    PRIMARY KEY (letter_id, tag_id)
+);
+CREATE INDEX IF NOT EXISTS idx_ltl_letter ON letter_tag_links(letter_id);
+CREATE INDEX IF NOT EXISTS idx_ltl_tag    ON letter_tag_links(tag_id);
+""")
+    # Добавить executor_id в существующие БД где таблица уже есть
+    letter_cols = {r[1] for r in conn.execute("PRAGMA table_info(letters)").fetchall()}
+    if 'executor_id' not in letter_cols:
+        conn.execute(
+            "ALTER TABLE letters ADD COLUMN executor_id INTEGER REFERENCES users(id)"
+        )
+
+
 def _migrate_investmap_tables(conn):
     """Таблицы для investmap v2: classifiers, fields (116 атрибутов RF), rules."""
     conn.executescript("""
@@ -430,6 +467,9 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         # ── investmap v2 ─────────────────────────────────────────────────────────────
         _migrate_investmap_tables(conn)
 
+        # ── letters ──────────────────────────────────────────────────────────────────
+        _migrate_letters_tables(conn)
+
         # ── Миграция requests ──────────────────────────────────────────────────────
         cols = {r[1] for r in conn.execute("PRAGMA table_info(requests)").fetchall()}
         for col in ['source_type', 'request_files', 'edit_reason', 'updated_by']:
@@ -500,6 +540,9 @@ def migrate_db():
 
         # ── investmap v2 ─────────────────────────────────────────────────────────────
         _migrate_investmap_tables(conn)
+
+        # ── letters ──────────────────────────────────────────────────────────────────
+        _migrate_letters_tables(conn)
 
         # ── requests ──────────────────────────────────────────────────────────────────────────
         cols = {r[1] for r in conn.execute("PRAGMA table_info(requests)").fetchall()}
