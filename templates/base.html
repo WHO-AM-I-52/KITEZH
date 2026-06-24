@@ -11,6 +11,7 @@
 {# ║  v2.25.1: FIX-2+FIX-3 seconds_left, download_error hide    ║ #}
 {# ║  v2.25.2: FIX-2 download_error → hideBanner в poll()       ║ #}
 {# ║  v2.25.3: FIX счётчик онлайна — d.count → d.online         ║ #}
+{# ║  v2.25.4: pre-status poll 3s→10s; guard online-users login  ║ #}
 {# ╚══════════════════════════════════════════════════════════════╝ #}
 <html lang="ru">
 <head>
@@ -808,6 +809,7 @@ document.addEventListener('DOMContentLoaded', function () {
 })();
 </script>
 
+{% if 'user_id' in session %}
 <script>
 (function(){
   var el        = document.getElementById('onlineCount');
@@ -862,6 +864,7 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 })();
 </script>
+{% endif %}
 
 {# ─── Баннер обновления: опрос /api/update/pre-status ─── #}
 {% if 'user_id' in session %}
@@ -940,7 +943,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   }
 
-  /* Polling каждые 3 сек */
+  /* Polling каждые 10 сек */
   function poll() {
     fetch('/api/update/pre-status', {credentials:'same-origin', cache:'no-store'})
     .then(function(r){ return r.ok ? r.json() : null; })
@@ -954,7 +957,7 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   poll();
-  setInterval(poll, 3000);
+  setInterval(poll, 10000);
 
   /* ── Кнопки (только admin) ── */
   if (isAdmin) {
