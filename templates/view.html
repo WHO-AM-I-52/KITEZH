@@ -421,7 +421,18 @@
       {{ field('Полное наименование', req.applicant_full_name) }}
       {{ field('Краткое наименование', req.applicant_short_name) }}
       {{ field('Правовая форма', req.applicant_legal_form) }}
-      {{ field('ИНН', req.applicant_inn) }}
+      {% if req.applicant_inn %}
+      <tr>
+        <td class="text-muted" style="width:45%">ИНН</td>
+        <td>
+          {{ req.applicant_inn }}
+          <a href="{{ url_for('misc.investor_card', inn=req.applicant_inn) }}"
+             class="btn btn-sm btn-outline-secondary ms-2">
+            📊 Карточка инвестора
+          </a>
+        </td>
+      </tr>
+      {% endif %}
       {{ field('Категория МСП', req.applicant_msp_category) }}
       {% if req.applicant_okved_main %}
       <tr>
