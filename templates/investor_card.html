@@ -21,14 +21,14 @@
       <table class="table table-sm table-hover mb-0">
         <thead class="table-light">
           <tr>
-            <th>Номер</th><th>Тема</th><th>Статус</th><th>Дата</th>
+            <th>Номер</th><th>Проект</th><th>Статус</th><th>Дата</th>
           </tr>
         </thead>
         <tbody>
           {% for r in requests %}
           <tr>
             <td><a href="{{ url_for('requests.view', req_id=r.id) }}">{{ r.request_number }}</a></td>
-            <td>{{ r.subject }}</td>
+            <td>{{ r.project_name or '—' }}</td>
             <td>{{ r.status }}</td>
             <td>{{ r.request_date }}</td>
           </tr>
