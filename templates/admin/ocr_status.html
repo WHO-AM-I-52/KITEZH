@@ -1,0 +1,434 @@
+{% extends 'base.html' %}
+{# ╔══════════════════════════════════════════════════════════════╗ #}
+{# ║ ocr_status.html                                             ║ #}
+{# ║ feat #68: Панель статуса OCR-движка для администратора      ║ #}
+{# ║ feat: блок истории OCR-распознаваний с полным логом       ║ #}
+{# ║ fix: copyText — textarea-фоллбэк, работает на http://         ║ #}
+{# ║ feat: кнопка Установить + лог pip (фон + polling)      ║ #}
+{# ╚══════════════════════════════════════════════════════════════╝ #}
+
+{% block content %}
+<div class="d-flex align-items-center gap-2 mb-4">
+  <i class="bi bi-cpu-fill fs-4" style="color:#1B5E7B"></i>
+  <h4 class="mb-0 fw-bold">Статус OCR-движка</h4>
+  <span class="badge bg-secondary ms-2" style="font-size:11px; font-weight:400">
+    Проверено: {{ checked_at }}
+  </span>
+  {% if all_ok %}
+    <span class="badge bg-success ms-1">Всё в порядке</span>
+  {% else %}
+    <span class="badge bg-danger ms-1">Требует внимания</span>
+  {% endif %}
+</div>
+
+{# ── Зависимости ──────────────────────────────────────────────────────────────────────────────────────── #}
+<div class="card mb-4">
+  <div class="card-header bg-white fw-semibold d-flex align-items-center gap-2">
+    <i class="bi bi-boxes text-secondary"></i> Зависимости
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th style="width:160px">Компонент</th>
+          <th style="width:100px">Статус</th>
+          <th>Версия / Информация</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% set dep_labels = [
+          ('easyocr',    'bi-eye-fill',        'easyocr'),
+          ('pdfplumber', 'bi-file-pdf-fill',   'pdfplumber'),
+          ('docx',       'bi-file-word-fill',  'python-docx'),
+          ('pillow',     'bi-image-fill',      'Pillow (PIL)'),
+        ] %}
+        {% for key, icon, label in dep_labels %}
+          {% set d = deps.get(key, {'ok': False, 'error': 'Нет данных'}) %}
+          <tr id="dep-row-{{ key }}">
+            <td>
+              <i class="bi {{ icon }} me-1 text-secondary"></i>
+              <span class="fw-semibold">{{ label }}</span>
+            </td>
+            <td id="dep-status-{{ key }}">
+              {% if d.ok %}
+                <span class="badge bg-success"><i class="bi bi-check-circle-fill me-1"></i>OK</span>
+              {% else %}
+                <span class="badge bg-danger"><i class="bi bi-x-circle-fill me-1"></i>Ошибка</span>
+              {% endif %}
+            </td>
+            <td style="font-size:13px">
+              {% if d.ok %}
+                <span class="text-muted">{{ d.version }}</span>
+              {% else %}
+                <span class="text-danger me-2">{{ d.error }}</span>
+                <button class="btn btn-sm btn-outline-warning py-0 px-2"
+                        style="font-size:11px"
+                        id="btn-install-{{ key }}"
+                        onclick="installPkg('{{ key }}')">
+                  <i class="bi bi-download me-1"></i>Установить
+                </button>
+              {% endif %}
+            </td>
+          </tr>
+          {# ─ консоль лога pip (initially hidden) ─ #}
+          <tr id="install-log-row-{{ key }}" style="display:none">
+            <td colspan="3" class="p-0">
+              <div class="px-3 py-2" style="background:#1e2235">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                  <span style="font-size:11px; color:#8899cc">
+                    <i class="bi bi-terminal me-1"></i>pip install {{ label }}
+                  </span>
+                  <span id="install-status-{{ key }}" style="font-size:11px"></span>
+                </div>
+                <pre id="install-log-{{ key }}"
+                     style="font-size:11px; max-height:220px; overflow-y:auto;
+                            background:transparent; color:#c8d0e8;
+                            white-space:pre-wrap; word-break:break-all;
+                            margin:0; padding:0"></pre>
+              </div>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{# ── Статистика и тест ───────────────────────────────────────────────────────────────────────────────────── #}
+<div class="row g-4 mb-4">
+  <div class="col-12 col-md-5">
+    <div class="card h-100">
+      <div class="card-header bg-white fw-semibold d-flex align-items-center gap-2">
+        <i class="bi bi-bar-chart-fill text-secondary"></i> Активность
+      </div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-6">
+            <div class="p-3 rounded text-center" style="background:#fff3cd">
+              <div class="fs-2 fw-bold {% if errors_7d > 0 %}text-danger{% else %}text-success{% endif %}">
+                {{ errors_7d }}
+              </div>
+              <div class="text-muted" style="font-size:12px">Ошибок за 7 дней</div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="p-3 rounded text-center" style="background:#e8f5e9">
+              <div class="fs-5 fw-bold text-secondary" style="font-size:13px!important; padding-top:6px">
+                {% if last_ocr_dt %}
+                  {{ last_ocr_dt[:16] | replace('T', ' ') }}
+                {% else %}
+                  —
+                {% endif %}
+              </div>
+              <div class="text-muted" style="font-size:12px">Последний OCR-запуск</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-md-7">
+    <div class="card h-100">
+      <div class="card-header bg-white fw-semibold d-flex align-items-center gap-2">
+        <i class="bi bi-play-circle-fill text-secondary"></i> Тестовый запуск OCR
+      </div>
+      <div class="card-body">
+        <p class="text-muted mb-3" style="font-size:13px">
+          Создаёт тестовое изображение и прогоняет через <code>easyocr</code>.
+          Позволяет убедиться что движок запускается без ошибок.
+        </p>
+        <button class="btn btn-outline-primary" id="btnOcrTest" onclick="runOcrTest()">
+          <i class="bi bi-play-fill me-1"></i> Запустить тест
+        </button>
+        <div id="ocrTestResult" class="mt-3" style="display:none">
+          <div id="ocrTestBody" class="alert mb-0"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── Последние ошибки OCR ───────────────────────────────────────────────────────────────────────────────────────────── #}
+{% if recent_errors %}
+<div class="card mb-4">
+  <div class="card-header bg-white fw-semibold d-flex align-items-center gap-2">
+    <i class="bi bi-exclamation-triangle-fill text-warning"></i> Последние ошибки OCR
+    <span class="badge bg-danger ms-1">{{ recent_errors | length }}</span>
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th style="width:150px">Дата/время</th>
+          <th style="width:120px">Пользователь</th>
+          <th>Детали</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for err in recent_errors %}
+        <tr>
+          <td class="text-muted" style="font-size:12px">{{ err.created_at[:16] | replace('T',' ') if err.created_at else '—' }}</td>
+          <td style="font-size:12px">{{ err.full_name or '—' }}</td>
+          <td style="font-size:12px" class="text-danger">{{ err.detail or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="alert alert-success d-flex align-items-center gap-2 mb-4">
+  <i class="bi bi-check-circle-fill"></i>
+  Ошибок OCR за последние 7 дней не зафиксировано.
+</div>
+{% endif %}
+
+{# ── История распознаваний ───────────────────────────────────────────────────────────────────────────────────────────────────── #}
+<div class="card">
+  <div class="card-header bg-white fw-semibold d-flex align-items-center gap-2">
+    <i class="bi bi-clock-history text-secondary"></i> История распознаваний
+    {% if ocr_logs %}
+      <span class="badge bg-secondary ms-1">{{ ocr_logs | length }}</span>
+    {% endif %}
+  </div>
+  {% if ocr_logs %}
+  <div class="card-body p-0">
+    <table class="table table-sm table-hover mb-0" style="font-size:12px">
+      <thead class="table-light">
+        <tr>
+          <th style="width:140px">Дата/время</th>
+          <th style="width:80px">Статус</th>
+          <th style="width:160px">Файл</th>
+          <th style="width:120px">Пользователь</th>
+          <th>Сообщение</th>
+          <th style="width:110px"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for log in ocr_logs %}
+        <tr>
+          <td class="text-muted">{{ log.created_at[:16] if log.created_at else '—' }}</td>
+          <td>
+            {% if log.ok %}
+              <span class="badge bg-success">ОК</span>
+            {% else %}
+              <span class="badge bg-danger">Ошибка</span>
+            {% endif %}
+          </td>
+          <td class="text-truncate" style="max-width:160px" title="{{ log.filename or '' }}">{{ log.filename or '—' }}</td>
+          <td>{{ log.user_name or '—' }}</td>
+          <td class="text-muted">{{ (log.msg or '—')[:80] }}{% if log.msg and log.msg|length > 80 %}…{% endif %}</td>
+          <td>
+            <button class="btn btn-xs btn-outline-secondary py-0 px-2" style="font-size:11px"
+                    onclick="toggleOcrLog({{ log.id }})" id="btn-log-{{ log.id }}">
+              <i class="bi bi-journal-text me-1"></i>Лог
+            </button>
+          </td>
+        </tr>
+        <tr id="log-detail-{{ log.id }}" style="display:none">
+          <td colspan="6" class="p-0">
+            <div class="p-3" style="background:#f8f9fa; border-top:1px solid #dee2e6">
+              <div class="row g-3">
+                <div class="col-12 col-md-6">
+                  <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="fw-semibold" style="font-size:11px; color:#555">
+                      <i class="bi bi-file-text me-1"></i>ИСХОДНЫЙ ТЕКСТ
+                    </span>
+                    <button class="btn btn-xs btn-outline-secondary py-0 px-2" style="font-size:10px"
+                            id="copybtn-raw-{{ log.id }}"
+                            onclick="copyText('raw-{{ log.id }}','copybtn-raw-{{ log.id }}')">
+                      <i class="bi bi-clipboard me-1"></i>Копировать
+                    </button>
+                  </div>
+                  <pre id="raw-{{ log.id }}"
+                       style="font-size:11px;max-height:300px;overflow-y:auto;
+                              background:#fff;border:1px solid #dee2e6;
+                              border-radius:4px;padding:8px;white-space:pre-wrap;
+                              word-break:break-word;margin:0">{{ log.raw_text or '(пусто)' }}</pre>
+                </div>
+                <div class="col-12 col-md-6">
+                  <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="fw-semibold" style="font-size:11px; color:#555">
+                      <i class="bi bi-list-check me-1"></i>РАСПОЗНАННЫЕ ПОЛЯ
+                    </span>
+                    <button class="btn btn-xs btn-outline-secondary py-0 px-2" style="font-size:10px"
+                            id="copybtn-fields-{{ log.id }}"
+                            onclick="copyText('fields-{{ log.id }}','copybtn-fields-{{ log.id }}')">
+                      <i class="bi bi-clipboard me-1"></i>Копировать
+                    </button>
+                  </div>
+                  <pre id="fields-{{ log.id }}"
+                       style="font-size:11px;max-height:300px;overflow-y:auto;
+                              background:#fff;border:1px solid #dee2e6;
+                              border-radius:4px;padding:8px;white-space:pre-wrap;
+                              word-break:break-word;margin:0">{{ log.fields_json or '{}' }}</pre>
+                </div>
+              </div>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="card-body">
+    <p class="text-muted mb-0" style="font-size:13px">
+      <i class="bi bi-info-circle me-1"></i>
+      История пуста. Записи появятся после первого OCR-распознавания.
+    </p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function runOcrTest() {
+  var btn = document.getElementById('btnOcrTest');
+  var resultDiv = document.getElementById('ocrTestResult');
+  var resultBody = document.getElementById('ocrTestBody');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Запуск...';
+  resultDiv.style.display = 'none';
+  fetch('/ai/ocr-test', {method:'POST', headers:{'X-Requested-With':'XMLHttpRequest'}})
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      resultDiv.style.display = 'block';
+      if (data.ok) {
+        resultBody.className = 'alert alert-success mb-0';
+        resultBody.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i>' + data.result;
+      } else {
+        resultBody.className = 'alert alert-danger mb-0';
+        resultBody.innerHTML = '<i class="bi bi-x-circle-fill me-1"></i>' + (data.error || 'Неизвестная ошибка');
+      }
+    })
+    .catch(function(e){
+      resultDiv.style.display = 'block';
+      resultBody.className = 'alert alert-danger mb-0';
+      resultBody.innerHTML = '<i class="bi bi-x-circle-fill me-1"></i>Ошибка сети: ' + e;
+    })
+    .finally(function(){
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-play-fill me-1"></i> Запустить тест';
+    });
+}
+
+function toggleOcrLog(id) {
+  var row = document.getElementById('log-detail-' + id);
+  var btn = document.getElementById('btn-log-' + id);
+  if (!row) return;
+  var visible = row.style.display !== 'none';
+  row.style.display = visible ? 'none' : 'table-row';
+  btn.classList.toggle('btn-outline-secondary', visible);
+  btn.classList.toggle('btn-secondary', !visible);
+}
+
+// ─── Установка зависимости — запуск + polling ──────────────────────────────
+var _pollTimers = {};
+
+function installPkg(key) {
+  var btn      = document.getElementById('btn-install-' + key);
+  var logRow   = document.getElementById('install-log-row-' + key);
+  var logPre   = document.getElementById('install-log-' + key);
+  var statusEl = document.getElementById('install-status-' + key);
+  if (!btn || !logRow || !logPre) return;
+
+  // Показываем консоль сразу
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm" style="width:.7rem;height:.7rem"></span>';
+  logRow.style.display = 'table-row';
+  logPre.textContent = 'Запуск pip install…';
+  statusEl.innerHTML = '<span style="color:#8899cc;font-size:11px"><span class="spinner-border spinner-border-sm" style="width:.6rem;height:.6rem"></span> Устанавливаю...<\/span>';
+
+  // 1. Запускаем фоновую установку
+  fetch('/ai/ocr-install', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({package: key})
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!data.ok) {
+        logPre.textContent = data.error || 'Ошибка запуска';
+        statusEl.innerHTML = '<span style="color:#f44336;font-size:11px">Ошибка<\/span>';
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-download me-1"></i>Установить';
+        return;
+      }
+      // 2. Запуск принят — начинаем polling
+      _pollTimers[key] = setInterval(function() { _pollStatus(key); }, 2000);
+    })
+    .catch(function(e) {
+      logPre.textContent = 'Ошибка сети: ' + e;
+      statusEl.innerHTML = '<span style="color:#f44336;font-size:11px">Нет связи<\/span>';
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-download me-1"></i>Установить';
+    });
+}
+
+function _pollStatus(key) {
+  fetch('/ai/ocr-install-status?pkg=' + encodeURIComponent(key), {credentials: 'same-origin'})
+    .then(function(r) { return r.json(); })
+    .then(function(job) {
+      var logPre   = document.getElementById('install-log-' + key);
+      var statusEl = document.getElementById('install-status-' + key);
+      var btn      = document.getElementById('btn-install-' + key);
+      var statusBadge = document.getElementById('dep-status-' + key);
+
+      if (job.output) {
+        logPre.textContent = job.output;
+        logPre.scrollTop = logPre.scrollHeight;
+      }
+
+      if (job.done) {
+        clearInterval(_pollTimers[key]);
+        delete _pollTimers[key];
+
+        if (job.ok) {
+          statusEl.innerHTML = '<span style="color:#4caf50;font-size:11px"><i class="bi bi-check-circle-fill me-1"></i>Установлено<\/span>';
+          if (statusBadge) statusBadge.innerHTML = '<span class="badge bg-success"><i class="bi bi-check-circle-fill me-1"></i>OK<\/span>';
+          if (btn) { btn.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i>Готово'; btn.classList.replace('btn-outline-warning','btn-outline-success'); }
+          // Перезагрузка через 3 с — версия обновится
+          setTimeout(function() { location.reload(); }, 3000);
+        } else {
+          statusEl.innerHTML = '<span style="color:#f44336;font-size:11px"><i class="bi bi-x-circle-fill me-1"></i>Ошибка<\/span>';
+          if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>Повторить'; }
+        }
+      }
+    })
+    .catch(function() { /* тихая ошибка поллинга */ });
+}
+
+function copyText(elemId, btnId) {
+  var el  = document.getElementById(elemId);
+  var btn = document.getElementById(btnId);
+  if (!el) return;
+  var text = el.innerText || el.textContent || '';
+  function flashBtn() {
+    if (!btn) return;
+    var orig = btn.innerHTML;
+    btn.innerHTML = '<i class="bi bi-check me-1"></i>Скопировано';
+    btn.classList.add('btn-success'); btn.classList.remove('btn-outline-secondary');
+    setTimeout(function() {
+      btn.innerHTML = orig;
+      btn.classList.remove('btn-success'); btn.classList.add('btn-outline-secondary');
+    }, 1500);
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(flashBtn).catch(function() { fallbackCopy(text, flashBtn); });
+  } else {
+    fallbackCopy(text, flashBtn);
+  }
+}
+function fallbackCopy(text, cb) {
+  var ta = document.createElement('textarea');
+  ta.value = text; ta.style.position='fixed'; ta.style.top='0'; ta.style.left='0'; ta.style.opacity='0';
+  document.body.appendChild(ta); ta.focus(); ta.select();
+  try { document.execCommand('copy'); if(cb) cb(); } catch(e) { console.warn(e); }
+  document.body.removeChild(ta);
+}
+</script>
+{% endblock %}
