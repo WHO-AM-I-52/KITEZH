@@ -26,7 +26,7 @@ STATUS_LABELS = {
 }
 
 
-# ─── Декоратор ──────────────────────────────────────────────────────────────────
+# ─── Декоратор ──────────────────────────────────────────────────────────────────────────────
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -59,7 +59,7 @@ def _can_assign(task, user_id, role):
     return task['created_by'] == user_id or role in ('admin', 'manager')
 
 
-# ─── РОУТЫ ─────────────────────────────────────────────────────────────────────
+# ─── РОУТЫ ───────────────────────────────────────────────────────────────────────────────
 
 @tasks_bp.route('/my')
 @login_required
@@ -176,8 +176,8 @@ def create_task():
             (task_id, uid, now, user_id)
         )
 
+    log_action(db, user_id, 'task_create', task_id)
     db.commit()
-    log_action(user_id, 'task_create', task_id)
     return redirect(url_for('tasks.task_detail', id=task_id))
 
 
@@ -207,8 +207,8 @@ def task_detail(id):
             ''',
             (title, description, deadline, source, id)
         )
+        log_action(db, user_id, 'task_edit', id)
         db.commit()
-        log_action(user_id, 'task_edit', id)
         return redirect(url_for('tasks.task_detail', id=id))
 
     # GET
@@ -264,8 +264,8 @@ def change_status(id):
         abort(400)
 
     db.execute('UPDATE tasks SET status=? WHERE id=?', (new_status, id))
+    log_action(db, user_id, 'task_status_change', id, detail=new_status)
     db.commit()
-    log_action(user_id, 'task_status_change', id, detail=new_status)
     return redirect(url_for('tasks.task_detail', id=id))
 
 
@@ -283,20 +283,20 @@ def close_task(id):
     if not _can_change_status(task, assignee_ids, user_id, role):
         abort(403)
 
-    action    = request.form.get('action', 'done')
+    action     = request.form.get('action', 'done')
     new_status = 'done' if action == 'done' else 'cancelled'
     if new_status not in ALLOWED_TRANSITIONS.get(task['status'], []):
         abort(400)
 
-    result   = request.form.get('result', '').strip()
-    now      = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
+    result = request.form.get('result', '').strip()
+    now    = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
 
     db.execute(
         'UPDATE tasks SET status=?, result=?, closed_at=? WHERE id=?',
         (new_status, result, now, id)
     )
+    log_action(db, user_id, 'task_close', id)
     db.commit()
-    log_action(user_id, 'task_close', id)
     return redirect(url_for('tasks.task_detail', id=id))
 
 
@@ -330,6 +330,6 @@ def assign_user(id):
         ''',
         (id, new_uid, now, user_id)
     )
+    log_action(db, user_id, 'task_assign', id)
     db.commit()
-    log_action(user_id, 'task_assign', id)
     return redirect(url_for('tasks.task_detail', id=id))
