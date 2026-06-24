@@ -13,6 +13,7 @@
 # ║           с datetime('now') SQLite (UTC)                      ║
 # ║  v2.9.2: /api/online-users — алиас для /api/online           ║
 # ║  v3.0.0: /investor/<inn> — карточка инвестора (#13)          ║
+# ║  v3.0.1: fix — subject → project_name в запросе requests    ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, render_template, session, jsonify, request as flask_request, redirect, url_for
@@ -255,7 +256,7 @@ def investor_card(inn):
     # 1. Обращения по ИНН
     requests_rows = conn.execute(
         """
-        SELECT id, request_number, subject, status, request_date, applicant_short_name
+        SELECT id, request_number, project_name, status, request_date, applicant_short_name
         FROM requests
         WHERE applicant_inn = ?
         ORDER BY request_date DESC
