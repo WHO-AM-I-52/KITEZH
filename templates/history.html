@@ -3,7 +3,7 @@
 
 {# ═══════════════════════════════════════════════════════════════ #}
 {#   history.html — История изменений обращения                  #}
-{#   v2.4: кнопка «Откатить» восстановлена (admin / can_rollback)      #}
+{#   v2.5: блок ключевых изменений (field_details)            #}
 {# ═══════════════════════════════════════════════════════════════ #}
 
 <style>
@@ -19,15 +19,19 @@
 .hist-table .field-col { width:28%; color:#6c757d; font-size:.8rem; }
 .hist-table .was-col   { width:36%; }
 .hist-table .now-col   { width:36%; }
+.key-changes-block { border-top:1px solid rgba(0,0,0,.08); background:rgba(13,110,253,.03); }
+.key-changes-block .key-label { font-size:.75rem; font-weight:600; color:#0d6efd; letter-spacing:.04em; text-transform:uppercase; }
 
-/* ── Тёмные темы: diff-viewer ───────────────────────────────── */
+/* ── Тёмные темы: diff-viewer ───────────────────────────────────── */
 body[data-theme="dark"] .diff-del  { background:#3d1a1a; color:#f87171; }
 body[data-theme="dark"] .diff-ins  { background:#0f2d1a; color:#4ade80; }
+body[data-theme="dark"] .key-changes-block { background:rgba(13,110,253,.06); }
 body[data-theme="zone"] .diff-del  { background:#2d1010; color:#f87171; }
 body[data-theme="zone"] .diff-ins  { background:#0a2010; color:#86efac; }
+body[data-theme="zone"] .key-changes-block { background:rgba(13,110,253,.06); }
 </style>
 
-{# ── ШАПКА ───────────────────────────────────────────────────── #}
+{# ── ШАПКА ───────────────────────────────────────────────────────────────── #}
 <div class="d-flex align-items-center mb-4 gap-2">
   <a href="{{ url_for('requests.view_request', rid=rid) }}" class="btn btn-sm btn-outline-secondary">
     <i class="bi bi-arrow-left"></i>
@@ -46,21 +50,21 @@ body[data-theme="zone"] .diff-ins  { background:#0a2010; color:#86efac; }
   </h5>
 </div>
 
-{# ── ПУСТО ───────────────────────────────────────────────────── #}
+{# ── ПУСТО ───────────────────────────────────────────────────────────────── #}
 {% if not history %}
 <div class="alert alert-info">
   <i class="bi bi-info-circle me-1"></i>
   История изменений отсутствует — обращение ещё не редактировалось.
 </div>
 
-{# ── СПИСОК ЗАПИСЕЙ ──────────────────────────────────────────── #}
+{# ── СПИСОК ЗАПИСЕЙ ────────────────────────────────────────────────────────── #}
 {% else %}
 {% for entry in history %}
 {% set card_id = 'hist-' ~ loop.index %}
 <div class="card mb-3 border-start border-4 {% if entry.action == 'rollback' %}border-danger{% else %}border-warning{% endif %}"
      style="box-shadow:0 1px 4px rgba(0,0,0,.07)">
 
-  {# ── ЗАГОЛОВОК ─────────────────────────────────────────────── #}
+  {# ── ЗАГОЛОВОК ───────────────────────────────────────────────────────── #}
   <div class="card-body py-2 px-3 hist-header {% if not loop.first %}collapsed{% endif %}"
        data-target="{{ card_id }}" onclick="histToggle(this)">
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -77,9 +81,14 @@ body[data-theme="zone"] .diff-ins  { background:#0a2010; color:#86efac; }
         {% if entry.changes %}
           <span class="badge bg-secondary ms-1" style="font-size:.7rem">{{ entry.changes|length }} полей</span>
         {% endif %}
+        {% if entry.field_details %}
+          <span class="badge bg-info text-dark ms-1" style="font-size:.7rem">
+            <i class="bi bi-lightning-fill me-1"></i>{{ entry.field_details|length }} ключевых
+          </span>
+        {% endif %}
       </div>
       <div class="d-flex align-items-center gap-2">
-        {# ── КНОПКА ОТКАТИТЬ ───────────────────────────────── #}
+        {# ── КНОПКА ОТКАТИТЬ ────────────────────────────────────── #}
         {% if perms.can_rollback and entry.action != 'rollback' %}
         <form method="post"
               action="{{ url_for('requests.rollback_request', rid=rid, hid=entry.id) }}"
@@ -98,10 +107,46 @@ body[data-theme="zone"] .diff-ins  { background:#0a2010; color:#86efac; }
     </div>
   </div>
 
-  {# ── ТЕЛО ─────────────────────────────────────────────────── #}
+  {# ── ТЕЛО ─────────────────────────────────────────────────────────────── #}
   <div id="{{ card_id }}" style="{% if not loop.first %}display:none{% endif %}">
+
+    {# ── БЛОК КЛЮЧЕВЫХ ИЗМЕНЕНИЙ (новые записи с field/old_val/new_val) #}
+    {% if entry.field_details %}
+    <div class="key-changes-block px-3 py-2">
+      <div class="key-label mb-2">
+        <i class="bi bi-lightning-fill me-1"></i>Ключевые изменения
+      </div>
+      <table class="table table-sm table-bordered mb-0 hist-table">
+        <thead class="table-light">
+          <tr>
+            <th class="field-col">Поле</th>
+            <th class="was-col"><i class="bi bi-x-circle text-danger me-1"></i>Было</th>
+            <th class="now-col"><i class="bi bi-check-circle text-success me-1"></i>Стало</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for fd in entry.field_details %}
+        <tr>
+          <td class="field-col">{{ fd.label }}</td>
+          <td class="diff-cell was-col"
+              data-was="{{ fd.old_val | default('') }}"
+              data-now="{{ fd.new_val | default('') }}"></td>
+          <td class="diff-cell now-col"></td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+
+    {# ── ВСЕ ПОЛЯ (JSON-blob, полная таблица) ────────────────── #}
     {% if entry.changes %}
-    <div class="px-3 pb-3 pt-1">
+    <div class="px-3 pb-3 pt-2">
+      {% if entry.field_details %}
+      <div class="text-muted mb-1" style="font-size:.75rem">
+        <i class="bi bi-list-ul me-1"></i>Все изменённые поля
+      </div>
+      {% endif %}
       <table class="table table-sm table-bordered mb-0 hist-table">
         <thead class="table-light">
           <tr>
@@ -128,6 +173,7 @@ body[data-theme="zone"] .diff-ins  { background:#0a2010; color:#86efac; }
       <i class="bi bi-dash-circle me-1"></i>Изменённые поля не зафиксированы.
     </div>
     {% endif %}
+
   </div>
 
 </div>
