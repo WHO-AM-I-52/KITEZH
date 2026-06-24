@@ -6,10 +6,16 @@
 
   <div class="d-flex justify-content-between align-items-center mb-3">
     <h4 class="mb-0">Журнал писем</h4>
-    <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#letterModal"
-            onclick="openCreateModal()">
-      + Создать письмо
-    </button>
+    <div class="d-flex gap-2">
+      {% if can_manage_templates %}
+      <a href="{{ url_for('letters.list_templates') }}" class="btn btn-outline-secondary btn-sm">
+        📋 Шаблоны
+      </a>
+      {% endif %}
+      <button class="btn btn-primary btn-sm" onclick="openCreateModal()">
+        + Создать письмо
+      </button>
+    </div>
   </div>
 
   {# ФИЛЬТРЫ #}
@@ -104,17 +110,22 @@
 {% include 'letters/_modal.html' %}
 
 <script>
+function _getModal() {
+  return bootstrap.Modal.getOrCreateInstance(document.getElementById('letterModal'));
+}
+
 function openCreateModal() {
   document.getElementById('modalLetterTitle').textContent = 'Создать письмо';
   document.getElementById('letterForm').action = "{{ url_for('letters.create_letter') }}";
-  document.getElementById('fDate').value      = '';
-  document.getElementById('fNumber').value    = '';
-  document.getElementById('fSubject').value   = '';
-  document.getElementById('fNote').value      = '';
-  document.getElementById('fTags').value      = '';
-  document.getElementById('fExecutor').value  = '';
+  document.getElementById('fDate').value     = '';
+  document.getElementById('fNumber').value   = '';
+  document.getElementById('fSubject').value  = '';
+  document.getElementById('fNote').value     = '';
+  document.getElementById('fTags').value     = '';
+  document.getElementById('fExecutor').value = '';
   updateTagBadges([]);
-  new bootstrap.Modal(document.getElementById('letterModal')).show();
+  _tplLoaded = false;
+  _getModal().show();
 }
 
 function openEditModal(id) {
@@ -123,15 +134,16 @@ function openEditModal(id) {
     .then(data => {
       document.getElementById('modalLetterTitle').textContent = 'Редактировать письмо';
       document.getElementById('letterForm').action = '/letters/' + id + '/edit';
-      document.getElementById('fDate').value      = data.date    || '';
-      document.getElementById('fNumber').value    = data.number  || '';
-      document.getElementById('fSubject').value   = data.subject || '';
-      document.getElementById('fNote').value      = data.note    || '';
-      document.getElementById('fTags').value      = data.tags    || '';
-      document.getElementById('fExecutor').value  = data.executor_id || '';
+      document.getElementById('fDate').value     = data.date        || '';
+      document.getElementById('fNumber').value   = data.number      || '';
+      document.getElementById('fSubject').value  = data.subject     || '';
+      document.getElementById('fNote').value     = data.note        || '';
+      document.getElementById('fTags').value     = data.tags        || '';
+      document.getElementById('fExecutor').value = data.executor_id || '';
       const tagList = data.tags ? data.tags.split(',').map(s => s.trim()).filter(Boolean) : [];
       updateTagBadges(tagList);
-      new bootstrap.Modal(document.getElementById('letterModal')).show();
+      _tplLoaded = false;
+      _getModal().show();
     });
 }
 </script>

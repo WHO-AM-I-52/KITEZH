@@ -88,7 +88,7 @@
 </div>
 
 <script>
-// ─── Теги: внутреннее состояние ───
+// ─── Теги ───
 
 let _currentTags = [];
 
@@ -159,6 +159,12 @@ document.addEventListener('DOMContentLoaded', function () {
       hideTplDropdown();
     }
   });
+
+  // Сброс дропдауна шаблонов при закрытии модала
+  document.getElementById('letterModal').addEventListener('hidden.bs.modal', function () {
+    hideTplDropdown();
+    hideSuggestions();
+  });
 });
 
 function fetchSuggestions(q) {
@@ -197,14 +203,9 @@ let _tplLoaded = false;
 function toggleTplDropdown() {
   const dd = document.getElementById('tplDropdown');
   const visible = dd.style.display !== 'none';
-  if (visible) {
-    hideTplDropdown();
-    return;
-  }
+  if (visible) { hideTplDropdown(); return; }
   dd.style.display = 'block';
-  if (!_tplLoaded) {
-    loadTemplates('');
-  }
+  if (!_tplLoaded) { loadTemplates(''); }
 }
 
 function hideTplDropdown() {
@@ -214,8 +215,6 @@ function hideTplDropdown() {
 
 function loadTemplates(q) {
   const dd = document.getElementById('tplDropdown');
-  const loading = document.getElementById('tplLoading');
-  if (loading) loading.style.display = 'block';
 
   fetch('/letters/api/templates?q=' + encodeURIComponent(q))
     .then(r => r.json())
@@ -233,7 +232,12 @@ function loadTemplates(q) {
 
       const searchRow = document.createElement('div');
       searchRow.className = 'list-group-item py-1 px-2';
-      searchRow.innerHTML = '<input type="text" class="form-control form-control-sm" id="tplSearch" placeholder="Поиск шаблона...">';
+      const inp = document.createElement('input');
+      inp.type = 'text';
+      inp.className = 'form-control form-control-sm';
+      inp.id = 'tplSearch';
+      inp.placeholder = 'Поиск шаблона...';
+      searchRow.appendChild(inp);
       dd.appendChild(searchRow);
 
       const listWrap = document.createElement('div');
@@ -245,8 +249,8 @@ function loadTemplates(q) {
           const a = document.createElement('a');
           a.href = '#';
           a.className = 'list-group-item list-group-item-action py-1 px-2';
-          a.innerHTML = `<div class="fw-semibold small">${item.name}</div>
-                         ${item.subject ? '<div class="text-muted" style="font-size:.75rem">' + item.subject + '</div>' : ''}`;
+          a.innerHTML = `<div class="fw-semibold small">${item.name}</div>`
+                      + (item.subject ? `<div class="text-muted" style="font-size:.75rem">${item.subject}</div>` : '');
           a.addEventListener('click', function (e) {
             e.preventDefault();
             applyTemplate(item);
@@ -260,7 +264,7 @@ function loadTemplates(q) {
       _tplLoaded = true;
 
       let _tplTimer = null;
-      dd.querySelector('#tplSearch').addEventListener('input', function () {
+      inp.addEventListener('input', function () {
         clearTimeout(_tplTimer);
         const sq = this.value.trim();
         _tplTimer = setTimeout(() => {
@@ -273,9 +277,7 @@ function loadTemplates(q) {
 }
 
 function applyTemplate(tpl) {
-  const subjectEl = document.getElementById('fSubject');
-  const noteEl    = document.getElementById('fNote');
-  if (subjectEl && tpl.subject) subjectEl.value = tpl.subject;
-  if (noteEl && tpl.body)       noteEl.value    = tpl.body;
+  if (tpl.subject) document.getElementById('fSubject').value = tpl.subject;
+  if (tpl.body)    document.getElementById('fNote').value    = tpl.body;
 }
 </script>
