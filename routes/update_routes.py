@@ -34,6 +34,7 @@
 # ║  v2.3.0: FIX создаём _restart.flag перед os._exit(0) —      ║
 # ║           run_server.py видит флаг → sys.exit(42) → .bat     ║
 # ║           делает goto :start_server → авторестарт            ║
+# ║  v2.3.1: /api/update/public-log — публичный лог прогресса   ║
 # ╚═══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, jsonify, request as flask_request, session, Response, stream_with_context
@@ -58,6 +59,7 @@ _UPDATER          = os.path.join(BASE_DIR, 'updater', '_updater.py')
 _COMMIT_FILE      = os.path.join(BASE_DIR, '_last_commit.txt')
 _PRE_UPDATE_FILE  = os.path.join(BASE_DIR, '_pre_update.json')
 _UPDATE_RESULT_FILE = os.path.join(BASE_DIR, '_update_result.json')
+_PUBLIC_LOG_FILE  = os.path.join(BASE_DIR, 'logs', '_update_public_log.json')
 _BAT_NAME         = 'start KITEZH.bat'
 
 _MIN_DELAY = 0
@@ -1003,3 +1005,27 @@ def api_update_result():
         'finished_at': data.get('finished_at', ''),
         'applied_by':  data.get('applied_by', ''),
     })
+
+
+# ─── Публичный лог прогресса обновления ──────────────────────────────────────
+
+@update_bp.route('/api/update/public-log')
+def api_update_public_log():
+    """Публичный лог хода обновления — доступен без авторизации.
+    Читает logs/_update_public_log.json (JSONL, одна запись на строку).
+    Возвращает последние 50 записей.
+    """
+    if not os.path.exists(_PUBLIC_LOG_FILE):
+        return jsonify({'ok': True, 'entries': []})
+    try:
+        with open(_PUBLIC_LOG_FILE, 'r', encoding='utf-8') as f:
+            lines = [ln.strip() for ln in f if ln.strip()]
+        entries = []
+        for ln in lines[-50:]:
+            try:
+                entries.append(json.loads(ln))
+            except json.JSONDecodeError:
+                pass
+        return jsonify({'ok': True, 'entries': entries})
+    except Exception:
+        return jsonify({'ok': False, 'entries': []})
