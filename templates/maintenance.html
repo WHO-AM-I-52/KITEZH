@@ -337,6 +337,60 @@
     body.game-lizard canvas,
     body.game-pong   canvas,
     body.game-hextris canvas { cursor: default; }
+
+    /* ===================== ЛОГ ОБНОВЛЕНИЯ ===================== */
+    #update-log {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      z-index: 150;
+      max-width: 300px;
+      background: rgba(15, 17, 23, 0.92);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 14px;
+      padding: 12px 14px 10px;
+      backdrop-filter: blur(16px);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      animation: panelIn 0.2s ease;
+    }
+    #update-log.d-none { display: none; }
+
+    #update-log-title {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      color: #475569;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      margin-bottom: 8px;
+    }
+    #update-log-title .spin {
+      display: inline-block;
+      animation: spin 1.2s linear infinite;
+    }
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to   { transform: rotate(360deg); }
+    }
+    #update-log-title .spin.stopped { animation: none; }
+
+    #update-log-entries {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .update-log-row {
+      font-size: 12px;
+      color: #94a3b8;
+      line-height: 1.4;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .update-log-row.phase-done  { color: #22c55e; }
+    .update-log-row.phase-error { color: #ef4444; }
   </style>
 </head>
 <body>
@@ -404,6 +458,15 @@
     <ul class="controls-list" id="controls-list"></ul>
   </div>
   <div id="controls-toggle" onclick="toggleControls(event)">ℹ️</div>
+</div>
+
+<!-- ЛОГ ОБНОВЛЕНИЯ -->
+<div id="update-log" class="d-none">
+  <div id="update-log-title">
+    <span class="spin" id="update-log-spin">🔄</span>
+    Идёт обновление системы
+  </div>
+  <div id="update-log-entries"></div>
 </div>
 
 <script>
@@ -965,6 +1028,76 @@ window.addEventListener('load', function() { initSwitcher(); });
       });
   }
   setTimeout(poll,POLL_MS);
+})();
+
+// ==================================================================
+//  Update log poller
+// ==================================================================
+(function(){
+  var logBox     = document.getElementById('update-log');
+  var logEntries = document.getElementById('update-log-entries');
+  var logSpin    = document.getElementById('update-log-spin');
+  var timer      = null;
+  var stopped    = false;
+
+  function phaseToText(entry) {
+    var phase = entry.phase || '';
+    switch (phase) {
+      case 'download':
+        return '⬇️ Скачивание: ' + (entry.percent != null ? entry.percent + '%' : '') +
+               (entry.bytes ? ' · ' + entry.bytes : '');
+      case 'apply':
+        return '⚙️ Установка: ' + (entry.current != null ? entry.current : '') +
+               (entry.total != null ? ' / ' + entry.total + ' файлов' : '');
+      case 'done':
+        return '✅ Обновление завершено';
+      case 'error':
+        return '❌ Ошибка: ' + (entry.message || '');
+      default:
+        return phase + (entry.message ? ': ' + entry.message : '');
+    }
+  }
+
+  function renderEntries(entries) {
+    var last5 = entries.slice(-5);
+    logEntries.innerHTML = '';
+    last5.forEach(function(e) {
+      var row = document.createElement('div');
+      row.className = 'update-log-row';
+      if (e.phase === 'done')  row.classList.add('phase-done');
+      if (e.phase === 'error') row.classList.add('phase-error');
+      row.textContent = phaseToText(e);
+      logEntries.appendChild(row);
+    });
+  }
+
+  function poll() {
+    if (stopped) return;
+    fetch('/api/update/public-log', { cache: 'no-store' })
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(data) {
+        if (!data || !data.entries || data.entries.length === 0) {
+          logBox.classList.add('d-none');
+        } else {
+          logBox.classList.remove('d-none');
+          renderEntries(data.entries);
+          var last = data.entries[data.entries.length - 1];
+          if (last.phase === 'done') {
+            stopped = true;
+            logSpin.classList.add('stopped');
+            return; // остановить поллинг
+          }
+        }
+        timer = setTimeout(poll, 2000);
+      })
+      .catch(function() {
+        // при ошибке сети — просто повторить
+        timer = setTimeout(poll, 2000);
+      });
+  }
+
+  // Старт через 1с чтобы не конкурировать с основным поллером
+  setTimeout(poll, 1000);
 })();
 </script>
 </body>
