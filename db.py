@@ -504,6 +504,43 @@ def _migrate(conn):
         "ON investmap_classifiers(classifier_num)"
     )
 
+    # ════════════════════════════════════════════════════════════════
+    # Журнал писем
+    # ════════════════════════════════════════════════════════════════
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS letters (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            date       TEXT    NOT NULL,
+            number     TEXT    NOT NULL DEFAULT '',
+            subject    TEXT    NOT NULL DEFAULT '',
+            note       TEXT             DEFAULT '',
+            created_by INTEGER NOT NULL REFERENCES users(id),
+            created_at TEXT    NOT NULL
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS letter_tags (
+            id   INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS letter_tag_links (
+            letter_id INTEGER NOT NULL REFERENCES letters(id) ON DELETE CASCADE,
+            tag_id    INTEGER NOT NULL REFERENCES letter_tags(id) ON DELETE CASCADE,
+            PRIMARY KEY (letter_id, tag_id)
+        )
+    """)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_letters_date   ON letters(date)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_letters_number ON letters(number)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_ltlinks_tag    ON letter_tag_links(tag_id)"
+    )
+
     conn.commit()
 
 
