@@ -12,6 +12,7 @@
 # ║  v2.9.1: fix — /ping использует utcnow() для синхронизации   ║
 # ║           с datetime('now') SQLite (UTC)                      ║
 # ║  v2.9.2: /api/online-users — алиас для /api/online           ║
+# ║  v3.0.0: /investor/<inn> — карточка инвестора (#13)          ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, render_template, session, jsonify, request as flask_request, redirect, url_for
@@ -120,8 +121,6 @@ def ping():
     if uid:
         try:
             conn = get_db()
-            # Используем utcnow() для синхронизации с datetime('now') SQLite,
-            # который всегда возвращает UTC.
             now = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
             conn.execute(
                 """
@@ -244,3 +243,69 @@ def api_tray_notify_level_get():
     ).fetchone()
     conn.close()
     return jsonify({'level': row['value'] if row else 'critical'})
+
+
+# ─── Карточка инвестора (агрегация по ИНН) ────────────────────────────────────
+
+@misc_bp.route('/investor/<inn>')
+@login_required
+def investor_card(inn):
+    conn = get_db()
+
+    # 1. Обращения по ИНН
+    requests_rows = conn.execute(
+        """
+        SELECT id, request_number, subject, status, request_date, applicant_short_name
+        FROM requests
+        WHERE applicant_inn = ?
+        ORDER BY request_date DESC
+        """,
+        (inn,)
+    ).fetchall()
+
+    # 2. phonebook — таблица отсутствует в схеме БД
+    phonebook_contacts = []  # TODO: link by inn
+
+    # 3. Письма — эвристика по note
+    letters_rows = conn.execute(
+        """
+        SELECT l.id, l.date, l.number, l.subject, l.note,
+               GROUP_CONCAT(lt.name, ', ') AS tags
+        FROM letters l
+        LEFT JOIN letter_tag_links ltl ON ltl.letter_id = l.id
+        LEFT JOIN letter_tags lt       ON lt.id = ltl.tag_id
+        WHERE l.note LIKE ?
+        GROUP BY l.id
+        ORDER BY l.date DESC
+        """,
+        (f'%{inn}%',)
+    ).fetchall()
+
+    # 4. Задачи — эвристика по source
+    tasks_rows = conn.execute(
+        """
+        SELECT t.id, t.title, t.status, t.deadline
+        FROM tasks t
+        WHERE t.source LIKE ?
+        ORDER BY t.created_at DESC
+        """,
+        (f'%{inn}%',)
+    ).fetchall()
+
+    # Имя инвестора из первого обращения (если есть)
+    investor_name = requests_rows[0]['applicant_short_name'] if requests_rows else ''
+
+    log_action(conn, session['user_id'], 'investor_card_view',
+               detail=f'Просмотр карточки инвестора ИНН={inn}')
+    conn.commit()
+    conn.close()
+
+    return render_template(
+        'investor_card.html',
+        inn=inn,
+        investor_name=investor_name,
+        requests=requests_rows,
+        phonebook_contacts=phonebook_contacts,
+        letters=letters_rows,
+        tasks=tasks_rows,
+    )
