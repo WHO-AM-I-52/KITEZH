@@ -24,7 +24,22 @@
             </div>
 
             <div class="col-12">
-              <label class="form-label">Тема</label>
+              <label class="form-label d-flex align-items-center justify-content-between">
+                <span>Тема</span>
+                <div class="position-relative">
+                  <button type="button" class="btn btn-sm btn-outline-secondary"
+                          id="tplBtn" onclick="toggleTplDropdown()">
+                    📋 Шаблон
+                  </button>
+                  <div id="tplDropdown"
+                       class="list-group shadow"
+                       style="display:none; position:absolute; right:0; top:100%; z-index:1070;
+                              min-width:280px; max-height:260px; overflow-y:auto;">
+                    <div class="list-group-item list-group-item-light py-1 px-2 small text-muted"
+                         id="tplLoading">Загрузка...</div>
+                  </div>
+                </div>
+              </label>
               <input type="text" id="fSubject" name="subject" class="form-control"
                      placeholder="Краткое описание">
             </div>
@@ -97,13 +112,12 @@ function removeTag(idx) {
 function addTagFromInput() {
   const input = document.getElementById('tagInput');
   const raw = input.value;
-  // поддерживаем запятую в поле (несколько тегов сразу)
   raw.split(',').forEach(t => addTag(t));
   input.value = '';
   hideSuggestions();
 }
 
-// ─── autocomplete ───
+// ─── autocomplete тегов ───
 
 let _acTimer = null;
 
@@ -130,6 +144,9 @@ document.addEventListener('DOMContentLoaded', function () {
   document.addEventListener('click', function (e) {
     if (!e.target.closest('#tagInput') && !e.target.closest('#tagSuggestions')) {
       hideSuggestions();
+    }
+    if (!e.target.closest('#tplBtn') && !e.target.closest('#tplDropdown')) {
+      hideTplDropdown();
     }
   });
 });
@@ -161,5 +178,97 @@ function fetchSuggestions(q) {
 function hideSuggestions() {
   const box = document.getElementById('tagSuggestions');
   if (box) { box.style.display = 'none'; box.innerHTML = ''; }
+}
+
+// ─── Шаблоны писем (#12) ───
+
+let _tplLoaded = false;
+
+function toggleTplDropdown() {
+  const dd = document.getElementById('tplDropdown');
+  const visible = dd.style.display !== 'none';
+  if (visible) {
+    hideTplDropdown();
+    return;
+  }
+  dd.style.display = 'block';
+  if (!_tplLoaded) {
+    loadTemplates('');
+  }
+}
+
+function hideTplDropdown() {
+  const dd = document.getElementById('tplDropdown');
+  if (dd) dd.style.display = 'none';
+}
+
+function loadTemplates(q) {
+  const dd = document.getElementById('tplDropdown');
+  const loading = document.getElementById('tplLoading');
+  if (loading) loading.style.display = 'block';
+
+  fetch('/letters/api/templates?q=' + encodeURIComponent(q))
+    .then(r => r.json())
+    .then(items => {
+      dd.innerHTML = '';
+
+      if (!items.length) {
+        const empty = document.createElement('div');
+        empty.className = 'list-group-item list-group-item-light py-1 px-2 small text-muted';
+        empty.textContent = 'Шаблонов нет';
+        dd.appendChild(empty);
+        _tplLoaded = true;
+        return;
+      }
+
+      // поле поиска
+      const searchRow = document.createElement('div');
+      searchRow.className = 'list-group-item py-1 px-2';
+      searchRow.innerHTML = '<input type="text" class="form-control form-control-sm"
+                              id="tplSearch" placeholder="Поиск шаблона...">';
+      dd.appendChild(searchRow);
+
+      const listWrap = document.createElement('div');
+      dd.appendChild(listWrap);
+
+      function renderItems(list) {
+        listWrap.innerHTML = '';
+        list.forEach(item => {
+          const a = document.createElement('a');
+          a.href = '#';
+          a.className = 'list-group-item list-group-item-action py-1 px-2';
+          a.innerHTML = `<div class="fw-semibold small">${item.name}</div>
+                         ${item.subject ? '<div class="text-muted" style="font-size:.75rem">' + item.subject + '</div>' : ''}`;
+          a.addEventListener('click', function (e) {
+            e.preventDefault();
+            applyTemplate(item);
+            hideTplDropdown();
+          });
+          listWrap.appendChild(a);
+        });
+      }
+
+      renderItems(items);
+      _tplLoaded = true;
+
+      // live-поиск в дропдауне
+      let _tplTimer = null;
+      dd.querySelector('#tplSearch').addEventListener('input', function () {
+        clearTimeout(_tplTimer);
+        const sq = this.value.trim();
+        _tplTimer = setTimeout(() => {
+          fetch('/letters/api/templates?q=' + encodeURIComponent(sq))
+            .then(r => r.json())
+            .then(renderItems);
+        }, 250);
+      });
+    });
+}
+
+function applyTemplate(tpl) {
+  const subjectEl = document.getElementById('fSubject');
+  const noteEl    = document.getElementById('fNote');
+  if (subjectEl && tpl.subject) subjectEl.value = tpl.subject;
+  if (noteEl && tpl.body)       noteEl.value    = tpl.body;
 }
 </script>
