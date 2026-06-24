@@ -1,7 +1,8 @@
 # ╔═══════════════════════════════════════════════
 # ║              action_routes.py                             ║
 # ║  Смена статусов, решения проверяющих,         ║
-# ║  загрузка ответа, удаление обращений.        ║
+# ║  загрузка ответа, удаление обращений,        ║
+# ║  соисполнители обращений.                       ║
 # ╚═══════════════════════════════════════════════
 
 import os
@@ -17,7 +18,7 @@ from utils.validators import allowed_file
 from . import requests_bp
 
 
-# ─── КОНСТАНТЫ ──────────────────────────────────────────────────────────────────────────────────
+# ─── КОНСТАНТЫ ────────────────────────────────────────────────────────────────────────────────────
 
 _VALID_STATUSES = (
     'draft', 'registered', 'in_progress',
@@ -44,15 +45,30 @@ _STATUS_AT_FIELD = {
 _MAX_REVIEWERS = 5
 
 
-# ─── ХЕЛПЕР: уведомление ответственному лицу ──────────────────
+# ─── ХЕЛПЕР: уведомление ответственным лицам ──────────────
 
 def _notify_responsible(conn, req, message):
+    """
+    Отправляет уведомление всем, кто связан с обращением:
+    - исполнитель (assigned_to)
+    - ответственный (responsible_id)
+    - соисполнители (из request_coexecutors)
+    Дедупликация через set().
+    """
     rid = req['id']
     targets = set()
     if req['assigned_to']:
         targets.add(req['assigned_to'])
     if req['responsible_id']:
         targets.add(req['responsible_id'])
+
+    # Добавляем соисполнителей
+    coex_rows = conn.execute(
+        "SELECT user_id FROM request_coexecutors WHERE request_id = ?", (rid,)
+    ).fetchall()
+    for row in coex_rows:
+        targets.add(row['user_id'])
+
     for uid in targets:
         conn.execute(
             "INSERT INTO notifications (user_id, message, link) VALUES (?, ?, ?)",
@@ -76,7 +92,7 @@ def _calc_deadline(status: str, transition_date_str: str) -> str | None:
         return None
 
 
-# ─── СМЕНА СТАТУСА ────────────────────────────────────────────────────────────────────────────
+# ─── СМЕНА СТАТУСА ────────────────────────────────────────────────────────────────────────────────────
 
 @requests_bp.route('/request/<int:rid>/status', methods=['POST'])
 @login_required
@@ -240,7 +256,7 @@ def change_status(rid):
     return redirect(url_for('requests.view_request', rid=rid))
 
 
-# ─── РЕШЕНИЕ ПРОВЕРЯЮЩЕГО ────────────────────────────────────────────────
+# ─── РЕШЕНИЕ ПРОВЕРЯЮЩЕГО ────────────────────────────────────────────────────────
 
 @requests_bp.route('/request/<int:rid>/reviewer_decision', methods=['POST'])
 @login_required
@@ -349,7 +365,7 @@ def reviewer_decision(rid):
     return redirect(url_for('requests.view_request', rid=rid))
 
 
-# ─── ЗАГРУЗКА ОТВЕТА ───────────────────────────────────────────────────────────────────────────
+# ─── ЗАГРУЗКА ОТВЕТА ────────────────────────────────────────────────────────────────────────────────────
 
 @requests_bp.route('/request/<int:rid>/answer', methods=['POST'])
 @login_required
@@ -391,7 +407,7 @@ def answer_request(rid):
     return redirect(url_for('requests.view_request', rid=rid))
 
 
-# ─── УДАЛЕНИЕ ─────────────────────────────────────────────────────────────────────────────────
+# ─── УДАЛЕНИЕ ─────────────────────────────────────────────────────────────────────────────────────────
 
 @requests_bp.route('/request/<int:rid>/delete', methods=['POST'])
 @login_required
@@ -450,7 +466,7 @@ def bulk_delete_requests():
     return redirect(url_for('requests.index'))
 
 
-# ─── ЗАКРЕПЛЁННАЯ ЗАМЕТКА ─────────────────────────────────────────────────────────────────
+# ─── ЗАКРЕПЛЁННАЯ ЗАМЕТКА ───────────────────────────────────────────────────────────────────────
 
 @requests_bp.route('/requests/<int:rid>/note', methods=['POST'])
 @login_required
@@ -479,4 +495,88 @@ def save_pinned_note(rid):
     log_action(conn, user_id, 'note_save', rid, 'Заметка сохранена')
     conn.commit()
     conn.close()
+    return redirect(url_for('requests.view_request', rid=rid))
+
+
+# ─── СОИСПОЛНИТЕЛИ ────────────────────────────────────────────────────────────────────────────────────
+
+@requests_bp.route('/request/<int:rid>/coexecutors', methods=['POST'])
+@login_required
+def add_coexecutor(rid):
+    """POST — назначить соисполнителя.
+    form: coexecutor_id (int)
+    """
+    try:
+        coex_uid = int(request.form.get('coexecutor_id', ''))
+    except (ValueError, TypeError):
+        flash('Не выбран пользователь', 'error')
+        return redirect(url_for('requests.view_request', rid=rid))
+
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    conn = get_db()
+
+    req = conn.execute(
+        "SELECT id, request_number FROM requests WHERE id=?", (rid,)
+    ).fetchone()
+    if not req:
+        conn.close()
+        flash('Обращение не найдено', 'error')
+        return redirect(url_for('requests.index'))
+
+    user_row = conn.execute(
+        "SELECT id, full_name FROM users WHERE id=? AND is_active=1", (coex_uid,)
+    ).fetchone()
+    if not user_row:
+        conn.close()
+        flash('Пользователь не найден', 'error')
+        return redirect(url_for('requests.view_request', rid=rid))
+
+    try:
+        conn.execute(
+            "INSERT INTO request_coexecutors "
+            "(request_id, user_id, assigned_by, assigned_at) "
+            "VALUES (?, ?, ?, ?)",
+            (rid, coex_uid, session['user_id'], now)
+        )
+    except Exception:
+        # UNIQUE constraint — соисполнитель уже есть
+        conn.close()
+        flash(f'Пользователь «{user_row["full_name"]}» уже является соисполнителем', 'warning')
+        return redirect(url_for('requests.view_request', rid=rid))
+
+    req_num = req['request_number'] or f'ID:{rid}'
+    conn.execute(
+        "INSERT INTO notifications (user_id, message, link) VALUES (?, ?, ?)",
+        (coex_uid,
+         f'Вы назначены соисполнителем по обращению {req_num}',
+         f'/view/{rid}')
+    )
+    log_action(conn, session['user_id'], 'coexecutor_add', rid,
+               f'Добавлен соисполнитель: {user_row["full_name"]}')
+    conn.commit()
+    conn.close()
+    flash(f'Соисполнитель «{user_row["full_name"]}» добавлен', 'success')
+    return redirect(url_for('requests.view_request', rid=rid))
+
+
+@requests_bp.route('/request/<int:rid>/coexecutors/remove/<int:coex_uid>', methods=['POST'])
+@login_required
+def remove_coexecutor(rid, coex_uid):
+    """POST — снять соисполнителя."""
+    conn = get_db()
+
+    user_row = conn.execute(
+        "SELECT full_name FROM users WHERE id=?", (coex_uid,)
+    ).fetchone()
+    name = user_row['full_name'] if user_row else f'ID:{coex_uid}'
+
+    conn.execute(
+        "DELETE FROM request_coexecutors WHERE request_id=? AND user_id=?",
+        (rid, coex_uid)
+    )
+    log_action(conn, session['user_id'], 'coexecutor_remove', rid,
+               f'Снят соисполнитель: {name}')
+    conn.commit()
+    conn.close()
+    flash(f'Соисполнитель «{name}» снят', 'success')
     return redirect(url_for('requests.view_request', rid=rid))
