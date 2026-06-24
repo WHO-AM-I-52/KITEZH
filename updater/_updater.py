@@ -38,6 +38,7 @@ BRANCH_FILE   = os.path.join(BASE_DIR, "_branch.txt")
 ZIP_PATH      = os.path.join(BASE_DIR, "_kitezh_update.zip")
 LOGS_DIR      = os.path.join(BASE_DIR, "logs")
 LOG_FILE      = os.path.join(LOGS_DIR, "_updater_log.txt")
+PUBLIC_LOG_FILE = os.path.join(LOGS_DIR, "_update_public_log.json")
 FALLBACK_KB   = 600
 
 # ── Флаг --stream-json: JSON-строки прогресса в stdout для SSE-стрима ────────
@@ -55,6 +56,22 @@ def _log_to_file(msg: str):
             f.write(f"[{ts}] {msg}\n")
     except Exception:
         pass
+
+
+def _log_public(phase: str, detail: str):
+    """Пишет JSONL-строку в публичный лог-файл (для UI-прогресса).
+    Формат: {"ts": "HH:MM:SS", "phase": "...", "detail": "..."}
+    Файл сбрасывается в начале каждого запуска — хранит только текущую сессию.
+    """
+    try:
+        os.makedirs(LOGS_DIR, exist_ok=True)
+        ts = datetime.now().strftime('%H:%M:%S')
+        line = json.dumps({"ts": ts, "phase": phase, "detail": detail}, ensure_ascii=False)
+        with open(PUBLIC_LOG_FILE, 'a', encoding='utf-8') as f:
+            f.write(line + "\n")
+    except Exception:
+        pass
+
 
 def _log(msg: str):
     """Всегда пишет в stderr (виден в консоли bat даже когда stdout перехвачен Flask).
@@ -304,6 +321,10 @@ def _print_progress(downloaded: int, estimated_kb: int, spinner_idx: int):
             "downloaded_mb": round(downloaded / 1048576, 2),
             "total_mb":      round(estimated_kb / 1024, 2),
         })
+        _log_public(
+            "download",
+            f"{pct:.0f}% · {round(downloaded / 1048576, 2)} МБ / {round(estimated_kb / 1024, 2)} МБ",
+        )
     else:
         spin = SPINNER[spinner_idx % len(SPINNER)]
         print(f"  [{spin}] Скачано: {size_kb} КБ...", end="\r", flush=True, file=sys.stderr)
@@ -443,6 +464,9 @@ def extract_and_apply(zip_path: str, force: bool = False):
                 "total":   total_files,
             })
 
+            if processed % 10 == 0:
+                _log_public("apply", f"{processed} / {total_files} файлов")
+
     return updated, unchanged, skipped, errors, bat_updated
 
 
@@ -563,6 +587,7 @@ def _cmd_download_only():
         f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
     )
     _log_to_file("=" * 56)
+    open(PUBLIC_LOG_FILE, 'w').close()
     _log("  Подключаемся к GitHub...")
     if TOKEN:
         _log("  Токен найден — лимит 5000 запросов/час")
@@ -586,9 +611,11 @@ def _cmd_download_only():
                   (f" Сброс в {reset_str}." if reset_str else " Подожди и повтори."))
         else:
             _log(f"  [ОШИБКА] HTTP {e.code}: {e}")
+        _log_public("error", f"HTTP {e.code}: {e}")
         sys.exit(1)
     except Exception as e:
         _log(f"  [ОШИБКА] Не удалось скачать архив: {e}")
+        _log_public("error", str(e))
         sys.exit(1)
 
 
@@ -603,6 +630,7 @@ def _cmd_apply_only(force: bool = False):
         f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
     )
     _log_to_file("=" * 56)
+    open(PUBLIC_LOG_FILE, 'w').close()
     if not os.path.exists(ZIP_PATH):
         _log(f"  [ОШИБКА] Архив {ZIP_PATH} не найден. Сначала выполни --download-only.")
         sys.exit(1)
@@ -616,6 +644,7 @@ def _cmd_apply_only(force: bool = False):
         apply_ok = True
     except Exception as e:
         _log(f"  [ОШИБКА] Не удалось применить обновление: {e}")
+        _log_public("error", str(e))
         sys.exit(1)
     finally:
         if os.path.exists(ZIP_PATH):
@@ -646,6 +675,7 @@ def _cmd_apply_only(force: bool = False):
             (f" | Ошибок: {errors}" if errors else "")
         ),
     })
+    _log_public("done", f"обновлено {updated}, пропущено {skipped}")
 
     ensure_github_release()
     run_sync_changelog()
@@ -671,6 +701,7 @@ def main():
         f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
     )
     _log_to_file("=" * 56)
+    open(PUBLIC_LOG_FILE, 'w').close()
 
     force_mode = "--force" in sys.argv
 
@@ -713,9 +744,11 @@ def main():
                   (f" Сброс в {reset_str}." if reset_str else " Подожди и повтори."))
         else:
             _log(f"  [ОШИБКА] {e}")
+        _log_public("error", f"HTTP {e.code}: {e}")
         sys.exit(1)
     except Exception as e:
         _log(f"  [ОШИБКА] Не удалось скачать архив обновления: {e}")
+        _log_public("error", str(e))
         sys.exit(1)
 
     apply_ok = False
@@ -725,6 +758,7 @@ def main():
         apply_ok = True
     except Exception as e:
         _log(f"  [ОШИБКА] Не удалось применить обновление: {e}")
+        _log_public("error", str(e))
         sys.exit(1)
     finally:
         if os.path.exists(ZIP_PATH):
@@ -742,6 +776,8 @@ def main():
     if errors:
         _log(f"  Ошибок при записи    : {errors}")
     _log("")
+
+    _log_public("done", f"обновлено {updated}, пропущено {skipped}")
 
     ensure_github_release()
     run_sync_changelog()
