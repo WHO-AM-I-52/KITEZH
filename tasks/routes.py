@@ -1,6 +1,6 @@
 # tasks/routes.py — Blueprint «Задачи» (MVP, карточка #9)
 from flask import Blueprint, render_template, request, redirect, url_for, session, abort
-from datetime import datetime
+from datetime import datetime, date
 from db import get_db
 from core.activity_log import log_action
 from functools import wraps
@@ -97,6 +97,7 @@ def my_tasks():
         assignees_map=assignees_map,
         status_filter=status_filter,
         STATUS_LABELS=STATUS_LABELS,
+        today=date.today().isoformat(),
     )
 
 
@@ -135,6 +136,7 @@ def assigned_by_me():
         assignees_map=assignees_map,
         status_filter=status_filter,
         STATUS_LABELS=STATUS_LABELS,
+        today=date.today().isoformat(),
     )
 
 
@@ -242,6 +244,7 @@ def task_detail(id):
         can_delete=can_delete,
         next_statuses=next_statuses,
         STATUS_LABELS=STATUS_LABELS,
+        today=date.today().isoformat(),
     )
 
 
