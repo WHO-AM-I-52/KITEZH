@@ -110,6 +110,13 @@
       </button>
     {% endif %}
 
+    {# Удалить — только admin #}
+    {% if can_delete %}
+      <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteModal">
+        🗑️ Удалить
+      </button>
+    {% endif %}
+
   </div>
 
 </div>
@@ -212,6 +219,28 @@
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
           <button type="submit" class="btn btn-info text-white">Назначить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{# ——— Удалить ——— #}
+<div class="modal fade" id="deleteModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post" action="{{ url_for('tasks.delete_task', id=task.id) }}">
+        <div class="modal-header">
+          <h5 class="modal-title text-danger">Удалить задачу</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p>Вы уверены, что хотите удалить задачу <strong>«{{ task.title }}»</strong>?</p>
+          <p class="text-muted small">Действие необратимо. Все назначения будут удалены.</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+          <button type="submit" class="btn btn-danger">Удалить</button>
         </div>
       </form>
     </div>

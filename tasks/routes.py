@@ -248,6 +248,24 @@ def task_detail(id):
     )
 
 
+@tasks_bp.route('/<int:id>/delete', methods=['POST'])
+@login_required
+def delete_task(id):
+    user_id = session['user_id']
+    role    = session.get('role', 'user')
+    if role != 'admin':
+        abort(403)
+    db = get_db()
+    task = db.execute('SELECT id FROM tasks WHERE id = ?', (id,)).fetchone()
+    if task is None:
+        abort(404)
+    db.execute('DELETE FROM task_assignees WHERE task_id = ?', (id,))
+    db.execute('DELETE FROM tasks WHERE id = ?', (id,))
+    log_action(db, user_id, 'task_delete', id)
+    db.commit()
+    return redirect(url_for('tasks.my_tasks'))
+
+
 @tasks_bp.route('/<int:id>/status', methods=['POST'])
 @login_required
 def change_status(id):
