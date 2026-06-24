@@ -27,7 +27,7 @@
         <tbody>
           {% for r in requests %}
           <tr>
-            <td><a href="{{ url_for('requests.view', rid=r.id) }}">{{ r.request_number }}</a></td>
+            <td><a href="{{ url_for('requests.view_request', rid=r.id) }}">{{ r.request_number }}</a></td>
             <td>{{ r.project_name or '—' }}</td>
             <td>{{ r.status }}</td>
             <td>{{ r.request_date }}</td>
