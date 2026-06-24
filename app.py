@@ -15,6 +15,7 @@
 # ║      fix: threaded=True — SSE-стрим обновления работает     ║
 # ║      fix: _startup() чистит _pre_update.json при старте     ║
 # ║      feat: letters_bp — журнал исходящих писем             ║
+# ║      feat: tasks_bp — модуль «Задачи» (#9)                  ║
 # ╚═══════════════════════════════════════════════════════════════╝
 
 import os
@@ -38,12 +39,12 @@ from core.kitezh_logger import err_logger
 
 app = Flask(__name__)
 
-# ─── MAINTENANCE FLAG ─────────────────────────────────────────────────────────────────────────────
+# ─── MAINTENANCE FLAG ──────────────────────────────────────────────────────────────────────────────────
 _MAINTENANCE_FLAG = os.path.join(BASE_DIR, '.maintenance')
 _PRE_UPDATE_FILE  = os.path.join(BASE_DIR, '_pre_update.json')
 _UPDATING_LOCK    = os.path.join(BASE_DIR, '_updating.lock')
 
-# ─── SECRET_KEY ─────────────────────────────────────────────────────────────────────────────
+# ─── SECRET_KEY ──────────────────────────────────────────────────────────────────────────────────
 from core.limiter import limiter
 import secrets as _secrets
 _KEY_FILE = os.path.join(BASE_DIR, '_secret.key')
@@ -69,7 +70,7 @@ app.config['SESSION_REFRESH_EACH_REQUEST'] = True
 # ─── LIMITER ────────────────────────────────────────────────────────────────────────────────────
 limiter.init_app(app)
 
-# ─── JINJA ФИЛЬТРЫ ───────────────────────────────────────────────────────────────────────────────
+# ─── JINJA ФИЛЬТРЫ ───────────────────────────────────────────────────────────────────────────
 @app.template_filter('todatetime')
 def todatetime_filter(value):
     """Преобразует 'YYYY-MM-DD' в datetime.date.
@@ -85,7 +86,7 @@ def todatetime_filter(value):
         return date.today()
 
 
-# ─── CONTEXT PROCESSOR ────────────────────────────────────────────────────────────────────────────
+# ─── CONTEXT PROCESSOR ─────────────────────────────────────────────────────────────────────────────
 app.context_processor(inject_globals)
 
 # ─── MAINTENANCE MODE ────────────────────────────────────────────────────────────────────────────
@@ -158,6 +159,7 @@ from routes.quality_checks   import quality_bp
 from routes.admin_sql_routes import admin_sql_bp
 from portal_analysis.portal_analysis_routes import portal_analysis_bp
 from letters import letters_bp
+from tasks   import tasks_bp
 import services.backup_scheduler as backup_scheduler
 
 for bp in [
@@ -172,11 +174,12 @@ for bp in [
     admin_sql_bp,
     portal_analysis_bp,
     letters_bp,
+    tasks_bp,
 ]:
     app.register_blueprint(bp)
 
 
-# ─── ОБРАБОТЧИК ОШИБОК ────────────────────────────────────────────────────────────────────────────
+# ─── ОБРАБОТЧИК ОШИБОК ─────────────────────────────────────────────────────────────────────────────
 @app.errorhandler(500)
 def handle_500(exc):
     """
@@ -207,7 +210,7 @@ def handle_500(exc):
     return render_template('500.html'), 500
 
 
-# ─── ИНИЦИАЛИЗАЦИЯ БД И ПЛАНИРОВЩИКА ────────────────────────────────────────────────────────
+# ─── ИНИЦИАЛИЗАЦИЯ БД И ПЛАНИРОВЩИКА ─────────────────────────────────────────────────
 def _startup():
     # Чистим .maintenance — снимаем режим ТО если остался после краша
     if os.path.exists(_MAINTENANCE_FLAG):
@@ -237,7 +240,7 @@ def _startup():
 _startup()
 
 
-# ─── ТОЧКА ВХОДА ──────────────────────────────────────────────────────────────────────────────────────
+# ─── ТОЧКА ВХОДА ──────────────────────────────────────────────────────────────────────────────────────────
 if __name__ == '__main__':
     app_debug  = os.getenv('APP_DEBUG', '0')
     debug_flag = app_debug == '1'
