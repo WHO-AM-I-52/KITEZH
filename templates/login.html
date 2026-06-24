@@ -267,6 +267,13 @@
 
   .lf-btn:active { transform: translateY(0); }
 
+  .lf-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
+
   .lf-footer {
     text-align: center; margin-top: 20px;
     color: rgba(255,255,255,0.18);
@@ -412,6 +419,12 @@
   lampString.addEventListener('touchstart', onDragStart, { passive: false });
   document.addEventListener('touchmove',    onDragMove,  { passive: false });
   document.addEventListener('touchend',     onDragEnd);
+
+  document.querySelector('form').addEventListener('submit', function () {
+    var btn = this.querySelector('.lf-btn');
+    btn.disabled = true;
+    btn.textContent = 'Вход…';
+  });
 
   {% if get_flashed_messages() %}
   window.addEventListener('DOMContentLoaded', triggerLamp);
