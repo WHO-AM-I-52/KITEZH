@@ -596,6 +596,11 @@ CREATE INDEX IF NOT EXISTS idx_pb_name ON phonebook(full_name);
             conn.execute(
                 "ALTER TABLE phonebook ADD COLUMN source_type TEXT DEFAULT 'general'"
             )
+        if 'inn' not in pb_cols:
+            conn.execute("ALTER TABLE phonebook ADD COLUMN inn TEXT DEFAULT ''")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_phonebook_inn ON phonebook(inn)"
+        )
 
         conn.commit()
     finally:
