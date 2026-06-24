@@ -170,6 +170,12 @@ def _migrate(conn):
         conn.execute(
             "ALTER TABLE request_history ADD COLUMN action TEXT DEFAULT 'edit'"
         )
+    if not _has_column(conn, 'request_history', 'field'):
+        conn.execute("ALTER TABLE request_history ADD COLUMN field TEXT")
+    if not _has_column(conn, 'request_history', 'old_val'):
+        conn.execute("ALTER TABLE request_history ADD COLUMN old_val TEXT")
+    if not _has_column(conn, 'request_history', 'new_val'):
+        conn.execute("ALTER TABLE request_history ADD COLUMN new_val TEXT")
 
     conn.execute("""
         CREATE TABLE IF NOT EXISTS subject_types (
