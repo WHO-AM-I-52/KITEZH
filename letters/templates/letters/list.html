@@ -1,0 +1,129 @@
+{% extends 'base.html' %}
+{% block title %}Журнал писем{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-3">
+
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0">Журнал писем</h4>
+    <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#letterModal"
+            onclick="openCreateModal()">
+      + Создать письмо
+    </button>
+  </div>
+
+  {# ФИЛЬТРЫ #}
+  <form method="get" class="row g-2 mb-3">
+    <div class="col-auto">
+      <input type="date" name="date_from" class="form-control form-control-sm"
+             value="{{ date_from }}" placeholder="Дата с">
+    </div>
+    <div class="col-auto">
+      <input type="date" name="date_to" class="form-control form-control-sm"
+             value="{{ date_to }}" placeholder="Дата по">
+    </div>
+    <div class="col-auto">
+      <select name="tag" class="form-select form-select-sm">
+        <option value="">— все теги —</option>
+        {% for t in all_tags %}
+          <option value="{{ t }}" {% if t == tag_filter %}selected{% endif %}>{{ t }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-secondary btn-sm">Найти</button>
+      <a href="{{ url_for('letters.list_letters') }}" class="btn btn-outline-secondary btn-sm">Сброс</a>
+    </div>
+  </form>
+
+  {# ТАБЛИЦА #}
+  {% if letters %}
+  <div class="table-responsive">
+    <table class="table table-bordered table-hover table-sm align-middle">
+      <thead class="table-light">
+        <tr>
+          <th style="width:110px">Дата</th>
+          <th style="width:140px">Номер</th>
+          <th>Тема</th>
+          <th style="width:200px">Теги</th>
+          <th style="width:130px">Автор</th>
+          <th style="width:110px">Действия</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for l in letters %}
+        <tr>
+          <td>{{ l.date }}</td>
+          <td>{{ l.number }}</td>
+          <td>
+            {{ l.subject }}
+            {% if l.note %}
+              <br><small class="text-muted">{{ l.note }}</small>
+            {% endif %}
+          </td>
+          <td>
+            {% for tag in l.tags %}
+              <span class="badge bg-secondary me-1">{{ tag }}</span>
+            {% endfor %}
+          </td>
+          <td>{{ l.author }}</td>
+          <td>
+            {% if l.can_edit %}
+            <button class="btn btn-outline-primary btn-sm py-0"
+                    onclick="openEditModal({{ l.id }})">
+              Ред.
+            </button>
+            {% endif %}
+            {% if can_delete %}
+            <form method="post"
+                  action="{{ url_for('letters.delete_letter', id=l.id) }}"
+                  style="display:inline"
+                  onsubmit="return confirm('Удалить письмо?')">
+              <button type="submit" class="btn btn-outline-danger btn-sm py-0">Удал.</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-muted">Писем не найдено.</p>
+  {% endif %}
+
+</div>
+
+{# МОДАЛ СОЗДАНИЯ / РЕДАКТИРОВАНИЯ #}
+{% include 'letters/_modal.html' %}
+
+<script>
+function openCreateModal() {
+  document.getElementById('modalLetterTitle').textContent = 'Создать письмо';
+  document.getElementById('letterForm').action = "{{ url_for('letters.create_letter') }}";
+  document.getElementById('fDate').value    = '';
+  document.getElementById('fNumber').value  = '';
+  document.getElementById('fSubject').value = '';
+  document.getElementById('fNote').value    = '';
+  document.getElementById('fTags').value    = '';
+  updateTagBadges([]);
+}
+
+function openEditModal(id) {
+  fetch('/letters/' + id + '/edit')
+    .then(r => r.json())
+    .then(data => {
+      document.getElementById('modalLetterTitle').textContent = 'Редактировать письмо';
+      document.getElementById('letterForm').action = '/letters/' + id + '/edit';
+      document.getElementById('fDate').value    = data.date    || '';
+      document.getElementById('fNumber').value  = data.number  || '';
+      document.getElementById('fSubject').value = data.subject || '';
+      document.getElementById('fNote').value    = data.note    || '';
+      document.getElementById('fTags').value    = data.tags    || '';
+      const tagList = data.tags ? data.tags.split(',').map(s => s.trim()).filter(Boolean) : [];
+      updateTagBadges(tagList);
+      new bootstrap.Modal(document.getElementById('letterModal')).show();
+    });
+}
+</script>
+{% endblock %}
