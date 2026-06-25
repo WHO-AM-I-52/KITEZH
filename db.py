@@ -276,6 +276,14 @@ def _migrate(conn):
         conn.execute(
             "ALTER TABLE users ADD COLUMN can_view_investmap INTEGER NOT NULL DEFAULT 0"
         )
+    if not _has_column(conn, 'users', 'can_view_phonebook'):
+        conn.execute(
+            "ALTER TABLE users ADD COLUMN can_view_phonebook INTEGER NOT NULL DEFAULT 1"
+        )
+    else:
+        conn.execute(
+            "UPDATE users SET can_view_phonebook=1 WHERE can_view_phonebook=0"
+        )
 
     if not _has_column(conn, 'requests', 'review_days'):
         conn.execute("ALTER TABLE requests ADD COLUMN review_days INTEGER NOT NULL DEFAULT 7")
