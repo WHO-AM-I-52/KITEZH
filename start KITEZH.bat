@@ -167,29 +167,21 @@ if exist "%APP_DIR%updater\_updater.py" (
     echo  [OK] Установлена актуальная версия. Обновление пропущено.
     echo.
   ) else if "!CHECK_RESULT!"=="2" (
+    :: Код 2 = нет сети / ошибка проверки
     echo  [!] Не удалось проверить обновления. Запустить всё равно?
-    set "UPD=x"
+    set "UPD="
     set /p UPD=  Скачать архив обновления с GitHub? [Ввод=да / 0=нет]: 
-    if "!UPD!"=="x" (
-      echo.
-      "%PYTHON%" "%APP_DIR%updater\_updater.py"
-      cd /d "%APP_DIR%"
-      echo.
-    ) else if not "!UPD!"=="0" (
+    if not "!UPD!"=="0" (
       echo.
       "%PYTHON%" "%APP_DIR%updater\_updater.py"
       cd /d "%APP_DIR%"
       echo.
     )
   ) else (
-    set "UPD=x"
+    :: Код 1 = есть обновления
+    set "UPD="
     set /p UPD=  Скачать архив обновления с GitHub? [Ввод=да / 0=нет]: 
-    if "!UPD!"=="x" (
-      echo.
-      "%PYTHON%" "%APP_DIR%updater\_updater.py"
-      cd /d "%APP_DIR%"
-      echo.
-    ) else if not "!UPD!"=="0" (
+    if not "!UPD!"=="0" (
       echo.
       "%PYTHON%" "%APP_DIR%updater\_updater.py"
       cd /d "%APP_DIR%"
@@ -285,8 +277,7 @@ if "!EXIT_CODE!"=="42" (
   del /f /q "%APP_DIR%_updating.lock" 2>nul
   del /f /q "%APP_DIR%_restart.flag" 2>nul
   del /f /q "%APP_DIR%.maintenance" 2>nul
-  :: FIX #1: FLASK_ENV/APP_DEBUG/KITEZH_TRAY уже определены из ask_mode выше —
-  :: но на случай повторного рестарта (второй цикл) задаём дефолты если вдруг пусто
+  :: FIX #1: дефолты на случай повторного рестарта
   if not defined FLASK_ENV set "FLASK_ENV=production"
   if not defined APP_DEBUG set "APP_DEBUG=0"
   if not defined KITEZH_TRAY set "KITEZH_TRAY=0"
