@@ -58,6 +58,10 @@ echo.
 "%PYTHON%" "%UPDATER%"
 set "UPDATER_EXIT=!ERRORLEVEL!"
 
+:: FIX #5: удаляем .maintenance как страховка — если Python упал до удаления или
+:: обновление запущено вручную — флаг не останется висеть
+del /f /q "%APP_DIR%.maintenance" 2>nul
+
 echo.
 pause
 
