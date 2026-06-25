@@ -1,5 +1,5 @@
 # tasks/routes.py — Blueprint «Задачи»
-from flask import Blueprint, render_template, request, redirect, url_for, session, abort
+from flask import Blueprint, render_template, request, redirect, url_for, session, abort, jsonify
 from datetime import datetime, date
 from db import get_db
 from core.activity_log import log_action
@@ -159,6 +159,91 @@ def my_tasks():
         REQUEST_STATUS_LABELS=REQUEST_STATUS_LABELS,
         today=today_s,
     )
+
+
+@tasks_bp.route('/api/my')
+@login_required
+def api_my_tasks():
+    user_id = session['user_id']
+    db = get_db()
+    today_s = date.today().isoformat()
+
+    # ─── 1. Задачи ────────────────────────────────────────────
+    task_rows = db.execute('''
+        SELECT t.id, t.title, t.source, t.deadline, t.status, t.created_at
+        FROM tasks t
+        JOIN task_assignees ta ON ta.task_id = t.id
+        WHERE ta.user_id = ?
+        ORDER BY t.deadline ASC
+    ''', (user_id,)).fetchall()
+
+    # ─── 2. Обращения ─────────────────────────────────────
+    req_rows = db.execute('''
+        SELECT r.id,
+               COALESCE(r.project_name, r.applicant_short_name,
+                        r.applicant_full_name, 'Обращение #' || r.id) AS title,
+               r.request_number AS source,
+               r.review_deadline AS deadline,
+               r.status,
+               r.created_at
+        FROM requests r
+        WHERE r.status NOT IN ('done','closed','cancelled')
+          AND (r.responsible_id = ? OR r.reviewer_id = ? OR r.assigned_to = ?)
+        ORDER BY r.review_deadline ASC
+    ''', (user_id, user_id, user_id)).fetchall()
+
+    # ─── 3. Assignees для задач ───────────────────────────
+    task_ids = [r['id'] for r in task_rows]
+    assignees_map = {}
+    for tid in task_ids:
+        arows = db.execute('''
+            SELECT u.full_name FROM task_assignees ta
+            JOIN users u ON u.id = ta.user_id WHERE ta.task_id = ?
+        ''', (tid,)).fetchall()
+        assignees_map[tid] = [a['full_name'] for a in arows]
+
+    result = []
+
+    for r in task_rows:
+        dl = r['deadline'] or ''
+        overdue = bool(dl and dl < today_s)
+        result.append({
+            'id':           r['id'],
+            'type':         'task',
+            'type_label':   'Задача',
+            'title':        r['title'],
+            'source':       r['source'] or '',
+            'number':       '',
+            'deadline':     dl,
+            'status':       r['status'],
+            'status_label': STATUS_LABELS.get(r['status'], r['status']),
+            'executors':    assignees_map.get(r['id'], []),
+            'can_open':     True,
+            'overdue':      overdue,
+        })
+
+    for r in req_rows:
+        dl = r['deadline'] or ''
+        overdue = bool(dl and dl < today_s)
+        result.append({
+            'id':           r['id'],
+            'type':         'request',
+            'type_label':   'Обращение',
+            'title':        r['title'],
+            'source':       r['source'] or '',
+            'number':       r['source'] or '',
+            'deadline':     dl,
+            'status':       r['status'],
+            'status_label': REQUEST_STATUS_LABELS.get(r['status'], r['status']),
+            'executors':    [],
+            'can_open':     True,
+            'overdue':      overdue,
+        })
+
+    # Сортировка: просроченные вверх, потом deadline ASC, null в конец
+    result.sort(key=lambda x: (0 if x['overdue'] else 1, x['deadline'] or '9999-99-99'))
+
+    return jsonify(result)
 
 
 @tasks_bp.route('/assigned-by-me')
