@@ -142,6 +142,11 @@ if exist "%APP_DIR%_restart.flag" (
   del /f /q "%APP_DIR%_restart.flag" 2>nul
   del /f /q "%APP_DIR%_update_available.json" 2>nul
   del /f /q "%APP_DIR%_updating.lock" 2>nul
+  del /f /q "%APP_DIR%.maintenance" 2>nul
+  :: FIX #1+#2: задаём дефолты production, так как ask_mode ещё не выполнялся
+  if not defined FLASK_ENV set "FLASK_ENV=production"
+  if not defined APP_DEBUG set "APP_DEBUG=0"
+  if not defined KITEZH_TRAY set "KITEZH_TRAY=0"
   echo.
   echo ============================================
   echo  [AUTO-RESTART] Обновление применено.
@@ -278,6 +283,13 @@ echo.
 if "!EXIT_CODE!"=="42" (
   del /f /q "%APP_DIR%_update_available.json" 2>nul
   del /f /q "%APP_DIR%_updating.lock" 2>nul
+  del /f /q "%APP_DIR%_restart.flag" 2>nul
+  del /f /q "%APP_DIR%.maintenance" 2>nul
+  :: FIX #1: FLASK_ENV/APP_DEBUG/KITEZH_TRAY уже определены из ask_mode выше —
+  :: но на случай повторного рестарта (второй цикл) задаём дефолты если вдруг пусто
+  if not defined FLASK_ENV set "FLASK_ENV=production"
+  if not defined APP_DEBUG set "APP_DEBUG=0"
+  if not defined KITEZH_TRAY set "KITEZH_TRAY=0"
   echo.
   echo ============================================
   echo  [AUTO-RESTART] Обновление применено.
