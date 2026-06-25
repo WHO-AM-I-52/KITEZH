@@ -11,8 +11,8 @@
     </button>
   </div>
 
-  {# ——— Фильтр ——— #}
-  <form method="get" class="mb-3 d-flex gap-2 align-items-center">
+  {# ─── Фильтр ─── #}
+  <form method="get" class="mb-3 d-flex gap-3 align-items-center flex-wrap">
     <select name="status" class="form-select form-select-sm" style="max-width:200px">
       <option value="">— все статусы —</option>
       {% for val, label in STATUS_LABELS.items() %}
@@ -20,9 +20,16 @@
       {% endfor %}
     </select>
     <button class="btn btn-outline-secondary btn-sm" type="submit">Показать</button>
-    {% if status_filter %}
+    {% if status_filter or show_closed %}
       <a href="{{ url_for('tasks.assigned_by_me') }}" class="btn btn-link btn-sm">Сбросить</a>
     {% endif %}
+    {# Чекбокс завершённых #}
+    <div class="form-check mb-0 ms-2">
+      <input class="form-check-input" type="checkbox" name="show_closed" value="1"
+             id="showClosedAB" {% if show_closed %}checked{% endif %}
+             onchange="this.form.submit()">
+      <label class="form-check-label small text-muted" for="showClosedAB">Показать завершённые</label>
+    </div>
   </form>
 
   {% if tasks %}
@@ -49,7 +56,6 @@
           <td class="text-muted small">{{ task.source or '—' }}</td>
           <td class="small">
             {% if task.deadline %}
-              {% set today = now().date().isoformat() if now is defined else '' %}
               <span class="{% if task.deadline < today and task.status not in ('done','cancelled') %}text-danger fw-bold{% endif %}">
                 {{ task.deadline }}
               </span>
@@ -84,7 +90,7 @@
 
 </div>
 
-{# ——— Модальное окно создания (shared компонент) #}
+{# ─── Модальное окно создания #}
 <div class="modal fade" id="createTaskModal" tabindex="-1">
   <div class="modal-dialog modal-lg">
     <div class="modal-content">

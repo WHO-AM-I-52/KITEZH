@@ -11,7 +11,7 @@ from paths import UPLOADS_DIR
 tasks_bp = Blueprint('tasks', __name__, url_prefix='/tasks',
                      template_folder='templates/tasks')
 
-# Бейджи статусов (для отображения текущего состояния)
+# Бейджи статусов
 STATUS_LABELS = {
     'new':         'Новая',
     'in_progress': 'В работе',
@@ -20,7 +20,7 @@ STATUS_LABELS = {
     'cancelled':   'Отменено',
 }
 
-# Метки кнопок перехода (действие, а не текущее состояние)
+# Метки кнопок перехода
 STATUS_TRANSITION_LABELS = {
     'in_progress': 'В работу',
     'review':      'На проверку',
@@ -39,7 +39,6 @@ REQUEST_STATUS_LABELS = {
     'cancelled': 'Отменено',
 }
 
-# Папка для вложений задач
 TASKS_UPLOAD_DIR = os.path.join(UPLOADS_DIR, 'tasks')
 os.makedirs(TASKS_UPLOAD_DIR, exist_ok=True)
 
@@ -48,16 +47,14 @@ ALLOWED_EXTENSIONS = {
     'jpg', 'jpeg', 'png', 'zip', 'rar',
 }
 
+CLOSED_STATUSES = {'done', 'cancelled'}
+
 
 def _allowed_file(filename):
-    return (
-        '.' in filename
-        and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-    )
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
 def _save_upload(file_obj):
-    """Cохраняет файл в uploads/tasks/, возвращает относительный путь для хранения в БД."""
     if not file_obj or not file_obj.filename:
         return None
     if not _allowed_file(file_obj.filename):
@@ -66,7 +63,7 @@ def _save_upload(file_obj):
     unique_name = f"{uuid.uuid4().hex}.{ext}"
     save_path = os.path.join(TASKS_UPLOAD_DIR, unique_name)
     file_obj.save(save_path)
-    return os.path.join('tasks', unique_name)  # относительно от uploads/
+    return os.path.join('tasks', unique_name)
 
 
 def login_required(f):
@@ -107,19 +104,6 @@ def _is_self_task(task, assignee_ids, user_id):
 
 def _get_allowed_transitions(task_status, user_id, role, task_created_by,
                               assignee_ids):
-    """
-    Динамическая матрица допустимых переходов статусов.
-
-      new         → in_progress  (assignee / creator / admin / manager)
-      new         → cancelled    (creator / admin / manager)
-      in_progress → review       (assignee / creator / admin / manager)
-      in_progress → cancelled    (creator / admin / manager)
-      review      → done         (creator / admin / manager)
-      review      → in_progress  (assignee / creator / admin / manager)
-      review      → cancelled    (creator / admin / manager)
-      done        → in_progress  (admin / manager only)
-      cancelled   → in_progress  (admin / manager only)
-    """
     is_admin_or_manager = role in ('admin', 'manager')
     is_creator          = task_created_by == user_id
     is_assignee         = user_id in assignee_ids
@@ -154,7 +138,6 @@ def _get_allowed_transitions(task_status, user_id, role, task_created_by,
 
 
 def _add_comment(db, task_id, user_id, event_type, body=None, file_path=None):
-    """Helper: записывает событие в task_comments."""
     now = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
     db.execute(
         '''
@@ -172,7 +155,7 @@ def _add_comment(db, task_id, user_id, event_type, body=None, file_path=None):
 def my_tasks():
     user_id       = session['user_id']
     status_filter = request.args.get('status', '')
-    type_filter   = request.args.get('type', '')   # 'task' | 'request' | ''
+    type_filter   = request.args.get('type', '')
     search        = request.args.get('q', '').strip()
     db = get_db()
 
@@ -339,7 +322,9 @@ def api_my_tasks():
 def assigned_by_me():
     user_id       = session['user_id']
     status_filter = request.args.get('status', '')
+    show_closed   = bool(request.args.get('show_closed', ''))
     db = get_db()
+
     query = '''
         SELECT t.*, u.full_name AS creator_name
         FROM tasks t
@@ -347,9 +332,14 @@ def assigned_by_me():
         WHERE t.created_by = ?
     '''
     params = [user_id]
+
+    # Если не запрошен конкретный статус и не попрошено показывать закрытые
     if status_filter:
         query += ' AND t.status = ?'
         params.append(status_filter)
+    elif not show_closed:
+        query += " AND t.status NOT IN ('done', 'cancelled')"
+
     query += ' ORDER BY t.deadline ASC, t.created_at DESC'
     tasks = db.execute(query, params).fetchall()
 
@@ -366,6 +356,7 @@ def assigned_by_me():
         tasks=tasks,
         assignees_map=assignees_map,
         status_filter=status_filter,
+        show_closed=show_closed,
         STATUS_LABELS=STATUS_LABELS,
         today=date.today().isoformat(),
     )
@@ -409,10 +400,7 @@ def create_task():
             (task_id, uid, now, user_id)
         )
 
-    # Событие создания в историю
-    _add_comment(db, task_id, user_id, 'status_change',
-                 body='Задача создана')
-
+    _add_comment(db, task_id, user_id, 'status_change', body='Задача создана')
     log_action(db, user_id, 'task_create', task_id)
     db.commit()
     return redirect(url_for('tasks.task_detail', id=task_id))
@@ -452,7 +440,6 @@ def task_detail(id):
     all_users = db.execute('SELECT id, full_name FROM users ORDER BY full_name').fetchall()
     creator   = db.execute('SELECT full_name FROM users WHERE id = ?', (task['created_by'],)).fetchone()
 
-    # Лента истории + комментариев
     comments = db.execute('''
         SELECT tc.id, tc.event_type, tc.body, tc.file_path, tc.created_at,
                u.full_name AS author_name, u.id AS author_id
@@ -474,7 +461,6 @@ def task_detail(id):
         task['status'] == 'review'
         and (task['created_by'] == user_id or role in ('admin', 'manager'))
     )
-    # Можно ли оставлять комментарий — все участники
     can_comment = (
         user_id in assignee_ids
         or task['created_by'] == user_id
@@ -505,7 +491,6 @@ def task_detail(id):
 @tasks_bp.route('/<int:id>/comment', methods=['POST'])
 @login_required
 def add_comment(id):
-    """POST — добавить комментарий к задаче."""
     user_id = session['user_id']
     role    = session.get('role', 'user')
     db = get_db()
@@ -524,13 +509,11 @@ def add_comment(id):
 
     body = request.form.get('body', '').strip()
     file_path = None
-
     uploaded = request.files.get('file')
     if uploaded and uploaded.filename:
         file_path = _save_upload(uploaded)
 
     if not body and not file_path:
-        # пустой комментарий без файла — игнорируем
         return redirect(url_for('tasks.task_detail', id=id))
 
     _add_comment(db, id, user_id, 'comment', body=body, file_path=file_path)
@@ -579,9 +562,6 @@ def change_status(id):
     if new_status not in allowed:
         abort(400)
 
-    # При переходе in_progress → review через этот роут
-    # (review_submit вынесен в reviewModal в шаблоне и роут /review_submit)
-    # Здесь простая смена без модалки
     db.execute('UPDATE tasks SET status=? WHERE id=?', (new_status, id))
     _add_comment(db, id, user_id, 'status_change',
                  body=f'Статус изменён: {STATUS_LABELS.get(task["status"])} → {STATUS_LABELS.get(new_status, new_status)}')
@@ -593,7 +573,6 @@ def change_status(id):
 @tasks_bp.route('/<int:id>/review-submit', methods=['POST'])
 @login_required
 def review_submit(id):
-    """Перевод задачи in_progress → review с итоговым комментарием + файлом."""
     user_id = session['user_id']
     role    = session.get('role', 'user')
     db = get_db()
@@ -655,7 +634,7 @@ def close_task(id):
         'UPDATE tasks SET status=?, result=?, closed_at=? WHERE id=?',
         (new_status, result, closed_at, id)
     )
-    body = f'Задача выполнена' if new_status == 'done' else 'Задача отменена'
+    body = 'Задача выполнена' if new_status == 'done' else 'Задача отменена'
     if result:
         body += f'. Результат: {result}'
     _add_comment(db, id, user_id, 'status_change', body=body)
@@ -667,7 +646,6 @@ def close_task(id):
 @tasks_bp.route('/<int:id>/revise', methods=['POST'])
 @login_required
 def revise_task(id):
-    """Отправить задачу на доработку (review → in_progress) с обязательным комментарием."""
     user_id = session['user_id']
     role    = session.get('role', 'user')
     db = get_db()

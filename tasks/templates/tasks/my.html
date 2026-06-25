@@ -7,7 +7,13 @@
 <div class="container-fluid mt-3">
 
   <div class="d-flex justify-content-between align-items-center mb-3">
-    <h4 class="mb-0">📋 Мои задачи</h4>
+    <div class="d-flex align-items-center gap-3">
+      <h4 class="mb-0">📋 Мои задачи</h4>
+      <div class="form-check mb-0">
+        <input class="form-check-input" type="checkbox" id="showClosed">
+        <label class="form-check-label text-muted small" for="showClosed">Показать завершённые</label>
+      </div>
+    </div>
     <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#createTaskModal">
       + Создать задачу
     </button>
@@ -66,32 +72,25 @@
 
 <script src="https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
 <script>
-// ─── Форматтеры ──────────────────────────────────────────────────────────────
+const CLOSED_STATUSES = ['done', 'cancelled', 'closed'];
 
 function fmtType(cell) {
   const t = cell.getValue();
-  if (t === 'task') {
-    return '<span class="badge bg-secondary" title="Задача">З</span>';
-  }
-  return '<span class="badge bg-info text-dark" title="Обращение">О</span>';
+  if (t === 'task') return '<span class="badge bg-secondary" title="\u0417\u0430\u0434\u0430\u0447\u0430">\u0417</span>';
+  return '<span class="badge bg-info text-dark" title="\u041e\u0431\u0440\u0430\u0449\u0435\u043d\u0438\u0435">\u041e</span>';
 }
 
 function fmtTitle(cell) {
   const row = cell.getRow().getData();
-  const url = row.type === 'task'
-    ? '/tasks/' + row.id
-    : '/requests/' + row.id;
-  return '<a href="' + url + '" class="text-decoration-none fw-semibold">' +
-    (cell.getValue() || '') + '</a>';
+  const url = row.type === 'task' ? '/tasks/' + row.id : '/requests/' + row.id;
+  return '<a href="' + url + '" class="text-decoration-none fw-semibold">' + (cell.getValue() || '') + '</a>';
 }
 
 function fmtDeadline(cell) {
-  const row  = cell.getRow().getData();
-  const dl   = cell.getValue();
+  const row = cell.getRow().getData();
+  const dl  = cell.getValue();
   if (!dl) return '<span class="text-muted">—</span>';
-  if (row.overdue) {
-    return '<span class="text-danger fw-bold">' + dl + '</span>';
-  }
+  if (row.overdue) return '<span class="text-danger fw-bold">' + dl + '</span>';
   return dl;
 }
 
@@ -123,16 +122,17 @@ function fmtExecutors(cell) {
 
 function fmtActions(cell) {
   const row = cell.getRow().getData();
-  const url = row.type === 'task'
-    ? '/tasks/' + row.id
-    : '/requests/' + row.id;
-  const cls = row.type === 'task'
-    ? 'btn-outline-secondary'
-    : 'btn-outline-info';
+  const url = row.type === 'task' ? '/tasks/' + row.id : '/requests/' + row.id;
+  const cls = row.type === 'task' ? 'btn-outline-secondary' : 'btn-outline-info';
   return '<a href="' + url + '" class="btn ' + cls + ' btn-sm py-0">Открыть</a>';
 }
 
-// ─── Tabulator ────────────────────────────────────────────────────────────────
+// Фильтр: скрывать закрытые если чекбокс не активен
+function closedFilter(data) {
+  const show = document.getElementById('showClosed').checked;
+  if (show) return true;
+  return !CLOSED_STATUSES.includes(data.status);
+}
 
 const table = new Tabulator('#tasks-table', {
   ajaxURL: '/tasks/api/my',
@@ -146,13 +146,11 @@ const table = new Tabulator('#tasks-table', {
       data: { loading: 'Загрузка...', error: 'Ошибка загрузки' },
     }
   },
-  initialSort: [
-    { column: 'deadline', dir: 'asc' },
-  ],
+  initialSort: [{ column: 'deadline', dir: 'asc' }],
+  // Фильтр по умолчанию — скрываем done/cancelled/closed
+  initialFilter: [{ field: 'status', type: 'function', value: closedFilter }],
   rowFormatter: function(row) {
-    if (row.getData().overdue) {
-      row.getElement().classList.add('table-danger');
-    }
+    if (row.getData().overdue) row.getElement().classList.add('table-danger');
   },
   columns: [
     {
@@ -160,9 +158,7 @@ const table = new Tabulator('#tasks-table', {
       formatter: fmtType,
       hozAlign: 'center',
       headerFilter: 'select',
-      headerFilterParams: {
-        values: { '': '— все —', 'task': 'Задача', 'request': 'Обращение' }
-      },
+      headerFilterParams: { values: { '': '— все —', 'task': 'Задача', 'request': 'Обращение' } },
       headerFilterFunc: function(headerValue, rowValue) {
         if (!headerValue) return true;
         return rowValue === headerValue;
@@ -176,9 +172,7 @@ const table = new Tabulator('#tasks-table', {
     {
       title: 'Источник / номер', field: 'source', width: 180,
       headerFilter: 'input',
-      formatter: function(cell) {
-        return cell.getValue() || '<span class="text-muted">—</span>';
-      },
+      formatter: function(cell) { return cell.getValue() || '<span class="text-muted">—</span>'; },
     },
     {
       title: 'Срок', field: 'deadline', width: 120,
@@ -193,15 +187,14 @@ const table = new Tabulator('#tasks-table', {
       headerFilter: 'select',
       headerFilterParams: {
         values: {
-          '': '— любой —',
-          'Новая':       'new',
-          'В работе':    'in_progress',
-          'На проверке': 'review',
-          'Выполнено':   'done',
-          'Отменено':   'cancelled',
-          'Новое':       'new',
-          'Ожидает':     'pending',
-          'Закрыто':      'closed',
+          '':            '— любой —',
+          'new':         'Новая',
+          'in_progress': 'В работе',
+          'review':      'На проверке',
+          'done':        'Выполнено',
+          'cancelled':   'Отменено',
+          'pending':     'Ожидает',
+          'closed':      'Закрыто',
         }
       },
       headerFilterFunc: function(headerValue, rowValue, rowData) {
@@ -212,9 +205,7 @@ const table = new Tabulator('#tasks-table', {
     {
       title: 'Исполнители', field: 'executors',
       formatter: fmtExecutors,
-      sorter: function(a, b) {
-        return (a || []).join(',').localeCompare((b || []).join(','));
-      },
+      sorter: function(a, b) { return (a||[]).join(',').localeCompare((b||[]).join(',')); },
       headerFilter: 'input',
       headerFilterFunc: function(headerValue, rowValue) {
         if (!headerValue) return true;
@@ -231,7 +222,15 @@ const table = new Tabulator('#tasks-table', {
   ],
 });
 
-// После создания задачи через модаль — перезагрузить таблицу
+// Чекбокс «Показать завершённые» — пересчитываем фильтр
+document.getElementById('showClosed').addEventListener('change', function() {
+  // Убираем функциональный фильтр и выставляем заново
+  table.removeFilter(closedFilter);
+  if (!this.checked) {
+    table.addFilter(closedFilter);
+  }
+});
+
 document.addEventListener('DOMContentLoaded', function () {
   const form = document.querySelector('#createTaskModal form');
   if (form) {
