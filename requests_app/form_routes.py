@@ -98,6 +98,20 @@ def _compute_review_deadline(form_date_str: str) -> str | None:
         return None
 
 
+def _save_initial_coexecutors(conn, request_id: int, user_ids: list[int], assigned_by: int):
+    """Сохраняет начальных соисполнителей в request_coexecutors (#77)."""
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    for uid in user_ids:
+        try:
+            conn.execute(
+                "INSERT OR IGNORE INTO request_coexecutors "
+                "(request_id, user_id, assigned_by, assigned_at) VALUES (?,?,?,?)",
+                (request_id, uid, assigned_by, now)
+            )
+        except Exception:
+            pass
+
+
 @requests_bp.route('/request/new', methods=['GET', 'POST'])
 @login_required
 def new_request():
@@ -201,6 +215,17 @@ def new_request():
                     (deadline, new_id)
                 )
 
+            # ─ Сохраняем начальных соисполнителей (#77)
+            raw_ids = request.form.getlist('initial_coexecutors')
+            coex_ids = []
+            for v in raw_ids:
+                try:
+                    coex_ids.append(int(v))
+                except (ValueError, TypeError):
+                    pass
+            if coex_ids:
+                _save_initial_coexecutors(conn, new_id, coex_ids, session['user_id'])
+
             applicant = (
                 request.form.get('applicant_short_name', '') or
                 request.form.get('applicant_full_name', '') or
@@ -208,7 +233,8 @@ def new_request():
             )
             log_action(conn, session['user_id'], 'create', new_id,
                        f'Создано обращение: {applicant}'
-                       + (f', deadline={deadline}' if deadline else ''))
+                       + (f', deadline={deadline}' if deadline else '')
+                       + (f', соисполнителей: {len(coex_ids)}' if coex_ids else ''))
             _commit_files(conn, pending, new_id)
             conn.commit()
             for fn, tmp, _ in pending:
@@ -336,7 +362,7 @@ def edit_request(rid):
 
     lf, di, src, emp, subjects, results, all_users = get_classifiers(conn)
 
-    # ─ Соисполнители (#77) — для отображения в форме редактирования
+    # ─ Соисполнители (#77)
     coexecutors = conn.execute(
         "SELECT ce.user_id, u.full_name, ce.assigned_at "
         "FROM request_coexecutors ce "
