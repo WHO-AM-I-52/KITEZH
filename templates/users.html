@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block content %}
 
-{# ╔══════════════════════════════════════════════════════════════╗ #}
+{# ╔═══════════════════════════════════════════════════════════════ #}
 {# ║                       users.html                            ║ #}
 {# ║  v2.4: +can_view_investmap                                   ║ #}
 {# ║  v2.5: dark-theme — убраны инлайн bg:#f8f9fa → CSS-класс    ║ #}
@@ -9,8 +9,9 @@
 {# ║  v2.7: 3-я вкладка «Изменения прав» (perm_audit)            ║ #}
 {# ║  v2.8: кнопка + модалка редактирования ФИО                  ║ #}
 {# ║  v2.9: +can_investmap_rules                                  ║ #}
+{# ║  v3.0: +can_view_phonebook (Телефонный справочник)        ║ #}
 {#         JS PRESETS синхронизированы с ROLE_PERMISSION_PRESETS  ║ #}
-{# ╚══════════════════════════════════════════════════════════════╝ #}
+{# ╚═══════════════════════════════════════════════════════════════ #}
 
 <style>
   /* ── Вкладки журналов на тёмном фоне — Bootstrap override ── */
@@ -41,7 +42,7 @@
     border-radius: 6px;
   }
 
-  /* ────────────────────────────────────────────────────────────────────────────────────────── */
+  /* ────────────────────────────────────────────────────────────────────────────────────── */
   body[data-theme="dark"]  .form-check.form-switch .form-check-input,
   body[data-theme="zone"]  .form-check.form-switch .form-check-input {
     background-color: var(--input-bg) !important;
@@ -93,6 +94,7 @@
   ('can_view_all',         'Видит все обращения (вкл. поиск)',      'bi-eye',                  'text-secondary'),
   ('can_view_investmap',   'Инвест. карта',                        'bi-map',                  'text-info'),
   ('can_investmap_rules',  'Инвест. карта — правила размещения',   'bi-map-fill',             'text-info'),
+  ('can_view_phonebook',   'Телефонный справочник',              'bi-telephone-fill',       'text-success'),
 ] %}
 
 <div class="row g-4">
@@ -616,13 +618,16 @@ function genPasswordFor(fid) { document.getElementById(fid).value = genPw(); }
 var PRESETS = {
   employee: { can_create:1, can_edit_others:0, can_confirm:0, can_delete:0,
               can_rollback:0, can_export:1, can_classifiers:0, can_users:0,
-              can_view_all:0, can_view_investmap:1, can_investmap_rules:0 },
+              can_view_all:0, can_view_investmap:1, can_investmap_rules:0,
+              can_view_phonebook:1 },
   manager:  { can_create:1, can_edit_others:1, can_confirm:1, can_delete:0,
               can_rollback:0, can_export:1, can_classifiers:0, can_users:0,
-              can_view_all:1, can_view_investmap:1, can_investmap_rules:1 },
+              can_view_all:1, can_view_investmap:1, can_investmap_rules:1,
+              can_view_phonebook:1 },
   admin:    { can_create:1, can_edit_others:1, can_confirm:1, can_delete:1,
               can_rollback:1, can_export:1, can_classifiers:1, can_users:1,
-              can_view_all:1, can_view_investmap:1, can_investmap_rules:1 }
+              can_view_all:1, can_view_investmap:1, can_investmap_rules:1,
+              can_view_phonebook:1 }
 };
 function applyRolePreset(role) {
   var p = PRESETS[role]; if (!p) return;
