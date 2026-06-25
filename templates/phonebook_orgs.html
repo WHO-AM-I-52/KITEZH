@@ -1,8 +1,8 @@
 {% extends 'base.html' %}
 {% block content %}
 
-{# ╔══════════════════════════════════════════════════════════════╗ #}
-{# ║  phonebook_orgs.html — Справочник организаций (v2.1.0)      ║ #}
+{# ╔══════════════════════════════════════════════════════════════╝ #}
+{# ║  phonebook_orgs.html — Справочник организаций (v2.2.0)      ║ #}
 {# ╚══════════════════════════════════════════════════════════════╝ #}
 
 <div class="d-flex align-items-center mb-4 gap-2">
@@ -56,6 +56,7 @@
             <tr>
               <th>Название</th>
               <th>Адрес</th>
+              <th class="text-center">Сотрудников</th>
               <th class="text-end">Действия</th>
             </tr>
           </thead>
@@ -64,6 +65,13 @@
           <tr>
             <td class="fw-bold">{{ o.name }}</td>
             <td class="text-muted">{{ o.address or '—' }}</td>
+            <td class="text-center">
+              {% if o.employee_count > 0 %}
+                <span class="badge bg-secondary">{{ o.employee_count }}</span>
+              {% else %}
+                <span class="text-muted">0</span>
+              {% endif %}
+            </td>
             <td class="text-end">
               <button class="btn btn-sm btn-outline-primary py-0 px-1 me-1"
                       data-bs-toggle="modal"
@@ -71,14 +79,12 @@
                       title="Редактировать">
                 <i class="bi bi-pencil"></i>
               </button>
-              <form method="post" class="d-inline"
-                    action="{{ url_for('phonebook.phonebook_orgs_delete') }}"
-                    onsubmit="return confirm('Удалить организацию «{{ o.name }}»?')">
-                <input type="hidden" name="org_id" value="{{ o.id }}">
-                <button class="btn btn-sm btn-outline-danger py-0 px-1" title="Удалить">
-                  <i class="bi bi-trash"></i>
-                </button>
-              </form>
+              <button class="btn btn-sm btn-outline-danger py-0 px-1"
+                      title="Удалить"
+                      data-bs-toggle="modal"
+                      data-bs-target="#deleteOrgModal{{ o.id }}">
+                <i class="bi bi-trash"></i>
+              </button>
             </td>
           </tr>
 
@@ -117,9 +123,52 @@
             </div></div>
           </div>
 
+          {# Модалка удаления #}
+          <div class="modal fade" id="deleteOrgModal{{ o.id }}" tabindex="-1">
+            <div class="modal-dialog"><div class="modal-content">
+              <form method="post" action="{{ url_for('phonebook.phonebook_orgs_delete') }}">
+                <input type="hidden" name="org_id" value="{{ o.id }}">
+                {% if o.employee_count > 0 %}
+                  <input type="hidden" name="confirm" value="1">
+                {% endif %}
+                <div class="modal-header bg-danger text-white">
+                  <h6 class="modal-title">
+                    <i class="bi bi-exclamation-triangle me-1"></i>Удалить организацию
+                  </h6>
+                  <button type="button" class="btn-close btn-close-white"
+                          data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                  {% if o.employee_count > 0 %}
+                    <div class="alert alert-warning d-flex align-items-start gap-2 mb-3">
+                      <i class="bi bi-exclamation-triangle-fill fs-5 mt-1"></i>
+                      <div>
+                        <strong>Внимание!</strong> К организации привязано
+                        <strong>{{ o.employee_count }}
+                        {% if o.employee_count == 1 %}сотрудник
+                        {% elif o.employee_count in (2,3,4) %}сотрудника
+                        {% else %}сотрудников{% endif %}</strong>.
+                        Они будут удалены вместе с организацией.
+                      </div>
+                    </div>
+                  {% endif %}
+                  <p class="mb-0">Удалить организацию <strong>«{{ o.name }}»</strong>?
+                  Действие необратимо.</p>
+                </div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-secondary btn-sm"
+                          data-bs-dismiss="modal">Отмена</button>
+                  <button type="submit" class="btn btn-danger btn-sm">
+                    <i class="bi bi-trash me-1"></i>Удалить
+                  </button>
+                </div>
+              </form>
+            </div></div>
+          </div>
+
           {% else %}
           <tr>
-            <td colspan="3" class="text-center text-muted py-3">
+            <td colspan="4" class="text-center text-muted py-3">
               Организаций нет — добавьте первую
             </td>
           </tr>
