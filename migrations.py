@@ -146,6 +146,31 @@ CREATE INDEX IF NOT EXISTS idx_ta_user ON task_assignees(user_id);
         conn.execute("ALTER TABLE tasks ADD COLUMN revision_comment TEXT")
 
 
+def _migrate_task_comments_table(conn):
+    """Создаёт таблицу task_comments для истории и комментариев к задачам.
+
+    event_type:
+        'comment'        — обычный комментарий пользователя
+        'status_change'  — автособытие при смене статуса
+        'review_submit'  — итоговый комментарий при переводе на проверку
+        'revision'       — комментарий при отправке на доработку
+    """
+    conn.executescript("""
+CREATE TABLE IF NOT EXISTS task_comments (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id    INTEGER NOT NULL,
+    user_id    INTEGER NOT NULL,
+    event_type TEXT    NOT NULL DEFAULT 'comment',
+    body       TEXT,
+    file_path  TEXT,
+    created_at TEXT    DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_tc_task       ON task_comments(task_id);
+CREATE INDEX IF NOT EXISTS idx_tc_user       ON task_comments(user_id);
+CREATE INDEX IF NOT EXISTS idx_tc_event_type ON task_comments(event_type);
+""")
+
+
 def _migrate_letters_tables(conn):
     """Создаёт таблицы letters/letter_tags/letter_tag_links.
     Порядок: сначала CREATE TABLE (без executor_id),
@@ -493,7 +518,8 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         _migrate_review_chain_table(conn)
         _migrate_investmap_tables(conn)
         _migrate_letters_tables(conn)
-        _migrate_tasks_tables(conn)  # ← tasks + task_assignees
+        _migrate_tasks_tables(conn)           # ← tasks + task_assignees
+        _migrate_task_comments_table(conn)    # ← task_comments (история + комменты)
 
         cols = {r[1] for r in conn.execute("PRAGMA table_info(requests)").fetchall()}
         for col in ['source_type', 'request_files', 'edit_reason', 'updated_by']:
@@ -554,7 +580,8 @@ def migrate_db():
         _migrate_review_chain_table(conn)
         _migrate_investmap_tables(conn)
         _migrate_letters_tables(conn)
-        _migrate_tasks_tables(conn)  # ← tasks + task_assignees
+        _migrate_tasks_tables(conn)           # ← tasks + task_assignees
+        _migrate_task_comments_table(conn)    # ← task_comments (история + комменты)
 
         cols = {r[1] for r in conn.execute("PRAGMA table_info(requests)").fetchall()}
         for col in ['request_files', 'source_type', 'edit_reason', 'updated_by']:
