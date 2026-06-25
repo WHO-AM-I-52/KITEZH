@@ -60,6 +60,14 @@
         <dd class="col-sm-9">{{ task.closed_at[:10] }}</dd>
         {% endif %}
 
+        {# ——— Комментарий к доработке ——— #}
+        {% if task.revision_comment %}
+        <dt class="col-sm-3 text-warning">Комментарий к доработке</dt>
+        <dd class="col-sm-9">
+          <span class="text-warning fw-semibold">{{ task.revision_comment }}</span>
+        </dd>
+        {% endif %}
+
         <dt class="col-sm-3">Исполнители</dt>
         <dd class="col-sm-9">
           {% if assignees %}
@@ -77,40 +85,74 @@
   {# ——— Блок действий ——— #}
   <div class="d-flex flex-wrap gap-2 mb-4">
 
-    {# Смена статуса #}
+    {# Обычные переходы статуса (без done/cancelled/in_progress-возврат — они вынесены в отдельные кнопки) #}
     {% if can_change_status and next_statuses %}
       {% for ns in next_statuses %}
-        <form method="post" action="{{ url_for('tasks.change_status', id=task.id) }}">
-          <input type="hidden" name="status" value="{{ ns }}">
-          <button class="btn btn-sm btn-outline-primary" type="submit">
-            → {{ STATUS_LABELS.get(ns, ns) }}
-          </button>
-        </form>
+        {# Кнопку «Выполнено» показываем отдельно — как closeModal #}
+        {% if ns == 'done' %}{# пропускаем, рендерим ниже #}
+        {% elif ns == 'cancelled' %}
+          {# Отмена — отдельная кнопка #}
+          <form method="post" action="{{ url_for('tasks.close_task', id=task.id) }}">
+            <input type="hidden" name="action" value="cancelled">
+            <input type="hidden" name="result" value="">
+            <button class="btn btn-sm btn-outline-danger" type="submit"
+                    onclick="return confirm('Отменить задачу?')">
+              ✕ Отменить
+            </button>
+          </form>
+        {% elif ns == 'in_progress' and task.status in ('done', 'cancelled') %}
+          {# Возврат в работу — только admin/manager — отдельная кнопка ниже #}
+        {% else %}
+          <form method="post" action="{{ url_for('tasks.change_status', id=task.id) }}">
+            <input type="hidden" name="status" value="{{ ns }}">
+            <button class="btn btn-sm btn-outline-primary" type="submit">
+              → {{ STATUS_LABELS.get(ns, ns) }}
+            </button>
+          </form>
+        {% endif %}
       {% endfor %}
     {% endif %}
 
-    {# Закрыть / отменить #}
-    {% if can_change_status and task.status in ('in_progress', 'review') %}
+    {# ✔ Закрыть — только если done доступен #}
+    {% if can_change_status and 'done' in next_statuses %}
       <button class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#closeModal">
         ✓ Закрыть
       </button>
     {% endif %}
 
-    {# Редактировать #}
+    {# ↩ На доработку — только если can_revise #}
+    {% if can_revise %}
+      <button class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#reviseModal">
+        ↩ На доработку
+      </button>
+    {% endif %}
+
+    {# ↺ Вернуть в работу — admin/manager, когда done или cancelled #}
+    {% if 'in_progress' in next_statuses and task.status in ('done', 'cancelled') %}
+      <form method="post" action="{{ url_for('tasks.change_status', id=task.id) }}">
+        <input type="hidden" name="status" value="in_progress">
+        <button class="btn btn-sm btn-outline-secondary" type="submit"
+                onclick="return confirm('Вернуть задачу в работу?')">
+          ↺ Вернуть в работу
+        </button>
+      </form>
+    {% endif %}
+
+    {# ✏️ Редактировать #}
     {% if can_edit and task.status not in ('done', 'cancelled') %}
       <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editModal">
         ✏️ Редактировать
       </button>
     {% endif %}
 
-    {# Назначить #}
+    {# 👤 Назначить #}
     {% if can_assign and task.status not in ('done', 'cancelled') %}
       <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#assignModal">
         👤 Назначить
       </button>
     {% endif %}
 
-    {# Удалить — только admin #}
+    {# 🗑️ Удалить — только admin #}
     {% if can_delete %}
       <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteModal">
         🗑️ Удалить
@@ -123,11 +165,12 @@
 
 {# ===== МОДАЛЬНЫЕ ОКНА ===== #}
 
-{# ——— Закрыть ——— #}
+{# ——— Закрыть (done) ——— #}
 <div class="modal fade" id="closeModal" tabindex="-1">
   <div class="modal-dialog">
     <div class="modal-content">
       <form method="post" action="{{ url_for('tasks.close_task', id=task.id) }}">
+        <input type="hidden" name="action" value="done">
         <div class="modal-header">
           <h5 class="modal-title">Завершить задачу</h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -137,23 +180,36 @@
             <label class="form-label">Результат</label>
             <textarea name="result" class="form-control" rows="3" placeholder="Кратко опишите что сделано..."></textarea>
           </div>
-          <div class="mb-0">
-            <label class="form-label">Действие</label>
-            <div class="d-flex gap-2">
-              <div class="form-check">
-                <input class="form-check-input" type="radio" name="action" value="done" id="actDone" checked>
-                <label class="form-check-label" for="actDone">Выполнено</label>
-              </div>
-              <div class="form-check">
-                <input class="form-check-input" type="radio" name="action" value="cancelled" id="actCancel">
-                <label class="form-check-label" for="actCancel">Отменить</label>
-              </div>
-            </div>
-          </div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Назад</button>
           <button type="submit" class="btn btn-success">Подтвердить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{# ——— На доработку ——— #}
+<div class="modal fade" id="reviseModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post" action="{{ url_for('tasks.revise_task', id=task.id) }}">
+        <div class="modal-header">
+          <h5 class="modal-title text-warning">↩ На доработку</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Комментарий <span class="text-danger">*</span></label>
+            <textarea name="revision_comment" class="form-control" rows="4"
+                      placeholder="Опишите что нужно доработать..."
+                      required></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+          <button type="submit" class="btn btn-warning">Отправить на доработку</button>
         </div>
       </form>
     </div>
