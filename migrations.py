@@ -117,16 +117,17 @@ def _migrate_tasks_tables(conn):
     """Создаёт таблицы tasks и task_assignees если их нет."""
     conn.executescript("""
 CREATE TABLE IF NOT EXISTS tasks (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    title       TEXT NOT NULL,
-    description TEXT,
-    source      TEXT,
-    deadline    TEXT,
-    status      TEXT NOT NULL DEFAULT 'new',
-    result      TEXT,
-    created_by  INTEGER NOT NULL,
-    created_at  TEXT DEFAULT CURRENT_TIMESTAMP,
-    closed_at   TEXT
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    title            TEXT NOT NULL,
+    description      TEXT,
+    source           TEXT,
+    deadline         TEXT,
+    status           TEXT NOT NULL DEFAULT 'new',
+    result           TEXT,
+    created_by       INTEGER NOT NULL,
+    created_at       TEXT DEFAULT CURRENT_TIMESTAMP,
+    closed_at        TEXT,
+    revision_comment TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_tasks_status     ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_created_by ON tasks(created_by);
@@ -140,6 +141,9 @@ CREATE TABLE IF NOT EXISTS task_assignees (
 CREATE INDEX IF NOT EXISTS idx_ta_task ON task_assignees(task_id);
 CREATE INDEX IF NOT EXISTS idx_ta_user ON task_assignees(user_id);
 """)
+    task_cols = {r[1] for r in conn.execute("PRAGMA table_info(tasks)").fetchall()}
+    if 'revision_comment' not in task_cols:
+        conn.execute("ALTER TABLE tasks ADD COLUMN revision_comment TEXT")
 
 
 def _migrate_letters_tables(conn):
