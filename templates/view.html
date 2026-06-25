@@ -133,6 +133,69 @@
       </tr>
       {% endif %}
 
+      {# ── Соисполнители (#77) — строка рядом с «Ответственным» ── #}
+      <tr>
+        <td class="text-muted" style="width:45%;vertical-align:top">Соисполнители</td>
+        <td>
+          {# Список текущих соисполнителей #}
+          {% if coexecutors %}
+            <div class="mb-2">
+              {% for ce in coexecutors %}
+              <div class="d-flex align-items-center gap-2 mb-1">
+                <span class="badge bg-light text-dark border" style="font-size:0.82rem">
+                  <i class="bi bi-person me-1"></i>{{ ce.full_name }}
+                </span>
+                {% if session.role in ('admin', 'manager') or session.user_id == req.assigned_to or session.user_id == req.responsible_id %}
+                <form method="post"
+                      action="{{ url_for('requests.remove_coexecutor', rid=req.id, coex_uid=ce.user_id) }}"
+                      class="d-inline"
+                      onsubmit="return confirm('Снять соисполнителя {{ ce.full_name }}?')">
+                  <button type="submit"
+                          class="btn btn-sm btn-outline-danger py-0 px-1"
+                          title="Снять соисполнителя"
+                          style="font-size:0.72rem;line-height:1.4">
+                    <i class="bi bi-x"></i>
+                  </button>
+                </form>
+                {% endif %}
+              </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <span class="text-muted fst-italic" style="font-size:0.82rem">не назначены</span>
+          {% endif %}
+
+          {# Форма добавления — только admin / manager / исполнитель / ответственный #}
+          {% if session.role in ('admin', 'manager') or session.user_id == req.assigned_to or session.user_id == req.responsible_id %}
+          <div class="d-flex gap-1 mt-1 align-items-center flex-wrap">
+            <form method="post"
+                  action="{{ url_for('requests.add_coexecutor', rid=req.id) }}"
+                  class="d-flex gap-1 align-items-center flex-wrap">
+              <select name="coexecutor_id"
+                      class="form-select form-select-sm"
+                      style="min-width:180px;max-width:260px"
+                      required>
+                <option value="">— добавить —</option>
+                {% for u in all_users %}
+                  {% if u.role in ('employee', 'admin', 'manager') %}
+                  <option value="{{ u.id }}">{{ u.full_name }}
+                    {%- if u.role == 'admin' %} (адм.)
+                    {%- elif u.role == 'manager' %} (мен.)
+                    {%- endif %}
+                  </option>
+                  {% endif %}
+                {% endfor %}
+              </select>
+              <button type="submit" class="btn btn-sm btn-outline-primary" title="Добавить соисполнителя">
+                <i class="bi bi-person-plus"></i>
+              </button>
+            </form>
+          </div>
+          {% endif %}
+        </td>
+      </tr>
+      {# ── /Соисполнители ── #}
+
       {# ── Цепочка согласования (review_chain) ── #}
       {% if review_chain %}
       <tr>
