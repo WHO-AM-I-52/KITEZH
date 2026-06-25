@@ -1,5 +1,5 @@
 # phonebook_routes.py
-# Blueprint: телефонный справочник (v2.8.2)
+# Blueprint: телефонный справочник (v2.9.0)
 # Маршруты:
 #   GET  /phonebook                — список сотрудников с поиском  [can_view_phonebook]
 #   GET  /phonebook/search         — AJAX: поиск, возвращает JSON       [can_view_phonebook]
@@ -25,6 +25,10 @@
 #
 # v2.8.2 (#76):
 #   sync_request_to_phonebook() теперь передаёт applicant_inn → phonebook.inn
+#
+# v2.9.0:
+#   phonebook_orgs_delete() — каскадное удаление с подтверждением.
+#   При наличии сотрудников выводит предупреждение (confirm=1).
 
 from flask import (Blueprint, render_template, request,
                    redirect, url_for, flash, jsonify, session)
@@ -96,7 +100,7 @@ def phonebook():
 @login_required
 @permission_required('can_view_phonebook')
 def phonebook_search():
-    """AJAX-эндпоинт: возвращает JSON для live-поиска."""
+    """AJAX-эндпойнт: возвращает JSON для live-поиска."""
     search   = request.args.get('q', '').strip()
     contacts = get_all_contacts(search)
     groups   = {}
@@ -217,7 +221,16 @@ def phonebook_delete():
 @login_required
 @admin_required
 def phonebook_orgs():
-    orgs = get_all_orgs()
+    conn  = get_db()
+    orgs_raw = conn.execute("SELECT * FROM phonebook_orgs ORDER BY name").fetchall()
+    counts   = {
+        row['org_id']: row['cnt']
+        for row in conn.execute(
+            "SELECT org_id, COUNT(*) AS cnt FROM phonebook GROUP BY org_id"
+        ).fetchall()
+    }
+    conn.close()
+    orgs = [dict(o) | {'employee_count': counts.get(o['id'], 0)} for o in orgs_raw]
     return render_template('phonebook_orgs.html', orgs=orgs)
 
 
@@ -269,24 +282,55 @@ def phonebook_orgs_edit():
 @login_required
 @admin_required
 def phonebook_orgs_delete():
-    oid  = request.form.get('org_id')
-    conn = get_db()
+    oid     = request.form.get('org_id')
+    confirm = request.form.get('confirm')
+    conn    = get_db()
+
+    row = conn.execute(
+        "SELECT name FROM phonebook_orgs WHERE id=?", (oid,)
+    ).fetchone()
+    if not row:
+        flash('Организация не найдена', 'error')
+        conn.close()
+        return redirect(url_for('phonebook.phonebook_orgs'))
+
+    name  = row['name']
     count = conn.execute(
         "SELECT COUNT(*) FROM phonebook WHERE org_id=?", (oid,)
     ).fetchone()[0]
+
+    if count > 0 and confirm != '1':
+        # Сотрудники есть, подтверждение не получено — передаём данные в шаблондля модального окна
+        conn.close()
+        orgs_raw = get_all_orgs()
+        conn2  = get_db()
+        counts = {
+            r['org_id']: r['cnt']
+            for r in conn2.execute(
+                "SELECT org_id, COUNT(*) AS cnt FROM phonebook GROUP BY org_id"
+            ).fetchall()
+        }
+        conn2.close()
+        orgs = [dict(o) | {'employee_count': counts.get(o['id'], 0)} for o in orgs_raw]
+        return render_template(
+            'phonebook_orgs.html',
+            orgs=orgs,
+            confirm_delete={'org_id': oid, 'org_name': name, 'count': count},
+        )
+
+    # Подтверждение получено или сотрудников нет — каскадно удаляем
     if count > 0:
-        flash(f'Нельзя удалить: к организации привязано {count} сотрудников', 'error')
-    else:
-        row  = conn.execute(
-            "SELECT name FROM phonebook_orgs WHERE id=?", (oid,)
-        ).fetchone()
-        name = row['name'] if row else f'ID:{oid}'
-        conn.execute("DELETE FROM phonebook_orgs WHERE id=?", (oid,))
+        conn.execute("DELETE FROM phonebook WHERE org_id=?", (oid,))
         log_action(conn, session['user_id'], 'delete', None,
-                   f'Справочник орг.: удалена «{name}»')
-        conn.commit()
-        flash('Организация удалена', 'success')
+                   f'Справочник: каскадно удалено {count} сотрудников орг. «{name}»')
+
+    conn.execute("DELETE FROM phonebook_orgs WHERE id=?", (oid,))
+    log_action(conn, session['user_id'], 'delete', None,
+               f'Справочник орг.: удалена «{name}»')
+    conn.commit()
     conn.close()
+    flash(f'Организация «{name}» удалена '
+          + (f'(вместе с {count} сотрудниками)' if count > 0 else ''), 'success')
     return redirect(url_for('phonebook.phonebook_orgs'))
 
 
@@ -302,7 +346,7 @@ def org_address():
     return jsonify({'address': row['address'] if row else ''})
 
 
-# ── Issue #PB-1: Синхронизация из формы обращения ─────────────────────────────────────────────
+# ── Issue #PB-1: Синхронизация из формы обращения ─────────────────────────────────────────────────────────────────────────────────────
 def sync_request_to_phonebook(conn, form_data, request_id: int, user_id: int) -> None:
     """
     Создаёт организацию и контакт в справочнике по данным формы обращения.
