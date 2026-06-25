@@ -165,7 +165,7 @@ def new_request():
                     'form.html', req=None, today=date.today().isoformat(),
                     legal_forms=lf2, districts=di2, source_types=src2,
                     employees=emp2, required_fields=REQUIRED_FIELDS,
-                    subjects=subjects2, results=results2, all_users=all_users2,
+                    subjects=results2, results=results2, all_users=all_users2,
                     ocr_message=msg if 'msg' in locals() else ''
                 )
 
@@ -331,14 +331,26 @@ def edit_request(rid):
             return redirect(url_for('requests.edit_request', rid=rid))
 
         conn.close()
-        flash('Обращение обновлено', 'success')
+        flash('Обращение обновнено', 'success')
         return redirect(url_for('requests.index'))
 
     lf, di, src, emp, subjects, results, all_users = get_classifiers(conn)
+
+    # ─ Соисполнители (#77) — для отображения в форме редактирования
+    coexecutors = conn.execute(
+        "SELECT ce.user_id, u.full_name, ce.assigned_at "
+        "FROM request_coexecutors ce "
+        "JOIN users u ON u.id = ce.user_id "
+        "WHERE ce.request_id = ? "
+        "ORDER BY ce.assigned_at",
+        (rid,)
+    ).fetchall()
+
     conn.close()
     return render_template(
         'form.html', req=req, today=date.today().isoformat(),
         legal_forms=lf, districts=di, source_types=src,
         employees=emp, required_fields=REQUIRED_FIELDS,
-        subjects=subjects, results=results, all_users=all_users
+        subjects=subjects, results=results, all_users=all_users,
+        coexecutors=coexecutors,
     )
