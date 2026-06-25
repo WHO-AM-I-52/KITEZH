@@ -190,7 +190,7 @@
           {% endif %}
           {% if c.file_path %}
           <div class="card-footer py-1">
-            <a href="{{ url_for('uploaded_file', filename=c.file_path) }}" target="_blank" class="small">
+            <a href="{{ url_for('requests.uploaded_file', filename=c.file_path) }}" target="_blank" class="small">
               📎 {{ c.file_path.split('/')[-1] }}
             </a>
           </div>
@@ -225,7 +225,7 @@
             <p class="mb-1 small" style="white-space:pre-wrap">{{ c.body }}</p>
             {% endif %}
             {% if c.file_path %}
-            <a href="{{ url_for('uploaded_file', filename=c.file_path) }}" target="_blank" class="small">
+            <a href="{{ url_for('requests.uploaded_file', filename=c.file_path) }}" target="_blank" class="small">
               📎 {{ c.file_path.split('/')[-1] }}
             </a>
             {% endif %}
