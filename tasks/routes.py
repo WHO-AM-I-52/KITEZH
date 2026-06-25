@@ -8,14 +8,6 @@ from functools import wraps
 tasks_bp = Blueprint('tasks', __name__, url_prefix='/tasks',
                      template_folder='templates/tasks')
 
-ALLOWED_TRANSITIONS = {
-    'new':         ['in_progress', 'cancelled'],
-    'in_progress': ['review', 'cancelled'],
-    'review':      ['done', 'in_progress', 'cancelled'],
-    'done':        [],
-    'cancelled':   [],
-}
-
 STATUS_LABELS = {
     'new':         'Новая',
     'in_progress': 'В работе',
@@ -65,6 +57,62 @@ def _can_change_status(task, assignee_ids, user_id, role):
 
 def _can_assign(task, user_id, role):
     return task['created_by'] == user_id or role in ('admin', 'manager')
+
+
+def _is_self_task(task, assignee_ids, user_id):
+    """Возвращает True если исполнитель является единственным/одним из assignee
+    и одновременно является создателем задачи."""
+    return task['created_by'] == user_id and user_id in assignee_ids
+
+
+def _get_allowed_transitions(task_status, user_id, role, task_created_by,
+                              assignee_ids):
+    """
+    Динамическая матрица допустимых переходов статусов.
+
+    Матрица (согласованная):
+      new         → in_progress (assignee / creator / admin / manager)
+      new         → cancelled   (creator / admin / manager; НЕ простой assignee)
+      in_progress → review      (assignee / creator / admin / manager)
+      in_progress → cancelled   (creator / admin / manager; НЕ простой assignee)
+      review      → done        (creator / admin / manager)
+      review      → in_progress (assignee / creator / admin / manager)  ← возврат на доработку без комментария
+      review      → cancelled   (creator / admin / manager)
+      done        → in_progress (admin / manager only)
+      cancelled   → in_progress (admin / manager only)
+    """
+    is_admin_or_manager = role in ('admin', 'manager')
+    is_creator = task_created_by == user_id
+    is_assignee = user_id in assignee_ids
+    # «Привилегированный» — может отменять и закрывать
+    is_privileged = is_admin_or_manager or is_creator
+
+    transitions = {
+        'new': (
+            ['in_progress', 'cancelled'] if is_privileged
+            else ['in_progress'] if is_assignee
+            else []
+        ),
+        'in_progress': (
+            ['review', 'cancelled'] if is_privileged
+            else ['review'] if is_assignee
+            else []
+        ),
+        'review': (
+            ['done', 'in_progress', 'cancelled'] if is_privileged
+            else ['in_progress'] if is_assignee
+            else []
+        ),
+        'done': (
+            ['in_progress'] if is_admin_or_manager
+            else []
+        ),
+        'cancelled': (
+            ['in_progress'] if is_admin_or_manager
+            else []
+        ),
+    }
+    return transitions.get(task_status, [])
 
 
 # ─── РОУТЫ ───────────────────────────────────────────────
@@ -364,7 +412,15 @@ def task_detail(id):
     can_change_status = _can_change_status(task, assignee_ids, user_id, role)
     can_assign        = _can_assign(task, user_id, role)
     can_delete        = role == 'admin'
-    next_statuses     = ALLOWED_TRANSITIONS.get(task['status'], [])
+    next_statuses     = _get_allowed_transitions(
+        task['status'], user_id, role, task['created_by'], assignee_ids
+    )
+    is_self_task = _is_self_task(task, assignee_ids, user_id)
+    # can_revise: кнопка «На доработку» — только из review, только privileged
+    can_revise = (
+        task['status'] == 'review'
+        and (task['created_by'] == user_id or role in ('admin', 'manager'))
+    )
 
     return render_template(
         'detail.html',
@@ -377,6 +433,8 @@ def task_detail(id):
         can_assign=can_assign,
         can_delete=can_delete,
         next_statuses=next_statuses,
+        is_self_task=is_self_task,
+        can_revise=can_revise,
         STATUS_LABELS=STATUS_LABELS,
         today=date.today().isoformat(),
     )
@@ -415,7 +473,10 @@ def change_status(id):
         abort(403)
 
     new_status = request.form.get('status', '').strip()
-    if new_status not in ALLOWED_TRANSITIONS.get(task['status'], []):
+    allowed = _get_allowed_transitions(
+        task['status'], user_id, role, task['created_by'], assignee_ids
+    )
+    if new_status not in allowed:
         abort(400)
 
     db.execute('UPDATE tasks SET status=? WHERE id=?', (new_status, id))
@@ -440,16 +501,52 @@ def close_task(id):
 
     action     = request.form.get('action', 'done')
     new_status = 'done' if action == 'done' else 'cancelled'
-    if new_status not in ALLOWED_TRANSITIONS.get(task['status'], []):
+    allowed    = _get_allowed_transitions(
+        task['status'], user_id, role, task['created_by'], assignee_ids
+    )
+    if new_status not in allowed:
         abort(400)
 
-    result = request.form.get('result', '').strip()
-    now    = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
+    result    = request.form.get('result', '').strip()
+    now       = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
+    closed_at = now if new_status == 'done' else None
     db.execute(
         'UPDATE tasks SET status=?, result=?, closed_at=? WHERE id=?',
-        (new_status, result, now, id)
+        (new_status, result, closed_at, id)
     )
     log_action(db, user_id, 'task_close', id)
+    db.commit()
+    return redirect(url_for('tasks.task_detail', id=id))
+
+
+@tasks_bp.route('/<int:id>/revise', methods=['POST'])
+@login_required
+def revise_task(id):
+    """Отправить задачу на доработку (review → in_progress) с обязательным комментарием."""
+    user_id = session['user_id']
+    role    = session.get('role', 'user')
+    db = get_db()
+    task = db.execute('SELECT * FROM tasks WHERE id = ?', (id,)).fetchone()
+    if task is None:
+        abort(404)
+
+    # Только из статуса review
+    if task['status'] != 'review':
+        abort(400)
+
+    # Только creator / admin / manager
+    if not (task['created_by'] == user_id or role in ('admin', 'manager')):
+        abort(403)
+
+    comment = request.form.get('revision_comment', '').strip()
+    if not comment:
+        abort(400)  # комментарий обязателен
+
+    db.execute(
+        'UPDATE tasks SET status=?, revision_comment=? WHERE id=?',
+        ('in_progress', comment, id)
+    )
+    log_action(db, user_id, 'task_revise', id, detail=comment)
     db.commit()
     return redirect(url_for('tasks.task_detail', id=id))
 
