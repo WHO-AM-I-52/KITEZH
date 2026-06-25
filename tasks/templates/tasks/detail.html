@@ -4,7 +4,7 @@
 {% block content %}
 <div class="container mt-4" style="max-width:860px">
 
-  {# ——— Шапка ——— #}
+  {# ─── Шапка ─── #}
   <nav aria-label="breadcrumb" class="mb-3">
     <ol class="breadcrumb">
       <li class="breadcrumb-item"><a href="{{ url_for('tasks.my_tasks') }}">Мои задачи</a></li>
@@ -12,10 +12,10 @@
     </ol>
   </nav>
 
+  {# ─── Основная карточка ─── #}
   <div class="card shadow-sm mb-4">
     <div class="card-body">
 
-      {# ——— Заголовок + статус ——— #}
       <div class="d-flex justify-content-between align-items-start mb-3">
         <div>
           <h5 class="mb-1">{{ task.title }}</h5>
@@ -33,7 +33,6 @@
         </span>
       </div>
 
-      {# ——— Основные поля ——— #}
       <dl class="row mb-0">
         <dt class="col-sm-3">Источник</dt>
         <dd class="col-sm-9">{{ task.source or '—' }}</dd>
@@ -48,7 +47,7 @@
         </dd>
 
         <dt class="col-sm-3">Описание</dt>
-        <dd class="col-sm-9">{{ task.description or '—' }}</dd>
+        <dd class="col-sm-9" style="white-space:pre-wrap">{{ task.description or '—' }}</dd>
 
         {% if task.result %}
         <dt class="col-sm-3">Результат</dt>
@@ -58,14 +57,6 @@
         {% if task.closed_at %}
         <dt class="col-sm-3">Закрыта</dt>
         <dd class="col-sm-9">{{ task.closed_at[:10] }}</dd>
-        {% endif %}
-
-        {# ——— Комментарий к доработке ——— #}
-        {% if task.revision_comment %}
-        <dt class="col-sm-3 text-warning">Комментарий к доработке</dt>
-        <dd class="col-sm-9">
-          <span class="text-warning fw-semibold">{{ task.revision_comment }}</span>
-        </dd>
         {% endif %}
 
         <dt class="col-sm-3">Исполнители</dt>
@@ -82,90 +73,226 @@
     </div>
   </div>
 
-  {# ——— Блок действий ——— #}
+  {# ─── Блок действий ─── #}
   <div class="d-flex flex-wrap gap-2 mb-4">
 
-    {# Обычные переходы статуса (без done/cancelled/in_progress-возврат — они вынесены в отдельные кнопки) #}
     {% if can_change_status and next_statuses %}
       {% for ns in next_statuses %}
-        {# Кнопку «Выполнено» показываем отдельно — как closeModal #}
-        {% if ns == 'done' %}{# пропускаем, рендерим ниже #}
+
+        {# «На проверку» — через reviewModal (c комментарием + файлом) #}
+        {% if ns == 'review' %}
+          <button class="btn btn-sm btn-outline-primary"
+                  data-bs-toggle="modal" data-bs-target="#reviewModal">
+            → {{ STATUS_TRANSITION_LABELS.get('review', 'На проверку') }}
+          </button>
+
+        {# «Выполнить» — через closeModal #}
+        {% elif ns == 'done' %}
+          <button class="btn btn-sm btn-success"
+                  data-bs-toggle="modal" data-bs-target="#closeModal">
+            ✓ {{ STATUS_TRANSITION_LABELS.get('done', 'Выполнить') }}
+          </button>
+
+        {# «Отменить» — confirm #}
         {% elif ns == 'cancelled' %}
-          {# Отмена — отдельная кнопка #}
           <form method="post" action="{{ url_for('tasks.close_task', id=task.id) }}">
             <input type="hidden" name="action" value="cancelled">
             <input type="hidden" name="result" value="">
             <button class="btn btn-sm btn-outline-danger" type="submit"
                     onclick="return confirm('Отменить задачу?')">
-              ✕ Отменить
+              ✕ {{ STATUS_TRANSITION_LABELS.get('cancelled', 'Отменить') }}
             </button>
           </form>
-        {% elif ns == 'in_progress' and task.status in ('done', 'cancelled') %}
-          {# Возврат в работу — только admin/manager — отдельная кнопка ниже #}
-        {% else %}
-          <form method="post" action="{{ url_for('tasks.change_status', id=task.id) }}">
-            <input type="hidden" name="status" value="{{ ns }}">
-            <button class="btn btn-sm btn-outline-primary" type="submit">
-              → {{ STATUS_LABELS.get(ns, ns) }}
-            </button>
-          </form>
+
+        {# «В работу» — переход из new или возврат из done/cancelled #}
+        {% elif ns == 'in_progress' %}
+          {% if task.status in ('done', 'cancelled') %}
+            <form method="post" action="{{ url_for('tasks.change_status', id=task.id) }}">
+              <input type="hidden" name="status" value="in_progress">
+              <button class="btn btn-sm btn-outline-secondary" type="submit"
+                      onclick="return confirm('Вернуть задачу в работу?')">
+                ↺ {{ STATUS_TRANSITION_LABELS.get('in_progress', 'В работу') }}
+              </button>
+            </form>
+          {% else %}
+            <form method="post" action="{{ url_for('tasks.change_status', id=task.id) }}">
+              <input type="hidden" name="status" value="in_progress">
+              <button class="btn btn-sm btn-outline-primary" type="submit">
+                → {{ STATUS_TRANSITION_LABELS.get('in_progress', 'В работу') }}
+              </button>
+            </form>
+          {% endif %}
+
         {% endif %}
       {% endfor %}
     {% endif %}
 
-    {# ✔ Закрыть — только если done доступен #}
-    {% if can_change_status and 'done' in next_statuses %}
-      <button class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#closeModal">
-        ✓ Закрыть
-      </button>
-    {% endif %}
-
     {# ↩ На доработку — только если can_revise #}
     {% if can_revise %}
-      <button class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#reviseModal">
+      <button class="btn btn-sm btn-warning"
+              data-bs-toggle="modal" data-bs-target="#reviseModal">
         ↩ На доработку
       </button>
     {% endif %}
 
-    {# ↺ Вернуть в работу — admin/manager, когда done или cancelled #}
-    {% if 'in_progress' in next_statuses and task.status in ('done', 'cancelled') %}
-      <form method="post" action="{{ url_for('tasks.change_status', id=task.id) }}">
-        <input type="hidden" name="status" value="in_progress">
-        <button class="btn btn-sm btn-outline-secondary" type="submit"
-                onclick="return confirm('Вернуть задачу в работу?')">
-          ↺ Вернуть в работу
-        </button>
-      </form>
-    {% endif %}
-
     {# ✏️ Редактировать #}
     {% if can_edit and task.status not in ('done', 'cancelled') %}
-      <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editModal">
+      <button class="btn btn-sm btn-outline-secondary"
+              data-bs-toggle="modal" data-bs-target="#editModal">
         ✏️ Редактировать
       </button>
     {% endif %}
 
     {# 👤 Назначить #}
     {% if can_assign and task.status not in ('done', 'cancelled') %}
-      <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#assignModal">
+      <button class="btn btn-sm btn-outline-info"
+              data-bs-toggle="modal" data-bs-target="#assignModal">
         👤 Назначить
       </button>
     {% endif %}
 
     {# 🗑️ Удалить — только admin #}
     {% if can_delete %}
-      <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteModal">
+      <button class="btn btn-sm btn-outline-danger"
+              data-bs-toggle="modal" data-bs-target="#deleteModal">
         🗑️ Удалить
       </button>
     {% endif %}
 
-  </div>
+  </div>{# /actions #}
 
+  {# ──────────────────────────────────────────────────
+       ЛЕНТА ИСТОРИИ И КОММЕНТАРИИ
+  ────────────────────────────────────────────────── #}
+  <h6 class="text-muted mb-3">История</h6>
+
+  {% if comments %}
+    {% for c in comments %}
+      {# ─── автособытия ─── #}
+      {% if c.event_type in ('status_change',) %}
+        <div class="d-flex align-items-center gap-2 mb-2 ps-1">
+          <span class="text-muted" style="font-size:.75rem">{{ c.created_at[:16].replace('T',' ') }}</span>
+          <span class="text-muted small">{{ c.author_name }}</span>
+          <span class="text-muted small">&mdash; {{ c.body }}</span>
+        </div>
+
+      {# ─── результат передачи на проверку ─── #}
+      {% elif c.event_type == 'review_submit' %}
+        <div class="card border-primary mb-3">
+          <div class="card-header bg-primary bg-opacity-10 d-flex justify-content-between align-items-center py-1">
+            <span class="small fw-semibold text-primary">→ На проверку &mdash; {{ c.author_name }}</span>
+            <span class="text-muted" style="font-size:.75rem">{{ c.created_at[:16].replace('T',' ') }}</span>
+          </div>
+          {% if c.body %}
+          <div class="card-body py-2">
+            <p class="mb-0 small" style="white-space:pre-wrap">{{ c.body }}</p>
+          </div>
+          {% endif %}
+          {% if c.file_path %}
+          <div class="card-footer py-1">
+            <a href="{{ url_for('uploaded_file', filename=c.file_path) }}" target="_blank" class="small">
+              📎 {{ c.file_path.split('/')[-1] }}
+            </a>
+          </div>
+          {% endif %}
+        </div>
+
+      {# ─── комментарий на доработку ─── #}
+      {% elif c.event_type == 'revision' %}
+        <div class="card border-warning mb-3">
+          <div class="card-header bg-warning bg-opacity-10 d-flex justify-content-between align-items-center py-1">
+            <span class="small fw-semibold text-warning">↩ На доработку &mdash; {{ c.author_name }}</span>
+            <span class="text-muted" style="font-size:.75rem">{{ c.created_at[:16].replace('T',' ') }}</span>
+          </div>
+          <div class="card-body py-2">
+            <p class="mb-0 small" style="white-space:pre-wrap">{{ c.body }}</p>
+          </div>
+        </div>
+
+      {# ─── обычный комментарий ─── #}
+      {% else %}
+        <div class="d-flex gap-2 mb-3 align-items-start">
+          <div class="rounded-circle bg-secondary text-white d-flex align-items-center justify-content-center flex-shrink-0"
+               style="width:32px;height:32px;font-size:.8rem">
+            {{ c.author_name[0] | upper }}
+          </div>
+          <div class="flex-grow-1">
+            <div class="d-flex justify-content-between">
+              <span class="small fw-semibold">{{ c.author_name }}</span>
+              <span class="text-muted" style="font-size:.75rem">{{ c.created_at[:16].replace('T',' ') }}</span>
+            </div>
+            {% if c.body %}
+            <p class="mb-1 small" style="white-space:pre-wrap">{{ c.body }}</p>
+            {% endif %}
+            {% if c.file_path %}
+            <a href="{{ url_for('uploaded_file', filename=c.file_path) }}" target="_blank" class="small">
+              📎 {{ c.file_path.split('/')[-1] }}
+            </a>
+            {% endif %}
+          </div>
+        </div>
+      {% endif %}
+    {% endfor %}
+  {% else %}
+    <p class="text-muted small">Событий ещё нет.</p>
+  {% endif %}
+
+  {# ─── Форма комментария ─── #}
+  {% if can_comment and task.status not in ('done', 'cancelled') %}
+  <div class="card mt-3 mb-4">
+    <div class="card-body py-3">
+      <form method="post" action="{{ url_for('tasks.add_comment', id=task.id) }}"
+            enctype="multipart/form-data">
+        <div class="mb-2">
+          <textarea name="body" class="form-control form-control-sm" rows="2"
+                    placeholder="Напишите комментарий..."></textarea>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          <input type="file" name="file" class="form-control form-control-sm" style="max-width:280px">
+          <button type="submit" class="btn btn-sm btn-outline-primary ms-auto">
+            📨 Отправить
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+
+</div>{# /container #}
+
+{# ========== МОДАЛЬНЫЕ ОКНА ========== #}
+
+{# ─── На проверку (review_submit) — с итоговым комментарием + файлом ─── #}
+<div class="modal fade" id="reviewModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post" action="{{ url_for('tasks.review_submit', id=task.id) }}"
+            enctype="multipart/form-data">
+        <div class="modal-header">
+          <h5 class="modal-title">→ Передать на проверку</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Итоговый комментарий</label>
+            <textarea name="body" class="form-control" rows="3"
+                      placeholder="Опишите что сделано..."></textarea>
+          </div>
+          <div class="mb-2">
+            <label class="form-label">Файл <span class="text-muted small">(необязательно)</span></label>
+            <input type="file" name="file" class="form-control">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+          <button type="submit" class="btn btn-primary">Передать на проверку</button>
+        </div>
+      </form>
+    </div>
+  </div>
 </div>
 
-{# ===== МОДАЛЬНЫЕ ОКНА ===== #}
-
-{# ——— Закрыть (done) ——— #}
+{# ─── Закрыть (done) ─── #}
 <div class="modal fade" id="closeModal" tabindex="-1">
   <div class="modal-dialog">
     <div class="modal-content">
@@ -178,7 +305,8 @@
         <div class="modal-body">
           <div class="mb-3">
             <label class="form-label">Результат</label>
-            <textarea name="result" class="form-control" rows="3" placeholder="Кратко опишите что сделано..."></textarea>
+            <textarea name="result" class="form-control" rows="3"
+                      placeholder="Кратко опишите что сделано..."></textarea>
           </div>
         </div>
         <div class="modal-footer">
@@ -190,7 +318,7 @@
   </div>
 </div>
 
-{# ——— На доработку ——— #}
+{# ─── На доработку ─── #}
 <div class="modal fade" id="reviseModal" tabindex="-1">
   <div class="modal-dialog">
     <div class="modal-content">
@@ -216,7 +344,7 @@
   </div>
 </div>
 
-{# ——— Редактировать ——— #}
+{# ─── Редактировать ─── #}
 <div class="modal fade" id="editModal" tabindex="-1">
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
@@ -254,7 +382,7 @@
   </div>
 </div>
 
-{# ——— Назначить ——— #}
+{# ─── Назначить ─── #}
 <div class="modal fade" id="assignModal" tabindex="-1">
   <div class="modal-dialog">
     <div class="modal-content">
@@ -281,7 +409,7 @@
   </div>
 </div>
 
-{# ——— Удалить ——— #}
+{# ─── Удалить ─── #}
 <div class="modal fade" id="deleteModal" tabindex="-1">
   <div class="modal-dialog">
     <div class="modal-content">
@@ -292,7 +420,7 @@
         </div>
         <div class="modal-body">
           <p>Вы уверены, что хотите удалить задачу <strong>«{{ task.title }}»</strong>?</p>
-          <p class="text-muted small">Действие необратимо. Все назначения будут удалены.</p>
+          <p class="text-muted small">Действие необратимо. Все назначения и история будут удалены.</p>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
