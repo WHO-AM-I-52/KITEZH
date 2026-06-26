@@ -76,6 +76,21 @@ KITEZH/
 ├── portal_analysis/        # Анализ портала (portal_analysis_bp)
 │
 ├── templates/              # HTML-шаблоны (Jinja2)
+│   ├── base.html               # Базовый шаблон (v2.28.0)
+│   ├── index.html              # Главная страница
+│   ├── requests_tabulator.html # Список обращений (Tabulator)
+│   ├── view.html               # Карточка обращения
+│   ├── dashboard.html          # Дашборд
+│   ├── maintenance.html        # Страница технического обслуживания
+│   ├── login.html              # Авторизация
+│   ├── changelog.html          # История версий
+│   ├── admin/                  # Шаблоны админ-панели
+│   └── partials/               # JS-партиалы base.html (v2.28.0+)
+│       ├── _scripts_core.html      # Сайдбар, секции, тема
+│       ├── _scripts_offline.html   # Offline/ping-детектор
+│       ├── _scripts_online.html    # Онлайн-виджет + polling
+│       └── _scripts_update.html    # Баннер и логика автообновления
+│
 ├── static/                 # Статика (CSS, JS, изображения)
 ├── db/                     # SQLite — не в репозитории
 ├── uploads/                # Загруженные файлы — не в репозитории
