@@ -177,7 +177,6 @@ def _migrate_letters_tables(conn):
     потом ALTER TABLE добавляет executor_id если её нет,
     затем создаётся индекс (колонка уже точно есть).
     """
-    # 1. Создаём таблицу letters без executor_id (безопасно если уже есть)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS letters (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -212,15 +211,42 @@ def _migrate_letters_tables(conn):
         "CREATE INDEX IF NOT EXISTS idx_ltl_tag ON letter_tag_links(tag_id)"
     )
 
-    # 2. Добавляем executor_id если ещё нет
     letter_cols = {r[1] for r in conn.execute("PRAGMA table_info(letters)").fetchall()}
     if 'executor_id' not in letter_cols:
         conn.execute("ALTER TABLE letters ADD COLUMN executor_id INTEGER")
 
-    # 3. Индекс по executor_id создаём только после того как колонка точно есть
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_letters_executor ON letters(executor_id)"
     )
+
+
+def _migrate_phonebook_orgs_inn(conn):
+    """Добавляет поле inn в phonebook_orgs (fix #sync-fix-3).
+
+    Требуется для дедупликации организаций по ИНН в sync_request_to_phonebook().
+    Частичный уникальный индекс (WHERE inn IS NOT NULL) позволяет хранить
+    несколько записей без ИНН не нарушая ограничение уникальности.
+    """
+    # 1. Создаём таблицу если ещё нет (свежая установка)
+    conn.executescript("""
+CREATE TABLE IF NOT EXISTS phonebook_orgs (
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    name    TEXT NOT NULL UNIQUE,
+    address TEXT,
+    inn     TEXT
+);
+""")
+    # 2. Добавляем колонку если таблица уже была (обновление)
+    pbo_cols = {r[1] for r in conn.execute("PRAGMA table_info(phonebook_orgs)").fetchall()}
+    if 'inn' not in pbo_cols:
+        conn.execute("ALTER TABLE phonebook_orgs ADD COLUMN inn TEXT")
+
+    # 3. Частичный уникальный индекс: NULL не конкурирует между собой
+    conn.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_pbo_inn
+        ON phonebook_orgs(inn)
+        WHERE inn IS NOT NULL
+    """)
 
 
 def _migrate_investmap_tables(conn):
@@ -518,8 +544,9 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         _migrate_review_chain_table(conn)
         _migrate_investmap_tables(conn)
         _migrate_letters_tables(conn)
-        _migrate_tasks_tables(conn)           # ← tasks + task_assignees
-        _migrate_task_comments_table(conn)    # ← task_comments (история + комменты)
+        _migrate_tasks_tables(conn)
+        _migrate_task_comments_table(conn)
+        _migrate_phonebook_orgs_inn(conn)     # ← fix #sync-fix-3
 
         cols = {r[1] for r in conn.execute("PRAGMA table_info(requests)").fetchall()}
         for col in ['source_type', 'request_files', 'edit_reason', 'updated_by']:
@@ -580,8 +607,9 @@ def migrate_db():
         _migrate_review_chain_table(conn)
         _migrate_investmap_tables(conn)
         _migrate_letters_tables(conn)
-        _migrate_tasks_tables(conn)           # ← tasks + task_assignees
-        _migrate_task_comments_table(conn)    # ← task_comments (история + комменты)
+        _migrate_tasks_tables(conn)
+        _migrate_task_comments_table(conn)
+        _migrate_phonebook_orgs_inn(conn)     # ← fix #sync-fix-3
 
         cols = {r[1] for r in conn.execute("PRAGMA table_info(requests)").fetchall()}
         for col in ['request_files', 'source_type', 'edit_reason', 'updated_by']:
@@ -633,11 +661,6 @@ CREATE INDEX IF NOT EXISTS idx_al_action  ON activity_log(action);
 """)
 
         conn.executescript("""
-CREATE TABLE IF NOT EXISTS phonebook_orgs (
-    id      INTEGER PRIMARY KEY AUTOINCREMENT,
-    name    TEXT NOT NULL UNIQUE,
-    address TEXT
-);
 CREATE TABLE IF NOT EXISTS phonebook (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     org_id         INTEGER REFERENCES phonebook_orgs(id) ON DELETE SET NULL,
