@@ -1,0 +1,55 @@
+{# ═══════════════════════════════════════════════════════════════
+   _scripts_online.html
+   Виджет онлайн-пользователей + tooltip.
+   Опрос /api/online-users каждые 30 сек.
+   Подключается в base.html только для авторизованных (если 'user_id' in session).
+   v1.0.0: выделено из base.html v2.27.4
+   ═══════════════════════════════════════════════════════════════ #}
+<script>
+(function(){
+  var el      = document.getElementById('onlineCount');
+  var tooltip = document.getElementById('sbOnlineTooltip');
+  var body    = document.getElementById('sbOnlineTooltipBody');
+  var widget  = document.getElementById('sbOnlineWidget');
+  var prevVal   = null;
+  var lastUsers = [];
+  if (!el) return;
+
+  function renderTooltip() {
+    if (!body) return;
+    if (!lastUsers.length) {
+      body.innerHTML = '<div class="sb-online-tooltip-empty">Нет данных</div>';
+      return;
+    }
+    body.innerHTML = lastUsers.map(function(name){
+      return '<div class="sb-online-tooltip-item"><i class="bi bi-person-fill"></i>' + name + '</div>';
+    }).join('');
+  }
+
+  function poll() {
+    fetch('/api/online-users', { credentials:'same-origin', cache:'no-store' })
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(d){
+      if (!d) return;
+      var cnt = d.online || 0;
+      if (prevVal !== null && cnt !== prevVal) {
+        el.classList.add('bump');
+        setTimeout(function(){ el.classList.remove('bump'); }, 400);
+      }
+      prevVal = cnt;
+      el.textContent = cnt;
+      lastUsers = d.users || [];
+      renderTooltip();
+    })
+    .catch(function(){});
+  }
+
+  poll();
+  setInterval(poll, 30000);
+
+  if (widget) {
+    widget.addEventListener('mouseenter', function(){ if (tooltip) tooltip.classList.add('visible'); });
+    widget.addEventListener('mouseleave', function(){ if (tooltip) tooltip.classList.remove('visible'); });
+  }
+})();
+</script>
