@@ -4,12 +4,29 @@
 {% block content %}
 <link href="https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator_bootstrap5.min.css" rel="stylesheet">
 <style>
-  /* Центрирование заголовков табулятора */
   #tasks-table .tabulator-col-title { text-align: center; }
-  /* Дропдаун управления столбцами */
-  #col-toggle-menu { min-width: 180px; }
-  #col-toggle-menu .form-check { padding: 4px 12px; margin: 0; }
-  #col-toggle-menu .form-check:hover { background: #f8f9fa; }
+
+  /* Меню столбцов: сбрасываем паддинги Bootstrap чтобы чекбокс слева не вылезал */
+  #col-toggle-menu { min-width: 170px; padding: 4px 0; }
+  #col-toggle-menu li { list-style: none; }
+  #col-toggle-menu label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 14px;
+    cursor: pointer;
+    font-size: .875rem;
+    white-space: nowrap;
+    color: #212529;
+  }
+  #col-toggle-menu label:hover { background: #f1f3f5; }
+  #col-toggle-menu input[type=checkbox] {
+    flex-shrink: 0;
+    width: 15px;
+    height: 15px;
+    cursor: pointer;
+    accent-color: #0d6efd;
+  }
 </style>
 
 <div class="container-fluid mt-3">
@@ -24,15 +41,14 @@
     </div>
     <div class="d-flex gap-2 align-items-center">
 
-      {# ── Кнопка управления столбцами ── #}
       <div class="dropdown">
         <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button"
                 id="colToggleBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside"
-                aria-expanded="false" title="Показать / скрыть столбцы">
+                aria-expanded="false">
           ⚙ Столбцы
         </button>
         <ul class="dropdown-menu dropdown-menu-end" id="col-toggle-menu">
-          {# Пункты заполняются из JS после инициализации таблицы #}
+          {# JS заполняет после tableBuilt #}
         </ul>
       </div>
 
@@ -97,8 +113,6 @@
 <script>
 const CLOSED_STATUSES = ['done', 'cancelled', 'closed'];
 
-// Столбцы, которые можно скрывать (field → label)
-// Столбец «Название» и «Действие» не включаем — они всегда видны
 const TOGGLEABLE_COLS = [
   { field: 'type',         label: 'Тип' },
   { field: 'source',       label: 'Источник / номер' },
@@ -107,7 +121,6 @@ const TOGGLEABLE_COLS = [
   { field: 'executors',    label: 'Исполнители' },
 ];
 
-// Персистентность видимости в localStorage
 const LS_KEY = 'kitezh_col_visibility';
 function loadVisibility() {
   try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch { return {}; }
@@ -117,8 +130,6 @@ function saveVisibility(field, visible) {
   v[field] = visible;
   localStorage.setItem(LS_KEY, JSON.stringify(v));
 }
-
-// ─── Форматтеры ──────────────────────────────────────────────────────────────
 
 function fmtType(cell) {
   const t = cell.getValue();
@@ -173,15 +184,11 @@ function fmtActions(cell) {
   return '<a href="' + url + '" class="btn ' + cls + ' btn-sm py-0">Открыть</a>';
 }
 
-// ─── Фильтр закрытых ─────────────────────────────────────────────────────────
-
 function closedFilter(data) {
   const show = document.getElementById('showClosed').checked;
   if (show) return true;
   return !CLOSED_STATUSES.includes(data.status);
 }
-
-// ─── Tabulator ────────────────────────────────────────────────────────────────
 
 const visibility = loadVisibility();
 
@@ -208,7 +215,6 @@ const table = new Tabulator('#tasks-table', {
       visible: visibility['type'] !== false,
       formatter: fmtType,
       hozAlign: 'center',
-      titleFormatter: function() { return '<div style="text-align:center">Тип</div>'; },
       headerFilter: 'select',
       headerFilterParams: { values: { '': '— все —', 'task': 'Задача', 'request': 'Обращение' } },
       headerFilterFunc: function(headerValue, rowValue) {
@@ -278,7 +284,7 @@ const table = new Tabulator('#tasks-table', {
   ],
 });
 
-// ─── Строим меню столбцов после загрузки таблицы ─────────────────────────────
+// ─── Строим меню после tableBuilt ─────────────────────────────────────────────
 
 table.on('tableBuilt', function() {
   const menu = document.getElementById('col-toggle-menu');
@@ -287,25 +293,26 @@ table.on('tableBuilt', function() {
   TOGGLEABLE_COLS.forEach(function(def) {
     const col = table.getColumn(def.field);
     if (!col) return;
-    const isVisible = col.isVisible();
 
     const li = document.createElement('li');
-    li.innerHTML = `
-      <div class="form-check">
-        <input class="form-check-input" type="checkbox" id="col_${def.field}"
-               ${isVisible ? 'checked' : ''}>
-        <label class="form-check-label small" for="col_${def.field}">
-          ${def.label}
-        </label>
-      </div>`;
-    li.querySelector('input').addEventListener('change', function() {
-      if (this.checked) {
-        col.show();
-      } else {
-        col.hide();
-      }
+    // Не используем Bootstrap form-check — строим вручную чтобы избежать сдвига чекбокса
+    const cbId = 'col_' + def.field;
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.id   = cbId;
+    cb.checked = col.isVisible();
+
+    const lbl = document.createElement('label');
+    lbl.htmlFor = cbId;
+    lbl.textContent = def.label;
+
+    cb.addEventListener('change', function() {
+      this.checked ? col.show() : col.hide();
       saveVisibility(def.field, this.checked);
     });
+
+    lbl.prepend(cb);
+    li.appendChild(lbl);
     menu.appendChild(li);
   });
 });
@@ -314,12 +321,10 @@ table.on('tableBuilt', function() {
 
 document.getElementById('showClosed').addEventListener('change', function() {
   table.removeFilter(closedFilter);
-  if (!this.checked) {
-    table.addFilter(closedFilter);
-  }
+  if (!this.checked) table.addFilter(closedFilter);
 });
 
-// ─── Перезагрузка после создания задачи ──────────────────────────────────────
+// ─── Перезагрузка после создания задачи ─────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', function () {
   const form = document.querySelector('#createTaskModal form');
