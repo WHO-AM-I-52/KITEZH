@@ -143,7 +143,7 @@ def new_request():
             ocr_src = pending_ocr[0][1] if pending_ocr else None
 
             try:
-                fields, msg = extract_anketa_fields(ocr_src) if ocr_src else ({}, '')
+                fields, msg, raw_text = extract_anketa_fields(ocr_src) if ocr_src else ({}, '', '')
             finally:
                 pass
 
@@ -167,7 +167,8 @@ def new_request():
                     legal_forms=lf2, districts=di2, source_types=src2,
                     employees=emp2, required_fields=REQUIRED_FIELDS,
                     subjects=subjects2, results=results2, all_users=all_users2,
-                    ocr_message=msg
+                    ocr_message=msg,
+                    ocr_raw_text=raw_text
                 )
             else:
                 _cleanup_tmp(pending_ocr)
@@ -180,7 +181,8 @@ def new_request():
                     legal_forms=lf2, districts=di2, source_types=src2,
                     employees=emp2, required_fields=REQUIRED_FIELDS,
                     subjects=results2, results=results2, all_users=all_users2,
-                    ocr_message=msg if 'msg' in locals() else ''
+                    ocr_message=msg if 'msg' in locals() else '',
+                    ocr_raw_text=raw_text if 'raw_text' in locals() else ''
                 )
 
         inn = request.form.get('applicant_inn', '').strip()
