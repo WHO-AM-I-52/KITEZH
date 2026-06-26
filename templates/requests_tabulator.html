@@ -4,6 +4,7 @@
  ║  requests_tabulator.html                                       ║
  ║  v2.0: центрирование заголовков + кнопка «⚙ Столбцы»       ║
  ║  v2.1: фильтры по столбцам (воронка bi-funnel)              ║
+ ║  v2.2: fix redraw при toggle + persist colFilters/visibility ║
  ╚══════════════════════════════════════════════════════════════╝
 #}
 
@@ -447,6 +448,7 @@ const REQ_TOGGLEABLE_COLS = [
   { field: 'employee_name', label: 'Ответственный' },
 ];
 
+// ─── localStorage: видимость столбцов ───────────────────────────────
 const REQ_LS_KEY = 'kitezh_req_col_visibility';
 function loadReqVisibility() {
   try { return JSON.parse(localStorage.getItem(REQ_LS_KEY)) || {}; } catch { return {}; }
@@ -454,6 +456,17 @@ function loadReqVisibility() {
 function saveReqVisibility(field, visible) {
   const v = loadReqVisibility(); v[field] = visible;
   localStorage.setItem(REQ_LS_KEY, JSON.stringify(v));
+}
+
+// ─── localStorage: фильтры по столбцам ──────────────────────────────
+const COL_FILTERS_LS_KEY = 'kitezh_req_col_filters';
+function saveColFilters() {
+  const obj = {};
+  Object.keys(colFilters).forEach(f => { obj[f] = Array.from(colFilters[f]); });
+  localStorage.setItem(COL_FILTERS_LS_KEY, JSON.stringify(obj));
+}
+function loadColFilters() {
+  try { return JSON.parse(localStorage.getItem(COL_FILTERS_LS_KEY)) || {}; } catch { return {}; }
 }
 
 // Столбцы с воронкой (field → param-ключ для API)
@@ -471,9 +484,12 @@ const FILTERABLE_COLS = [
   { field: 'number',        param: 'col_number',        label: '№' },
 ];
 
-// Состояние фильтров по столбцам: { field: Set<string> }
+// Состояние фильтров по столбцам: { field: Set<string> } — восстанавливаем из LS
+const _savedColFilters = loadColFilters();
 const colFilters = {};
-FILTERABLE_COLS.forEach(c => { colFilters[c.field] = new Set(); });
+FILTERABLE_COLS.forEach(c => {
+  colFilters[c.field] = new Set(_savedColFilters[c.field] || []);
+});
 
 // Кеш загруженных значений: { field: string[] }
 const _distinctCache = {};
@@ -594,9 +610,9 @@ const _btnClear    = document.getElementById('colFilterBtnClear');
 const _btnSelAll   = document.getElementById('colFilterSelectAll');
 const _btnClrAll   = document.getElementById('colFilterClearAll');
 
-let _activeField   = null;   // текущее открытое поле
-let _pendingVals   = new Set(); // временные значения до Apply
-let _allVals       = [];     // все значения текущего поля
+let _activeField   = null;
+let _pendingVals   = new Set();
+let _allVals       = [];
 
 function _closeMenu() {
   _menu.classList.remove('open');
@@ -620,7 +636,6 @@ function _renderList(vals, search) {
       <label for="${cbId}" title="${v}">${label}</label>
     </div>`;
   }).join('');
-  // события на чекбоксы
   _menuList.querySelectorAll('input[type=checkbox]').forEach(cb => {
     cb.addEventListener('change', function() {
       if (this.checked) _pendingVals.add(this.value);
@@ -638,6 +653,16 @@ function _updateFunnelBtn(field) {
   btn.classList.toggle('active', hasFilter);
 }
 
+// При старте подсвечиваем воронки у полей с восстановленными фильтрами
+function _restoreFunnelBtns() {
+  FILTERABLE_COLS.forEach(c => {
+    if (colFilters[c.field] && colFilters[c.field].size > 0) {
+      // кнопки ещё не в DOM — подсветим после tableBuilt через MutationObserver
+      // проще просто вызвать после таймаута
+    }
+  });
+}
+
 function _openMenu(field, btnEl, labelText) {
   if (_activeField === field) { _closeMenu(); return; }
   _closeMenu();
@@ -648,7 +673,6 @@ function _openMenu(field, btnEl, labelText) {
   _menuList.innerHTML = '<div class="col-filter-loading"><i class="bi bi-arrow-repeat"></i> Загрузка…</div>';
   _menu.classList.add('open');
 
-  // Позиционирование под кнопкой
   const rect = btnEl.getBoundingClientRect();
   const menuW = 240;
   let left = rect.left;
@@ -657,7 +681,6 @@ function _openMenu(field, btnEl, labelText) {
   _menu.style.top  = (rect.bottom + 4) + 'px';
   _menu.style.width = menuW + 'px';
 
-  // Загрузка значений (с кешем)
   if (_distinctCache[field]) {
     _allVals = _distinctCache[field];
     _renderList(_allVals, '');
@@ -676,9 +699,7 @@ function _openMenu(field, btnEl, labelText) {
   }
 }
 
-_menuSearch.addEventListener('input', function() {
-  _renderList(_allVals, this.value);
-});
+_menuSearch.addEventListener('input', function() { _renderList(_allVals, this.value); });
 
 _btnSelAll.addEventListener('click', function() {
   _allVals.forEach(v => _pendingVals.add(String(v)));
@@ -696,8 +717,8 @@ _btnApply.addEventListener('click', function() {
   if (!_activeField) return;
   colFilters[_activeField] = new Set(_pendingVals);
   _updateFunnelBtn(_activeField);
-  // Сбрасываем кеш distinct для этого поля чтобы следующий раз обновился
   delete _distinctCache[_activeField];
+  saveColFilters();
   _closeMenu();
   table.replaceData();
 });
@@ -708,11 +729,11 @@ _btnClear.addEventListener('click', function() {
   _pendingVals.clear();
   _updateFunnelBtn(_activeField);
   delete _distinctCache[_activeField];
+  saveColFilters();
   _closeMenu();
   table.replaceData();
 });
 
-// Закрытие по клику снаружи
 document.addEventListener('mousedown', function(e) {
   if (!_menu.contains(e.target) && !e.target.closest('.col-filter-btn')) {
     _closeMenu();
@@ -723,7 +744,6 @@ document.addEventListener('mousedown', function(e) {
 
 const reqVis = loadReqVisibility();
 
-// Строим заголовок столбца с воронкой
 function makeTitleFormatter(label, field) {
   const fc = FILTERABLE_COLS.find(c => c.field === field);
   if (!fc) return label;
@@ -904,8 +924,31 @@ const table = new Tabulator('#requestsTable', {
   },
 });
 
-// ─── Кнопка «⚙ Столбцы» в пагинаторе ───────────────────────────────
+// ─── tableBuilt: кнопка «⚙ Столбцы» + восстановление видимости ─────
 table.on('tableBuilt', function() {
+
+  // 1. Восстанавливаем видимость столбцов из localStorage
+  //    (visible: в конфиге работает только при первом рендере,
+  //     поэтому дополнительно явно применяем после построения)
+  const vis = loadReqVisibility();
+  REQ_TOGGLEABLE_COLS.forEach(function(def) {
+    const col = table.getColumn(def.field);
+    if (!col) return;
+    if (vis[def.field] === false) { col.hide(); }
+    else                          { col.show(); }
+  });
+  // После применения видимости — растягиваем колонки
+  table.redraw(true);
+
+  // 2. Подсвечиваем воронки у колонок с восстановленными фильтрами
+  FILTERABLE_COLS.forEach(c => {
+    if (colFilters[c.field] && colFilters[c.field].size > 0) {
+      const btn = document.querySelector(`.col-filter-btn[data-field="${c.field}"]`);
+      if (btn) btn.classList.add('active');
+    }
+  });
+
+  // 3. Кнопка «⚙ Столбцы» в пагинаторе
   const paginator = document.querySelector('#requestsTable .tabulator-paginator');
   if (!paginator) return;
   const wrap = document.createElement('div');
@@ -930,8 +973,10 @@ table.on('tableBuilt', function() {
     const lbl = document.createElement('label');
     lbl.htmlFor = cbId; lbl.textContent = def.label;
     cb.addEventListener('change', function() {
-      this.checked ? col.show() : col.hide();
+      if (this.checked) { col.show(); } else { col.hide(); }
       saveReqVisibility(def.field, this.checked);
+      // FIX: растягиваем таблицу после смены видимости
+      table.redraw(true);
     });
     lbl.prepend(cb);
     li.appendChild(lbl);
@@ -986,13 +1031,14 @@ function applyFilters() { table.replaceData(); }
 function resetAll() {
   Object.assign(state, { statuses:[], dateFrom:'', dateTo:'', applicant:'',
     search:'', employee:null, favorite:false, dateChip:'', district:'', sort:'', dir:'desc' });
-  // сбрасываем фильтры по столбцам
+  // сбрасываем фильтры по столбцам + localStorage
   FILTERABLE_COLS.forEach(c => {
     colFilters[c.field] = new Set();
     delete _distinctCache[c.field];
-    const btn = document.querySelector(`.col-filter-btn[data-field="${c.field}"]`);
-    if (btn) btn.classList.remove('active');
+    const fBtn = document.querySelector(`.col-filter-btn[data-field="${c.field}"]`);
+    if (fBtn) fBtn.classList.remove('active');
   });
+  saveColFilters();
   document.getElementById('fDateFrom').value  = '';
   document.getElementById('fDateTo').value    = '';
   document.getElementById('fStatus').value    = '';
