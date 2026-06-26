@@ -1,0 +1,142 @@
+nlineTooltip');
+  var body      = document.getElementById('sbOnlineTooltipBody');
+  var widget    = document.getElementById('sbOnlineWidget');
+  var prevVal   = null;
+  var lastUsers = [];
+  if (!el) return;
+  function renderTooltip() {
+    if (!body) return;
+    if (!lastUsers.length) { body.innerHTML = '<div class="sb-online-tooltip-empty">Нет данных</div>'; return; }
+    body.innerHTML = lastUsers.map(function(name){
+      return '<div class="sb-online-tooltip-item"><i class="bi bi-person-fill"></i>' + name + '</div>';
+    }).join('');
+  }
+  function poll() {
+    fetch('/api/online-users', {credentials:'same-origin', cache:'no-store'})
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(d){
+      if (!d) return;
+      var cnt = d.online || 0;
+      if (prevVal !== null && cnt !== prevVal) { el.classList.add('bump'); setTimeout(function(){ el.classList.remove('bump'); }, 400); }
+      prevVal = cnt; el.textContent = cnt; lastUsers = d.users || []; renderTooltip();
+    }).catch(function(){});
+  }
+  poll(); setInterval(poll, 30000);
+  if (widget) {
+    widget.addEventListener('mouseenter', function(){ if (tooltip) tooltip.classList.add('visible'); });
+    widget.addEventListener('mouseleave', function(){ if (tooltip) tooltip.classList.remove('visible'); });
+  }
+})();
+</script>
+{% endif %}
+
+{# ─── Баннер обновления: опрос /api/update/pre-status ─── #}
+{% if 'user_id' in session %}
+<script>
+(function(){
+  var banner      = document.getElementById('updBanner');
+  var bannerText  = document.getElementById('updBannerText');
+  var bannerBy    = document.getElementById('updBannerBy');
+  var btnCancel   = document.getElementById('updBannerCancel');
+  var btnNow      = document.getElementById('updBannerNow');
+  var isAdmin     = document.body.getAttribute('data-is-admin') === '1';
+  var visible     = false;
+  var countdownId = null;
+  var serverWasDown = false;
+  if (!banner) return;
+  function setAdminBtns(show) {
+    if (!isAdmin) return;
+    if (btnCancel) btnCancel.style.display = show ? '' : 'none';
+    if (btnNow)    btnNow.style.display    = show ? '' : 'none';
+  }
+  function showBanner() {
+    if (!visible) { banner.style.display = 'block'; document.body.classList.add('upd-banner-visible'); visible = true; }
+  }
+  function hideBanner() {
+    banner.style.display = 'none'; document.body.classList.remove('upd-banner-visible'); visible = false;
+    if (countdownId) { clearInterval(countdownId); countdownId = null; }
+    setAdminBtns(false);
+  }
+  function renderBanner(data) {
+    var phase  = data.phase || 'scheduled';
+    var by     = data.scheduled_by ? ('Инициировал: ' + data.scheduled_by) : '';
+    var fireTs = data.fire_at_ts || 0;
+    if (countdownId) { clearInterval(countdownId); countdownId = null; }
+    if (phase === 'downloading') {
+      bannerText.textContent = '⬇️ Скачивается обновление…'; bannerBy.textContent = by; setAdminBtns(false); showBanner();
+    } else if (phase === 'scheduled') {
+      function tick() { var left = Math.max(0, Math.round(fireTs - Date.now()/1000)); bannerText.textContent = left > 0 ? ('⏱ Перезагрузка через ' + left + ' с…') : '⏱ Перезагрузка через 0 с…'; }
+      tick(); countdownId = setInterval(tick, 1000); bannerBy.textContent = by; setAdminBtns(true); showBanner();
+    } else if (phase === 'applying') {
+      bannerText.textContent = '⚙️ Устанавливается обновление…'; bannerBy.textContent = by; setAdminBtns(false); showBanner();
+    } else {
+      hideBanner();
+    }
+  }
+  function poll() {
+    fetch('/api/update/pre-status', {credentials:'same-origin', cache:'no-store'})
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(d){
+      if (!d || !d.scheduled) {
+        hideBanner();
+        if (!isAdmin && serverWasDown) {
+          serverWasDown = false;
+          var m = document.getElementById('updDoneModalUser');
+          if (m) { new bootstrap.Modal(m).show(); }
+        }
+        return;
+      }
+      if (d.download_error) { hideBanner(); return; }
+      renderBanner(d);
+    }).catch(function(){ serverWasDown = true; });
+  }
+  poll(); setInterval(poll, 10000);
+  if (isAdmin) {
+    if (btnCancel) {
+      btnCancel.addEventListener('click', function(){
+        fetch('/api/update/schedule/cancel', {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'}})
+        .then(function(){ hideBanner(); }).catch(function(){});
+      });
+    }
+    if (btnNow) {
+      btnNow.addEventListener('click', function(){
+        fetch('/api/update/schedule/now', {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'}})
+        .catch(function(){});
+      });
+    }
+    document.addEventListener('DOMContentLoaded', function(){
+      var toast    = document.getElementById('updResultToast');
+      var closeBtn = document.getElementById('updResultClose');
+      var reloadBtn= document.getElementById('updDoneReload');
+      fetch('/api/update/result', {credentials:'same-origin', cache:'no-store'})
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(d){
+        if (!d || !d.success) return;
+        var dot = document.getElementById('sbUpdateDot');
+        if (dot) dot.classList.remove('d-none');
+        if (toast) {
+          document.getElementById('updResultTitle').textContent = '✅ ' + (d.version ? 'Обновлено до v' + d.version : 'Обновление применено');
+          document.getElementById('updResultText').textContent = d.message || '';
+          toast.classList.add('show');
+          setTimeout(function(){ toast.classList.remove('show'); }, 8000);
+        }
+        var modal = document.getElementById('updDoneModal');
+        if (modal) { new bootstrap.Modal(modal).show(); }
+      }).catch(function(){});
+      if (closeBtn)  closeBtn.addEventListener('click',  function(){ if (toast) toast.classList.remove('show'); });
+      if (reloadBtn) reloadBtn.addEventListener('click', function(){ location.reload(); });
+    });
+  } else {
+    document.addEventListener('DOMContentLoaded', function(){
+      var reloadBtn = document.getElementById('updDoneUserReload');
+      if (reloadBtn) reloadBtn.addEventListener('click', function(){ location.reload(); });
+    });
+  }
+})();
+</script>
+{% endif %}
+
+{% block gs_script %}{% endblock %}
+
+</body>
+</html>
