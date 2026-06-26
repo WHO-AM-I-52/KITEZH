@@ -63,15 +63,24 @@
       </div>
 
       <!-- FOOTER -->
-      <div class="modal-footer py-2 d-flex justify-content-between">
+      <div class="modal-footer py-2 d-flex justify-content-between align-items-center">
         <button type="button" class="btn btn-sm btn-outline-secondary"
                 data-bs-dismiss="modal">
           <i class="bi bi-x-lg me-1"></i>Отмена
         </button>
-        <button type="button" class="btn btn-sm btn-primary" id="btnOcrApply"
-                onclick="ocrApplyToForm()">
-          <i class="bi bi-check2-all me-1"></i>Применить в форму
-        </button>
+        <div class="d-flex align-items-center gap-3">
+          <span style="font-size:11px">
+            <a href="#" class="text-secondary text-decoration-none"
+               onclick="ocrSelectAll(true);return false;">Выбрать все</a>
+            &nbsp;/&nbsp;
+            <a href="#" class="text-secondary text-decoration-none"
+               onclick="ocrSelectAll(false);return false;">Снять все</a>
+          </span>
+          <button type="button" class="btn btn-sm btn-primary" id="btnOcrApply"
+                  onclick="ocrApplyToForm()">
+            <i class="bi bi-check2-all me-1"></i>Применить в форму
+          </button>
+        </div>
       </div>
 
     </div>
@@ -110,6 +119,31 @@ const OCR_FIELD_MAP = [
 let _ocrCurrentFields = {};
 
 /**
+ * Переключает состояние чекбокса поля и обновляет визуальное состояние контейнера.
+ */
+function ocrToggleField(key, checked) {
+  const container = document.getElementById(`ocr_row_${key}`);
+  if (!container) return;
+  if (checked) {
+    container.style.opacity = '';
+    container.style.pointerEvents = '';
+  } else {
+    container.style.opacity = '0.4';
+    container.style.pointerEvents = 'none';
+  }
+}
+
+/**
+ * Выбрать все / Снять все чекбоксы заполненных полей.
+ */
+function ocrSelectAll(checked) {
+  document.querySelectorAll('.ocr-field-chk').forEach(chk => {
+    chk.checked = checked;
+    ocrToggleField(chk.dataset.key, checked);
+  });
+}
+
+/**
  * Заполняет правую панель редактируемыми полями.
  * fields — объект из OCR: { applicant_full_name: "...", ... }
  */
@@ -139,7 +173,7 @@ function ocrPreviewOpen(rawText, fields, msg) {
          + 'Поля не распознаны. Проверьте исходный текст.'
          + '</div>';
   } else {
-    // Заполненные поля (жёлтая подсветка)
+    // Заполненные поля (жёлтая подсветка) с чекбоксами
     populated.forEach(f => {
       const val = fields[f.key] || '';
       const fieldHtml = f.type === 'textarea'
@@ -150,8 +184,15 @@ function ocrPreviewOpen(rawText, fields, msg) {
                    type="text" value="${escHtml(val)}"
                    style="font-size:12px;border-color:#ffc107;background:#fffde7">`;
       html += `
-        <div class="mb-2">
-          <label class="form-label mb-0" style="font-size:11px;color:#6c757d">${f.label}</label>
+        <div class="mb-2" id="ocr_row_${f.key}">
+          <div class="d-flex align-items-center mb-0" style="gap:6px">
+            <input class="form-check-input ocr-field-chk" type="checkbox"
+                   id="ocr_chk_${f.key}" data-key="${f.key}" checked
+                   onchange="ocrToggleField('${f.key}', this.checked)"
+                   style="margin-top:0;cursor:pointer;flex-shrink:0">
+            <label class="form-label mb-0" for="ocr_chk_${f.key}"
+                   style="font-size:11px;color:#6c757d;cursor:pointer">${f.label}</label>
+          </div>
           ${fieldHtml}
         </div>`;
     });
@@ -192,11 +233,14 @@ function ocrPreviewOpen(rawText, fields, msg) {
 
 /**
  * Переносит значения из правой панели превью в основную форму.
+ * Поля со снятым чекбоксом пропускаются.
  * Берёт значения из полей превью (не из _ocrCurrentFields).
  * То есть пользователь может отредактировать до применения.
  */
 function ocrApplyToForm() {
   OCR_FIELD_MAP.forEach(f => {
+    // Пропускаем поле если чекбокс снят
+    if (!document.getElementById(`ocr_chk_${f.key}`)?.checked) return;
     const preview = document.getElementById(`ocr_prev_${f.key}`);
     if (!preview) return;
     const val = preview.value.trim();
