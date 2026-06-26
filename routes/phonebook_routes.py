@@ -1,5 +1,5 @@
 # phonebook_routes.py
-# Blueprint: телефонный справочник (v2.9.2)
+# Blueprint: телефонный справочник (v2.9.3)
 # Маршруты:
 #   GET  /phonebook                — список сотрудников с поиском  [can_view_phonebook]
 #   GET  /phonebook/search         — AJAX: поиск, возвращает JSON       [can_view_phonebook]
@@ -39,6 +39,9 @@
 #   sync_request_to_phonebook() — БАГ #3:
 #   - Дедупликация орг. по ИНН (приоритет) или по точному имени (fallback)
 #   - ИНН теперь сохраняется в phonebook_orgs.inn при создании орг.
+#
+# v2.9.3 (hotfix):
+#   SyntaxError: тире в f-строке заменено на строковую переменную inn_display
 
 from flask import (Blueprint, render_template, request,
                    redirect, url_for, flash, jsonify, session)
@@ -363,22 +366,11 @@ def sync_request_to_phonebook(conn, form_data, request_id: int, user_id: int) ->
     conn.commit() здесь НЕ вызывается — caller делает отдельный commit.
 
     Дедупликация организации (v2.9.2, fix #sync-fix-3):
-      1. Если ИНН заполнен — ищем по phonebook_orgs.inn (надёжно, не зависит от опечаток)
-      2. Иначе — ищем по точному имени (fallback, прежнее поведение)
+      1. Если ИНН заполнен — ищем по phonebook_orgs.inn
+      2. Иначе — ищем по точному имени (fallback)
 
     Дедупликация контакта: по (org_id, full_name)
-
-    Маппинг:
-      applicant_short_name (приоритет)                → phonebook_orgs.name
-      applicant_legal_form + applicant_full_name       → phonebook_orgs.name (fallback)
-      applicant_inn                                    → phonebook_orgs.inn  (+ phonebook.inn)
-      legal_address                                    → phonebook_orgs.address
-      contact_person                                   → phonebook.full_name
-      contact_position                                 → phonebook.position
-      contact_phone                                    → phonebook.phone_work
-      contact_email                                    → phonebook.email
     """
-    # ── Читаем поля формы ────────────────────────────────────────────────────
     short_name    = (form_data.get('applicant_short_name') or '').strip()
     legal_form    = (form_data.get('applicant_legal_form') or '').strip()
     full_name_org = (form_data.get('applicant_full_name')  or '').strip()
@@ -389,7 +381,6 @@ def sync_request_to_phonebook(conn, form_data, request_id: int, user_id: int) ->
     email         = (form_data.get('contact_email')        or '').strip()
     inn           = (form_data.get('applicant_inn')        or '').strip()
 
-    # ── Строим название организации: short_name → legal_form + full_name ───────
     if short_name:
         org_name = short_name
     else:
@@ -403,16 +394,14 @@ def sync_request_to_phonebook(conn, form_data, request_id: int, user_id: int) ->
         )
         return
 
-    # ── 1. Дедупликация: ИНН (fix #sync-fix-3) → точное имя (fallback) ─────────
+    # ── 1. Дедупликация: ИНН → точное имя (fallback) ────────────────────────
     org_row = None
     if inn:
-        # Приоритет: ИНН уникален, не зависит от различий в названии
         org_row = conn.execute(
             "SELECT id FROM phonebook_orgs WHERE inn = ?", (inn,)
         ).fetchone()
 
     if not org_row:
-        # Fallback: ищем по точному имени (прежнее поведение)
         org_row = conn.execute(
             "SELECT id FROM phonebook_orgs WHERE name = ?", (org_name,)
         ).fetchone()
@@ -420,7 +409,7 @@ def sync_request_to_phonebook(conn, form_data, request_id: int, user_id: int) ->
     if org_row:
         org_id = org_row['id']
     else:
-        # Создаём новую организацию — сохраняем ИНН в phonebook_orgs
+        inn_display = inn if inn else '—'
         cur = conn.execute(
             "INSERT INTO phonebook_orgs (name, address, inn) VALUES (?, ?, ?)",
             (org_name, address, inn or None)
@@ -428,7 +417,7 @@ def sync_request_to_phonebook(conn, form_data, request_id: int, user_id: int) ->
         org_id = cur.lastrowid
         log_action(conn, user_id, 'create', request_id,
                    f'Справочник орг.: добавлена «{org_name}» '
-                   f'(ИНН: {inn or —}) из обращения #{request_id}')
+                   f'(ИНН: {inn_display}) из обращения #{request_id}')
 
     # ── 2. Ищем или создаём контакт (только если указано ФИО) ───────────────
     if contact_name:
