@@ -77,19 +77,19 @@ KITEZH/
 │
 ├── templates/              # HTML-шаблоны (Jinja2)
 │   ├── base.html               # Базовый шаблон (v2.28.0)
-│   ├── index.html              # Главная страница
-│   ├── requests_tabulator.html # Список обращений (Tabulator)
+│   ├── index.html              # Главная страница (список обращений, Tabulator)
+│   ├── requests_tabulator.html # Tabulator-представление обращений
 │   ├── view.html               # Карточка обращения
+│   ├── maintenance.html        # Страница режима обслуживания
+│   ├── login.html              # Страница авторизации
 │   ├── dashboard.html          # Дашборд
-│   ├── maintenance.html        # Страница технического обслуживания
-│   ├── login.html              # Авторизация
-│   ├── changelog.html          # История версий
+│   ├── changelog.html          # История изменений
 │   ├── admin/                  # Шаблоны админ-панели
-│   └── partials/               # JS-партиалы base.html (v2.28.0+)
-│       ├── _scripts_core.html      # Сайдбар, секции, тема
-│       ├── _scripts_offline.html   # Offline/ping-детектор
-│       ├── _scripts_online.html    # Онлайн-виджет + polling
-│       └── _scripts_update.html    # Баннер и логика автообновления
+│   └── partials/               # JS-партиалы ({% include %} из base.html)
+│       ├── _scripts_online.html    # Опрос /api/online-users (30 сек)
+│       ├── _scripts_update.html    # Опрос /api/update/pre-status (10 сек)
+│       ├── _scripts_sidebar.html   # Инициализация сайдбара и тем
+│       └── _scripts_tabulator.html # Инициализация Tabulator (главная)
 │
 ├── static/                 # Статика (CSS, JS, изображения)
 ├── db/                     # SQLite — не в репозитории
