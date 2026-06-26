@@ -119,7 +119,7 @@ def _sync_coexecutors(conn, request_id: int, new_ids: list[int], assigned_by: in
     )}
     to_add    = set(new_ids) - current
     to_remove = current - set(new_ids)
-    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    now = datetime.now().strftime('%Y-%m-%d %H:%M%S')
     for uid in to_add:
         conn.execute(
             "INSERT OR IGNORE INTO request_coexecutors "
@@ -209,12 +209,23 @@ def new_request():
 
         inn = request.form.get('applicant_inn', '').strip()
         ok_inn, inn_reason = validate_inn(inn)
-        if inn_reason == 'format':
-            flash('ИНН должен содержать только цифры.', 'warning')
-        elif inn_reason == 'length':
-            flash('Длина ИНН должна быть 10 цифр (юрлица) или 12 цифр (ИП).', 'warning')
-        elif inn_reason == 'checksum':
-            flash('ИНН указан с ошибкой. Контрольная сумма не совпадает.', 'warning')
+        if not ok_inn:
+            if inn_reason == 'format':
+                flash('ИНН должен содержать только цифры.', 'warning')
+            elif inn_reason == 'length':
+                flash('Длина ИНН должна быть 10 цифр (юрлица) или 12 цифр (ИП).', 'warning')
+            elif inn_reason == 'checksum':
+                flash('ИНН указан с ошибкой. Контрольная сумма не совпадает.', 'warning')
+            conn.close()
+            conn2 = get_db()
+            lf2, di2, src2, emp2, subjects2, results2, all_users2 = get_classifiers(conn2)
+            conn2.close()
+            return render_template(
+                'form.html', req=request.form, today=date.today().isoformat(),
+                legal_forms=lf2, districts=di2, source_types=src2,
+                employees=emp2, required_fields=REQUIRED_FIELDS,
+                subjects=subjects2, results=results2, all_users=all_users2
+            )
 
         vals = build_values(request.form)
 
@@ -308,12 +319,32 @@ def edit_request(rid):
 
         inn = request.form.get('applicant_inn', '').strip()
         ok_inn, inn_reason = validate_inn(inn)
-        if inn_reason == 'format':
-            flash('ИНН должен содержать только цифры.', 'warning')
-        elif inn_reason == 'length':
-            flash('Длина ИНН должна быть 10 цифр (юрлица) или 12 цифр (ИП).', 'warning')
-        elif inn_reason == 'checksum':
-            flash('ИНН указан с ошибкой. Контрольная сумма не совпадает.', 'warning')
+        if not ok_inn:
+            if inn_reason == 'format':
+                flash('ИНН должен содержать только цифры.', 'warning')
+            elif inn_reason == 'length':
+                flash('Длина ИНН должна быть 10 цифр (юрлица) или 12 цифр (ИП).', 'warning')
+            elif inn_reason == 'checksum':
+                flash('ИНН указан с ошибкой. Контрольная сумма не совпадает.', 'warning')
+            conn.close()
+            conn2 = get_db()
+            lf2, di2, src2, emp2, subjects2, results2, all_users2 = get_classifiers(conn2)
+            coexecutors2 = conn2.execute(
+                "SELECT ce.user_id, u.full_name, ce.assigned_at "
+                "FROM request_coexecutors ce "
+                "JOIN users u ON u.id = ce.user_id "
+                "WHERE ce.request_id = ? "
+                "ORDER BY ce.assigned_at",
+                (rid,)
+            ).fetchall()
+            conn2.close()
+            return render_template(
+                'form.html', req=request.form, today=date.today().isoformat(),
+                legal_forms=lf2, districts=di2, source_types=src2,
+                employees=emp2, required_fields=REQUIRED_FIELDS,
+                subjects=subjects2, results=results2, all_users=all_users2,
+                coexecutors=coexecutors2,
+            )
 
         vals = build_values(request.form)
 
