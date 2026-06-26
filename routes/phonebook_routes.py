@@ -29,6 +29,11 @@
 # v2.9.0:
 #   phonebook_orgs_delete() — каскадное удаление с подтверждением.
 #   При наличии сотрудников выводит предупреждение (confirm=1).
+#
+# v2.9.1 (fix #sync-fix-1):
+#   sync_request_to_phonebook() — БАГ #1:
+#   - Приоритет applicant_short_name для org_name (fallback: legal_form + full_name)
+#   - При пустом org_name — flash warning вместо молчаливого return
 
 from flask import (Blueprint, render_template, request,
                    redirect, url_for, flash, jsonify, session)
@@ -346,7 +351,7 @@ def org_address():
     return jsonify({'address': row['address'] if row else ''})
 
 
-# ── Issue #PB-1: Синхронизация из формы обращения ─────────────────────────────────────────────────────────────────────────────────────
+# ── Issue #PB-1: Синхронизация из формы обращения ────────────────────────────
 def sync_request_to_phonebook(conn, form_data, request_id: int, user_id: int) -> None:
     """
     Создаёт организацию и контакт в справочнике по данным формы обращения.
@@ -362,14 +367,22 @@ def sync_request_to_phonebook(conn, form_data, request_id: int, user_id: int) ->
       - контакт:     по (org_id, full_name)
 
     Маппинг:
-      applicant_legal_form + applicant_full_name → phonebook_orgs.name
-      legal_address                              → phonebook_orgs.address
-      contact_person                             → phonebook.full_name
-      contact_position                           → phonebook.position
-      contact_phone                              → phonebook.phone_work
-      contact_email                              → phonebook.email
-      applicant_inn                              → phonebook.inn
+      applicant_short_name (приоритет)                → phonebook_orgs.name
+      applicant_legal_form + applicant_full_name       → phonebook_orgs.name (fallback)
+      legal_address                                    → phonebook_orgs.address
+      contact_person                                   → phonebook.full_name
+      contact_position                                 → phonebook.position
+      contact_phone                                    → phonebook.phone_work
+      contact_email                                    → phonebook.email
+      applicant_inn                                    → phonebook.inn
+
+    v2.9.1 (fix #sync-fix-1):
+      - БАГ #1 исправлен: приоритет applicant_short_name для org_name.
+        Если он заполнен — используем его. Иначе собираем из legal_form + full_name.
+      - При пустом org_name — flash warning вместо молчаливого return.
     """
+    # ── Читаем поля формы ────────────────────────────────────────────────────
+    short_name    = (form_data.get('applicant_short_name') or '').strip()
     legal_form    = (form_data.get('applicant_legal_form') or '').strip()
     full_name_org = (form_data.get('applicant_full_name')  or '').strip()
     address       = (form_data.get('legal_address')        or '').strip()
@@ -379,11 +392,23 @@ def sync_request_to_phonebook(conn, form_data, request_id: int, user_id: int) ->
     email         = (form_data.get('contact_email')        or '').strip()
     inn           = (form_data.get('applicant_inn')        or '').strip()
 
-    org_name = f"{legal_form} {full_name_org}".strip()
-    if not org_name:
-        return  # нет названия — нечего добавлять
+    # ── Строим название организации: short_name → legal_form+full_name ───────
+    # fix #sync-fix-1: раньше функция молча делала return если оба поля пусты.
+    # Теперь: приоритет short_name, fallback — legal_form + full_name.
+    if short_name:
+        org_name = short_name
+    else:
+        org_name = f"{legal_form} {full_name_org}".strip()
 
-    # 1. Ищем или создаём организацию
+    if not org_name:
+        # Название не удалось определить — предупреждаем пользователя явно
+        flash(
+            'Организация не добавлена в справочник: не заполнено краткое или полное наименование заявителя.',
+            'warning'
+        )
+        return
+
+    # ── 1. Ищем или создаём организацию ─────────────────────────────────────
     row = conn.execute(
         "SELECT id FROM phonebook_orgs WHERE name = ?", (org_name,)
     ).fetchone()
@@ -399,7 +424,7 @@ def sync_request_to_phonebook(conn, form_data, request_id: int, user_id: int) ->
         log_action(conn, user_id, 'create', request_id,
                    f'Справочник орг.: добавлена «{org_name}» из обращения #{request_id}')
 
-    # 2. Ищем или создаём контакт (только если указано ФИО)
+    # ── 2. Ищем или создаём контакт (только если указано ФИО) ───────────────
     if contact_name:
         exists = conn.execute(
             "SELECT id FROM phonebook WHERE org_id = ? AND full_name = ?",
