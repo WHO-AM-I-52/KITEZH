@@ -9,31 +9,40 @@
       <strong style="font-size:12px">Уже прикреплены:</strong>
       <div class="d-flex flex-wrap gap-2 mt-1">
         {% for f in req.request_files.split(',') if f.strip() %}
-        <a href="{{ url_for('requests.uploaded_file', filename=f.strip()) }}"
-           target="_blank"
-           class="d-flex flex-column align-items-center text-decoration-none
-                  text-dark border rounded p-2"
-           style="width:80px;word-break:break-all;font-size:0.72rem">
-          {% set ext = f.strip().rsplit('.',1)[-1].lower() %}
-          {% if ext == 'pdf' %}
-            <i class="bi bi-file-earmark-pdf text-danger" style="font-size:2rem"></i>
-          {% elif ext in ['doc','docx'] %}
-            <i class="bi bi-file-earmark-word text-primary" style="font-size:2rem"></i>
-          {% elif ext in ['xls','xlsx'] %}
-            <i class="bi bi-file-earmark-excel text-success" style="font-size:2rem"></i>
-          {% elif ext in ['ppt','pptx'] %}
-            <i class="bi bi-file-earmark-slides text-warning" style="font-size:2rem"></i>
-          {% elif ext in ['jpg','jpeg','png'] %}
-            <i class="bi bi-file-earmark-image text-info" style="font-size:2rem"></i>
-          {% elif ext == 'zip' %}
-            <i class="bi bi-file-earmark-zip text-secondary" style="font-size:2rem"></i>
-          {% else %}
-            <i class="bi bi-file-earmark" style="font-size:2rem"></i>
-          {% endif %}
-          <span class="mt-1 text-center">
-            {{ f.strip()[:12] }}{% if f.strip()|length > 12 %}…{% endif %}
-          </span>
-        </a>
+        <div class="position-relative d-flex flex-column align-items-center text-center"
+             style="width:80px">
+          <a href="{{ url_for('requests.uploaded_file', filename=f.strip()) }}"
+             target="_blank"
+             class="d-flex flex-column align-items-center text-decoration-none
+                    text-dark border rounded p-2 w-100"
+             style="word-break:break-all;font-size:0.72rem">
+            {% set ext = f.strip().rsplit('.',1)[-1].lower() %}
+            {% if ext == 'pdf' %}
+              <i class="bi bi-file-earmark-pdf text-danger" style="font-size:2rem"></i>
+            {% elif ext in ['doc','docx'] %}
+              <i class="bi bi-file-earmark-word text-primary" style="font-size:2rem"></i>
+            {% elif ext in ['xls','xlsx'] %}
+              <i class="bi bi-file-earmark-excel text-success" style="font-size:2rem"></i>
+            {% elif ext in ['ppt','pptx'] %}
+              <i class="bi bi-file-earmark-slides text-warning" style="font-size:2rem"></i>
+            {% elif ext in ['jpg','jpeg','png'] %}
+              <i class="bi bi-file-earmark-image text-info" style="font-size:2rem"></i>
+            {% elif ext == 'zip' %}
+              <i class="bi bi-file-earmark-zip text-secondary" style="font-size:2rem"></i>
+            {% else %}
+              <i class="bi bi-file-earmark" style="font-size:2rem"></i>
+            {% endif %}
+            <span class="mt-1 text-center">
+              {{ f.strip()[:12] }}{% if f.strip()|length > 12 %}…{% endif %}
+            </span>
+          </a>
+          <label class="mt-1 d-flex align-items-center gap-1"
+                 style="font-size:0.68rem;cursor:pointer;color:#dc3545"
+                 title="Удалить файл">
+            <input type="checkbox" name="files_to_delete" value="{{ f.strip() }}">
+            <i class="bi bi-trash3"></i>
+          </label>
+        </div>
         {% endfor %}
       </div>
     </div>
