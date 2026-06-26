@@ -1,6 +1,7 @@
 # ╔══════════════════════════════════════════════════════════════╗
 # ║ api/requests_api.py                                           ║
 # ║ GET  /api/requests          — JSON для Tabulator.js           ║
+# ║ GET  /api/requests/distinct — уникальные значения по полю    ║
 # ║ POST /api/request/<id>/favorite — тоггл избранного         ║
 # ║ POST /api/check-duplicate   — проверка дублей (difflib)      ║
 # ║                                                               ║
@@ -48,6 +49,21 @@ _ALLOWED_SORT = {
     'review_deadline':'r.review_deadline',
 }
 
+# Поля, по которым разрешено получать уникальные значения
+_DISTINCT_FIELDS = {
+    'created_at':     'r.request_date',
+    'status':         'r.status',
+    'source':         'r.source_type',
+    'applicant':      "COALESCE(r.applicant_short_name, r.applicant_full_name)",
+    'project':        'r.project_name',
+    'investment_mln': 'r.investment_total',
+    'area_ha':        'r.site_area_ha_min',
+    'area_m2':        'r.site_build_area_m2_min',
+    'workplaces':     'r.jobs_total',
+    'employee_name':  'u.full_name',
+    'number':         'r.request_number',
+}
+
 
 def _apply_filter(where, params, col, value, ftype):
     if ftype == 'empty':
@@ -79,12 +95,54 @@ def _date_range(chip):
 
 
 # ─── УСЛОВИЕ ПРОСРОЧКИ ──────────────────────────────────────────────────────
-# Просроченное = активный статус (не draft, не closed) + review_deadline заполнен + deadline < сегодня
 _OVERDUE_SQL = (
     "r.status NOT IN ('closed','draft') "
     "AND r.review_deadline IS NOT NULL AND r.review_deadline != '' "
     "AND r.review_deadline < date('now')"
 )
+
+
+@api_bp.route('/requests/distinct')
+@login_required_api
+def get_distinct_values():
+    """Возвращает уникальные непустые значения по полю.
+    GET /api/requests/distinct?field=status
+    Ответ: { field: 'status', values: ['draft', 'registered', ...] }
+    """
+    field = request.args.get('field', '').strip()
+    if field not in _DISTINCT_FIELDS:
+        return jsonify({'error': 'unknown field'}), 400
+
+    db   = get_db()
+    uid  = session['user_id']
+    role = session.get('role', '')
+
+    col = _DISTINCT_FIELDS[field]
+
+    where  = [f"{col} IS NOT NULL", f"{col} != ''"]
+    params = []
+
+    if role != 'admin' and not session.get('perm_can_view_all'):
+        where.append('r.created_by = ?')
+        params.append(uid)
+
+    where_sql = 'WHERE ' + ' AND '.join(where)
+
+    rows = db.execute(
+        f"""
+        SELECT DISTINCT {col} AS val
+        FROM requests r
+        LEFT JOIN users u ON u.id = r.assigned_to
+        {where_sql}
+        ORDER BY {col} ASC
+        LIMIT 300
+        """,
+        params
+    ).fetchall()
+    db.close()
+
+    values = [r['val'] for r in rows if r['val']]
+    return jsonify({'field': field, 'values': values})
 
 
 @api_bp.route('/requests')
@@ -113,9 +171,6 @@ def get_requests():
         params.append(uid)
 
     # ── МУЛЬТИ-ФИЛЬТР ПО СТАТУСУ ──────────────────────────────────────
-    # Поддержка двух способов передачи:
-    #   filter[status][]  — мульти (новый способ, IN-запрос)
-    #   filter[status]    — один статус (обратная совместимость)
     statuses = [s.strip() for s in request.args.getlist('filter[status][]') if s.strip()]
     if not statuses:
         single = request.args.get('filter[status]', '').strip()
@@ -129,7 +184,6 @@ def get_requests():
         placeholders = ','.join('?' * len(statuses))
         where.append(f'r.status IN ({placeholders})')
         params.extend(statuses)
-    # если statuses пустой — фильтр не добавляется (graceful fallback)
 
     applicant = request.args.get('filter[applicant]', '').strip()
     if applicant:
@@ -149,7 +203,6 @@ def get_requests():
         """)
         params.extend([s, s, s, s, s, s])
 
-    # ── Фильтр по району (preferred_districts) ────────────────────────────
     district = request.args.get('filter[district]', '').strip()
     if district:
         where.append('r.preferred_districts LIKE ?')
@@ -183,9 +236,39 @@ def get_requests():
         where.append('r.request_date <= ?')
         params.append(date_to)
 
-    # ── Фильтр просрочки по этапному review_deadline
     if request.args.get('filter[overdue]', '').strip() == '1':
         where.append(_OVERDUE_SQL)
+
+    # ── ФИЛЬТРЫ ПО СТОЛБЦАМ (воронка) ─────────────────────────────────
+    # Передаются как filter[col][]=val1&filter[col][]=val2 (мульти)
+    for field, col_expr in {
+        'col_created_at':     'r.request_date',
+        'col_source':         'r.source_type',
+        'col_applicant':      "COALESCE(r.applicant_short_name, r.applicant_full_name)",
+        'col_project':        'r.project_name',
+        'col_investment_mln': 'r.investment_total',
+        'col_area_ha':        'r.site_area_ha_min',
+        'col_area_m2':        'r.site_build_area_m2_min',
+        'col_workplaces':     'r.jobs_total',
+        'col_employee_name':  'u.full_name',
+        'col_number':         'r.request_number',
+    }.items():
+        vals = [v.strip() for v in request.args.getlist(f'filter[{field}][]') if v.strip()]
+        if vals:
+            placeholders = ','.join('?' * len(vals))
+            where.append(f"{col_expr} IN ({placeholders})")
+            params.extend(vals)
+
+    # col_status — отдельно, чтобы не конфликтовать с основным фильтром статуса
+    col_statuses = [v.strip() for v in request.args.getlist('filter[col_status][]') if v.strip()]
+    if col_statuses and not statuses:  # применяем только если нет глобального фильтра
+        if len(col_statuses) == 1:
+            where.append('r.status = ?')
+            params.append(col_statuses[0])
+        else:
+            placeholders = ','.join('?' * len(col_statuses))
+            where.append(f'r.status IN ({placeholders})')
+            params.extend(col_statuses)
 
     where_sql = ('WHERE ' + ' AND '.join(where)) if where else ''
 
@@ -231,7 +314,6 @@ def get_requests():
         [uid] + params + [size, offset]
     ).fetchall()
 
-    # ── Статистика (всегда по всем записям, без фильтра)
     stats_where  = ''
     stats_params = []
     if role != 'admin' and not session.get('perm_can_view_all'):

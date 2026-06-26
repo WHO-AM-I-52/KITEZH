@@ -2,8 +2,8 @@
 {#
  ╔══════════════════════════════════════════════════════════════╗
  ║  requests_tabulator.html                                       ║
- ║  v1.9: multi-select stat cards (#5)                          ║
  ║  v2.0: центрирование заголовков + кнопка «⚙ Столбцы»       ║
+ ║  v2.1: фильтры по столбцам (воронка bi-funnel)              ║
  ╚══════════════════════════════════════════════════════════════╝
 #}
 
@@ -27,16 +27,8 @@
 .stat-card.sc-sent  { border-left-color:#20c997; }
 .stat-card.sc-closed{ border-left-color:#212529; }
 .stat-card.sc-over  { border-left-color:#dc3545; }
-
-.stat-card.active::after {
-  content: '✓';
-  position: absolute;
-  top: 6px; right: 8px;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--accent);
-}
-.stat-card { position: relative; }
+.stat-card.active::after { content:'✓'; position:absolute; top:6px; right:8px; font-size:11px; font-weight:700; color:var(--accent); }
+.stat-card { position:relative; }
 
 .filter-panel { background:var(--surface); border-radius:10px; padding:14px 16px 10px;
                box-shadow:var(--card-shadow); margin-bottom:12px; }
@@ -97,7 +89,7 @@
   text-transform:uppercase; letter-spacing:.3px; }
 
 /* Центрирование заголовков */
-#requestsTable .tabulator-col-title { text-align: center; }
+#requestsTable .tabulator-col-title { text-align:center; }
 
 .tabulator .tabulator-row { background:var(--surface) !important; border-bottom:1px solid var(--border) !important; color:var(--text) !important; }
 .tabulator .tabulator-row:nth-child(even) { background:var(--table-stripe) !important; }
@@ -110,36 +102,132 @@
 
 /* Кнопка «⚙ Столбцы» в пагинаторе */
 .tabulator .tabulator-footer .tabulator-paginator {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 4px;
-  position: relative;
+  display:flex; align-items:center; flex-wrap:wrap; gap:4px; position:relative;
 }
-#reqColToggleWrap {
-  margin-left: auto;
-  position: relative;
-}
-#req-col-toggle-menu { min-width: 170px; padding: 4px 0; }
-#req-col-toggle-menu li { list-style: none; }
+#reqColToggleWrap { margin-left:auto; position:relative; }
+#req-col-toggle-menu { min-width:170px; padding:4px 0; }
+#req-col-toggle-menu li { list-style:none; }
 #req-col-toggle-menu label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 14px;
-  cursor: pointer;
-  font-size: .875rem;
-  white-space: nowrap;
-  color: #212529;
+  display:flex; align-items:center; gap:8px; padding:5px 14px;
+  cursor:pointer; font-size:.875rem; white-space:nowrap; color:#212529;
 }
-#req-col-toggle-menu label:hover { background: #f1f3f5; }
+#req-col-toggle-menu label:hover { background:#f1f3f5; }
 #req-col-toggle-menu input[type=checkbox] {
-  flex-shrink: 0;
-  width: 15px;
-  height: 15px;
-  cursor: pointer;
-  accent-color: #0d6efd;
+  flex-shrink:0; width:15px; height:15px; cursor:pointer; accent-color:#0d6efd;
 }
+
+/* ─── Иконка воронки в заголовке столбца ─── */
+.col-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: none;
+  padding: 0;
+  margin-left: 4px;
+  cursor: pointer;
+  color: var(--text-muted);
+  opacity: 0.45;
+  font-size: 11px;
+  vertical-align: middle;
+  border-radius: 3px;
+  transition: opacity .15s, color .15s, background .15s;
+  flex-shrink: 0;
+}
+.col-filter-btn:hover { opacity: 1; color: var(--accent); background: rgba(13,110,253,.08); }
+.col-filter-btn.active { opacity: 1; color: var(--accent); }
+
+/* Растягиваем содержимое заголовка, чтобы воронка не обрезалась */
+#requestsTable .tabulator-col-content {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 2px !important;
+  overflow: visible !important;
+}
+#requestsTable .tabulator-col-title {
+  text-align: center;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ─── Dropdown фильтра по столбцу ─── */
+.col-filter-menu {
+  position: fixed;
+  z-index: 9999;
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #dee2e6);
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0,0,0,.15);
+  min-width: 200px;
+  max-width: 280px;
+  padding: 0;
+  display: none;
+}
+.col-filter-menu.open { display: block; }
+.col-filter-menu-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px 6px;
+  border-bottom: 1px solid var(--border, #dee2e6);
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .3px; color: var(--text-muted, #6c757d);
+}
+.col-filter-menu-head button {
+  background: none; border: none; font-size: 13px;
+  color: var(--text-muted); cursor: pointer; padding: 0 2px;
+}
+.col-filter-menu-head button:hover { color: var(--accent, #0d6efd); }
+.col-filter-search {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border, #dee2e6);
+}
+.col-filter-search input {
+  width: 100%; font-size: 12px; padding: 4px 8px;
+  border: 1px solid var(--border, #dee2e6); border-radius: 5px;
+  background: var(--surface, #fff); color: var(--text, #212529);
+  outline: none;
+}
+.col-filter-search input:focus { border-color: var(--accent, #0d6efd); }
+.col-filter-list {
+  max-height: 220px; overflow-y: auto;
+  padding: 4px 0;
+}
+.col-filter-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 12px; font-size: 13px; cursor: pointer;
+  color: var(--text, #212529); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.col-filter-item:hover { background: var(--table-hover, #f8f9fa); }
+.col-filter-item input[type=checkbox] {
+  flex-shrink: 0; width: 14px; height: 14px;
+  accent-color: var(--accent, #0d6efd); cursor: pointer;
+}
+.col-filter-item label {
+  cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  flex: 1;
+}
+.col-filter-footer {
+  display: flex; gap: 6px; padding: 7px 10px;
+  border-top: 1px solid var(--border, #dee2e6);
+}
+.col-filter-footer button {
+  flex: 1; font-size: 12px; padding: 4px 0;
+  border-radius: 5px; border: 1px solid var(--border, #dee2e6);
+  cursor: pointer; background: var(--surface, #fff); color: var(--text, #212529);
+  transition: background .12s;
+}
+.col-filter-footer .btn-apply {
+  background: var(--accent, #0d6efd); color: #fff; border-color: var(--accent, #0d6efd);
+}
+.col-filter-footer .btn-apply:hover { opacity: .88; }
+.col-filter-footer .btn-clear:hover { background: var(--surface2, #f8f9fa); }
+.col-filter-loading { padding: 18px 12px; text-align: center; font-size: 12px; color: var(--text-muted); }
 
 .tab-star { cursor:pointer; color:#ccc; font-size:14px; transition:color .15s; }
 .tab-star.fav { color:#f59e0b; }
@@ -188,31 +276,31 @@
 </div>
 
 <div class="stat-cards" id="statCards">
-  <div class="stat-card sc-all active" data-filter-status="" title="Все обращения (кликните чтобы сбросить выбор)">
+  <div class="stat-card sc-all active" data-filter-status="">
     <div class="sc-num" id="sc-all">—</div><div class="sc-lbl"><i class="bi bi-inbox"></i> Всего</div>
   </div>
-  <div class="stat-card sc-draft" data-filter-status="draft" title="Можно выбрать несколько статусов">
+  <div class="stat-card sc-draft" data-filter-status="draft">
     <div class="sc-num" id="sc-draft">—</div><div class="sc-lbl"><i class="bi bi-pencil-square"></i> Черновик</div>
   </div>
-  <div class="stat-card sc-reg" data-filter-status="registered" title="Можно выбрать несколько статусов">
+  <div class="stat-card sc-reg" data-filter-status="registered">
     <div class="sc-num" id="sc-registered">—</div><div class="sc-lbl"><i class="bi bi-hash"></i> Зарегистрировано</div>
   </div>
-  <div class="stat-card sc-work" data-filter-status="in_progress" title="Можно выбрать несколько статусов">
+  <div class="stat-card sc-work" data-filter-status="in_progress">
     <div class="sc-num" id="sc-in_progress">—</div><div class="sc-lbl"><i class="bi bi-person-workspace"></i> В работе</div>
   </div>
-  <div class="stat-card sc-rev" data-filter-status="under_review" title="Можно выбрать несколько статусов">
+  <div class="stat-card sc-rev" data-filter-status="under_review">
     <div class="sc-num" id="sc-under_review">—</div><div class="sc-lbl"><i class="bi bi-search"></i> На проверке</div>
   </div>
-  <div class="stat-card sc-ready" data-filter-status="ready_to_send" title="Можно выбрать несколько статусов">
+  <div class="stat-card sc-ready" data-filter-status="ready_to_send">
     <div class="sc-num" id="sc-ready_to_send">—</div><div class="sc-lbl"><i class="bi bi-envelope-check"></i> Готово к отправке</div>
   </div>
-  <div class="stat-card sc-sent" data-filter-status="sent_to_applicant" title="Можно выбрать несколько статусов">
+  <div class="stat-card sc-sent" data-filter-status="sent_to_applicant">
     <div class="sc-num" id="sc-sent_to_applicant">—</div><div class="sc-lbl"><i class="bi bi-send-check"></i> Отправлено</div>
   </div>
-  <div class="stat-card sc-closed" data-filter-status="closed" title="Можно выбрать несколько статусов">
+  <div class="stat-card sc-closed" data-filter-status="closed">
     <div class="sc-num" id="sc-closed">—</div><div class="sc-lbl"><i class="bi bi-check2-circle"></i> Закрыто</div>
   </div>
-  <div class="stat-card sc-over" data-filter-status="__overdue__" title="Можно выбрать несколько статусов">
+  <div class="stat-card sc-over" data-filter-status="__overdue__">
     <div class="sc-num" id="sc-overdue">—</div><div class="sc-lbl"><i class="bi bi-exclamation-triangle"></i> Просрочено</div>
   </div>
 </div>
@@ -253,14 +341,12 @@
       <button id="btnReset" class="btn btn-outline-secondary btn-sm" style="height:34px;"><i class="bi bi-x-lg"></i></button>
     </div>
   </div>
-
   <div class="chip-bar">
     <span class="chip-bar-label"><i class="bi bi-calendar3 me-1"></i>Дата:</span>
     <span class="chip" data-chip-type="date" data-chip-val="today">Сегодня</span>
     <span class="chip" data-chip-type="date" data-chip-val="week">Неделя</span>
     <span class="chip" data-chip-type="date" data-chip-val="month">Месяц</span>
   </div>
-
   <div class="chip-bar" style="border-top:none; padding-top:4px;">
     <span class="chip-bar-label"><i class="bi bi-person-check me-1"></i>Ответственный:</span>
     <div class="emp-chips" id="empChips">
@@ -298,6 +384,23 @@
 </div>
 {% endif %}
 
+{# ─── Единый DOM-элемент для dropdown фильтра столбца ─── #}
+<div id="colFilterMenu" class="col-filter-menu">
+  <div class="col-filter-menu-head">
+    <span id="colFilterMenuTitle">Фильтр</span>
+    <div style="display:flex;gap:4px;">
+      <button id="colFilterSelectAll" title="Выбрать все"><i class="bi bi-check-all"></i></button>
+      <button id="colFilterClearAll"  title="Снять все"><i class="bi bi-x-lg"></i></button>
+    </div>
+  </div>
+  <div class="col-filter-search"><input type="text" id="colFilterSearch" placeholder="Поиск…"></div>
+  <div class="col-filter-list" id="colFilterList"></div>
+  <div class="col-filter-footer">
+    <button class="btn-clear" id="colFilterBtnClear">Сбросить</button>
+    <button class="btn-apply" id="colFilterBtnApply">Применить</button>
+  </div>
+</div>
+
 <div id="requestsTable"></div>
 {% endblock %}
 
@@ -331,7 +434,6 @@ const STATUS_LABELS = {
   __overdue__:       'Просрочено',
 };
 
-// Столбцы для тоггла (чекбокс + «Действия» скрыть нельзя)
 const REQ_TOGGLEABLE_COLS = [
   { field: 'created_at',    label: 'Дата' },
   { field: 'status',        label: 'Статус' },
@@ -353,6 +455,28 @@ function saveReqVisibility(field, visible) {
   const v = loadReqVisibility(); v[field] = visible;
   localStorage.setItem(REQ_LS_KEY, JSON.stringify(v));
 }
+
+// Столбцы с воронкой (field → param-ключ для API)
+const FILTERABLE_COLS = [
+  { field: 'created_at',    param: 'col_created_at',    label: 'Дата' },
+  { field: 'status',        param: 'col_status',        label: 'Статус' },
+  { field: 'source',        param: 'col_source',        label: 'Источник' },
+  { field: 'applicant',     param: 'col_applicant',     label: 'Заявитель' },
+  { field: 'project',       param: 'col_project',       label: 'Проект' },
+  { field: 'investment_mln',param: 'col_investment_mln',label: 'Инв. (млн)' },
+  { field: 'area_ha',       param: 'col_area_ha',       label: 'Га' },
+  { field: 'area_m2',       param: 'col_area_m2',       label: 'М²' },
+  { field: 'workplaces',    param: 'col_workplaces',    label: 'Раб.мест' },
+  { field: 'employee_name', param: 'col_employee_name', label: 'Ответственный' },
+  { field: 'number',        param: 'col_number',        label: '№' },
+];
+
+// Состояние фильтров по столбцам: { field: Set<string> }
+const colFilters = {};
+FILTERABLE_COLS.forEach(c => { colFilters[c.field] = new Set(); });
+
+// Кеш загруженных значений: { field: string[] }
+const _distinctCache = {};
 
 const state = {
   statuses: [],
@@ -383,6 +507,11 @@ function buildParams(page, size) {
   if (state.favorite)  p.set('filter[favorite]',  '1');
   if (state.dateChip)  p.set('filter[date_chip]', state.dateChip);
   if (state.district)  p.set('filter[district]',  state.district);
+  // ── фильтры по столбцам
+  FILTERABLE_COLS.forEach(c => {
+    const vals = Array.from(colFilters[c.field]);
+    if (vals.length) vals.forEach(v => p.append(`filter[${c.param}][]`, v));
+  });
   return p.toString();
 }
 
@@ -392,8 +521,7 @@ function fmtNum(v) {
 
 function syncStatusSelect() {
   const rs = realStatuses();
-  const sel = document.getElementById('fStatus');
-  sel.value = rs.length === 1 ? rs[0] : '';
+  document.getElementById('fStatus').value = rs.length === 1 ? rs[0] : '';
 }
 
 function updateStatusBanner() {
@@ -410,12 +538,10 @@ function updateStatusBanner() {
 function updateCardHighlights() {
   document.querySelectorAll('.stat-card').forEach(card => {
     const val = card.dataset.filterStatus;
-    const isAll = val === '';
     if (state.statuses.length === 0) {
-      card.classList.toggle('active', isAll);
+      card.classList.toggle('active', val === '');
     } else {
-      if (isAll) { card.classList.remove('active'); }
-      else { card.classList.toggle('active', state.statuses.includes(val)); }
+      card.classList.toggle('active', val !== '' && state.statuses.includes(val));
     }
   });
 }
@@ -453,19 +579,179 @@ function updateBulkBar() {
   if (selected.length > 0) {
     bar.classList.add('show');
     cnt.textContent = selected.length + ' выбрано';
+  } else { bar.classList.remove('show'); }
+}
+
+// ══════════════════════════════════════════════════════
+// ─── DROPDOWN ФИЛЬТРА ПО СТОЛБЦУ ─────────────────────
+// ══════════════════════════════════════════════════════
+const _menu        = document.getElementById('colFilterMenu');
+const _menuTitle   = document.getElementById('colFilterMenuTitle');
+const _menuList    = document.getElementById('colFilterList');
+const _menuSearch  = document.getElementById('colFilterSearch');
+const _btnApply    = document.getElementById('colFilterBtnApply');
+const _btnClear    = document.getElementById('colFilterBtnClear');
+const _btnSelAll   = document.getElementById('colFilterSelectAll');
+const _btnClrAll   = document.getElementById('colFilterClearAll');
+
+let _activeField   = null;   // текущее открытое поле
+let _pendingVals   = new Set(); // временные значения до Apply
+let _allVals       = [];     // все значения текущего поля
+
+function _closeMenu() {
+  _menu.classList.remove('open');
+  _activeField = null;
+  _menuSearch.value = '';
+}
+
+function _renderList(vals, search) {
+  const q = (search || '').toLowerCase().trim();
+  const filtered = q ? vals.filter(v => String(v).toLowerCase().includes(q)) : vals;
+  if (!filtered.length) {
+    _menuList.innerHTML = '<div class="col-filter-loading">Нет значений</div>';
+    return;
+  }
+  _menuList.innerHTML = filtered.map(v => {
+    const checked = _pendingVals.has(String(v)) ? 'checked' : '';
+    const label = _activeField === 'status' ? (STATUS_LABELS[v] || v) : v;
+    const cbId  = 'cfv_' + String(v).replace(/[^a-zA-Z0-9]/g, '_');
+    return `<div class="col-filter-item">
+      <input type="checkbox" id="${cbId}" value="${v}" ${checked}>
+      <label for="${cbId}" title="${v}">${label}</label>
+    </div>`;
+  }).join('');
+  // события на чекбоксы
+  _menuList.querySelectorAll('input[type=checkbox]').forEach(cb => {
+    cb.addEventListener('change', function() {
+      if (this.checked) _pendingVals.add(this.value);
+      else              _pendingVals.delete(this.value);
+      _updateFunnelBtn(_activeField);
+    });
+  });
+}
+
+function _updateFunnelBtn(field) {
+  if (!field) return;
+  const btn = document.querySelector(`.col-filter-btn[data-field="${field}"]`);
+  if (!btn) return;
+  const hasFilter = colFilters[field] && colFilters[field].size > 0;
+  btn.classList.toggle('active', hasFilter);
+}
+
+function _openMenu(field, btnEl, labelText) {
+  if (_activeField === field) { _closeMenu(); return; }
+  _closeMenu();
+  _activeField  = field;
+  _pendingVals  = new Set(colFilters[field]);
+  _menuTitle.textContent = labelText;
+  _menuSearch.value = '';
+  _menuList.innerHTML = '<div class="col-filter-loading"><i class="bi bi-arrow-repeat"></i> Загрузка…</div>';
+  _menu.classList.add('open');
+
+  // Позиционирование под кнопкой
+  const rect = btnEl.getBoundingClientRect();
+  const menuW = 240;
+  let left = rect.left;
+  if (left + menuW > window.innerWidth - 8) left = window.innerWidth - menuW - 8;
+  _menu.style.left = left + 'px';
+  _menu.style.top  = (rect.bottom + 4) + 'px';
+  _menu.style.width = menuW + 'px';
+
+  // Загрузка значений (с кешем)
+  if (_distinctCache[field]) {
+    _allVals = _distinctCache[field];
+    _renderList(_allVals, '');
   } else {
-    bar.classList.remove('show');
+    fetch(`/api/requests/distinct?field=${encodeURIComponent(field)}`, { credentials: 'same-origin' })
+      .then(r => r.json())
+      .then(d => {
+        _distinctCache[field] = d.values || [];
+        _allVals = _distinctCache[field];
+        if (_activeField === field) _renderList(_allVals, _menuSearch.value);
+      })
+      .catch(() => {
+        if (_activeField === field)
+          _menuList.innerHTML = '<div class="col-filter-loading">Ошибка загрузки</div>';
+      });
   }
 }
 
+_menuSearch.addEventListener('input', function() {
+  _renderList(_allVals, this.value);
+});
+
+_btnSelAll.addEventListener('click', function() {
+  _allVals.forEach(v => _pendingVals.add(String(v)));
+  _renderList(_allVals, _menuSearch.value);
+  if (_activeField) _updateFunnelBtn(_activeField);
+});
+
+_btnClrAll.addEventListener('click', function() {
+  _pendingVals.clear();
+  _renderList(_allVals, _menuSearch.value);
+  if (_activeField) _updateFunnelBtn(_activeField);
+});
+
+_btnApply.addEventListener('click', function() {
+  if (!_activeField) return;
+  colFilters[_activeField] = new Set(_pendingVals);
+  _updateFunnelBtn(_activeField);
+  // Сбрасываем кеш distinct для этого поля чтобы следующий раз обновился
+  delete _distinctCache[_activeField];
+  _closeMenu();
+  table.replaceData();
+});
+
+_btnClear.addEventListener('click', function() {
+  if (!_activeField) return;
+  colFilters[_activeField] = new Set();
+  _pendingVals.clear();
+  _updateFunnelBtn(_activeField);
+  delete _distinctCache[_activeField];
+  _closeMenu();
+  table.replaceData();
+});
+
+// Закрытие по клику снаружи
+document.addEventListener('mousedown', function(e) {
+  if (!_menu.contains(e.target) && !e.target.closest('.col-filter-btn')) {
+    _closeMenu();
+  }
+}, true);
+
+// ══════════════════════════════════════════════════════
+
 const reqVis = loadReqVisibility();
+
+// Строим заголовок столбца с воронкой
+function makeTitleFormatter(label, field) {
+  const fc = FILTERABLE_COLS.find(c => c.field === field);
+  if (!fc) return label;
+  return function() {
+    const wrap = document.createElement('span');
+    wrap.style.cssText = 'display:inline-flex;align-items:center;gap:2px;width:100%;justify-content:center;';
+    const txt = document.createElement('span');
+    txt.textContent = label;
+    txt.style.cssText = 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+    const btn = document.createElement('button');
+    btn.className = 'col-filter-btn' + (colFilters[field].size ? ' active' : '');
+    btn.dataset.field = field;
+    btn.title = 'Фильтр по ' + label;
+    btn.innerHTML = '<i class="bi bi-funnel"></i>';
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      _openMenu(field, btn, label);
+    });
+    wrap.appendChild(txt);
+    wrap.appendChild(btn);
+    return wrap;
+  };
+}
 
 const tableColumns = [
     ...(IS_ADMIN ? [{
-      formatter: 'rowSelection',
-      titleFormatter: 'rowSelection',
-      width: 36, resizable: false,
-      hozAlign: 'center', headerSort: false,
+      formatter: 'rowSelection', titleFormatter: 'rowSelection',
+      width: 36, resizable: false, hozAlign: 'center', headerSort: false,
       cellClick: function(e, cell){ cell.getRow().toggleSelect(); }
     }] : []),
     {
@@ -473,8 +759,7 @@ const tableColumns = [
       hozAlign: 'center', headerSort: false,
       formatter: function(cell){
         const v = cell.getValue(), id = cell.getRow().getData().id;
-        return `<span class="tab-star${v?' fav':''}" data-id="${id}" title="${v?'Убрать из избранных':'Добавить в избранные'}">
-                  <i class="bi ${v?'bi-star-fill':'bi-star'}"></i></span>`;
+        return `<span class="tab-star${v?' fav':''}" data-id="${id}" title="${v?'Убрать из избранных':'Добавить в избранные'}"><i class="bi ${v?'bi-star-fill':'bi-star'}"></i></span>`;
       },
       cellClick: function(e, cell){
         if (e.target.closest('[data-id]')) {
@@ -486,6 +771,7 @@ const tableColumns = [
     },
     {
       title: '№', field: 'number', width: 100, resizable: false,
+      titleFormatter: makeTitleFormatter('№', 'number'),
       formatter: function(cell){
         const row = cell.getRow().getData();
         return `<a class="tab-num" href="/view/${row.id}">${cell.getValue()}</a>`;
@@ -494,6 +780,7 @@ const tableColumns = [
     {
       title: 'Дата', field: 'created_at', width: 100,
       visible: reqVis['created_at'] !== false,
+      titleFormatter: makeTitleFormatter('Дата', 'created_at'),
       formatter: function(cell){
         const v = cell.getValue(); if (!v) return '—';
         const p = v.substring(0,10).split('-');
@@ -503,6 +790,7 @@ const tableColumns = [
     {
       title: 'Статус', field: 'status', width: 120,
       visible: reqVis['status'] !== false,
+      titleFormatter: makeTitleFormatter('Статус', 'status'),
       formatter: function(cell){
         const s = STATUS_MAP[cell.getValue()] || {text:cell.getValue(), cls:'bg-secondary'};
         return `<span class="badge ${s.cls}">${s.text}</span>`;
@@ -511,16 +799,19 @@ const tableColumns = [
     {
       title: 'Источник', field: 'source', width: 80, headerSort: false,
       visible: reqVis['source'] !== false,
+      titleFormatter: makeTitleFormatter('Источник', 'source'),
       formatter: function(cell){ return cell.getValue()||'<span style="color:var(--text-muted)">—</span>'; }
     },
     {
       title: 'Заявитель', field: 'applicant', minWidth: 160,
       visible: reqVis['applicant'] !== false,
+      titleFormatter: makeTitleFormatter('Заявитель', 'applicant'),
       formatter: function(cell){ return cell.getValue()||'<span style="color:var(--text-muted)">—</span>'; }
     },
     {
       title: 'Проект', field: 'project', minWidth: 220,
       visible: reqVis['project'] !== false,
+      titleFormatter: makeTitleFormatter('Проект', 'project'),
       formatter: function(cell){
         const v = cell.getValue(); if (!v) return '<span style="color:var(--text-muted)">—</span>';
         return `<span title="${v.replace(/"/g,'&quot;')}">${v}</span>`;
@@ -528,19 +819,24 @@ const tableColumns = [
     },
     { title: 'Инв. (млн)', field: 'investment_mln', width: 80, hozAlign: 'right',
       visible: reqVis['investment_mln'] !== false,
+      titleFormatter: makeTitleFormatter('Инв. (млн)', 'investment_mln'),
       formatter: function(cell){ return fmtNum(cell.getValue()); } },
     { title: 'Га', field: 'area_ha', width: 60, hozAlign: 'right',
       visible: reqVis['area_ha'] !== false,
+      titleFormatter: makeTitleFormatter('Га', 'area_ha'),
       formatter: function(cell){ return fmtNum(cell.getValue()); } },
     { title: 'М²', field: 'area_m2', width: 70, hozAlign: 'right',
       visible: reqVis['area_m2'] !== false,
+      titleFormatter: makeTitleFormatter('М²', 'area_m2'),
       formatter: function(cell){ return fmtNum(cell.getValue()); } },
     { title: 'Раб.мест', field: 'workplaces', width: 72, hozAlign: 'right',
       visible: reqVis['workplaces'] !== false,
+      titleFormatter: makeTitleFormatter('Раб.мест', 'workplaces'),
       formatter: function(cell){ return fmtNum(cell.getValue()); } },
     {
       title: 'Ответственный', field: 'employee_name', width: 140,
       visible: reqVis['employee_name'] !== false,
+      titleFormatter: makeTitleFormatter('Ответственный', 'employee_name'),
       formatter: function(cell){ return cell.getValue()||'<span style="color:var(--text-muted)">—</span>'; }
     },
     {
@@ -608,42 +904,31 @@ const table = new Tabulator('#requestsTable', {
   },
 });
 
-// ─── Кнопка «⚙ Столбцы» в пагинаторе ───────────────────────────────────
+// ─── Кнопка «⚙ Столбцы» в пагинаторе ───────────────────────────────
 table.on('tableBuilt', function() {
-  // Находим .tabulator-paginator и вставляем wrapper
   const paginator = document.querySelector('#requestsTable .tabulator-paginator');
   if (!paginator) return;
-
-  // wrapper для размещения кнопки справа
   const wrap = document.createElement('div');
   wrap.id = 'reqColToggleWrap';
   wrap.className = 'dropdown';
-
   const btn = document.createElement('button');
   btn.className = 'btn btn-outline-secondary btn-sm dropdown-toggle';
   btn.setAttribute('data-bs-toggle', 'dropdown');
   btn.setAttribute('data-bs-auto-close', 'outside');
   btn.setAttribute('type', 'button');
   btn.textContent = '⚙ Столбцы';
-
   const menu = document.createElement('ul');
   menu.className = 'dropdown-menu dropdown-menu-end';
   menu.id = 'req-col-toggle-menu';
-
   REQ_TOGGLEABLE_COLS.forEach(function(def) {
     const col = table.getColumn(def.field);
     if (!col) return;
-
     const li = document.createElement('li');
     const cbId = 'req_col_' + def.field;
     const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.id = cbId;
-    cb.checked = col.isVisible();
-
+    cb.type = 'checkbox'; cb.id = cbId; cb.checked = col.isVisible();
     const lbl = document.createElement('label');
-    lbl.htmlFor = cbId;
-    lbl.textContent = def.label;
+    lbl.htmlFor = cbId; lbl.textContent = def.label;
     cb.addEventListener('change', function() {
       this.checked ? col.show() : col.hide();
       saveReqVisibility(def.field, this.checked);
@@ -652,16 +937,13 @@ table.on('tableBuilt', function() {
     li.appendChild(lbl);
     menu.appendChild(li);
   });
-
-  wrap.appendChild(btn);
-  wrap.appendChild(menu);
+  wrap.appendChild(btn); wrap.appendChild(menu);
   paginator.appendChild(wrap);
 });
 
 if (IS_ADMIN) {
   table.on('rowSelectionChanged', updateBulkBar);
   table.on('dataLoaded', function() { updateBulkBar(); });
-
   document.getElementById('btnBulkDelete').addEventListener('click', function() {
     const rows = table.getSelectedRows();
     if (!rows.length) return;
@@ -674,10 +956,8 @@ if (IS_ADMIN) {
       inp.type = 'hidden'; inp.name = 'ids[]'; inp.value = r.getData().id;
       form.appendChild(inp);
     });
-    document.body.appendChild(form);
-    form.submit();
+    document.body.appendChild(form); form.submit();
   });
-
   document.getElementById('btnBulkClear').addEventListener('click', function() {
     table.deselectRow(); updateBulkBar();
   });
@@ -687,9 +967,7 @@ table.on('dataSorted', function(sorters) {
   if (_sortTriggered) { _sortTriggered = false; return; }
   if (sorters && sorters.length > 0) {
     state.sort = sorters[0].field; state.dir = sorters[0].dir;
-  } else {
-    state.sort = ''; state.dir = 'desc';
-  }
+  } else { state.sort = ''; state.dir = 'desc'; }
   _sortTriggered = true;
   table.replaceData();
 });
@@ -707,8 +985,14 @@ function applyFilters() { table.replaceData(); }
 
 function resetAll() {
   Object.assign(state, { statuses:[], dateFrom:'', dateTo:'', applicant:'',
-    search:'', employee:null, favorite:false, dateChip:'',
-    district:'', sort:'', dir:'desc' });
+    search:'', employee:null, favorite:false, dateChip:'', district:'', sort:'', dir:'desc' });
+  // сбрасываем фильтры по столбцам
+  FILTERABLE_COLS.forEach(c => {
+    colFilters[c.field] = new Set();
+    delete _distinctCache[c.field];
+    const btn = document.querySelector(`.col-filter-btn[data-field="${c.field}"]`);
+    if (btn) btn.classList.remove('active');
+  });
   document.getElementById('fDateFrom').value  = '';
   document.getElementById('fDateTo').value    = '';
   document.getElementById('fStatus').value    = '';
@@ -751,8 +1035,7 @@ document.getElementById('btnResetAll').addEventListener('click', resetAll);
 });
 
 document.getElementById('fStatus').addEventListener('change', function(){
-  const val = this.value;
-  state.statuses = val ? [val] : [];
+  state.statuses = this.value ? [this.value] : [];
   updateCardHighlights(); updateStatusBanner(); applyFilters();
 });
 
