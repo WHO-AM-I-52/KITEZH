@@ -87,13 +87,21 @@
              value="{{ req.legal_address if req else '' }}">
     </div>
 
-    <div class="col-md-4">
+    {# ===== Контакт: ФИО + Должность + Телефон + Email (fix #sync-fix-2) ===== #}
+    <div class="col-md-3">
       <label class="form-label fw-bold" style="font-size:12px">Контактное лицо</label>
       <input type="text" name="contact_person" class="form-control form-control-sm"
              value="{{ req.contact_person if req else '' }}" placeholder="ФИО">
     </div>
 
-    <div class="col-md-4">
+    {# fix #sync-fix-2: добавлено поле contact_position — раньше отсутствовало в форме #}
+    <div class="col-md-3">
+      <label class="form-label fw-bold" style="font-size:12px">Должность</label>
+      <input type="text" name="contact_position" class="form-control form-control-sm"
+             value="{{ req.contact_position if req else '' }}" placeholder="например, Директор">
+    </div>
+
+    <div class="col-md-3">
       <label class="form-label fw-bold" style="font-size:12px">
         Телефон <span class="text-danger">*</span>
       </label>
@@ -102,11 +110,12 @@
              placeholder="+7 (___) ___-__-__" id="phone_mask">
     </div>
 
-    <div class="col-md-4">
+    <div class="col-md-3">
       <label class="form-label fw-bold" style="font-size:12px">E-mail</label>
       <input type="email" name="contact_email" class="form-control form-control-sm"
              value="{{ req.contact_email if req else '' }}" placeholder="example@mail.ru">
     </div>
+    {# ===== /Контакт ===== #}
 
     {# ===== Issue #PB-1: чекбокс «Добавить в справочник» ===== #}
     <div class="col-12">
