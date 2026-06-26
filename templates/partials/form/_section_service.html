@@ -56,61 +56,48 @@
       </div>
     </div>
 
-    {# ── СОИСПОЛНИТЕЛИ (#77) ── #}
+    {# ── СОИСПОЛНИТЕЛИ (#77 → #80) ── #}
     <div class="col-12">
       <label class="form-label fw-bold" style="font-size:12px">
         <i class="bi bi-people me-1"></i>Соисполнители
       </label>
 
       {% if req %}
-      {# ── РЕДАКТИРОВАНИЕ: текущие + форма добавления через отдельные POST-роуты ── #}
-      <div class="d-flex flex-wrap gap-2 align-items-center p-2 border rounded"
+      {# ── РЕДАКТИРОВАНИЕ: единый select multiple с текущим выбором ── #}
+      {% if session.role in ('admin', 'manager') or session.user_id == req.assigned_to or session.user_id == req.responsible_id %}
+      <div class="border rounded p-2" style="background:var(--surface2,#f0f4f8)">
+        <select name="coexecutors" id="coexecutors"
+                class="form-select form-select-sm" multiple
+                style="min-height:80px">
+          {% for u in all_users %}
+            {% if u.role in ('employee', 'admin', 'manager') %}
+            <option value="{{ u.id }}"
+              {% if coexecutors and u.id in coexecutors|map(attribute='user_id')|list %}selected{% endif %}>
+              {{ u.full_name }}
+              {%- if u.role == 'admin' %} (адм.)
+              {%- elif u.role == 'manager' %} (мен.)
+              {%- endif %}
+            </option>
+            {% endif %}
+          {% endfor %}
+        </select>
+        <div class="form-text">Зажмите Ctrl (или Cmd) для выбора нескольких — необязательно</div>
+      </div>
+      {% else %}
+      {# только просмотр для прочих ролей #}
+      <div class="d-flex flex-wrap gap-2 p-2 border rounded"
            style="background:var(--surface2,#f0f4f8);min-height:38px">
         {% if coexecutors %}
           {% for ce in coexecutors %}
-          <div class="d-flex align-items-center gap-1">
-            <span class="badge bg-primary" style="font-size:0.82rem">
-              <i class="bi bi-person me-1"></i>{{ ce.full_name }}
-            </span>
-            {% if session.role in ('admin', 'manager') or session.user_id == req.assigned_to or session.user_id == req.responsible_id %}
-            <form method="post"
-                  action="{{ url_for('requests.remove_coexecutor', rid=req.id, coex_uid=ce.user_id) }}"
-                  class="d-inline"
-                  onsubmit="return confirm('Снять соисполнителя {{ ce.full_name }}?')">
-              <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-1"
-                      style="font-size:0.7rem;line-height:1.4">
-                <i class="bi bi-x"></i>
-              </button>
-            </form>
-            {% endif %}
-          </div>
+          <span class="badge bg-primary" style="font-size:0.82rem">
+            <i class="bi bi-person me-1"></i>{{ ce.full_name }}
+          </span>
           {% endfor %}
         {% else %}
           <span class="text-muted fst-italic" style="font-size:0.82rem">не назначены</span>
         {% endif %}
-        {% if session.role in ('admin', 'manager') or session.user_id == req.assigned_to or session.user_id == req.responsible_id %}
-        <form method="post"
-              action="{{ url_for('requests.add_coexecutor', rid=req.id) }}"
-              class="d-flex gap-1 align-items-center ms-auto">
-          <select name="coexecutor_id" class="form-select form-select-sm"
-                  style="min-width:160px;max-width:220px" required>
-            <option value="">— добавить —</option>
-            {% for u in all_users %}
-              {% if u.role in ('employee', 'admin', 'manager') %}
-              <option value="{{ u.id }}">{{ u.full_name }}
-                {%- if u.role == 'admin' %} (адм.)
-                {%- elif u.role == 'manager' %} (мен.)
-                {%- endif %}
-              </option>
-              {% endif %}
-            {% endfor %}
-          </select>
-          <button type="submit" class="btn btn-sm btn-outline-primary" title="Добавить">
-            <i class="bi bi-person-plus"></i>
-          </button>
-        </form>
-        {% endif %}
       </div>
+      {% endif %}
 
       {% else %}
       {# ── СОЗДАНИЕ: multi-select, значения сохраняются через initial_coexecutors[] ── #}
