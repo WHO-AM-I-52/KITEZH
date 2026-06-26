@@ -119,7 +119,7 @@ def _sync_coexecutors(conn, request_id: int, new_ids: list[int], assigned_by: in
     )}
     to_add    = set(new_ids) - current
     to_remove = current - set(new_ids)
-    now = datetime.now().strftime('%Y-%m-%d %H:%M%S')
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     for uid in to_add:
         conn.execute(
             "INSERT OR IGNORE INTO request_coexecutors "
