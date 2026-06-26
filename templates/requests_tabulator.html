@@ -2,15 +2,8 @@
 {#
  ╔══════════════════════════════════════════════════════════════╗
  ║  requests_tabulator.html                                       ║
- ║  Список обращений на Tabulator 6.x + JSON API                ║
- ║  v1.4: fix links — /view/<id> просмотр, /request/<id> ред.  ║
- ║  v1.5: bulk delete — чекбоксы + кнопка «Удалить выбранные»  ║
- ║  v1.6: overdue filter — карточка «Просрочено», убраны        ║
- ║         дублирующие чипы статуса                              ║
- ║  v1.7: добавлены карточки ready_to_send, sent_to_applicant,  ║
- ║         closed — теперь все 7 статусов + Просрочено + Всего  ║
- ║  v1.8: filter[district] from URL ?preferred_districts=...    ║
  ║  v1.9: multi-select stat cards (#5)                          ║
+ ║  v2.0: центрирование заголовков + кнопка «⚙ Столбцы»       ║
  ╚══════════════════════════════════════════════════════════════╝
 #}
 
@@ -35,7 +28,6 @@
 .stat-card.sc-closed{ border-left-color:#212529; }
 .stat-card.sc-over  { border-left-color:#dc3545; }
 
-/* Индикатор мульти-выбора */
 .stat-card.active::after {
   content: '✓';
   position: absolute;
@@ -78,7 +70,6 @@
 .toolbar-right { margin-left:auto; display:flex; align-items:center; gap:8px; }
 .toolbar .total-badge { font-size:12px; color:var(--text-muted); }
 
-/* ─── Баннер активного фильтра по статусам (мульти) ─────────── */
 #statusBanner {
   display:none; align-items:center; gap:8px;
   background:#fff8e1; border:1px solid #ffc107; border-radius:8px;
@@ -88,7 +79,6 @@
 #statusBanner strong { color:#856404; }
 #statusBanner button { background:none; border:none; color:#856404; cursor:pointer; font-size:16px; line-height:1; padding:0; margin-left:auto; }
 
-/* ─── Баннер активного фильтра по району ───────────────────────── */
 #districtBanner {
   display:none; align-items:center; gap:8px;
   background:#e7f3ff; border:1px solid #0d6efd; border-radius:8px;
@@ -105,6 +95,10 @@
   background:var(--surface2) !important; border-right:1px solid var(--border) !important;
   color:var(--text) !important; font-size:11px !important; font-weight:700 !important;
   text-transform:uppercase; letter-spacing:.3px; }
+
+/* Центрирование заголовков */
+#requestsTable .tabulator-col-title { text-align: center; }
+
 .tabulator .tabulator-row { background:var(--surface) !important; border-bottom:1px solid var(--border) !important; color:var(--text) !important; }
 .tabulator .tabulator-row:nth-child(even) { background:var(--table-stripe) !important; }
 .tabulator .tabulator-row:hover { background:var(--table-hover) !important; }
@@ -113,6 +107,40 @@
 .tabulator .tabulator-footer .tabulator-page { background:var(--surface) !important; color:var(--text) !important; border:1px solid var(--border) !important; border-radius:4px !important; margin:0 2px !important; }
 .tabulator .tabulator-footer .tabulator-page.active { background:var(--accent) !important; color:#fff !important; border-color:var(--accent) !important; }
 .tabulator .tabulator-loader-msg { background:var(--surface) !important; color:var(--text-muted) !important; border:none !important; font-size:13px !important; }
+
+/* Кнопка «⚙ Столбцы» в пагинаторе */
+.tabulator .tabulator-footer .tabulator-paginator {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  position: relative;
+}
+#reqColToggleWrap {
+  margin-left: auto;
+  position: relative;
+}
+#req-col-toggle-menu { min-width: 170px; padding: 4px 0; }
+#req-col-toggle-menu li { list-style: none; }
+#req-col-toggle-menu label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 14px;
+  cursor: pointer;
+  font-size: .875rem;
+  white-space: nowrap;
+  color: #212529;
+}
+#req-col-toggle-menu label:hover { background: #f1f3f5; }
+#req-col-toggle-menu input[type=checkbox] {
+  flex-shrink: 0;
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  accent-color: #0d6efd;
+}
+
 .tab-star { cursor:pointer; color:#ccc; font-size:14px; transition:color .15s; }
 .tab-star.fav { color:#f59e0b; }
 .tab-star:hover { color:#f59e0b; }
@@ -130,7 +158,6 @@
 .tab-actions .btn-edit:hover   { background:#856404; color:#fff; }
 .tab-actions .btn-delete:hover { background:#dc3545; color:#fff; }
 
-/* ─── Bulk-delete toolbar ───────────────────────────────────────── */
 #bulkBar {
   display:none; align-items:center; gap:10px;
   background:var(--surface); border-radius:8px;
@@ -148,14 +175,12 @@
   <a href="/request/new" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>Новое обращение</a>
 </div>
 
-{# ─── Баннер мульти-статусного фильтра ─────────────────────────── #}
 <div id="statusBanner">
   <i class="bi bi-funnel-fill" style="color:#856404"></i>
   Фильтр по статусам: <strong id="statusBannerNames"></strong>
   <button title="Сбросить фильтр по статусам" onclick="clearStatusFilter()">×</button>
 </div>
 
-{# ─── Баннер активного фильтра по району ───────────────────────── #}
 <div id="districtBanner">
   <i class="bi bi-geo-alt-fill" style="color:#0d6efd"></i>
   Фильтр по району: <strong id="districtBannerName"></strong>
@@ -260,7 +285,6 @@
   </div>
 </div>
 
-{# ─── Bulk-delete bar (только для админа) ──────────────────────── #}
 {% if session.get('role') == 'admin' %}
 <div id="bulkBar">
   <i class="bi bi-check2-square text-danger fs-5"></i>
@@ -296,7 +320,6 @@ const STATUS_MAP = {
   closed:            { text:'Закрыто',             cls:'status-closed' },
 };
 
-// Человекочитаемые названия статусов для баннера
 const STATUS_LABELS = {
   draft:             'Черновик',
   registered:        'Зарегистрировано',
@@ -308,8 +331,30 @@ const STATUS_LABELS = {
   __overdue__:       'Просрочено',
 };
 
+// Столбцы для тоггла (чекбокс + «Действия» скрыть нельзя)
+const REQ_TOGGLEABLE_COLS = [
+  { field: 'created_at',    label: 'Дата' },
+  { field: 'status',        label: 'Статус' },
+  { field: 'source',        label: 'Источник' },
+  { field: 'applicant',     label: 'Заявитель' },
+  { field: 'project',       label: 'Проект' },
+  { field: 'investment_mln',label: 'Инв. (млн)' },
+  { field: 'area_ha',       label: 'Га' },
+  { field: 'area_m2',       label: 'М²' },
+  { field: 'workplaces',    label: 'Раб.мест' },
+  { field: 'employee_name', label: 'Ответственный' },
+];
+
+const REQ_LS_KEY = 'kitezh_req_col_visibility';
+function loadReqVisibility() {
+  try { return JSON.parse(localStorage.getItem(REQ_LS_KEY)) || {}; } catch { return {}; }
+}
+function saveReqVisibility(field, visible) {
+  const v = loadReqVisibility(); v[field] = visible;
+  localStorage.setItem(REQ_LS_KEY, JSON.stringify(v));
+}
+
 const state = {
-  // ── мульти-статус: массив значений (может включать '__overdue__')
   statuses: [],
   dateFrom: '', dateTo: '', applicant: '',
   search: '', employee: null, favorite: false, dateChip: '',
@@ -317,7 +362,6 @@ const state = {
   sort: '', dir: 'desc',
 };
 
-// Вычисляемые флаги (не хранятся в state напрямую)
 function hasOverdue() { return state.statuses.includes('__overdue__'); }
 function realStatuses() { return state.statuses.filter(s => s !== '__overdue__'); }
 
@@ -327,17 +371,10 @@ function buildParams(page, size) {
   const p = new URLSearchParams();
   p.set('page', page); p.set('size', size);
   if (state.sort) { p.set('sort', state.sort); p.set('dir', state.dir); }
-
-  // ── мульти-статус
   const rs = realStatuses();
-  if (rs.length === 1) {
-    // совместимость с backend: если один — передаём старым способом тоже
-    p.set('filter[status]', rs[0]);
-  } else if (rs.length > 1) {
-    rs.forEach(s => p.append('filter[status][]', s));
-  }
+  if (rs.length === 1) { p.set('filter[status]', rs[0]); }
+  else if (rs.length > 1) { rs.forEach(s => p.append('filter[status][]', s)); }
   if (hasOverdue()) p.set('filter[overdue]', '1');
-
   if (state.dateFrom)  p.set('filter[date_from]', state.dateFrom);
   if (state.dateTo)    p.set('filter[date_to]',   state.dateTo);
   if (state.applicant) p.set('filter[applicant]', state.applicant);
@@ -353,15 +390,12 @@ function fmtNum(v) {
   return (v == null || v === '' || v === 0) ? '<span style="color:var(--text-muted)">—</span>' : v;
 }
 
-// ── Синхронизация select #fStatus с state.statuses ──────────────
 function syncStatusSelect() {
   const rs = realStatuses();
   const sel = document.getElementById('fStatus');
-  // select показывает первый статус если выбран ровно один; иначе — «Все»
   sel.value = rs.length === 1 ? rs[0] : '';
 }
 
-// ── Обновление баннера мульти-статусного фильтра ─────────────────
 function updateStatusBanner() {
   const banner = document.getElementById('statusBanner');
   const names  = document.getElementById('statusBannerNames');
@@ -373,33 +407,26 @@ function updateStatusBanner() {
   }
 }
 
-// ── Обновление визуального состояния карточек ────────────────────
 function updateCardHighlights() {
   document.querySelectorAll('.stat-card').forEach(card => {
     const val = card.dataset.filterStatus;
     const isAll = val === '';
     if (state.statuses.length === 0) {
-      // ничего не выбрано → подсвечиваем «Всего»
       card.classList.toggle('active', isAll);
     } else {
-      if (isAll) {
-        card.classList.remove('active');
-      } else {
-        card.classList.toggle('active', state.statuses.includes(val));
-      }
+      if (isAll) { card.classList.remove('active'); }
+      else { card.classList.toggle('active', state.statuses.includes(val)); }
     }
   });
 }
 
-// ── Инициализация state из URL-параметров ────────────────────────
 function initFromURL() {
   const params = new URLSearchParams(window.location.search);
   const district = (params.get('preferred_districts') || '').trim();
   if (district) {
     state.district = district;
-    const banner = document.getElementById('districtBanner');
     document.getElementById('districtBannerName').textContent = district;
-    banner.classList.add('show');
+    document.getElementById('districtBanner').classList.add('show');
   }
 }
 
@@ -414,13 +441,10 @@ window.clearDistrictFilter = function() {
 
 window.clearStatusFilter = function() {
   state.statuses = [];
-  updateCardHighlights();
-  syncStatusSelect();
-  updateStatusBanner();
+  updateCardHighlights(); syncStatusSelect(); updateStatusBanner();
   table.replaceData();
 };
 
-/* ─── Bulk-delete helpers ──────────────────────────────────────── */
 function updateBulkBar() {
   if (!IS_ADMIN) return;
   const selected = table.getSelectedRows();
@@ -433,6 +457,8 @@ function updateBulkBar() {
     bar.classList.remove('show');
   }
 }
+
+const reqVis = loadReqVisibility();
 
 const tableColumns = [
     ...(IS_ADMIN ? [{
@@ -467,6 +493,7 @@ const tableColumns = [
     },
     {
       title: 'Дата', field: 'created_at', width: 100,
+      visible: reqVis['created_at'] !== false,
       formatter: function(cell){
         const v = cell.getValue(); if (!v) return '—';
         const p = v.substring(0,10).split('-');
@@ -475,6 +502,7 @@ const tableColumns = [
     },
     {
       title: 'Статус', field: 'status', width: 120,
+      visible: reqVis['status'] !== false,
       formatter: function(cell){
         const s = STATUS_MAP[cell.getValue()] || {text:cell.getValue(), cls:'bg-secondary'};
         return `<span class="badge ${s.cls}">${s.text}</span>`;
@@ -482,29 +510,37 @@ const tableColumns = [
     },
     {
       title: 'Источник', field: 'source', width: 80, headerSort: false,
+      visible: reqVis['source'] !== false,
       formatter: function(cell){ return cell.getValue()||'<span style="color:var(--text-muted)">—</span>'; }
     },
     {
       title: 'Заявитель', field: 'applicant', minWidth: 160,
+      visible: reqVis['applicant'] !== false,
       formatter: function(cell){ return cell.getValue()||'<span style="color:var(--text-muted)">—</span>'; }
     },
     {
       title: 'Проект', field: 'project', minWidth: 220,
+      visible: reqVis['project'] !== false,
       formatter: function(cell){
         const v = cell.getValue(); if (!v) return '<span style="color:var(--text-muted)">—</span>';
         return `<span title="${v.replace(/"/g,'&quot;')}">${v}</span>`;
       }
     },
     { title: 'Инв. (млн)', field: 'investment_mln', width: 80, hozAlign: 'right',
+      visible: reqVis['investment_mln'] !== false,
       formatter: function(cell){ return fmtNum(cell.getValue()); } },
     { title: 'Га', field: 'area_ha', width: 60, hozAlign: 'right',
+      visible: reqVis['area_ha'] !== false,
       formatter: function(cell){ return fmtNum(cell.getValue()); } },
     { title: 'М²', field: 'area_m2', width: 70, hozAlign: 'right',
+      visible: reqVis['area_m2'] !== false,
       formatter: function(cell){ return fmtNum(cell.getValue()); } },
     { title: 'Раб.мест', field: 'workplaces', width: 72, hozAlign: 'right',
+      visible: reqVis['workplaces'] !== false,
       formatter: function(cell){ return fmtNum(cell.getValue()); } },
     {
       title: 'Ответственный', field: 'employee_name', width: 140,
+      visible: reqVis['employee_name'] !== false,
       formatter: function(cell){ return cell.getValue()||'<span style="color:var(--text-muted)">—</span>'; }
     },
     {
@@ -556,7 +592,6 @@ const table = new Tabulator('#requestsTable', {
   ajaxResponse: function(url, params, response){ return response; },
   selectableRows: IS_ADMIN ? true : false,
   columns: tableColumns,
-
   locale: 'default',
   langs: {
     'default': {
@@ -573,6 +608,56 @@ const table = new Tabulator('#requestsTable', {
   },
 });
 
+// ─── Кнопка «⚙ Столбцы» в пагинаторе ───────────────────────────────────
+table.on('tableBuilt', function() {
+  // Находим .tabulator-paginator и вставляем wrapper
+  const paginator = document.querySelector('#requestsTable .tabulator-paginator');
+  if (!paginator) return;
+
+  // wrapper для размещения кнопки справа
+  const wrap = document.createElement('div');
+  wrap.id = 'reqColToggleWrap';
+  wrap.className = 'dropdown';
+
+  const btn = document.createElement('button');
+  btn.className = 'btn btn-outline-secondary btn-sm dropdown-toggle';
+  btn.setAttribute('data-bs-toggle', 'dropdown');
+  btn.setAttribute('data-bs-auto-close', 'outside');
+  btn.setAttribute('type', 'button');
+  btn.textContent = '⚙ Столбцы';
+
+  const menu = document.createElement('ul');
+  menu.className = 'dropdown-menu dropdown-menu-end';
+  menu.id = 'req-col-toggle-menu';
+
+  REQ_TOGGLEABLE_COLS.forEach(function(def) {
+    const col = table.getColumn(def.field);
+    if (!col) return;
+
+    const li = document.createElement('li');
+    const cbId = 'req_col_' + def.field;
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.id = cbId;
+    cb.checked = col.isVisible();
+
+    const lbl = document.createElement('label');
+    lbl.htmlFor = cbId;
+    lbl.textContent = def.label;
+    cb.addEventListener('change', function() {
+      this.checked ? col.show() : col.hide();
+      saveReqVisibility(def.field, this.checked);
+    });
+    lbl.prepend(cb);
+    li.appendChild(lbl);
+    menu.appendChild(li);
+  });
+
+  wrap.appendChild(btn);
+  wrap.appendChild(menu);
+  paginator.appendChild(wrap);
+});
+
 if (IS_ADMIN) {
   table.on('rowSelectionChanged', updateBulkBar);
   table.on('dataLoaded', function() { updateBulkBar(); });
@@ -582,10 +667,8 @@ if (IS_ADMIN) {
     if (!rows.length) return;
     const nums = rows.map(r => r.getData().number || ('ID:' + r.getData().id)).join(', ');
     if (!confirm(`Удалить ${rows.length} обращений(е)?\n${nums}`)) return;
-
     const form = document.createElement('form');
-    form.method = 'POST';
-    form.action = '/requests/bulk_delete';
+    form.method = 'POST'; form.action = '/requests/bulk_delete';
     rows.forEach(r => {
       const inp = document.createElement('input');
       inp.type = 'hidden'; inp.name = 'ids[]'; inp.value = r.getData().id;
@@ -596,16 +679,14 @@ if (IS_ADMIN) {
   });
 
   document.getElementById('btnBulkClear').addEventListener('click', function() {
-    table.deselectRow();
-    updateBulkBar();
+    table.deselectRow(); updateBulkBar();
   });
 }
 
 table.on('dataSorted', function(sorters) {
   if (_sortTriggered) { _sortTriggered = false; return; }
   if (sorters && sorters.length > 0) {
-    state.sort = sorters[0].field;
-    state.dir  = sorters[0].dir;
+    state.sort = sorters[0].field; state.dir = sorters[0].dir;
   } else {
     state.sort = ''; state.dir = 'desc';
   }
@@ -648,11 +729,8 @@ function resetAll() {
 function readForm() {
   state.dateFrom  = document.getElementById('fDateFrom').value;
   state.dateTo    = document.getElementById('fDateTo').value;
-  // select обновляет statuses только если выбрано одно значение
   const sel = document.getElementById('fStatus').value;
-  if (sel) {
-    state.statuses = [sel];
-  }
+  if (sel) { state.statuses = [sel]; }
   state.applicant = document.getElementById('fApplicant').value.trim();
   state.search    = document.getElementById('fSearch').value.trim();
 }
@@ -672,17 +750,10 @@ document.getElementById('btnResetAll').addEventListener('click', resetAll);
   });
 });
 
-// select → одиночный выбор (синхронизируем карточки)
 document.getElementById('fStatus').addEventListener('change', function(){
   const val = this.value;
-  if (val) {
-    state.statuses = [val];
-  } else {
-    state.statuses = [];
-  }
-  updateCardHighlights();
-  updateStatusBanner();
-  applyFilters();
+  state.statuses = val ? [val] : [];
+  updateCardHighlights(); updateStatusBanner(); applyFilters();
 });
 
 document.querySelectorAll('.chip[data-chip-type="date"]').forEach(chip=>{
@@ -711,29 +782,19 @@ document.querySelectorAll('.emp-chip').forEach(chip=>{
   });
 });
 
-// ── Клик по карточке статуса — МУЛЬТИ-ВЫБОР ─────────────────────
 document.querySelectorAll('.stat-card').forEach(card=>{
   card.addEventListener('click', function(){
     const val = this.dataset.filterStatus;
-
     if (val === '') {
-      // Карточка «Всего» — сбросить всё
       state.statuses = [];
       document.getElementById('fStatus').value = '';
     } else {
-      // Toggle: добавить или убрать из массива
       const idx = state.statuses.indexOf(val);
-      if (idx === -1) {
-        state.statuses.push(val);
-      } else {
-        state.statuses.splice(idx, 1);
-      }
+      if (idx === -1) { state.statuses.push(val); }
+      else { state.statuses.splice(idx, 1); }
       syncStatusSelect();
     }
-
-    updateCardHighlights();
-    updateStatusBanner();
-    applyFilters();
+    updateCardHighlights(); updateStatusBanner(); applyFilters();
   });
 });
 
