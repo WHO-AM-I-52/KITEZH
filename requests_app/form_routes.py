@@ -311,10 +311,22 @@ def edit_request(rid):
         uploaded_files = request.files.getlist('request_files')
         pending = _save_files_transactional(uploaded_files)
         saved_names = [p[0] for p in pending]
-        if saved_names:
-            vals[ALL_FIELDS.index('request_files')] = ','.join(saved_names)
-        else:
-            vals[ALL_FIELDS.index('request_files')] = req['request_files'] or ''
+
+        # ─ Удаление отмеченных файлов (#79)
+        files_to_delete = set(request.form.getlist('files_to_delete'))
+        current_files = [
+            f.strip() for f in (req['request_files'] or '').split(',') if f.strip()
+        ]
+        kept_files = [f for f in current_files if f not in files_to_delete]
+        for fn in files_to_delete:
+            fpath = os.path.join(UPLOADS_DIR, fn)
+            try:
+                if os.path.exists(fpath):
+                    os.remove(fpath)
+            except Exception:
+                err_logger.warning('edit_request: не удалось удалить файл %s', fn)
+        all_files = kept_files + saved_names
+        vals[ALL_FIELDS.index('request_files')] = ','.join(all_files)
 
         edit_reason = request.form.get('edit_reason', '').strip()
         updated_by  = session.get('user_id')
@@ -336,8 +348,9 @@ def edit_request(rid):
             save_history(conn, rid, session['user_id'], old_req, new_req)
             num = req['request_number'] or f'ID:{rid}'
             reason_str = f' | Причина: {edit_reason}' if edit_reason else ''
+            deleted_str = f', удалено файлов: {len(files_to_delete)}' if files_to_delete else ''
             log_action(conn, session['user_id'], 'edit', rid,
-                       f'Обращение {num}{reason_str}')
+                       f'Обращение {num}{reason_str}{deleted_str}')
             if pending:
                 _commit_files(conn, pending, rid)
             conn.commit()
