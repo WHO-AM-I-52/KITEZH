@@ -16,6 +16,7 @@
 {# ║  v2.26.0: letters_bp — ссылка «Журнал писем» в сайдбаре    ║ #}
 {# ║  v2.27.0: tasks_bp — ссылки «Задачи» в сайдбаре (#9)       ║ #}
 {# ║  v2.27.1: FIX letters.letters_index→list_letters; tasks     ║ #}
+{# ║  v2.27.2: updDoneModalUser — модалка перезапуска для юзеров ║ #}
 {# ╚══════════════════════════════════════════════════════════════╝ #}
 <html lang="ru">
 <head>
@@ -438,6 +439,25 @@
       </div>
       <div class="modal-footer border-0">
         <button class="btn btn-primary" id="updDoneReload">🔄 Обновить страницу</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# ─── Модалка «Сервер снова онлайн» (только обычные пользователи, не admin) ─── #}
+{% if 'user_id' in session and session.get('role') != 'admin' %}
+<div class="modal fade" id="updDoneModalUser" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header border-0">
+        <h5 class="modal-title">🔄 Сервер снова онлайн</h5>
+      </div>
+      <div class="modal-body">
+        Сервер перезапустился после обновления. Обновите страницу, чтобы загрузить актуальную версию.
+      </div>
+      <div class="modal-footer border-0">
+        <button class="btn btn-primary" id="updDoneUserReload">🔄 Обновить страницу</button>
       </div>
     </div>
   </div>
@@ -1010,6 +1030,10 @@ document.addEventListener('DOMContentLoaded', function () {
   var updDoneReload = document.getElementById('updDoneReload');
   if (updDoneReload) {
     updDoneReload.addEventListener('click', function(){ window.location.reload(); });
+  }
+  var updDoneUserReload = document.getElementById('updDoneUserReload');
+  if (updDoneUserReload) {
+    updDoneUserReload.addEventListener('click', function(){ window.location.reload(); });
   }
 })();
 </script>
