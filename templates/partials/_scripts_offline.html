@@ -1,0 +1,25 @@
+{# ═══════════════════════════════════════════════════════════════
+   _scripts_offline.html
+   Оффлайн-баннер: опрос /ping каждые 5 мин (30с задержка при старте).
+   Подключается в base.html для всех страниц.
+   v1.0.0: выделено из base.html v2.27.4
+   ═══════════════════════════════════════════════════════════════ #}
+<script>
+(function(){
+  var banner = document.getElementById('offlineBanner');
+  var body   = document.body;
+  var offline = false;
+  function setOffline(state) {
+    if (state === offline) return;
+    offline = state;
+    if (state) { banner.style.display = 'block'; body.classList.add('offline-mode'); }
+    else        { banner.style.display = 'none';  body.classList.remove('offline-mode'); }
+  }
+  function ping() {
+    fetch('/ping', { method:'GET', cache:'no-store', credentials:'same-origin' })
+    .then(function(r){ setOffline(!r.ok); })
+    .catch(function(){ setOffline(true); });
+  }
+  setTimeout(function(){ ping(); setInterval(ping, 5 * 60 * 1000); }, 30 * 1000);
+})();
+</script>
