@@ -112,6 +112,28 @@ def _save_initial_coexecutors(conn, request_id: int, user_ids: list[int], assign
             pass
 
 
+def _sync_coexecutors(conn, request_id: int, new_ids: list[int], assigned_by: int):
+    """Синхронизирует соисполнителей: добавляет новых, удаляет снятых (#80)."""
+    current = {r[0] for r in conn.execute(
+        "SELECT user_id FROM request_coexecutors WHERE request_id=?", (request_id,)
+    )}
+    to_add    = set(new_ids) - current
+    to_remove = current - set(new_ids)
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    for uid in to_add:
+        conn.execute(
+            "INSERT OR IGNORE INTO request_coexecutors "
+            "(request_id, user_id, assigned_by, assigned_at) VALUES (?,?,?,?)",
+            (request_id, uid, assigned_by, now)
+        )
+    for uid in to_remove:
+        conn.execute(
+            "DELETE FROM request_coexecutors WHERE request_id=? AND user_id=?",
+            (request_id, uid)
+        )
+    return len(to_add), len(to_remove)
+
+
 @requests_bp.route('/request/new', methods=['GET', 'POST'])
 @login_required
 def new_request():
@@ -346,11 +368,23 @@ def edit_request(rid):
             )
             new_req = conn.execute("SELECT * FROM requests WHERE id=?", (rid,)).fetchone()
             save_history(conn, rid, session['user_id'], old_req, new_req)
+
+            # ─ Синхронизация соисполнителей (#80)
+            raw_coex = request.form.getlist('coexecutors')
+            new_coex_ids = []
+            for v in raw_coex:
+                try:
+                    new_coex_ids.append(int(v))
+                except (ValueError, TypeError):
+                    pass
+            added_c, removed_c = _sync_coexecutors(conn, rid, new_coex_ids, session['user_id'])
+
             num = req['request_number'] or f'ID:{rid}'
             reason_str = f' | Причина: {edit_reason}' if edit_reason else ''
             deleted_str = f', удалено файлов: {len(files_to_delete)}' if files_to_delete else ''
+            coex_str = f', соисп.: +{added_c}/-{removed_c}' if (added_c or removed_c) else ''
             log_action(conn, session['user_id'], 'edit', rid,
-                       f'Обращение {num}{reason_str}{deleted_str}')
+                       f'Обращение {num}{reason_str}{deleted_str}{coex_str}')
             if pending:
                 _commit_files(conn, pending, rid)
             conn.commit()
