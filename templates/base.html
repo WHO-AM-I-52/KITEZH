@@ -17,6 +17,7 @@
 {# ║  v2.27.0: tasks_bp — ссылки «Задачи» в сайдбаре (#9)       ║ #}
 {# ║  v2.27.1: FIX letters.letters_index→list_letters; tasks     ║ #}
 {# ║  v2.27.2: updDoneModalUser — модалка перезапуска для юзеров ║ #}
+{# ║  v2.27.3: FIX updDoneModalUser — serverWasDown в poll()     ║ #}
 {# ╚══════════════════════════════════════════════════════════════╝ #}
 <html lang="ru">
 <head>
@@ -919,6 +920,7 @@ document.addEventListener('DOMContentLoaded', function () {
   var isAdmin     = document.body.getAttribute('data-is-admin') === '1';
   var visible     = false;
   var countdownId = null;
+  var serverWasDown = false;  /* v2.27.3: флаг — сервер был недоступен */
 
   if (!banner) return;
 
@@ -989,12 +991,24 @@ document.addEventListener('DOMContentLoaded', function () {
     fetch('/api/update/pre-status', {credentials:'same-origin', cache:'no-store'})
     .then(function(r){ return r.ok ? r.json() : null; })
     .then(function(d){
-      if (!d || !d.scheduled) { hideBanner(); return; }
+      if (!d || !d.scheduled) {
+        hideBanner();
+        /* v2.27.3: сервер вернулся после перезапуска — показать модалку пользователю */
+        if (!isAdmin && serverWasDown) {
+          serverWasDown = false;
+          var m = document.getElementById('updDoneModalUser');
+          if (m) { new bootstrap.Modal(m).show(); }
+        }
+        return;
+      }
       /* FIX-2: ошибка скачивания — скрыть баннер */
       if (d.download_error) { hideBanner(); return; }
       renderBanner(d);
     })
-    .catch(function(){ /* сеть недоступна – молча пропускаем */ });
+    .catch(function(){
+      /* сеть недоступна — запоминаем что сервер был недоступен */
+      serverWasDown = true;
+    });
   }
 
   poll();
@@ -1006,78 +1020,4 @@ document.addEventListener('DOMContentLoaded', function () {
       btnCancel.addEventListener('click', function(){
         fetch('/api/update/schedule/cancel', {
           method: 'POST', credentials: 'same-origin',
-          headers: {'Content-Type':'application/json'}
-        })
-        .then(function(r){ return r.json(); })
-        .then(function(d){ if (d.ok) hideBanner(); })
-        .catch(function(){});
-      });
-    }
-
-    if (btnNow) {
-      btnNow.addEventListener('click', function(){
-        /* Перенаправляем на страницу changelog где SSE-прогресс */
-        window.location.href = '/changelog?autostart=1';
-      });
-    }
-  }
-})();
-</script>
-{% endif %}
-
-<script>
-(function(){
-  var updDoneReload = document.getElementById('updDoneReload');
-  if (updDoneReload) {
-    updDoneReload.addEventListener('click', function(){ window.location.reload(); });
-  }
-  var updDoneUserReload = document.getElementById('updDoneUserReload');
-  if (updDoneUserReload) {
-    updDoneUserReload.addEventListener('click', function(){ window.location.reload(); });
-  }
-})();
-</script>
-
-{# Симптом 2: уведомление админа об успешном перезапуске #}
-{% if session.get('role') == 'admin' %}
-<script>
-(function(){
-  var toast = document.getElementById('updResultToast');
-  if (!toast) return;
-  var titleEl = document.getElementById('updResultTitle');
-  var textEl  = document.getElementById('updResultText');
-  var closeBtn= document.getElementById('updResultClose');
-  var hideTimer = null;
-
-  function hide(){
-    toast.classList.remove('show');
-    if (hideTimer){ clearTimeout(hideTimer); hideTimer = null; }
-  }
-  if (closeBtn) closeBtn.addEventListener('click', hide);
-
-  /* Однократный опрос при загрузке — роут сам удаляет _update_result.json (one-shot) */
-  fetch('/api/update/result', {credentials:'same-origin', cache:'no-store'})
-  .then(function(r){ return r.ok ? r.json() : null; })
-  .then(function(d){
-    if (!d || !d.available) return;
-    if (d.ok){
-      titleEl.textContent = '✅ Обновление применено';
-    } else {
-      titleEl.textContent = '⚠️ Обновление завершено с ошибками';
-    }
-    var parts = [];
-    if (typeof d.updated   === 'number') parts.push('обновлено ' + d.updated);
-    if (typeof d.unchanged === 'number') parts.push('без изменений ' + d.unchanged);
-    if (typeof d.skipped   === 'number') parts.push('пропущено ' + d.skipped);
-    if (d.errors) parts.push('ошибок ' + d.errors);
-    textEl.textContent = parts.join(' · ') + (d.applied_by ? (' — ' + d.applied_by) : '');
-    toast.classList.add('show');
-    /* Автоскрытие через 12 с (при ошибках оставляем висеть) */
-    if (d.ok){ hideTimer = setTimeout(hide, 12000); }
-  })
-  .catch(function(){ /* молча пропускаем */ });
-})();
-</script>
-{% endif %}
-</body>
-</html>
+          headers: {'Conten
