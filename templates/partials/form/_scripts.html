@@ -102,7 +102,7 @@ function toggleIncomingNumber() {
 
   if (label) label.textContent = isSedo ? '№ письма СЭДО *' : '№ входящего обращения';
   if (input) {
-    input.required    = isSedo;
+    input.required    = show && isSedo;
     input.placeholder = isSedo ? 'Например: СЭДО-2026-0042' : 'Например: ВХ-2026-0042';
   }
 }
