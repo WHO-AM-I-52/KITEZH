@@ -4,13 +4,14 @@
   Принимает данные из JS: ocrPreviewOpen(rawText, fields)
 #}
 
-<!-- ═══════════════════════════════════════════════════════
+<!-- ═══════════════════════════════════════════════════════════
      OCR PREVIEW MODAL
      Левая панель  — raw_text (реадонли)
      Правая панель — редактируемые поля OCR
-     ═══════════════════════════════════════════════════════ -->
+     ═══════════════════════════════════════════════════════════ -->
 <div class="modal fade" id="ocrPreviewModal" tabindex="-1"
-     aria-labelledby="ocrPreviewLabel" aria-hidden="true">
+     aria-labelledby="ocrPreviewLabel" aria-hidden="true"
+     data-ocr-is-admin="{{ 'true' if session.get('role') == 'admin' else 'false' }}">
   <div class="modal-dialog modal-xl modal-dialog-scrollable">
     <div class="modal-content">
 
@@ -64,10 +65,19 @@
 
       <!-- FOOTER -->
       <div class="modal-footer py-2 d-flex justify-content-between align-items-center">
-        <button type="button" class="btn btn-sm btn-outline-secondary"
-                data-bs-dismiss="modal">
-          <i class="bi bi-x-lg me-1"></i>Отмена
-        </button>
+        <div class="d-flex align-items-center gap-2">
+          <button type="button" class="btn btn-sm btn-outline-secondary"
+                  data-bs-dismiss="modal">
+            <i class="bi bi-x-lg me-1"></i>Отмена
+          </button>
+          <!-- Кнопка отчёта OCR — видна только admin -->
+          <button type="button"
+                  id="btnOcrReport"
+                  class="btn btn-sm btn-outline-info d-none"
+                  onclick="ocrCopyReport(this)">
+            <i class="bi bi-clipboard me-1" id="iconOcrReport"></i>Скопировать отчёт OCR
+          </button>
+        </div>
         <div class="d-flex align-items-center gap-3">
           <span style="font-size:11px">
             <a href="#" class="text-secondary text-decoration-none"
@@ -87,9 +97,9 @@
   </div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════
+<!-- ═══════════════════════════════════════════════════════════
      OCR PREVIEW JS
-     ═══════════════════════════════════════════════════════ -->
+     ═══════════════════════════════════════════════════════════ -->
 <script>
 // Маппинг: ключ OCR-поля → лейбл (читаемый) и name поля в форме
 // name используется при переносе значения через document.querySelector('[name="..."]')
@@ -117,6 +127,7 @@ const OCR_FIELD_MAP = [
 
 // Храним текущий OCR-результат для btnOcrApply
 let _ocrCurrentFields = {};
+let _ocrReportText    = '';
 
 /**
  * Переключает состояние чекбокса поля и обновляет визуальное состояние контейнера.
@@ -144,7 +155,7 @@ function ocrSelectAll(checked) {
 }
 
 /**
- * Заполняет правую панель редактируемыми полями.
+ * Заполняет правую панель редактируемыми полями и строит отчёт для admin.
  * fields — объект из OCR: { applicant_full_name: "...", ... }
  */
 function ocrPreviewOpen(rawText, fields, msg) {
@@ -157,6 +168,68 @@ function ocrPreviewOpen(rawText, fields, msg) {
   // Сообщение из OCR
   const msgEl = document.getElementById('ocrPreviewMsg');
   if (msgEl) msgEl.textContent = msg || '';
+
+  // Строим отчёт для admin
+  const allKeys    = OCR_FIELD_MAP.map(f => f.key);
+  const foundKeys  = Object.keys(fields || {});
+  const mappedKeys = allKeys.filter(k => foundKeys.includes(k));
+  const unmapped   = foundKeys.filter(k => !allKeys.includes(k));
+  const missing    = allKeys.filter(k => !foundKeys.includes(k));
+
+  const lines = [];
+  lines.push('=== НАЙДЕНО OCR ===');
+  if (foundKeys.length) {
+    foundKeys.forEach(k => lines.push(`  ${k}: ${(fields[k] || '').toString().trim()}`));
+  } else {
+    lines.push('  (пусто)');
+  }
+
+  lines.push('');
+  lines.push('=== СОПОСТАВЛЕНО С ФОРМОЙ ===');
+  if (mappedKeys.length) {
+    mappedKeys.forEach(k => {
+      const lbl = (OCR_FIELD_MAP.find(f => f.key === k) || {}).label || k;
+      lines.push(`  ${lbl} [${k}]: ${(fields[k] || '').toString().trim()}`);
+    });
+  } else {
+    lines.push('  (пусто)');
+  }
+
+  lines.push('');
+  lines.push('=== НЕ СОПОСТАВЛЕНО (есть в OCR, нет в маппинге) ===');
+  if (unmapped.length) {
+    unmapped.forEach(k => lines.push(`  ${k}: ${(fields[k] || '').toString().trim()}`));
+  } else {
+    lines.push('  (пусто)');
+  }
+
+  lines.push('');
+  lines.push('=== НЕ РАСПОЗНАНО (есть в маппинге, нет в OCR) ===');
+  if (missing.length) {
+    missing.forEach(k => {
+      const lbl = (OCR_FIELD_MAP.find(f => f.key === k) || {}).label || k;
+      lines.push(`  ${lbl} [${k}]`);
+    });
+  } else {
+    lines.push('  (пусто)');
+  }
+
+  _ocrReportText = lines.join('\n');
+
+  // Показываем кнопку только admin
+  const modalEl   = document.getElementById('ocrPreviewModal');
+  const isAdmin   = modalEl && modalEl.dataset.ocrIsAdmin === 'true';
+  const reportBtn = document.getElementById('btnOcrReport');
+  if (reportBtn) {
+    if (isAdmin) {
+      reportBtn.classList.remove('d-none');
+    } else {
+      reportBtn.classList.add('d-none');
+    }
+    // Сбрасываем иконку если окно открывали заново
+    const ico = document.getElementById('iconOcrReport');
+    if (ico) { ico.className = 'bi bi-clipboard me-1'; }
+  }
 
   // Правая панель: генерируем поля
   const pane = document.getElementById('ocrFieldsPane');
@@ -197,7 +270,7 @@ function ocrPreviewOpen(rawText, fields, msg) {
         </div>`;
     });
 
-    // Пустые поля (серые, свернуты)
+    // Пустые поля (серые, свёрнуты)
     if (empty.length > 0) {
       html += `
         <details class="mt-2" style="font-size:11px">
@@ -229,6 +302,24 @@ function ocrPreviewOpen(rawText, fields, msg) {
   setTimeout(() => {
     pane.querySelector('.ocr-filled')?.focus();
   }, 350);
+}
+
+/**
+ * Копирует отчёт OCR в буфер обмена.
+ * Меняет иконку на ✅ на 2 секунды.
+ */
+function ocrCopyReport(btn) {
+  if (!_ocrReportText) return;
+  navigator.clipboard.writeText(_ocrReportText).then(() => {
+    const ico = document.getElementById('iconOcrReport');
+    if (ico) {
+      ico.className = 'bi bi-check-lg me-1';
+      setTimeout(() => { ico.className = 'bi bi-clipboard me-1'; }, 2000);
+    }
+  }).catch(() => {
+    // Фоллбэк: промпт с текстом
+    prompt('Скопируйте отчёт вручную (Ctrl+A, Ctrl+C):', _ocrReportText);
+  });
 }
 
 /**
