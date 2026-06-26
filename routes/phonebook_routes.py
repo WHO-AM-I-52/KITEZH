@@ -1,5 +1,5 @@
 # phonebook_routes.py
-# Blueprint: телефонный справочник (v2.9.0)
+# Blueprint: телефонный справочник (v2.9.2)
 # Маршруты:
 #   GET  /phonebook                — список сотрудников с поиском  [can_view_phonebook]
 #   GET  /phonebook/search         — AJAX: поиск, возвращает JSON       [can_view_phonebook]
@@ -34,6 +34,11 @@
 #   sync_request_to_phonebook() — БАГ #1:
 #   - Приоритет applicant_short_name для org_name (fallback: legal_form + full_name)
 #   - При пустом org_name — flash warning вместо молчаливого return
+#
+# v2.9.2 (fix #sync-fix-3):
+#   sync_request_to_phonebook() — БАГ #3:
+#   - Дедупликация орг. по ИНН (приоритет) или по точному имени (fallback)
+#   - ИНН теперь сохраняется в phonebook_orgs.inn при создании орг.
 
 from flask import (Blueprint, render_template, request,
                    redirect, url_for, flash, jsonify, session)
@@ -305,7 +310,6 @@ def phonebook_orgs_delete():
     ).fetchone()[0]
 
     if count > 0 and confirm != '1':
-        # Сотрудники есть, подтверждение не получено — передаём данные в шаблондля модального окна
         conn.close()
         orgs_raw = get_all_orgs()
         conn2  = get_db()
@@ -323,7 +327,6 @@ def phonebook_orgs_delete():
             confirm_delete={'org_id': oid, 'org_name': name, 'count': count},
         )
 
-    # Подтверждение получено или сотрудников нет — каскадно удаляем
     if count > 0:
         conn.execute("DELETE FROM phonebook WHERE org_id=?", (oid,))
         log_action(conn, session['user_id'], 'delete', None,
@@ -357,29 +360,23 @@ def sync_request_to_phonebook(conn, form_data, request_id: int, user_id: int) ->
     Создаёт организацию и контакт в справочнике по данным формы обращения.
 
     Вызывается из form_routes.py ПОСЛЕ conn.commit() основного обращения.
-    conn.commit() здесь НЕ вызывается — caller делает отдельный commit:
+    conn.commit() здесь НЕ вызывается — caller делает отдельный commit.
 
-        sync_request_to_phonebook(conn, request.form, new_id, session['user_id'])
-        conn.commit()  # ← отдельный commit в form_routes.py
+    Дедупликация организации (v2.9.2, fix #sync-fix-3):
+      1. Если ИНН заполнен — ищем по phonebook_orgs.inn (надёжно, не зависит от опечаток)
+      2. Иначе — ищем по точному имени (fallback, прежнее поведение)
 
-    Дедупликация:
-      - организация: по точному совпадению name (legal_form + full_name)
-      - контакт:     по (org_id, full_name)
+    Дедупликация контакта: по (org_id, full_name)
 
     Маппинг:
       applicant_short_name (приоритет)                → phonebook_orgs.name
       applicant_legal_form + applicant_full_name       → phonebook_orgs.name (fallback)
+      applicant_inn                                    → phonebook_orgs.inn  (+ phonebook.inn)
       legal_address                                    → phonebook_orgs.address
       contact_person                                   → phonebook.full_name
       contact_position                                 → phonebook.position
       contact_phone                                    → phonebook.phone_work
       contact_email                                    → phonebook.email
-      applicant_inn                                    → phonebook.inn
-
-    v2.9.1 (fix #sync-fix-1):
-      - БАГ #1 исправлен: приоритет applicant_short_name для org_name.
-        Если он заполнен — используем его. Иначе собираем из legal_form + full_name.
-      - При пустом org_name — flash warning вместо молчаливого return.
     """
     # ── Читаем поля формы ────────────────────────────────────────────────────
     short_name    = (form_data.get('applicant_short_name') or '').strip()
@@ -392,37 +389,46 @@ def sync_request_to_phonebook(conn, form_data, request_id: int, user_id: int) ->
     email         = (form_data.get('contact_email')        or '').strip()
     inn           = (form_data.get('applicant_inn')        or '').strip()
 
-    # ── Строим название организации: short_name → legal_form+full_name ───────
-    # fix #sync-fix-1: раньше функция молча делала return если оба поля пусты.
-    # Теперь: приоритет short_name, fallback — legal_form + full_name.
+    # ── Строим название организации: short_name → legal_form + full_name ───────
     if short_name:
         org_name = short_name
     else:
         org_name = f"{legal_form} {full_name_org}".strip()
 
     if not org_name:
-        # Название не удалось определить — предупреждаем пользователя явно
         flash(
-            'Организация не добавлена в справочник: не заполнено краткое или полное наименование заявителя.',
+            'Организация не добавлена в справочник: '
+            'не заполнено краткое или полное наименование заявителя.',
             'warning'
         )
         return
 
-    # ── 1. Ищем или создаём организацию ─────────────────────────────────────
-    row = conn.execute(
-        "SELECT id FROM phonebook_orgs WHERE name = ?", (org_name,)
-    ).fetchone()
+    # ── 1. Дедупликация: ИНН (fix #sync-fix-3) → точное имя (fallback) ─────────
+    org_row = None
+    if inn:
+        # Приоритет: ИНН уникален, не зависит от различий в названии
+        org_row = conn.execute(
+            "SELECT id FROM phonebook_orgs WHERE inn = ?", (inn,)
+        ).fetchone()
 
-    if row:
-        org_id = row['id']
+    if not org_row:
+        # Fallback: ищем по точному имени (прежнее поведение)
+        org_row = conn.execute(
+            "SELECT id FROM phonebook_orgs WHERE name = ?", (org_name,)
+        ).fetchone()
+
+    if org_row:
+        org_id = org_row['id']
     else:
+        # Создаём новую организацию — сохраняем ИНН в phonebook_orgs
         cur = conn.execute(
-            "INSERT INTO phonebook_orgs (name, address) VALUES (?, ?)",
-            (org_name, address)
+            "INSERT INTO phonebook_orgs (name, address, inn) VALUES (?, ?, ?)",
+            (org_name, address, inn or None)
         )
         org_id = cur.lastrowid
         log_action(conn, user_id, 'create', request_id,
-                   f'Справочник орг.: добавлена «{org_name}» из обращения #{request_id}')
+                   f'Справочник орг.: добавлена «{org_name}» '
+                   f'(ИНН: {inn or —}) из обращения #{request_id}')
 
     # ── 2. Ищем или создаём контакт (только если указано ФИО) ───────────────
     if contact_name:
@@ -436,7 +442,7 @@ def sync_request_to_phonebook(conn, form_data, request_id: int, user_id: int) ->
                 """INSERT INTO phonebook
                        (org_id, full_name, position, phone_work, email, inn)
                    VALUES (?, ?, ?, ?, ?, ?)""",
-                (org_id, contact_name, contact_pos, phone_work, email, inn)
+                (org_id, contact_name, contact_pos, phone_work, email, inn or None)
             )
             log_action(conn, user_id, 'create', request_id,
                        f'Справочник: добавлен контакт «{contact_name}» ({org_name}) '
