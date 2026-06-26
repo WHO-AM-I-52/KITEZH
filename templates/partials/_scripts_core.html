@@ -1,0 +1,98 @@
+{# ═══════════════════════════════════════════════════════════════
+   _scripts_core.html
+   Сайдбар-тоггл, сворачиваемые секции, тема оформления.
+   Подключается в base.html для всех страниц (авторизация не нужна).
+   v1.0.0: выделено из base.html v2.27.4
+   ═══════════════════════════════════════════════════════════════ #}
+
+{# ── Сайдбар: тоггл ── #}
+<script>
+(function(){
+  var b = document.body;
+  if (localStorage.getItem('sb_col')==='1') b.classList.add('sb-col');
+  document.getElementById('sbToggle').addEventListener('click', function(){
+    if (window.innerWidth <= 768) { b.classList.toggle('sb-open'); }
+    else { b.classList.toggle('sb-col'); localStorage.setItem('sb_col', b.classList.contains('sb-col') ? '1' : '0'); }
+  });
+})();
+</script>
+
+{# ── Сайдбар: сворачиваемые секции ── #}
+<script>
+(function(){
+  var SEC_PREFIX = 'sb_sec_';
+  document.querySelectorAll('.sb-cat-toggle').forEach(function(btn){
+    var sec = btn.getAttribute('data-sec');
+    var panel = document.querySelector('.sb-section[data-sec="' + sec + '"]');
+    if (!panel) return;
+    var collapsed = localStorage.getItem(SEC_PREFIX + sec) === '1';
+    if (collapsed) { panel.classList.add('collapsed'); btn.classList.add('collapsed'); }
+    btn.addEventListener('click', function(){
+      var isCollapsed = panel.classList.contains('collapsed');
+      panel.classList.toggle('collapsed', !isCollapsed);
+      btn.classList.toggle('collapsed', !isCollapsed);
+      localStorage.setItem(SEC_PREFIX + sec, isCollapsed ? '0' : '1');
+    });
+  });
+})();
+</script>
+
+{# ── Тема оформления ── #}
+<script>
+(function(){
+  var KEY = 'app_theme';
+  var THEMES = {
+    light: { icon:'bi bi-sun-fill',        label:'Светлая',   color:'#f59e0b' },
+    dark:  { icon:'bi bi-moon-stars-fill', label:'Тёмная',    color:'#818cf8' },
+    zone:  { icon:'bi bi-moon-stars-fill', label:'Тёмная V2', color:'#c8a84b' }
+  };
+  var saved = localStorage.getItem(KEY) || 'light';
+  if (saved === 'dark') document.body.setAttribute('data-theme','dark');
+  else if (saved === 'zone') document.body.setAttribute('data-theme','zone');
+  else document.body.removeAttribute('data-theme');
+  function applyTheme(val) {
+    if (val === 'dark') document.body.setAttribute('data-theme','dark');
+    else if (val === 'zone') document.body.setAttribute('data-theme','zone');
+    else document.body.removeAttribute('data-theme');
+    localStorage.setItem(KEY, val);
+    syncUI();
+  }
+  function syncUI() {
+    var cur = document.body.getAttribute('data-theme') || 'light';
+    var t = THEMES[cur] || THEMES.light;
+    var icon  = document.getElementById('themeIcon');
+    var label = document.getElementById('themeLabel');
+    if (!icon) return;
+    icon.className = t.icon + ' theme-main-icon';
+    icon.style.color = t.color;
+    label.textContent = t.label;
+    document.querySelectorAll('.theme-submenu-item').forEach(function(btn){
+      btn.classList.toggle('active-theme', btn.getAttribute('data-theme-val') === cur);
+    });
+  }
+  document.addEventListener('DOMContentLoaded', function(){
+    syncUI();
+    var toggleBtn = document.getElementById('themeToggle');
+    var submenu   = document.getElementById('themeSubmenu');
+    if (toggleBtn && submenu) {
+      toggleBtn.addEventListener('click', function(e){
+        e.stopPropagation();
+        var isOpen = submenu.classList.contains('open');
+        submenu.classList.toggle('open', !isOpen);
+        toggleBtn.classList.toggle('open', !isOpen);
+      });
+    }
+    document.querySelectorAll('.theme-submenu-item').forEach(function(btn){
+      btn.addEventListener('click', function(e){
+        e.stopPropagation();
+        applyTheme(this.getAttribute('data-theme-val'));
+        submenu.classList.remove('open');
+        toggleBtn.classList.remove('open');
+      });
+    });
+    document.addEventListener('click', function(){
+      if (submenu) { submenu.classList.remove('open'); toggleBtn.classList.remove('open'); }
+    });
+  });
+})();
+</script>
