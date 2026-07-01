@@ -410,7 +410,7 @@ def create_task():
 @login_required
 def task_detail(id):
     user_id = session['user_id']
-    role    = session.get('role', 'user')
+    role    = session.get('role', 'employee')
     db = get_db()
     task = db.execute('SELECT * FROM tasks WHERE id = ?', (id,)).fetchone()
     if task is None:
@@ -492,7 +492,7 @@ def task_detail(id):
 @login_required
 def add_comment(id):
     user_id = session['user_id']
-    role    = session.get('role', 'user')
+    role    = session.get('role', 'employee')
     db = get_db()
     task = db.execute('SELECT * FROM tasks WHERE id = ?', (id,)).fetchone()
     if task is None:
@@ -526,7 +526,7 @@ def add_comment(id):
 @login_required
 def delete_task(id):
     user_id = session['user_id']
-    role    = session.get('role', 'user')
+    role    = session.get('role', 'employee')
     if role != 'admin':
         abort(403)
     db = get_db()
@@ -545,7 +545,7 @@ def delete_task(id):
 @login_required
 def change_status(id):
     user_id = session['user_id']
-    role    = session.get('role', 'user')
+    role    = session.get('role', 'employee')
     db = get_db()
     task = db.execute('SELECT * FROM tasks WHERE id = ?', (id,)).fetchone()
     if task is None:
@@ -574,7 +574,7 @@ def change_status(id):
 @login_required
 def review_submit(id):
     user_id = session['user_id']
-    role    = session.get('role', 'user')
+    role    = session.get('role', 'employee')
     db = get_db()
     task = db.execute('SELECT * FROM tasks WHERE id = ?', (id,)).fetchone()
     if task is None:
@@ -609,7 +609,7 @@ def review_submit(id):
 @login_required
 def close_task(id):
     user_id = session['user_id']
-    role    = session.get('role', 'user')
+    role    = session.get('role', 'employee')
     db = get_db()
     task = db.execute('SELECT * FROM tasks WHERE id = ?', (id,)).fetchone()
     if task is None:
@@ -647,7 +647,7 @@ def close_task(id):
 @login_required
 def revise_task(id):
     user_id = session['user_id']
-    role    = session.get('role', 'user')
+    role    = session.get('role', 'employee')
     db = get_db()
     task = db.execute('SELECT * FROM tasks WHERE id = ?', (id,)).fetchone()
     if task is None:
@@ -676,7 +676,7 @@ def revise_task(id):
 @login_required
 def assign_user(id):
     user_id = session['user_id']
-    role    = session.get('role', 'user')
+    role    = session.get('role', 'employee')
     db = get_db()
     task = db.execute('SELECT * FROM tasks WHERE id = ?', (id,)).fetchone()
     if task is None:
