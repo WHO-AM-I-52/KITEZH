@@ -262,8 +262,7 @@ def api_my_tasks():
                r.status,
                r.created_at
         FROM requests r
-        WHERE r.status NOT IN ('done','closed','cancelled')
-          AND (r.responsible_id = ? OR r.reviewer_id = ? OR r.assigned_to = ?)
+        WHERE (r.responsible_id = ? OR r.reviewer_id = ? OR r.assigned_to = ?)
         ORDER BY r.review_deadline ASC
     ''', (user_id, user_id, user_id)).fetchall()
 
