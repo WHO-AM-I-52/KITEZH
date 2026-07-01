@@ -209,6 +209,11 @@ const table = new Tabulator('#tasks-table', {
   rowFormatter: function(row) {
     if (row.getData().overdue) row.getElement().classList.add('table-danger');
   },
+  columnDefaults: {
+    hozAlign: 'center',
+    vertAlign: 'middle',
+    headerHozAlign: 'center',
+  },
   columns: [
     {
       title: 'Тип', field: 'type', width: 70,
@@ -224,12 +229,14 @@ const table = new Tabulator('#tasks-table', {
     },
     {
       title: 'Название', field: 'title',
+      hozAlign: 'left',
       formatter: fmtTitle,
       headerFilter: 'input',
     },
     {
       title: 'Источник / номер', field: 'source', width: 180,
       visible: visibility['source'] !== false,
+      hozAlign: 'left',
       headerFilter: 'input',
       formatter: function(cell) { return cell.getValue() || '<span class="text-muted">—</span>'; },
     },

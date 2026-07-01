@@ -87,6 +87,11 @@ const table = new Tabulator('#letters-table', {
       pagination: { page: 'Стр.', of: 'из' },
     }
   },
+  columnDefaults: {
+    hozAlign: 'center',
+    vertAlign: 'middle',
+    headerHozAlign: 'center',
+  },
   columns: [
     {
       title: 'Дата', field: 'date', width: 115, sorter: 'date',
@@ -98,6 +103,7 @@ const table = new Tabulator('#letters-table', {
     },
     {
       title: 'Напр. / Контрагент', field: 'direction', width: 170,
+      hozAlign: 'left',
       formatter: fmtDirection,
       headerFilter: 'select',
       headerFilterParams: { values: { '': '— все —', 'out': '→ Исходящие', 'in': '← Входящие' } },
@@ -108,11 +114,13 @@ const table = new Tabulator('#letters-table', {
     },
     {
       title: 'Тема', field: 'subject',
+      hozAlign: 'left',
       formatter: fmtSubject,
       headerFilter: 'input',
     },
     {
       title: 'Теги', field: 'tags', width: 200,
+      hozAlign: 'left',
       formatter: fmtTags,
       sorter: function(a, b) {
         return (a || []).join(',').localeCompare((b || []).join(','));
