@@ -1,0 +1,93 @@
+{% extends 'base.html' %}
+{% block title %}Предложения по улучшению{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+    <h4 class="mb-0"><i class="bi bi-lightbulb me-2"></i>Предложения по улучшению</h4>
+    <div class="btn-group btn-group-sm" role="group">
+      <a href="{{ url_for('suggestions.index') }}"
+         class="btn btn-outline-secondary {{ 'active' if not status_filter }}">Все</a>
+      <a href="{{ url_for('suggestions.index', status='new') }}"
+         class="btn btn-outline-primary {{ 'active' if status_filter == 'new' }}">Новые</a>
+      <a href="{{ url_for('suggestions.index', status='in_roadmap') }}"
+         class="btn btn-outline-success {{ 'active' if status_filter == 'in_roadmap' }}">В дорожной карте</a>
+      <a href="{{ url_for('suggestions.index', status='rejected') }}"
+         class="btn btn-outline-danger {{ 'active' if status_filter == 'rejected' }}">Отклонённые</a>
+    </div>
+  </div>
+
+  {% if not rows %}
+    <div class="alert alert-light border text-muted">Предложений пока нет.</div>
+  {% else %}
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead>
+        <tr class="text-center">
+          <th style="width:70px">#</th>
+          <th style="width:160px">Автор</th>
+          <th>Комментарий</th>
+          <th style="width:120px">Файл</th>
+          <th style="width:150px">Дата</th>
+          <th style="width:150px">Статус</th>
+          <th style="width:220px">Действия</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td class="text-center text-muted">{{ r.id }}</td>
+          <td>{{ r.author_name or '—' }}</td>
+          <td style="white-space:pre-wrap">{{ r.comment }}</td>
+          <td class="text-center">
+            {% if r.file_path %}
+              <a href="{{ url_for('requests.uploaded_file', filename=r.file_path) }}"
+                 target="_blank" rel="noopener" title="Открыть вложение">
+                📎 {{ r.file_path.split('/')[-1] }}
+              </a>
+            {% else %}<span class="text-muted">—</span>{% endif %}
+          </td>
+          <td class="text-center small">
+            {{ r.created_at.replace('T', ' ')[:16] if r.created_at else '—' }}
+          </td>
+          <td class="text-center">
+            {% if r.status == 'new' %}
+              <span class="badge bg-primary">{{ STATUS_LABELS['new'] }}</span>
+            {% elif r.status == 'in_roadmap' %}
+              <span class="badge bg-success">{{ STATUS_LABELS['in_roadmap'] }}</span>
+              {% if r.reviewer_name %}<div class="small text-muted mt-1">{{ r.reviewer_name }}</div>{% endif %}
+            {% elif r.status == 'rejected' %}
+              <span class="badge bg-danger">{{ STATUS_LABELS['rejected'] }}</span>
+              {% if r.reviewer_name %}<div class="small text-muted mt-1">{{ r.reviewer_name }}</div>{% endif %}
+            {% else %}
+              <span class="badge bg-secondary">{{ r.status }}</span>
+            {% endif %}
+          </td>
+          <td class="text-center">
+            {% if r.status == 'new' %}
+            <form method="post" action="{{ url_for('suggestions.to_roadmap', id=r.id) }}"
+                  class="d-inline">
+              <button type="submit" class="btn btn-sm btn-success"
+                      title="Принять в дорожную карту">
+                <i class="bi bi-map"></i> В дорожную карту
+              </button>
+            </form>
+            <form method="post" action="{{ url_for('suggestions.reject', id=r.id) }}"
+                  class="d-inline">
+              <button type="submit" class="btn btn-sm btn-outline-danger"
+                      title="Отклонить предложение">
+                <i class="bi bi-x-lg"></i>
+              </button>
+            </form>
+            {% else %}
+              <span class="text-muted small">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

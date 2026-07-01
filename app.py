@@ -160,6 +160,7 @@ from routes.admin_sql_routes import admin_sql_bp
 from portal_analysis.portal_analysis_routes import portal_analysis_bp
 from letters import letters_bp
 from tasks   import tasks_bp
+from suggestions import suggestions_bp
 import services.backup_scheduler as backup_scheduler
 
 for bp in [
@@ -175,6 +176,7 @@ for bp in [
     portal_analysis_bp,
     letters_bp,
     tasks_bp,
+    suggestions_bp,
 ]:
     app.register_blueprint(bp)
 

@@ -171,6 +171,30 @@ CREATE INDEX IF NOT EXISTS idx_tc_event_type ON task_comments(event_type);
 """)
 
 
+def _migrate_suggestions_table(conn):
+    """Создаёт таблицу suggestions — предложения пользователей по улучшению.
+
+    status:
+        'new'         — новое предложение (по умолчанию)
+        'in_roadmap'  — принято в дорожную карту администратором
+        'rejected'    — отклонено администратором
+    """
+    conn.executescript("""
+CREATE TABLE IF NOT EXISTS suggestions (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL,
+    comment     TEXT    NOT NULL,
+    file_path   TEXT,
+    status      TEXT    NOT NULL DEFAULT 'new',
+    created_at  TEXT    DEFAULT CURRENT_TIMESTAMP,
+    reviewed_by INTEGER,
+    reviewed_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_sg_user   ON suggestions(user_id);
+CREATE INDEX IF NOT EXISTS idx_sg_status ON suggestions(status);
+""")
+
+
 def _migrate_letters_tables(conn):
     """Создаёт таблицы letters/letter_tags/letter_tag_links.
     Порядок: сначала CREATE TABLE (без executor_id),
@@ -546,6 +570,7 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         _migrate_letters_tables(conn)
         _migrate_tasks_tables(conn)
         _migrate_task_comments_table(conn)
+        _migrate_suggestions_table(conn)
         _migrate_phonebook_orgs_inn(conn)     # ← fix #sync-fix-3
 
         cols = {r[1] for r in conn.execute("PRAGMA table_info(requests)").fetchall()}
@@ -609,6 +634,7 @@ def migrate_db():
         _migrate_letters_tables(conn)
         _migrate_tasks_tables(conn)
         _migrate_task_comments_table(conn)
+        _migrate_suggestions_table(conn)
         _migrate_phonebook_orgs_inn(conn)     # ← fix #sync-fix-3
 
         cols = {r[1] for r in conn.execute("PRAGMA table_info(requests)").fetchall()}

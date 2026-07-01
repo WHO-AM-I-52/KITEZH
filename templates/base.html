@@ -605,6 +605,9 @@
       <a href="/admin/users" class="sb-link {{ 'active' if 'users' in request.path }}">
         <i class="bi bi-people"></i><span class="sb-lbl">Пользователи</span>
       </a>
+      <a href="{{ url_for('suggestions.index') }}" class="sb-link {{ 'active' if request.path.startswith('/suggestions') }}">
+        <i class="bi bi-lightbulb"></i><span class="sb-lbl">Предложения</span>
+      </a>
     </div>
     {% endif %}
 
@@ -687,9 +690,51 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 </script>
 
+{# ── Модалка «Предложить улучшение» ── #}
+{% if 'user_id' in session %}
+<div class="modal fade" id="suggestModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form method="post" action="{{ url_for('suggestions.submit') }}"
+            enctype="multipart/form-data">
+        <div class="modal-header">
+          <h5 class="modal-title">💡 Предложить улучшение / доработку</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Комментарий <span class="text-danger">*</span></label>
+            <textarea name="comment" class="form-control" rows="4" required
+                      placeholder="Опишите, что хотите улучшить или доработать…"></textarea>
+          </div>
+          <div class="mb-1">
+            <label class="form-label">Вложение (необязательно)</label>
+            <input type="file" name="file" class="form-control"
+                   accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.jpg,.jpeg,.png,.gif,.zip,.rar">
+            <div class="form-text">Скриншот или документ, до 10 МБ.</div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+          <button type="submit" class="btn btn-primary"><i class="bi bi-send me-1"></i>Отправить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 {% block scripts %}{% endblock %}
 
 <footer class="mt-4 py-3 text-center border-top" style="font-size:11px;color:#aaa;background:var(--surface)">
+  {% if 'user_id' in session %}
+  <button type="button" class="btn btn-sm btn-outline-primary mb-2"
+          data-bs-toggle="modal" data-bs-target="#suggestModal"
+          style="font-size:11px">
+    💡 Предложить улучшение
+  </button>
+  <br>
+  {% endif %}
   <span>© 2026 КИТЕЖ – Нижегородская область &nbsp;|&nbsp; v{{ app_version }}</span>
   &nbsp;&nbsp;
   <span>Разработано: <strong style="color:#1B5E7B">Солдатов Антон Алексеевич</strong></span>
