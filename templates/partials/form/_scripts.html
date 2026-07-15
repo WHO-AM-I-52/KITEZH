@@ -85,6 +85,7 @@ function previewFiles(input) {
   });
 }
 
+// ── Визуальная отметка файла к удалению ────────────────────────────────
 function toggleDeleteMark(cb) {
   const card = cb.closest('.position-relative');
   if (!card) return;
@@ -119,7 +120,7 @@ function toggleDeleteMark(cb) {
     }
   }
 }
-  
+
 // ── Источник → поле № входящего / № письма СЭДО ───────────────────
 function toggleIncomingNumber() {
   const checked = Array.from(document.querySelectorAll('input[name="source_type"]:checked'));
@@ -140,20 +141,6 @@ function toggleIncomingNumber() {
     input.required    = show && isSedo;
     input.placeholder = isSedo ? 'Например: СЭДО-2026-0042' : 'Например: ВХ-2026-0042';
   }
-}
-toggleIncomingNumber();
-calcWaterSupplyTotal();
-calcWaterSewageTotal();
-
-// ── Фильтрация районов ─────────────────────────────────────────────────
-function filterDistricts() {
-  const q = document.getElementById('districtSearch').value.toLowerCase();
-  document.querySelectorAll('.district-item').forEach(el => {
-    el.style.display = el.dataset.name.includes(q) ? '' : 'none';
-  });
-}
-function clearDistricts() {
-  document.querySelectorAll('input[name="preferred_districts"]').forEach(cb => cb.checked = false);
 }
 
 // ── Вода: пересчёт итога ─────────────────────────────────────────────
@@ -184,6 +171,22 @@ function onElecUnitChange(u)  { document.querySelectorAll('.unit-label-elec').fo
 function onHeatUnitChange(u)  { /* конвертация на сервере */ }
 function onGasHUnitChange(u)  { /* конвертация на сервере */ }
 function onGasYUnitChange(u)  { /* конвертация на сервере */ }
+
+// ── Инициализация при открытии формы ──────────────────────────────────
+toggleIncomingNumber();
+calcWaterSupplyTotal();
+calcWaterSewageTotal();
+
+// ── Фильтрация районов ─────────────────────────────────────────────────
+function filterDistricts() {
+  const q = document.getElementById('districtSearch').value.toLowerCase();
+  document.querySelectorAll('.district-item').forEach(el => {
+    el.style.display = el.dataset.name.includes(q) ? '' : 'none';
+  });
+}
+function clearDistricts() {
+  document.querySelectorAll('input[name="preferred_districts"]').forEach(cb => cb.checked = false);
+}
 
 // ── ЕГРЮЛ lookup ───────────────────────────────────────────────────────
 function egrulLookup() {
