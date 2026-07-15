@@ -142,6 +142,8 @@ function toggleIncomingNumber() {
   }
 }
 toggleIncomingNumber();
+calcWaterSupplyTotal();
+calcWaterSewageTotal();
 
 // ── Фильтрация районов ─────────────────────────────────────────────────
 function filterDistricts() {
@@ -155,10 +157,16 @@ function clearDistricts() {
 }
 
 // ── Вода: пересчёт итога ─────────────────────────────────────────────
-function calcWaterTotal() {
-  const ids = ['water_household','water_production','water_sewage','water_firefighting'];
-  const total = ids.reduce((s,id) => s + (parseFloat(document.getElementById(id)?.value)||0), 0);
-  const el = document.getElementById('water_total');
+function calcWaterSupplyTotal() {
+  const ids = ['water_household', 'water_production', 'water_firefighting'];
+  const total = ids.reduce((s, id) => s + (parseFloat(document.getElementById(id)?.value) || 0), 0);
+  const el = document.getElementById('water_supply_total');
+  if (el) el.value = total > 0 ? total.toFixed(1) : '';
+}
+
+function calcWaterSewageTotal() {
+  const total = parseFloat(document.getElementById('water_sewage')?.value) || 0;
+  const el = document.getElementById('water_sewage_total');
   if (el) el.value = total > 0 ? total.toFixed(1) : '';
 }
 
