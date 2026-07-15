@@ -31,6 +31,42 @@
 
 <div class="container-fluid mt-3">
 
+  {# ─── statCards ─── #}
+  <div class="row g-2 mb-3">
+    <div class="col-6 col-md-3">
+      <a href="{{ url_for('tasks.my_tasks') }}" class="text-decoration-none">
+        <div class="card text-center py-2 px-1 {% if not status_filter %}border-primary{% endif %}">
+          <div class="fs-4 fw-bold">{{ stats.total }}</div>
+          <div class="text-muted small">Всего</div>
+        </div>
+      </a>
+    </div>
+    <div class="col-6 col-md-3">
+      <a href="{{ url_for('tasks.my_tasks', status='new') }}" class="text-decoration-none">
+        <div class="card text-center py-2 px-1 {% if status_filter=='new' %}border-primary{% endif %}">
+          <div class="fs-4 fw-bold text-secondary">{{ stats.new }}</div>
+          <div class="text-muted small">Новые</div>
+        </div>
+      </a>
+    </div>
+    <div class="col-6 col-md-3">
+      <a href="{{ url_for('tasks.my_tasks', status='in_progress') }}" class="text-decoration-none">
+        <div class="card text-center py-2 px-1 {% if status_filter=='in_progress' %}border-primary{% endif %}">
+          <div class="fs-4 fw-bold text-primary">{{ stats.in_progress }}</div>
+          <div class="text-muted small">В работе</div>
+        </div>
+      </a>
+    </div>
+    <div class="col-6 col-md-3">
+      <a href="{{ url_for('tasks.my_tasks', status='overdue') }}" class="text-decoration-none">
+        <div class="card text-center py-2 px-1 {% if status_filter=='overdue' %}border-danger{% endif %}">
+          <div class="fs-4 fw-bold text-danger">{{ stats.overdue }}</div>
+          <div class="text-muted small">Просрочено</div>
+        </div>
+      </a>
+    </div>
+  </div>
+
   <div class="d-flex justify-content-between align-items-center mb-3">
     <div class="d-flex align-items-center gap-3">
       <h4 class="mb-0">📋 Мои задачи</h4>
@@ -90,6 +126,7 @@
               <input type="date" name="deadline" class="form-control">
             </div>
           </div>
+          {% if session.get('role') in ('manager', 'admin') %}
           <div class="mb-3">
             <label class="form-label">Исполнители</label>
             <select name="assignee_ids[]" class="form-select" multiple>
@@ -99,6 +136,10 @@
             </select>
             <div class="form-text">Удерживайте Ctrl (или Cmd) для выбора нескольких.</div>
           </div>
+          {% else %}
+          {# employee — задача автоматически ставится на себя #}
+          <input type="hidden" name="assignee_ids[]" value="{{ session.get('user_id') }}">
+          {% endif %}
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>

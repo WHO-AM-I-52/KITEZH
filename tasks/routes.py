@@ -159,6 +159,8 @@ def my_tasks():
     search        = request.args.get('q', '').strip()
     db = get_db()
 
+    today_s = date.today().isoformat()
+
     task_query = '''
         SELECT t.id, t.title, t.source, t.deadline, t.status,
                'task' AS item_type, t.created_at
@@ -167,7 +169,7 @@ def my_tasks():
         WHERE ta.user_id = ?
     '''
     task_params = [user_id]
-    if status_filter and type_filter in ('task', ''):
+    if status_filter and status_filter != 'overdue' and type_filter in ('task', ''):
         task_query += ' AND t.status = ?'
         task_params.append(status_filter)
     if search:
@@ -188,7 +190,7 @@ def my_tasks():
           AND (r.responsible_id = ? OR r.reviewer_id = ? OR r.assigned_to = ?)
     '''
     req_params = [user_id, user_id, user_id]
-    if status_filter and type_filter in ('request', ''):
+    if status_filter and status_filter != 'overdue' and type_filter in ('request', ''):
         req_query += ' AND r.status = ?'
         req_params.append(status_filter)
     if search:
@@ -204,7 +206,11 @@ def my_tasks():
     if type_filter in ('request', ''):
         rows += db.execute(req_query, req_params).fetchall()
 
-    today_s = date.today().isoformat()
+    # Фильтр «просрочено» — виртуальный, обрабатываем постфактум
+    if status_filter == 'overdue':
+        rows = [r for r in rows
+                if r['deadline'] and r['deadline'] < today_s
+                and r['status'] not in ('done', 'cancelled', 'closed')]
 
     def sort_key(r):
         dl = r['deadline'] or '9999-99-99'
@@ -212,6 +218,29 @@ def my_tasks():
         return (0 if overdue else 1, dl)
 
     rows.sort(key=sort_key)
+
+    # ── Считаем statCards по всем задачам без фильтра статуса ──
+    all_rows_for_stats = []
+    all_rows_for_stats += db.execute('''
+        SELECT t.status, t.deadline, 'task' AS item_type
+        FROM tasks t JOIN task_assignees ta ON ta.task_id = t.id
+        WHERE ta.user_id = ?
+    ''', (user_id,)).fetchall()
+    all_rows_for_stats += db.execute('''
+        SELECT r.status, r.review_deadline AS deadline, 'request' AS item_type
+        FROM requests r
+        WHERE r.responsible_id = ? OR r.reviewer_id = ? OR r.assigned_to = ?
+    ''', (user_id, user_id, user_id)).fetchall()
+
+    stats = {
+        'total':       len(all_rows_for_stats),
+        'in_progress': sum(1 for r in all_rows_for_stats if r['status'] == 'in_progress'),
+        'new':         sum(1 for r in all_rows_for_stats if r['status'] == 'new'),
+        'overdue':     sum(1 for r in all_rows_for_stats
+                          if r['deadline'] and r['deadline'] < today_s
+                          and r['status'] not in ('done', 'cancelled', 'closed')),
+        'done':        sum(1 for r in all_rows_for_stats if r['status'] in ('done', 'closed')),
+    }
 
     task_ids = [r['id'] for r in rows if r['item_type'] == 'task']
     assignees_map = {}
@@ -232,6 +261,7 @@ def my_tasks():
         status_filter=status_filter,
         type_filter=type_filter,
         search=search,
+        stats=stats,
         STATUS_LABELS=STATUS_LABELS,
         REQUEST_STATUS_LABELS=REQUEST_STATUS_LABELS,
         today=today_s,
@@ -365,6 +395,7 @@ def assigned_by_me():
 @login_required
 def create_task():
     user_id      = session['user_id']
+    role         = session.get('role', 'employee')
     title        = request.form.get('title', '').strip()
     if not title:
         abort(400)
@@ -373,6 +404,10 @@ def create_task():
     deadline     = request.form.get('deadline', '').strip() or None
     assignee_ids = request.form.getlist('assignee_ids[]')
     now          = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
+
+    # Серверная защита: employee может назначить задачу только себе
+    if role not in ('manager', 'admin'):
+        assignee_ids = [str(user_id)]
 
     db = get_db()
     cur = db.execute(
