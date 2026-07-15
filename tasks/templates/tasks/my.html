@@ -188,7 +188,9 @@ function fmtDeadline(cell) {
   const row = cell.getRow().getData();
   const dl  = cell.getValue();
   if (!dl) return '<span class="text-muted">—</span>';
-  if (row.overdue) return '<span class="text-danger fw-bold">' + dl + '</span>';
+  // Не красим дедлайн у завершённых/закрытых/отменённых
+  const isClosed = CLOSED_STATUSES.includes(row.status);
+  if (row.overdue && !isClosed) return '<span class="text-danger fw-bold">' + dl + '</span>';
   return dl;
 }
 
@@ -248,7 +250,13 @@ const table = new Tabulator('#tasks-table', {
   initialSort: [{ column: 'deadline', dir: 'asc' }],
   initialFilter: [{ field: 'status', type: 'function', value: closedFilter }],
   rowFormatter: function(row) {
-    if (row.getData().overdue) row.getElement().classList.add('table-danger');
+    const data = row.getData();
+    // Убираем красную подсветку у завершённых/закрытых/отменённых
+    if (data.overdue && !CLOSED_STATUSES.includes(data.status)) {
+      row.getElement().classList.add('table-danger');
+    } else {
+      row.getElement().classList.remove('table-danger');
+    }
   },
   columnDefaults: {
     hozAlign: 'center',
@@ -343,7 +351,6 @@ table.on('tableBuilt', function() {
     if (!col) return;
 
     const li = document.createElement('li');
-    // Не используем Bootstrap form-check — строим вручную чтобы избежать сдвига чекбокса
     const cbId = 'col_' + def.field;
     const cb = document.createElement('input');
     cb.type = 'checkbox';
