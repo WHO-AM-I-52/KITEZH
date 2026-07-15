@@ -234,7 +234,9 @@ def my_tasks():
 
     stats = {
         'total':       len(all_rows_for_stats),
-        'in_progress': sum(1 for r in all_rows_for_stats if r['status'] == 'in_progress'),
+        # in_work — статус обращений, in_progress — статус задач
+        'in_progress': sum(1 for r in all_rows_for_stats
+                           if r['status'] in ('in_progress', 'in_work')),
         'new':         sum(1 for r in all_rows_for_stats if r['status'] == 'new'),
         'overdue':     sum(1 for r in all_rows_for_stats
                           if r['deadline'] and r['deadline'] < today_s
