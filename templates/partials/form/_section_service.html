@@ -75,7 +75,6 @@
               {% if coexecutors and u.id in coexecutors|map(attribute='user_id')|list %}selected{% endif %}>
               {{ u.full_name }}
               {%- if u.role == 'admin' %} (адм.)
-              {%- elif u.role == 'manager' %} (мен.)
               {%- endif %}
             </option>
             {% endif %}
@@ -109,7 +108,6 @@
             {% if u.role in ('employee', 'admin', 'manager') %}
             <option value="{{ u.id }}">{{ u.full_name }}
               {%- if u.role == 'admin' %} (адм.)
-              {%- elif u.role == 'manager' %} (мен.)
               {%- endif %}
             </option>
             {% endif %}
