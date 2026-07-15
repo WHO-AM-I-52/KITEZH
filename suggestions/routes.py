@@ -17,10 +17,10 @@ suggestions_bp = Blueprint(
 )
 
 STATUS_LABELS = {
-    'new':          'Новое',
-    'in_progress':  'В работе',
-    'implemented':  'Внедрено в код',
-    'rejected':     'Отклонено',
+    'new':         'Новое',
+    'in_progress': 'В работе',
+    'implemented': 'Внедрено в код',
+    'rejected':    'Отклонено',
 }
 
 SUGGESTIONS_UPLOAD_DIR = os.path.join(UPLOADS_DIR, 'suggestions')
@@ -49,13 +49,23 @@ def _save_upload(file_obj):
     return os.path.join('suggestions', unique_name)
 
 
-def _ensure_commit_url_column():
-    """Автоматическая миграция: добавить колонку commit_url, если её нет."""
+def _ensure_db_schema():
+    """Автомиграция схемы таблицы suggestions.
+
+    1. Добавляет колонку commit_url, если её нет.
+    2. Переводит устаревший статус in_roadmap → new, чтобы старые
+       записи попали в нормальный workflow.
+    """
     db = get_db()
+    # 1. Добавить commit_url при необходимости
     cols = [row[1] for row in db.execute('PRAGMA table_info(suggestions)').fetchall()]
     if 'commit_url' not in cols:
         db.execute('ALTER TABLE suggestions ADD COLUMN commit_url TEXT')
-        db.commit()
+
+    # 2. Перевести in_roadmap → new
+    db.execute("UPDATE suggestions SET status = 'new' WHERE status = 'in_roadmap'")
+
+    db.commit()
 
 
 @suggestions_bp.route('/submit', methods=['POST'])
@@ -78,7 +88,7 @@ def submit():
 
     now = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
     db = get_db()
-    _ensure_commit_url_column()
+    _ensure_db_schema()
     cur = db.execute(
         'INSERT INTO suggestions (user_id, comment, file_path, status, created_at) '
         'VALUES (?, ?, ?, ?, ?)',
@@ -94,7 +104,7 @@ def submit():
 @admin_required
 def index():
     """Админ-список всех предложений."""
-    _ensure_commit_url_column()
+    _ensure_db_schema()
     status_filter = request.args.get('status', '')
     db = get_db()
     query = '''
@@ -129,7 +139,6 @@ def set_status(id):
         abort(400)
 
     commit_url = request.form.get('commit_url', '').strip() or None
-    # commit_url обязателен только для статуса implemented
     if new_status == 'implemented' and not commit_url:
         flash('Укажите ссылку на коммит для пометки «Внедрено в код».', 'error')
         return redirect(url_for('suggestions.index'))
@@ -137,7 +146,7 @@ def set_status(id):
     user_id = session['user_id']
     now = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
     db = get_db()
-    _ensure_commit_url_column()
+    _ensure_db_schema()
     row = db.execute('SELECT id FROM suggestions WHERE id = ?', (id,)).fetchone()
     if row is None:
         abort(404)
