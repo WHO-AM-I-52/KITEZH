@@ -17,9 +17,10 @@ suggestions_bp = Blueprint(
 )
 
 STATUS_LABELS = {
-    'new':        'Новое',
-    'in_roadmap': 'В дорожной карте',
-    'rejected':   'Отклонено',
+    'new':          'Новое',
+    'in_progress':  'В работе',
+    'implemented':  'Внедрено в код',
+    'rejected':     'Отклонено',
 }
 
 SUGGESTIONS_UPLOAD_DIR = os.path.join(UPLOADS_DIR, 'suggestions')
@@ -48,6 +49,15 @@ def _save_upload(file_obj):
     return os.path.join('suggestions', unique_name)
 
 
+def _ensure_commit_url_column():
+    """Автоматическая миграция: добавить колонку commit_url, если её нет."""
+    db = get_db()
+    cols = [row[1] for row in db.execute('PRAGMA table_info(suggestions)').fetchall()]
+    if 'commit_url' not in cols:
+        db.execute('ALTER TABLE suggestions ADD COLUMN commit_url TEXT')
+        db.commit()
+
+
 @suggestions_bp.route('/submit', methods=['POST'])
 @login_required
 def submit():
@@ -68,6 +78,7 @@ def submit():
 
     now = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
     db = get_db()
+    _ensure_commit_url_column()
     cur = db.execute(
         'INSERT INTO suggestions (user_id, comment, file_path, status, created_at) '
         'VALUES (?, ?, ?, ?, ?)',
@@ -83,11 +94,12 @@ def submit():
 @admin_required
 def index():
     """Админ-список всех предложений."""
+    _ensure_commit_url_column()
     status_filter = request.args.get('status', '')
     db = get_db()
     query = '''
         SELECT s.id, s.comment, s.file_path, s.status, s.created_at,
-               s.reviewed_at,
+               s.reviewed_at, s.commit_url,
                u.full_name  AS author_name,
                ru.full_name AS reviewer_name
         FROM suggestions s
@@ -108,36 +120,39 @@ def index():
     )
 
 
-def _set_status(id, new_status, action_name):
-    if new_status not in ('in_roadmap', 'rejected'):
+@suggestions_bp.route('/<int:id>/set-status', methods=['POST'])
+@admin_required
+def set_status(id):
+    """Универсальный маршрут смены статуса предложения."""
+    new_status = request.form.get('status', '').strip()
+    if new_status not in ('in_progress', 'implemented', 'rejected'):
         abort(400)
+
+    commit_url = request.form.get('commit_url', '').strip() or None
+    # commit_url обязателен только для статуса implemented
+    if new_status == 'implemented' and not commit_url:
+        flash('Укажите ссылку на коммит для пометки «Внедрено в код».', 'error')
+        return redirect(url_for('suggestions.index'))
+
     user_id = session['user_id']
     now = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
     db = get_db()
+    _ensure_commit_url_column()
     row = db.execute('SELECT id FROM suggestions WHERE id = ?', (id,)).fetchone()
     if row is None:
         abort(404)
+
     db.execute(
-        'UPDATE suggestions SET status = ?, reviewed_by = ?, reviewed_at = ? WHERE id = ?',
-        (new_status, user_id, now, id)
+        '''
+        UPDATE suggestions
+        SET status = ?, reviewed_by = ?, reviewed_at = ?, commit_url = ?
+        WHERE id = ?
+        ''',
+        (new_status, user_id, now, commit_url, id)
     )
-    log_action(db, user_id, action_name, id)
+    log_action(db, user_id, f'suggestion_{new_status}', id)
     db.commit()
 
-
-@suggestions_bp.route('/<int:id>/roadmap', methods=['POST'])
-@admin_required
-def to_roadmap(id):
-    """Принять предложение в дорожную карту."""
-    _set_status(id, 'in_roadmap', 'suggestion_roadmap')
-    flash('Предложение принято в дорожную карту.', 'success')
-    return redirect(url_for('suggestions.index'))
-
-
-@suggestions_bp.route('/<int:id>/reject', methods=['POST'])
-@admin_required
-def reject(id):
-    """Отклонить предложение."""
-    _set_status(id, 'rejected', 'suggestion_reject')
-    flash('Предложение отклонено.', 'success')
+    labels = {'in_progress': 'в работу', 'implemented': 'внедренным', 'rejected': 'отклонённым'}
+    flash(f'Предложение помечено {labels.get(new_status, new_status)}.', 'success')
     return redirect(url_for('suggestions.index'))

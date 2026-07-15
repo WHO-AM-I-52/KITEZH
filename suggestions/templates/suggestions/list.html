@@ -10,8 +10,10 @@
          class="btn btn-outline-secondary {{ 'active' if not status_filter }}">Все</a>
       <a href="{{ url_for('suggestions.index', status='new') }}"
          class="btn btn-outline-primary {{ 'active' if status_filter == 'new' }}">Новые</a>
-      <a href="{{ url_for('suggestions.index', status='in_roadmap') }}"
-         class="btn btn-outline-success {{ 'active' if status_filter == 'in_roadmap' }}">В дорожной карте</a>
+      <a href="{{ url_for('suggestions.index', status='in_progress') }}"
+         class="btn btn-outline-warning {{ 'active' if status_filter == 'in_progress' }}">В работе</a>
+      <a href="{{ url_for('suggestions.index', status='implemented') }}"
+         class="btn btn-outline-success {{ 'active' if status_filter == 'implemented' }}">Внедрено</a>
       <a href="{{ url_for('suggestions.index', status='rejected') }}"
          class="btn btn-outline-danger {{ 'active' if status_filter == 'rejected' }}">Отклонённые</a>
     </div>
@@ -29,8 +31,8 @@
           <th>Комментарий</th>
           <th style="width:120px">Файл</th>
           <th style="width:150px">Дата</th>
-          <th style="width:150px">Статус</th>
-          <th style="width:220px">Действия</th>
+          <th style="width:160px">Статус</th>
+          <th style="width:260px">Действия</th>
         </tr>
       </thead>
       <tbody>
@@ -52,33 +54,67 @@
           </td>
           <td class="text-center">
             {% if r.status == 'new' %}
-              <span class="badge bg-primary">{{ STATUS_LABELS['new'] }}</span>
-            {% elif r.status == 'in_roadmap' %}
-              <span class="badge bg-success">{{ STATUS_LABELS['in_roadmap'] }}</span>
+              <span class="badge bg-primary">Новое</span>
+            {% elif r.status == 'in_progress' %}
+              <span class="badge bg-warning text-dark">В работе</span>
+              {% if r.reviewer_name %}<div class="small text-muted mt-1">{{ r.reviewer_name }}</div>{% endif %}
+            {% elif r.status == 'implemented' %}
+              <span class="badge bg-success">Внедрено</span>
+              {% if r.commit_url %}
+                <div class="mt-1">
+                  <a href="{{ r.commit_url }}" target="_blank" rel="noopener"
+                     class="small text-success text-decoration-none"
+                     title="Открыть коммит">
+                    <i class="bi bi-git"></i> Коммит &rarr;
+                  </a>
+                </div>
+              {% endif %}
               {% if r.reviewer_name %}<div class="small text-muted mt-1">{{ r.reviewer_name }}</div>{% endif %}
             {% elif r.status == 'rejected' %}
-              <span class="badge bg-danger">{{ STATUS_LABELS['rejected'] }}</span>
+              <span class="badge bg-danger">Отклонено</span>
               {% if r.reviewer_name %}<div class="small text-muted mt-1">{{ r.reviewer_name }}</div>{% endif %}
             {% else %}
               <span class="badge bg-secondary">{{ r.status }}</span>
             {% endif %}
           </td>
+
+          {# ── Колонка действий: показывается для всех, кроме implemented/rejected ── #}
           <td class="text-center">
-            {% if r.status == 'new' %}
-            <form method="post" action="{{ url_for('suggestions.to_roadmap', id=r.id) }}"
-                  class="d-inline">
-              <button type="submit" class="btn btn-sm btn-success"
-                      title="Принять в дорожную карту">
-                <i class="bi bi-map"></i> В дорожную карту
+            {% if r.status in ('new', 'in_progress') %}
+
+              {# Кнопка «В работу» (only for new) #}
+              {% if r.status == 'new' %}
+              <form method="post"
+                    action="{{ url_for('suggestions.set_status', id=r.id) }}"
+                    class="d-inline">
+                <input type="hidden" name="status" value="in_progress">
+                <button type="submit" class="btn btn-sm btn-warning"
+                        title="Взять в работу">
+                  <i class="bi bi-play-fill"></i> В работу
+                </button>
+              </form>
+              {% endif %}
+
+              {# Кнопка «Внедрено» — открывает мини-форму с полем для ссылки #}
+              <button type="button"
+                      class="btn btn-sm btn-success ms-1"
+                      title="Пометить внедрённым"
+                      onclick="openImplementModal({{ r.id }})"
+              >
+                <i class="bi bi-check2-all"></i> Внедрено
               </button>
-            </form>
-            <form method="post" action="{{ url_for('suggestions.reject', id=r.id) }}"
-                  class="d-inline">
-              <button type="submit" class="btn btn-sm btn-outline-danger"
-                      title="Отклонить предложение">
-                <i class="bi bi-x-lg"></i>
-              </button>
-            </form>
+
+              {# Кнопка «Отклонить» #}
+              <form method="post"
+                    action="{{ url_for('suggestions.set_status', id=r.id) }}"
+                    class="d-inline ms-1">
+                <input type="hidden" name="status" value="rejected">
+                <button type="submit" class="btn btn-sm btn-outline-danger"
+                        title="Отклонить">
+                  <i class="bi bi-x-lg"></i>
+                </button>
+              </form>
+
             {% else %}
               <span class="text-muted small">—</span>
             {% endif %}
@@ -90,4 +126,49 @@
   </div>
   {% endif %}
 </div>
+
+{# ─── Модаль: внедрено в код ─── #}
+<div class="modal fade" id="implementModal" tabindex="-1" aria-labelledby="implementModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post" id="implementForm" action="">
+        <input type="hidden" name="status" value="implemented">
+        <div class="modal-header">
+          <h5 class="modal-title" id="implementModalLabel">
+            <i class="bi bi-check2-all me-1"></i>Внедрено в код
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <label class="form-label fw-semibold">
+            Ссылка на коммит <span class="text-danger">*</span>
+          </label>
+          <input type="url" name="commit_url" id="commitUrlInput"
+                 class="form-control" required
+                 placeholder="https://github.com/WHO-AM-I-52/KITEZH/commit/abc1234">
+          <div class="form-text text-muted">
+            Вставьте ссылку на конкретный commit в GitHub,
+            в котором реализована данная идея.
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+          <button type="submit" class="btn btn-success">
+            <i class="bi bi-check2-all"></i> Подтвердить
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+function openImplementModal(suggestionId) {
+  const form = document.getElementById('implementForm');
+  form.action = '/suggestions/' + suggestionId + '/set-status';
+  document.getElementById('commitUrlInput').value = '';
+  const modal = new bootstrap.Modal(document.getElementById('implementModal'));
+  modal.show();
+}
+</script>
 {% endblock %}
