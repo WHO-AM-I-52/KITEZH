@@ -310,6 +310,27 @@
     font-style: italic;
     margin-top: 1px;
   }
+
+  /* ── Панель синхронизации CHANGELOG ─────────────────────── */
+  #syncPanel { transition: border-color .3s; }
+  #syncPanel.sync-ok    { border-left-color: #198754 !important; }
+  #syncPanel.sync-error { border-left-color: #dc3545 !important; }
+  #syncPanel.sync-busy  { border-left-color: #ffc107 !important; }
+
+  #syncOutputPre {
+    font-size: 11px;
+    background: #f8f9fa;
+    max-height: 160px;
+    overflow-y: auto;
+    border-radius: 6px;
+    padding: 8px 10px;
+    color: #495057;
+    white-space: pre-wrap;
+    word-break: break-all;
+    margin-top: 8px;
+  }
+  body[data-theme="dark"] #syncOutputPre { background:#1e2235; color:#e2e8f0; }
+  body[data-theme="zone"] #syncOutputPre { background:#161712; color:#c8c4a8; }
 </style>
 
 {# -- Модалка выбора задержки -- #}
@@ -371,8 +392,7 @@
            style="color:#229ED9;text-decoration:none;font-weight:600">
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
                fill="#229ED9" style="vertical-align:middle;margin-bottom:2px">
-            <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L8.32 13.617l-2.96-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.828.942z"/>
-          </svg> whoami52
+            <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L8.32 13.617l-2.96-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.828.942z"/></svg> whoami52
         </a>
       </div>
       <div class="mt-1">
@@ -504,6 +524,29 @@
 
   <div id="updateLogWrap" class="mt-2 d-none">
     <pre id="updateLogPre"></pre>
+  </div>
+</div>
+
+{# -- Панель синхронизации CHANGELOG (only admin) -- #}
+<div id="syncPanel" class="card mb-4 p-3" style="border-left:4px solid #adb5bd">
+  <div class="d-flex align-items-center justify-content-between gap-3 flex-wrap">
+    <div style="min-width:0;flex:1">
+      <div class="fw-bold" style="font-size:14px">
+        <i class="bi bi-journal-arrow-down me-1" style="color:#1B5E7B"></i>
+        Синхронизация журнала версий
+      </div>
+      <div id="syncStatus" class="text-muted mt-1" style="font-size:12px">
+        Запускает <code>sync_changelog.py</code> — обновляет
+        <code>changelog.py</code> из GitHub-релизов и
+        <code>services/roadmap.py</code> из <code>ROADMAP.md</code>.
+      </div>
+      <pre id="syncOutputPre" class="d-none"></pre>
+    </div>
+    <div class="flex-shrink-0">
+      <button id="btnSyncChangelog" class="btn btn-sm btn-outline-primary" onclick="syncChangelog()">
+        <i class="bi bi-arrow-repeat me-1"></i> Синхронизировать
+      </button>
+    </div>
   </div>
 </div>
 
@@ -773,6 +816,12 @@
   var _sseCntSkipped   = document.getElementById('sseCntSkipped');
   var _sseCntErrors    = document.getElementById('sseCntErrors');
   var _sseCntErrorsWrap = document.getElementById('sseCntErrorsWrap');
+
+  // sync-элементы
+  var _syncPanel     = document.getElementById('syncPanel');
+  var _syncStatus    = document.getElementById('syncStatus');
+  var _syncOutputPre = document.getElementById('syncOutputPre');
+  var _btnSync       = document.getElementById('btnSyncChangelog');
 
   var _sseSource = null;  // активный EventSource
 
@@ -1255,6 +1304,62 @@
         _updSetStatus('<i class="bi bi-wifi-off me-1 text-danger"></i>Нет связи с сервером', 'error');
       })
       .finally(function() { _btnCheck.disabled = false; });
+  }
+
+  // ── Синхронизация CHANGELOG ───────────────────────────────────────────────
+
+  function syncChangelog() {
+    _btnSync.disabled = true;
+    _btnSync.innerHTML = '<span class="spin"><i class="bi bi-arrow-repeat"></i></span> Синхронизируем…';
+
+    _syncPanel.className = _syncPanel.className
+      .replace(/\b(sync-ok|sync-error|sync-busy)\b/g, '').trim();
+    _syncPanel.classList.add('sync-busy');
+
+    _syncStatus.innerHTML =
+      '<span class="spin"><i class="bi bi-arrow-repeat"></i></span> ' +
+      'Запускаем <code>sync_changelog.py</code>…';
+    _syncOutputPre.classList.add('d-none');
+    _syncOutputPre.textContent = '';
+
+    fetch('/api/changelog/sync', {
+      method: 'POST',
+      credentials: 'same-origin'
+    })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        _syncPanel.className = _syncPanel.className
+          .replace(/\b(sync-ok|sync-error|sync-busy)\b/g, '').trim();
+
+        if (d.ok) {
+          _syncPanel.classList.add('sync-ok');
+          _syncStatus.innerHTML =
+            '<i class="bi bi-check-circle-fill me-1 text-success"></i>' +
+            '<strong class="text-success">Синхронизация выполнена успешно.</strong> ' +
+            'Перезагрузите страницу, чтобы увидеть обновлённый changelog.';
+        } else {
+          _syncPanel.classList.add('sync-error');
+          _syncStatus.innerHTML =
+            '<i class="bi bi-x-circle-fill me-1 text-danger"></i>' +
+            '<strong class="text-danger">Ошибка синхронизации.</strong>';
+        }
+
+        if (d.output) {
+          _syncOutputPre.textContent = d.output;
+          _syncOutputPre.classList.remove('d-none');
+        }
+      })
+      .catch(function(err) {
+        _syncPanel.className = _syncPanel.className
+          .replace(/\b(sync-ok|sync-error|sync-busy)\b/g, '').trim();
+        _syncPanel.classList.add('sync-error');
+        _syncStatus.innerHTML =
+          '<i class="bi bi-wifi-off me-1 text-danger"></i>Нет связи с сервером';
+      })
+      .finally(function() {
+        _btnSync.disabled = false;
+        _btnSync.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i> Синхронизировать';
+      });
   }
 
   // ── Технические работы ────────────────────────────────────────────────────
