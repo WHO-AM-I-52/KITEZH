@@ -36,10 +36,11 @@
               {{ f.strip()[:12] }}{% if f.strip()|length > 12 %}…{% endif %}
             </span>
           </a>
-          <label class="mt-1 d-flex align-items-center gap-1"
+          <label class="mt-1 d-flex align-items-center gap-1 file-delete-toggle"
                  style="font-size:0.68rem;cursor:pointer;color:#dc3545"
-                 title="Удалить файл">
-            <input type="checkbox" name="files_to_delete" value="{{ f.strip() }}">
+                 title="Отметить к удалению при сохранении">
+            <input type="checkbox" name="files_to_delete" value="{{ f.strip() }}"
+                onchange="toggleDeleteMark(this)">
             <i class="bi bi-trash3"></i>
           </label>
         </div>
