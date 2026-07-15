@@ -583,9 +583,11 @@
       <a href="{{ url_for('tasks.my_tasks') }}" class="sb-link {{ 'active' if request.endpoint == 'tasks.my_tasks' }}">
         <i class="bi bi-check2-square"></i><span class="sb-lbl">Мои задачи</span>
       </a>
+      {% if session.get('role') in ('manager', 'admin') %}
       <a href="{{ url_for('tasks.assigned_by_me') }}" class="sb-link {{ 'active' if request.endpoint == 'tasks.assigned_by_me' }}">
         <i class="bi bi-send"></i><span class="sb-lbl">Я поставил</span>
       </a>
+      {% endif %}
     </div>
 
     {# ────────────────────────────── АДМИНИСТРАТОР ───────────────────────────────── #}
@@ -598,9 +600,6 @@
     <div class="sb-section" data-sec="admin">
       <a href="{{ url_for('admin.admin_index') }}" class="sb-link {{ 'active' if request.path=='/admin' }}">
         <i class="bi bi-shield-lock"></i><span class="sb-lbl">Панель админа</span>
-      </a>
-      <a href="/admin/classifiers" class="sb-link {{ 'active' if 'classifiers' in request.path }}">
-        <i class="bi bi-tags"></i><span class="sb-lbl">Справочники</span>
       </a>
       <a href="/admin/users" class="sb-link {{ 'active' if 'users' in request.path }}">
         <i class="bi bi-people"></i><span class="sb-lbl">Пользователи</span>
