@@ -37,6 +37,9 @@
 # ║  v2.3.1: /api/update/public-log — публичный лог прогресса   ║
 # ║  v2.3.2: FIX _shutdown удаляет .maintenance перед os._exit  ║
 # ║           — иначе ТО не снималось после рестарта сервера     ║
+# ║  v2.3.3: /api/changelog/sync — запуск sync_changelog.py     ║
+# ║           (только admin); обновляет changelog.py и           ║
+# ║           services/roadmap.py из GitHub-релизов/ROADMAP.md   ║
 # ╚═══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, jsonify, request as flask_request, session, Response, stream_with_context
@@ -58,6 +61,7 @@ _FLAG_FILE        = os.path.join(BASE_DIR, '_update_available.json')
 _LOCK_FILE        = os.path.join(BASE_DIR, '_updating.lock')
 _RESTART_FLAG     = os.path.join(BASE_DIR, '_restart.flag')
 _UPDATER          = os.path.join(BASE_DIR, 'updater', '_updater.py')
+_SYNC_CHANGELOG   = os.path.join(BASE_DIR, 'updater', 'sync_changelog.py')
 _COMMIT_FILE      = os.path.join(BASE_DIR, '_last_commit.txt')
 _PRE_UPDATE_FILE  = os.path.join(BASE_DIR, '_pre_update.json')
 _UPDATE_RESULT_FILE = os.path.join(BASE_DIR, '_update_result.json')
@@ -951,3 +955,55 @@ def api_update_public_log():
         return jsonify({'ok': True, 'entries': entries})
     except Exception:
         return jsonify({'ok': False, 'entries': []})
+
+
+# ─── Синхронизация журнала версий из GitHub ──────────────────────────────────
+
+@update_bp.route('/api/changelog/sync', methods=['POST'])
+def api_changelog_sync():
+    """Запускает updater/sync_changelog.py.
+
+    Обновляет changelog.py (из GitHub-релизов репозитория SONAR)
+    и services/roadmap.py (из ROADMAP.md). Доступно только администратору.
+    Возвращает JSON: {ok, output, error}.
+    """
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'forbidden'}), 403
+
+    if not os.path.exists(_SYNC_CHANGELOG):
+        return jsonify({
+            'ok':    False,
+            'error': 'sync_changelog.py не найден',
+            'output': '',
+        }), 500
+
+    try:
+        result = subprocess.run(
+            [sys.executable, _SYNC_CHANGELOG],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            cwd=BASE_DIR,
+        )
+        ok     = result.returncode == 0
+        output = (result.stdout + result.stderr).strip()[-2000:]
+
+        try:
+            conn = get_db()
+            log_action(
+                conn,
+                session['user_id'],
+                'changelog_sync',
+                detail=f'sync_changelog.py: rc={result.returncode}',
+            )
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
+
+        return jsonify({'ok': ok, 'output': output, 'error': '' if ok else output})
+
+    except subprocess.TimeoutExpired:
+        return jsonify({'ok': False, 'output': '', 'error': 'Таймаут (30 сек)'}), 200
+    except Exception as e:
+        return jsonify({'ok': False, 'output': '', 'error': str(e)}), 200
