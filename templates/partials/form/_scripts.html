@@ -85,6 +85,41 @@ function previewFiles(input) {
   });
 }
 
+function toggleDeleteMark(cb) {
+  const card = cb.closest('.position-relative');
+  if (!card) return;
+
+  const fileLink = card.querySelector('a');
+  const label = cb.closest('label');
+  const icon = label ? label.querySelector('i') : null;
+
+  if (cb.checked) {
+    if (fileLink) {
+      fileLink.style.opacity = '0.45';
+      fileLink.style.textDecoration = 'line-through';
+      fileLink.style.borderColor = '#dc3545';
+    }
+    if (icon) {
+      icon.className = 'bi bi-trash3-fill text-danger';
+    }
+    if (label) {
+      label.title = 'Файл будет удалён после сохранения формы';
+    }
+  } else {
+    if (fileLink) {
+      fileLink.style.opacity = '';
+      fileLink.style.textDecoration = '';
+      fileLink.style.borderColor = '';
+    }
+    if (icon) {
+      icon.className = 'bi bi-trash3';
+    }
+    if (label) {
+      label.title = 'Отметить к удалению при сохранении';
+    }
+  }
+}
+  
 // ── Источник → поле № входящего / № письма СЭДО ───────────────────
 function toggleIncomingNumber() {
   const checked = Array.from(document.querySelectorAll('input[name="source_type"]:checked'));
