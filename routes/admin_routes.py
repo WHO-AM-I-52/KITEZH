@@ -34,10 +34,13 @@
 # ║         full|db|rules → ZIP-архив; log_action backup_download ║
 # ║  v4.8: ocr_status — GET /admin/ocr-status (перенос из ai)     ║
 # ║  v4.9: refactor — шаблон перенесён в templates/admin/         ║
+# ║  v5.0: fix backup_download — tmp-файл вместо BytesIO          ║
+# ║         (при type=full uploads/ мог переполнить ОЗУ)          ║
 # ╚══════════════════════════════════════════════════════════════╝
 
-import io
+import atexit
 import os
+import tempfile
 import zipfile
 from datetime import datetime
 
@@ -315,6 +318,12 @@ def api_console_hide():
 @login_required
 @admin_required
 def backup_download():
+    """Формирует ZIP-архив и отдаёт его как файл для скачивания.
+
+    Изменение v5.0: вместо io.BytesIO() используется tempfile.NamedTemporaryFile
+    на диске — это предотвращает переполнение ОЗУ при больших uploads/ (type=full).
+    Временный файл регистрируется в atexit для гарантированной очистки.
+    """
     backup_type = request.args.get('type', 'full')
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -334,20 +343,36 @@ def backup_download():
         zip_name     = f'kitezh_full_{date_str}.zip'
         files_to_zip = [(db_path, 'database.db'), (rules_path, 'site_field_rules.json')]
 
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
-        for abs_path, arc_name in files_to_zip:
-            if os.path.exists(abs_path):
-                zf.write(abs_path, arc_name)
+    # Пишем в tmp-файл на диске, а не в BytesIO в ОЗУ
+    tmp = tempfile.NamedTemporaryFile(
+        delete=False, suffix='.zip',
+        prefix='kitezh_backup_',
+        dir=tempfile.gettempdir(),
+    )
+    tmp_path = tmp.name
+    tmp.close()
 
-        if backup_type == 'full' and os.path.isdir(uploads_dir):
-            for root, _, fnames in os.walk(uploads_dir):
-                for fname in fnames:
-                    full = os.path.join(root, fname)
-                    arc  = os.path.relpath(full, base_dir)
-                    zf.write(full, arc)
+    # Гарантируем удаление tmp-файла при завершении процесса (на случай исключения)
+    atexit.register(lambda p=tmp_path: os.path.exists(p) and os.remove(p))
 
-    buf.seek(0)
+    try:
+        with zipfile.ZipFile(tmp_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for abs_path, arc_name in files_to_zip:
+                if os.path.exists(abs_path):
+                    zf.write(abs_path, arc_name)
+
+            if backup_type == 'full' and os.path.isdir(uploads_dir):
+                for root, _, fnames in os.walk(uploads_dir):
+                    for fname in fnames:
+                        full = os.path.join(root, fname)
+                        arc  = os.path.relpath(full, base_dir)
+                        zf.write(full, arc)
+    except Exception:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+        raise
 
     conn = get_db()
     try:
@@ -357,10 +382,11 @@ def backup_download():
         conn.close()
 
     return send_file(
-        buf,
+        tmp_path,
         mimetype='application/zip',
         as_attachment=True,
         download_name=zip_name,
+        max_age=0,
     )
 
 
