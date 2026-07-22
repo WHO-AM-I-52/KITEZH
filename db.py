@@ -1,12 +1,12 @@
-# ╔═══════════════════════════════════════════════
+# ╔═══════════════════════════════════════════════════════════════
 # ║                         db.py                               ║
 # ║  Подключение к базе данных и пути к папкам приложения       ║
-# ╚═══════════════════════════════════════════════
+# ╚═══════════════════════════════════════════════════════════════
 
 import sqlite3
 from datetime import date, timedelta
 
-# ─── ПУТИ ────────────────────────────────────────────────────────────────────────────────────
+# ─── ПУТИ ──────────────────────────────────────────────────────
 # Единый источник правды для всех runtime-путей — paths.py (корень проекта).
 # Здесь они реэкспортируются для обратной совместимости: часть кода импортирует
 # BASE_DIR / REPORTS_DIR / DB_PATH / UPLOADS_DIR именно из db.
@@ -23,7 +23,7 @@ ALLOWED_EXT = {'pdf', 'ppt', 'pptx', 'doc', 'docx', 'xlsx', 'zip'}
 # Каталоги гарантированно создаются в paths.py при импорте.
 
 
-# ─── НОРМАТИВЫ ПО ЭТАПАМ (рабочих дней) ──────────────────────────────────────
+# ─── НОРМАТИВЫ ПО ЭТАПАМ (рабочих дней) ───────────────────────
 # draft → registered
 NORM_TO_REGISTERED       = 1
 # registered → in_progress
@@ -53,7 +53,7 @@ NORM_TOTAL_DAYS = (
     + NORM_TO_READY_TO_SEND + NORM_TO_SENT
 )  # = 10 рабочих дней до отправки заявителю
 
-# ─── МАППИНГ ────────────────────────────────────────────────────────────────────────────────────
+# ─── МАППИНГ ───────────────────────────────────────────────────
 
 _PREFIX_BY_NAME = {
     'подбор з/у':                                   'ПЗУ',
@@ -455,6 +455,7 @@ def _migrate(conn):
         'responsible_name_external', 'reviewer_name_external',
         'reviewer_comment', 'reviewer_decision',
         'send_method', 'applicant_feedback',
+        'appeal_text',  # feat #95
     ]
     set_parts = ', '.join(f"{col}=COALESCE({col}, '')" for col in _TEXT_FIELDS_TO_CLEAN)
     conn.execute(f"UPDATE requests SET {set_parts} WHERE 1=1")
@@ -657,10 +658,39 @@ def _migrate(conn):
         "ON request_coexecutors(user_id)"
     )
 
+    # ════════════════════════════════════════════════════════════════
+    # Этап 1 (#95) — форм-секции, конфиг предметов, текст обращения
+    # ════════════════════════════════════════════════════════════════
+
+    # Справочник секций формы
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS form_sections (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            key        TEXT    NOT NULL UNIQUE,
+            label      TEXT    NOT NULL,
+            sort_order INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_form_sections_sort ON form_sections(sort_order)"
+    )
+
+    # Конфигурация видимости секций для каждого предмета обращения
+    if not _has_column(conn, 'subject_types', 'sections_config'):
+        conn.execute(
+            "ALTER TABLE subject_types ADD COLUMN sections_config TEXT"
+        )
+
+    # Текст обращения (свободное поле)
+    if not _has_column(conn, 'requests', 'appeal_text'):
+        conn.execute(
+            "ALTER TABLE requests ADD COLUMN appeal_text TEXT"
+        )
+
     conn.commit()
 
 
-# ─── ПОДКЛЮЧЕНИЕ К БД ────────────────────────────────────────────────────────────────────────────────────
+# ─── ПОДКЛЮЧЕНИЕ К БД ──────────────────────────────────────────
 
 def get_db():
     global _migrated
