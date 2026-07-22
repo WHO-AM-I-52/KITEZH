@@ -3,9 +3,12 @@
 # ║ Инициализация и миграция БД (вынесено из app.py)             ║
 # ║ +can_view_phonebook, can_view_investmap,                     ║
 # ║  can_export_full, can_import_full, can_investmap_rules       ║
+# ║ feat #95 — form_sections, subjects.sections_config,         ║
+# ║            requests.appeal_text                              ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 import sqlite3
+import json
 
 from db import DB_PATH
 from core.auth_utils import hash_pw
@@ -426,6 +429,95 @@ CREATE TABLE IF NOT EXISTS investmap_rules (
         )
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# feat #95 — Умный справочник предметов обращения
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Матрица видимости секций по умолчанию для 7 стандартных предметов.
+# Ключи совпадают с data-section-key в шаблонах формы.
+_SUBJECT_SECTIONS_DEFAULT = {
+    # prefix → {"show": [...], "require": [...]}
+    "ПЗУ":  {"show": ["project", "location", "site", "engineering", "transport", "investments"], "require": []},
+    "ПМП":  {"show": ["project", "investments"], "require": []},
+    "ПЗ":   {"show": ["project", "location", "building", "investments"], "require": []},
+    "К":    {"show": ["appeal_text"], "require": ["appeal_text"]},
+    "ПВ":   {"show": ["location", "appeal_text"], "require": []},
+    "ПРС":  {"show": ["location", "site", "appeal_text"], "require": []},
+}
+
+# Начальное наполнение системной таблицы form_sections
+_FORM_SECTIONS_SEED = [
+    ("project",      "Проект",                       "Название, ОКВЭД проекта",                     1),
+    ("location",     "Локация",                      "Район НО, адрес",                             2),
+    ("site",         "Участок / Площадка",           "Кадастровый номер, площадь з/у",              3),
+    ("building",     "Здание / Помещение",           "Площадь, тип помещения",                      4),
+    ("engineering",  "Инженерная инфраструктура",    "Электричество, газ, вода, теплоснабжение",    5),
+    ("transport",    "Транспортная доступность",     "Дороги, ж/д, аэропорт",                       6),
+    ("investments",  "Инвестиции",                   "Объём инвестиций, рабочие места",             7),
+    ("appeal_text",  "Суть обращения",               "Текстовое описание проблемы или вопроса",     8),
+]
+
+
+def _migrate_form_sections(conn):
+    """feat #95 — системная таблица form_sections и расширение subject_types/requests."""
+
+    # 1. Создать таблицу form_sections
+    conn.executescript("""
+CREATE TABLE IF NOT EXISTS form_sections (
+    key         TEXT PRIMARY KEY,
+    label       TEXT NOT NULL,
+    description TEXT,
+    sort_order  INTEGER DEFAULT 0
+);
+""")
+
+    # 2. Наполнить form_sections начальными значениями (только если пусто)
+    if not conn.execute("SELECT key FROM form_sections LIMIT 1").fetchone():
+        conn.executemany(
+            "INSERT OR IGNORE INTO form_sections (key, label, description, sort_order) VALUES (?,?,?,?)",
+            _FORM_SECTIONS_SEED
+        )
+
+    # 3. Добавить sections_config в subject_types
+    st_cols = {r[1] for r in conn.execute("PRAGMA table_info(subject_types)").fetchall()}
+    if 'sections_config' not in st_cols:
+        conn.execute("ALTER TABLE subject_types ADD COLUMN sections_config TEXT DEFAULT '{}'")
+
+    # 4. Добавить appeal_text в requests
+    req_cols = {r[1] for r in conn.execute("PRAGMA table_info(requests)").fetchall()}
+    if 'appeal_text' not in req_cols:
+        conn.execute("ALTER TABLE requests ADD COLUMN appeal_text TEXT")
+
+    # 5. Проставить sections_config для существующих предметов у которых он ещё пустой/NULL
+    #    Матрица: сопоставляем по reg_prefix (или по вхождению префикса в name).
+    rows = conn.execute("SELECT id, name, reg_prefix, sections_config FROM subject_types").fetchall()
+    for row in rows:
+        sid, name, prefix, cfg_raw = row[0], row[1], row[2], row[3]
+        # Пропускаем, если уже настроен (не NULL и не пустой объект)
+        try:
+            existing = json.loads(cfg_raw) if cfg_raw else {}
+            if existing.get("show"):
+                continue
+        except Exception:
+            pass
+
+        # Ищем подходящую матрицу: сначала по reg_prefix, потом по вхождению в name
+        matched_cfg = None
+        if prefix and prefix in _SUBJECT_SECTIONS_DEFAULT:
+            matched_cfg = _SUBJECT_SECTIONS_DEFAULT[prefix]
+        else:
+            for key in _SUBJECT_SECTIONS_DEFAULT:
+                if key in (name or ""):
+                    matched_cfg = _SUBJECT_SECTIONS_DEFAULT[key]
+                    break
+
+        if matched_cfg:
+            conn.execute(
+                "UPDATE subject_types SET sections_config=? WHERE id=?",
+                (json.dumps(matched_cfg, ensure_ascii=False), sid)
+            )
+
+
 def init_db():
     conn = sqlite3.connect(DB_PATH, timeout=15)
     conn.row_factory = sqlite3.Row
@@ -551,7 +643,8 @@ CREATE TABLE IF NOT EXISTS requests (
     sent_to_applicant_at TEXT,
     send_method TEXT,
     applicant_feedback TEXT,
-    applicant_feedback_at TEXT
+    applicant_feedback_at TEXT,
+    appeal_text TEXT
 );
 CREATE TABLE IF NOT EXISTS okved (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -572,6 +665,7 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         _migrate_task_comments_table(conn)
         _migrate_suggestions_table(conn)
         _migrate_phonebook_orgs_inn(conn)     # ← fix #sync-fix-3
+        _migrate_form_sections(conn)          # ← feat #95
 
         cols = {r[1] for r in conn.execute("PRAGMA table_info(requests)").fetchall()}
         for col in ['source_type', 'request_files', 'edit_reason', 'updated_by']:
@@ -636,6 +730,7 @@ def migrate_db():
         _migrate_task_comments_table(conn)
         _migrate_suggestions_table(conn)
         _migrate_phonebook_orgs_inn(conn)     # ← fix #sync-fix-3
+        _migrate_form_sections(conn)          # ← feat #95
 
         cols = {r[1] for r in conn.execute("PRAGMA table_info(requests)").fetchall()}
         for col in ['request_files', 'source_type', 'edit_reason', 'updated_by']:
