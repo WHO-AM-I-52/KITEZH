@@ -12,11 +12,11 @@ from flask import Blueprint, jsonify, request as flask_request, session
 from db import get_db, BASE_DIR
 from core.activity_log import log_action
 from routes.update_helpers import (
-    _FLAG_FILE, _LOCK_FILE, _PRE_UPDATE_FILE, _UPDATER,
-    _MIN_DELAY, _MAX_DELAY,
-    _read_local_sha, _clear_pre_update,
-    _lock_write, _lock_is_stale,
-    _build_timer_worker,
+    FLAG_FILE, LOCK_FILE, PRE_UPDATE_FILE, UPDATER,
+    MIN_DELAY, MAX_DELAY,
+    read_local_sha, clear_pre_update,
+    lock_write, lock_is_stale,
+    build_timer_worker,
 )
 from datetime import datetime
 import os
@@ -36,26 +36,26 @@ def api_update_check():
     if session.get('role') != 'admin':
         return jsonify({'error': 'forbidden'}), 403
 
-    if not os.path.exists(_UPDATER):
+    if not os.path.exists(UPDATER):
         return jsonify({'status': 2, 'error': '_updater.py not found',
-                        'has_update': False, 'local_sha': _read_local_sha()}), 200
+                        'has_update': False, 'local_sha': read_local_sha()}), 200
 
     force = flask_request.args.get('force') == '1'
-    if force and os.path.exists(_FLAG_FILE):
+    if force and os.path.exists(FLAG_FILE):
         try:
-            os.remove(_FLAG_FILE)
+            os.remove(FLAG_FILE)
         except Exception:
             pass
 
-    if not force and os.path.exists(_FLAG_FILE):
+    if not force and os.path.exists(FLAG_FILE):
         try:
-            with open(_FLAG_FILE, 'r', encoding='utf-8') as f:
+            with open(FLAG_FILE, 'r', encoding='utf-8') as f:
                 cached = json.load(f)
             code = int(cached.get('code', 2))
             return jsonify({
                 'status':     code,
                 'has_update': code == 1,
-                'local_sha':  _read_local_sha(),
+                'local_sha':  read_local_sha(),
                 'output':     cached.get('output', '')[-800:],
                 'cached':     True,
                 'checked_at': cached.get('checked_at'),
@@ -65,7 +65,7 @@ def api_update_check():
 
     try:
         result = subprocess.run(
-            [sys.executable, _UPDATER, '--check'],
+            [sys.executable, UPDATER, '--check'],
             capture_output=True, text=True, timeout=25
         )
         code = result.returncode
@@ -75,7 +75,7 @@ def api_update_check():
             'output':     result.stdout[-4000:],
         }
         try:
-            with open(_FLAG_FILE, 'w', encoding='utf-8') as f:
+            with open(FLAG_FILE, 'w', encoding='utf-8') as f:
                 json.dump(payload, f, ensure_ascii=False)
         except Exception:
             pass
@@ -83,17 +83,17 @@ def api_update_check():
         return jsonify({
             'status':     code,
             'has_update': code == 1,
-            'local_sha':  _read_local_sha(),
+            'local_sha':  read_local_sha(),
             'output':     result.stdout[-800:],
             'cached':     False,
             'checked_at': payload['checked_at'],
         })
     except subprocess.TimeoutExpired:
         return jsonify({'status': 2, 'error': 'timeout',
-                        'has_update': False, 'local_sha': _read_local_sha()}), 200
+                        'has_update': False, 'local_sha': read_local_sha()}), 200
     except Exception as e:
         return jsonify({'status': 2, 'error': str(e),
-                        'has_update': False, 'local_sha': _read_local_sha()}), 200
+                        'has_update': False, 'local_sha': read_local_sha()}), 200
 
 
 # ─── Запланированное обновление ──────────────────────────────────────────────
@@ -103,22 +103,22 @@ def api_update_schedule():
     if session.get('role') != 'admin':
         return jsonify({'error': 'forbidden'}), 403
 
-    if os.path.exists(_LOCK_FILE):
-        if not _lock_is_stale():
+    if os.path.exists(LOCK_FILE):
+        if not lock_is_stale():
             return jsonify({'error': 'already_in_progress',
                             'message': 'Обновление уже выполняется'}), 409
 
-    if not os.path.exists(_UPDATER):
+    if not os.path.exists(UPDATER):
         return jsonify({'error': '_updater.py not found'}), 500
 
-    if os.path.exists(_PRE_UPDATE_FILE):
+    if os.path.exists(PRE_UPDATE_FILE):
         return jsonify({'error': 'already_scheduled',
                         'message': 'Обновление уже запланировано'}), 409
 
     body  = flask_request.get_json(silent=True) or {}
     delay = int(body.get('delay', 120))
     force = bool(body.get('force', False))
-    delay = max(0, min(_MAX_DELAY, delay))
+    delay = max(0, min(MAX_DELAY, delay))
 
     scheduled_at        = datetime.now().isoformat()
     fire_at_ts_estimate = time.time() + delay
@@ -133,12 +133,12 @@ def api_update_schedule():
         'download_error': None,
     }
     try:
-        with open(_PRE_UPDATE_FILE, 'w', encoding='utf-8') as f:
+        with open(PRE_UPDATE_FILE, 'w', encoding='utf-8') as f:
             json.dump(payload, f, ensure_ascii=False)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-    _lock_write('downloading')
+    lock_write('downloading')
 
     conn = get_db()
     log_action(conn, session['user_id'], 'update_scheduled',
@@ -146,7 +146,7 @@ def api_update_schedule():
     conn.commit()
     conn.close()
 
-    worker = _build_timer_worker(
+    worker = build_timer_worker(
         delay=delay,
         force=force,
         user_id=session['user_id'],
@@ -165,15 +165,15 @@ def api_update_schedule():
 # ─── Обратная совместимость: /apply и /apply-force ───────────────────────────
 
 def _schedule_internal(delay: int, force: bool):
-    if os.path.exists(_LOCK_FILE):
-        if not _lock_is_stale():
+    if os.path.exists(LOCK_FILE):
+        if not lock_is_stale():
             return jsonify({'error': 'already_in_progress',
                             'message': 'Обновление уже выполняется'}), 409
 
-    if not os.path.exists(_UPDATER):
+    if not os.path.exists(UPDATER):
         return jsonify({'error': '_updater.py not found'}), 500
 
-    if os.path.exists(_PRE_UPDATE_FILE):
+    if os.path.exists(PRE_UPDATE_FILE):
         return jsonify({'error': 'already_scheduled',
                         'message': 'Обновление уже запланировано'}), 409
 
@@ -189,12 +189,12 @@ def _schedule_internal(delay: int, force: bool):
         'download_error': None,
     }
     try:
-        with open(_PRE_UPDATE_FILE, 'w', encoding='utf-8') as f:
+        with open(PRE_UPDATE_FILE, 'w', encoding='utf-8') as f:
             json.dump(payload, f, ensure_ascii=False)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-    _lock_write('downloading')
+    lock_write('downloading')
 
     conn = get_db()
     log_action(conn, session['user_id'], 'update_apply',
@@ -202,7 +202,7 @@ def _schedule_internal(delay: int, force: bool):
     conn.commit()
     conn.close()
 
-    worker = _build_timer_worker(
+    worker = build_timer_worker(
         delay=delay,
         force=force,
         user_id=session['user_id'],
@@ -234,12 +234,12 @@ def api_update_schedule_cancel():
     if session.get('role') != 'admin':
         return jsonify({'error': 'forbidden'}), 403
 
-    if not os.path.exists(_PRE_UPDATE_FILE):
+    if not os.path.exists(PRE_UPDATE_FILE):
         return jsonify({'error': 'not_scheduled',
                         'message': 'Нет активного расписания'}), 404
 
     try:
-        with open(_PRE_UPDATE_FILE, 'r', encoding='utf-8') as f:
+        with open(PRE_UPDATE_FILE, 'r', encoding='utf-8') as f:
             pre = json.load(f)
         if pre.get('phase') in ('applying',):
             return jsonify({'error': 'too_late',
@@ -247,7 +247,7 @@ def api_update_schedule_cancel():
     except Exception:
         pass
 
-    _clear_pre_update()
+    clear_pre_update()
 
     conn = get_db()
     log_action(conn, session['user_id'], 'update_schedule_cancelled',
