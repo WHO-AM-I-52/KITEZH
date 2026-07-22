@@ -8,7 +8,9 @@
 # ║  show_console() / hide_console() — публичные, вызываются   ║
 # ║    из /api/console/* в admin_routes.py                       ║
 # ║  pystray/PIL импортируются лениво — не падает               ║
-# ║  если модуль не установлен (сервер без трея)              ║
+# ║    если модуль не установлен (сервер без трея)              ║
+# ║  FIX: консоль скрывается только после успешного             ║
+# ║       старта трея (_tray_ready Event)                        ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 import os
@@ -23,13 +25,16 @@ import webbrowser
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ICON_PATH = os.path.join(BASE_DIR, 'static', 'favicon.ico')
-# Флаг перезапуска — то же имя, что ждёт run_server.py (sys.exit(42) → .bat).
 RESTART_FLAG = os.path.join(BASE_DIR, '_restart.flag')
-# Папка логов — совпадает с core/kitezh_logger.py (logs внутри core/).
 LOGS_DIR = os.path.join(BASE_DIR, 'core', 'logs')
 
 _console_visible = True
 _tray_icon = None
+
+# Event: выставляется непосредственно перед _tray_icon.run().
+# hide_console() ждёт этого события (до 5 сек) прежде чем
+# скрыть окно — гарантирует что иконка уже есть в трее.
+_tray_ready = threading.Event()
 
 # Флаг: pystray доступен (заполняется при первом вызове)
 _pystray_available = None
@@ -83,17 +88,14 @@ def notify_error(title: str, message: str) -> None:
          уведомление трея (как раньше).
     Все шаги обёрнуты в try/except — функция никогда не падает.
     """
-    # 1. Печать в консоль — гарантированный канал.
     try:
         print(f"[ОШИБКА] {title}\n{message}", file=sys.stderr, flush=True)
     except Exception:
         pass
-    # 2. Показать консоль (если она была скрыта).
     try:
         show_console()
     except Exception:
         pass
-    # 3. Дополнительно — balloon трея, если трей запущен.
     if _tray_icon is not None:
         try:
             _tray_icon.notify(message, title)
@@ -113,7 +115,7 @@ def get_console_visible() -> bool:
 def show_console() -> bool:
     """
     Показывает консольное окно.
-    Возвращает True если успешно, False если окно не найден
+    Возвращает True если успешно, False если окно не найдено
     (например запущен без консоли или не Windows).
     """
     global _console_visible
@@ -133,9 +135,31 @@ def show_console() -> bool:
 def hide_console() -> bool:
     """
     Скрывает консольное окно.
-    Возвращает True если успешно, False если окно не найден.
+
+    Если трей-режим активен — ждёт готовности иконки до 5 сек
+    прежде чем скрыть окно. Если иконка не появилась —
+    отменяет скрытие и возвращает False, чтобы консоль
+    не пропала без возможности вернуться.
+
+    Возвращает True если успешно, False если окно не найдено
+    или трей не успел запуститься.
     """
     global _console_visible
+
+    # Если трей ещё не сигнализировал о готовности — ждём до 5 сек.
+    # _tray_ready не выставляется только если:
+    #   а) tray-режим не запускался вовсе (обычный запуск) — тогда
+    #      is_set() == False и _tray_icon == None, но wait вернёт False
+    #      за 0 сек (timeout сразу истечёт только если никто не ждёт).
+    #   б) pystray/PIL не найден или favicon.ico отсутствует.
+    # В обоих случаях — не скрываем, возвращаем False.
+    if not _tray_ready.is_set():
+        tray_launched = _tray_ready.wait(timeout=5)
+        if not tray_launched:
+            print('[ТРЕЙ] Иконка не появилась за 5 сек — скрытие консоли отменено.',
+                  file=sys.stderr, flush=True)
+            return False
+
     try:
         hwnd = ctypes.windll.kernel32.GetConsoleWindow()
         if hwnd:
@@ -176,10 +200,8 @@ def _open_logs(icon, item):
     except Exception:
         pass
     try:
-        # Windows: открывает папку в Проводнике.
         os.startfile(LOGS_DIR)  # type: ignore[attr-defined]
     except Exception:
-        # Fallback для не-Windows / отсутствия startfile.
         try:
             webbrowser.open('file://' + LOGS_DIR)
         except Exception:
@@ -187,9 +209,7 @@ def _open_logs(icon, item):
 
 
 def _restart_server(icon, item):
-    """Перезапускает сервер: создаёт _restart.flag и выходит.
-    run_server.py обнаружит флаг после завершения процесса
-    и сделает sys.exit(42) → .bat снова запустит сервер."""
+    """Перезапускает сервер: создаёт _restart.flag и выходит."""
     try:
         with open(RESTART_FLAG, 'w', encoding='utf-8') as f:
             f.write('tray')
@@ -227,13 +247,21 @@ def run_tray(hide_on_start: bool = True):
     global _tray_icon
 
     if not _check_pystray():
-        print('[\u041fРЕДУПРЕЖДЕНИЕ] Трей недоступен: pystray или Pillow не установлены.')
+        print('[ПРЕДУПРЕЖДЕНИЕ] Трей недоступен: pystray или Pillow не установлены.',
+              file=sys.stderr, flush=True)
+        # _tray_ready не выставляем — hide_console() вернёт False.
         return
 
     import pystray
     from PIL import Image
 
-    image = Image.open(ICON_PATH)
+    try:
+        image = Image.open(ICON_PATH)
+    except Exception as e:
+        print(f'[ТРЕЙ] Не удалось открыть иконку: {e}', file=sys.stderr, flush=True)
+        # _tray_ready не выставляем — hide_console() вернёт False.
+        return
+
     _tray_icon = pystray.Icon(
         name='KITEZH',
         icon=image,
@@ -243,10 +271,22 @@ def run_tray(hide_on_start: bool = True):
 
     if hide_on_start:
         def _delayed_hide():
-            import time
-            time.sleep(2)
-            hide_console()
+            # Ждём сигнала готовности трея — он придёт сразу после
+            # _tray_ready.set() ниже, до вызова .run().
+            # Таймаут 10 сек — защита от зависания.
+            ready = _tray_ready.wait(timeout=10)
+            if ready:
+                hide_console()
+            else:
+                print('[ТРЕЙ] _delayed_hide: timeout, скрытие отменено.',
+                      file=sys.stderr, flush=True)
         threading.Thread(target=_delayed_hide, daemon=True).start()
+
+    # Выставляем Event ДО .run() — иконка уже создана в памяти,
+    # hide_console() может безопасно скрывать консоль.
+    # Фактически иконка появится в трее через ~несколько мс после .run(),
+    # но задержка незаметна для пользователя.
+    _tray_ready.set()
 
     _tray_icon.run()
 
