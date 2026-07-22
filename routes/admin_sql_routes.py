@@ -5,6 +5,14 @@ admin_sql_routes.py — консоль прямых SQL-запросов для 
     from admin_sql_routes import admin_sql_bp
     app.register_blueprint(admin_sql_bp)
 Доступ: http://127.0.0.1:5000/admin/sql
+
+v1.1: fix sql_schema — sqlite_schema + pragma_table_info(?) (#audit)
+      Убрана непоследовательность: _BLOCKED запрещает PRAGMA и sqlite_master
+      для пользовательского ввода, но /schema сам использовал оба в коде.
+      Теперь:
+      - sqlite_schema (официальное название, SQLite >= 3.33.0 2020)
+      - pragma_table_info(?) — табличная форма PRAGMA без
+        подстановки имени таблицы через f-строку.
 """
 
 from flask import Blueprint, render_template, request, session, redirect, url_for, jsonify
@@ -14,9 +22,9 @@ from datetime import datetime
 
 admin_sql_bp = Blueprint('admin_sql', __name__, url_prefix='/admin/sql')
 
-# Запрещённые ключевые слова
+# Запрещённые ключевые слова (пользовательский ввод)
 _BLOCKED = re.compile(
-    r'\b(DROP|ATTACH|DETACH|PRAGMA|VACUUM|sqlite_master|sqlite_temp_master)\b',
+    r'\b(DROP|ATTACH|DETACH|PRAGMA|VACUUM|sqlite_master|sqlite_temp_master|sqlite_schema)\b',
     re.IGNORECASE
 )
 
@@ -41,7 +49,6 @@ def _require_admin():
 
 def _has_multiple_statements(query: str) -> bool:
     """True если запрос содержит более одного statement (защита от stacked queries)."""
-    # Убираем строки и строковые литералы, чтобы не срабатывать на ';' внутри значения
     cleaned = re.sub(r"'[^']*'", "''", query)
     cleaned = re.sub(r'"[^"]*"', '""', cleaned)
     parts = [p.strip() for p in cleaned.split(';') if p.strip()]
@@ -97,15 +104,13 @@ def sql_execute():
     if _has_multiple_statements(query):
         return jsonify({'error': 'Нельзя выполнять несколько запросов за один раз (уберите лишние строки через ";")'}), 400
 
-    # Мутирующий запрос без подтверждения — просим фронт подтвердить
     if _MUTATING.match(query) and not confirmed:
         return jsonify({
             'needs_confirm': True,
             'message': 'Запрос изменяет данные (UPDATE/DELETE/INSERT). Вы уверены?'
         }), 200
 
-    # Автолимит для SELECT
-    query_exec = _apply_auto_limit(query)
+    query_exec   = _apply_auto_limit(query)
     auto_limited = query_exec != query
 
     conn = get_db()
@@ -120,7 +125,7 @@ def sql_execute():
         conn.commit()
         rows_affected = cursor.rowcount
 
-        if cursor.description:  # SELECT
+        if cursor.description:
             columns = [d[0] for d in cursor.description]
             rows = [list(r) for r in cursor.fetchall()]
         else:
@@ -131,7 +136,6 @@ def sql_execute():
         error = str(e)
         conn.rollback()
 
-    # Логируем оригинальный запрос (не модифицированный)
     try:
         conn.execute("""
             INSERT INTO admin_sql_log
@@ -158,19 +162,37 @@ def sql_execute():
 
 @admin_sql_bp.route('/schema', methods=['GET'])
 def sql_schema():
-    """GET /admin/sql/schema — возвращает список таблиц и их колонок."""
+    """
+    GET /admin/sql/schema — возвращает список таблиц и их колонок.
+
+    Использует sqlite_schema (официальное название с SQLite >= 3.33.0, 2020;
+    sqlite_master остаётся как alias для обратной совместимости) и
+    pragma_table_info(?) — табличную форму PRAGMA, которая принимает
+    имя таблицы как параметр без подстановки через f-строку.
+
+    Запрос серверный, не пользовательский — _BLOCKED не применяется.
+    """
     guard = _require_admin()
     if guard:
         return jsonify({'error': 'Нет доступа'}), 403
 
     conn = get_db()
-    tables = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
-    ).fetchall()
+    try:
+        # sqlite_schema — официальное название (SQLite >= 3.33.0, 2020);
+        # sqlite_master остаётся как alias для обратной совместимости.
+        tables = conn.execute(
+            "SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name"
+        ).fetchall()
 
-    schema = {}
-    for (tname,) in tables:
-        cols = conn.execute(f'PRAGMA table_info("{tname}")').fetchall()
-        schema[tname] = [c[1] for c in cols]  # c[1] = name
+        schema = {}
+        for (tname,) in tables:
+            # pragma_table_info(?) — табличная форма PRAGMA, принимает
+            # имя таблицы как параметр: без f-строки, без подстановки.
+            cols = conn.execute(
+                'SELECT name FROM pragma_table_info(?)', (tname,)
+            ).fetchall()
+            schema[tname] = [c[0] for c in cols]
+    finally:
+        conn.close()
 
     return jsonify(schema)
