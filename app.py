@@ -1,4 +1,4 @@
-# ╔═══════════════════════════════════════════════════════════════╗
+# ╔═══════════════════════════════════════════════════════════════��
 # ║ app.py                                                        ║
 # ║ v3.0: quality_bp подключён                                   ║
 # ║      fix #64 — ai_bp подключён                          ║
@@ -16,9 +16,11 @@
 # ║      fix: _startup() чистит _pre_update.json при старте     ║
 # ║      feat: letters_bp — журнал исходящих писем             ║
 # ║      feat: tasks_bp — модуль «Задачи» (#9)                  ║
+# ║      fix: waitress WSGI-сервер (без dev-warning)            ║
 # ╚═══════════════════════════════════════════════════════════════╝
 
 import os
+import logging
 import traceback
 import warnings
 from datetime import timedelta, datetime, date
@@ -29,6 +31,12 @@ warnings.filterwarnings(
     category=UserWarning,
     module='openpyxl',
 )
+
+# ─── Подавить werkzeug dev-warning и polling-спам ─────────────────────────────
+# Фильтруем логи werkzeug до уровня ERROR (скрывает WARNING и access-лог).
+# В development-режиме (APP_DEBUG=1) уровень сбрасывается ниже в блоке __main__.
+_werkzeug_log = logging.getLogger('werkzeug')
+_werkzeug_log.setLevel(logging.ERROR)
 
 from flask import Flask, jsonify, render_template, request as flask_request, session
 
@@ -89,7 +97,7 @@ def todatetime_filter(value):
 # ─── CONTEXT PROCESSOR ─────────────────────────────────────────────────────────────────────────────
 app.context_processor(inject_globals)
 
-# ─── MAINTENANCE MODE ────────────────────────────────────────────────────────────────────────────
+# ─── MAINTENANCE MODE ─────────────────────────────────���──────────────────────────────────────────
 @app.route('/health')
 def health():
     """Эндпойнт для проверки доступности сервера.
@@ -137,7 +145,7 @@ def check_maintenance():
     return render_template('maintenance.html'), 503
 
 
-# ─── BLUEPRINTS ────────────────────────────────────────────────────────────────────────────────────
+# ─── BLUEPRINTS ────────────────────────────────────────────────────────────────────────────��───────
 from routes.phonebook_routes import phonebook_bp
 from routes.search_routes    import search_bp
 from routes.login_routes     import auth_bp
@@ -246,5 +254,17 @@ _startup()
 if __name__ == '__main__':
     app_debug  = os.getenv('APP_DEBUG', '0')
     debug_flag = app_debug == '1'
-    print(f"Starting Flask with debug={debug_flag}, threaded=True, FLASK_ENV={os.getenv('FLASK_ENV', '')}")
-    app.run(host='0.0.0.0', port=5000, debug=debug_flag, use_reloader=debug_flag, threaded=True)
+
+    if debug_flag:
+        # Режим разработки: Flask dev-server с reloader и полным логом
+        _werkzeug_log.setLevel(logging.DEBUG)
+        print(f"[DEV] Starting Flask dev-server debug=True, threaded=True")
+        app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=True, threaded=True)
+    else:
+        # Production: waitress WSGI-сервер — нет dev-warning, нет access-лога werkzeug
+        from waitress import serve
+        # waitress пишет только WARNING+ по умолчанию — polling-спам не пройдёт
+        logging.getLogger('waitress').setLevel(logging.WARNING)
+        _host, _port = '0.0.0.0', 5000
+        print(f"[PROD] KITEZH запущен на http://{_host}:{_port}  (waitress, threads=8)")
+        serve(app, host=_host, port=_port, threads=8)
