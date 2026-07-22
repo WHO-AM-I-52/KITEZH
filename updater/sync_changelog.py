@@ -6,7 +6,7 @@ import sys
 from datetime import datetime
 
 REPO_OWNER = "WHO-AM-I-52"
-REPO_NAME = "SONAR"
+REPO_NAME = "KITEZH"
 BRANCH = "main"
 # Корень проекта — из paths.py (единый источник правды), устойчиво к переносу в updater/.
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -36,7 +36,7 @@ TOKEN = load_token()
 
 
 def _headers():
-    h = {"User-Agent": "SONAR-Sync", "Accept": "application/vnd.github+json"}
+    h = {"User-Agent": "KITEZH-Sync", "Accept": "application/vnd.github+json"}
     if TOKEN:
         h["Authorization"] = f"Bearer {TOKEN}"
     return h
@@ -49,7 +49,7 @@ def get_json(url):
 
 
 def get_text(url):
-    req = urllib.request.Request(url, headers={"User-Agent": "SONAR-Sync"})
+    req = urllib.request.Request(url, headers={"User-Agent": "KITEZH-Sync"})
     with urllib.request.urlopen(req, timeout=15) as r:
         return r.read().decode("utf-8")
 
@@ -88,7 +88,7 @@ def fetch_releases():
             if line.startswith(("-", "*", "\u2013")):
                 changes.append(line.lstrip("-*\u2013 ").strip())
                 continue
-            # строки вида "#N — текст" или "текст — текст" (формат SONAR-релизов)
+            # строки вида "#N — текст" или "текст — текст" (формат KITEZH-релизов)
             if re.match(r"^#?\d", line) and " \u2014 " in line:
                 changes.append(line)
                 continue
@@ -191,33 +191,33 @@ def write_roadmap(roadmap):
         f.writelines(lines)
 
 
-def main():
-    print("  Синхронизация changelog с GitHub...")
+def main(log_fn=print):
+    # Заголовок убран — выводит _updater.py один раз через _log()
     if TOKEN:
-        print("  Токен найден — лимит 5000 запросов/час")
+        log_fn("  Токен найден — лимит 5000 запросов/час")
     else:
-        print("  Токен не найден — лимит 60 запросов/час")
+        log_fn("  Токен не найден — лимит 60 запросов/час")
     try:
         releases = fetch_releases()
-        print(f"  Релизов найдено: {len(releases)}")
+        log_fn(f"  Релизов найдено: {len(releases)}")
 
         roadmap = fetch_roadmap()
-        print(f"  ROADMAP записей: {len(roadmap)}")
+        log_fn(f"  ROADMAP записей: {len(roadmap)}")
 
         if not releases:
-            print("  [!] Релизов нет — CHANGELOG не обновляется.")
+            log_fn("  [!] Релизов нет — CHANGELOG не обновляется.")
             from changelog import CHANGELOG as existing
             releases = [{"version": e["version"],
                          "date": e["date"],
                          "changes": e["changes"]} for e in existing]
 
         write_changelog(releases)
-        print("  changelog.py обновлён.")
+        log_fn("  changelog.py обновлён.")
 
         write_roadmap(roadmap)
-        print("  roadmap.py обновлён.")
+        log_fn("  roadmap.py обновлён.")
     except Exception as e:
-        print(f"  [ОШИБКА] {e}")
+        log_fn(f"  [ОШИБКА] {e}")
 
 
 if __name__ == "__main__":

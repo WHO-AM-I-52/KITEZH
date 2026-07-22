@@ -316,7 +316,7 @@ def download_zip(zip_path: str):
     _log("  Скачиваем архив обновления...")
     opener = urllib.request.build_opener(urllib.request.HTTPRedirectHandler())
     with opener.open(req, timeout=60) as r:
-        show_rate_limit(r.headers)
+        # show_rate_limit убран — лимит уже показан через get_json() → get_remote_sha()
         cl = r.headers.get("Content-Length")
         if cl and int(cl) > 0:
             estimated_kb = int(cl) // 1024
@@ -525,12 +525,12 @@ def run_sync_changelog():
     if not os.path.exists(sync_path):
         _log("  [Changelog] sync_changelog.py не найден — пропуск.")
         return
-    _log("  Синхронизация changelog с GitHub...")
+    _log("  Синхронизация changelog с GitHub...")  # единственный вывод заголовка
     try:
         spec   = importlib.util.spec_from_file_location("sync_changelog", sync_path)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-        module.main()
+        module.main(log_fn=_log)  # sync_changelog использует _log вместо print()
     except Exception as e:
         _log(f"  [Changelog] Ошибка синхронизации: {e}")
 
