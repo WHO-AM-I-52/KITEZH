@@ -1,4 +1,4 @@
-# ╔═══════════════════════════════════════════════════════════════��
+# ╔═══════════════════════════════════════════════════════════════╗
 # ║ app.py                                                        ║
 # ║ v3.0: quality_bp подключён                                   ║
 # ║      fix #64 — ai_bp подключён                          ║
@@ -17,9 +17,11 @@
 # ║      feat: letters_bp — журнал исходящих писем             ║
 # ║      feat: tasks_bp — модуль «Задачи» (#9)                  ║
 # ║      fix: waitress WSGI-сервер (без dev-warning)            ║
+# ║      fix: access-лог в prod через @after_request            ║
 # ╚═══════════════════════════════════════════════════════════════╝
 
 import os
+import sys
 import logging
 import traceback
 import warnings
@@ -97,7 +99,7 @@ def todatetime_filter(value):
 # ─── CONTEXT PROCESSOR ─────────────────────────────────────────────────────────────────────────────
 app.context_processor(inject_globals)
 
-# ─── MAINTENANCE MODE ─────────────────────────────────���──────────────────────────────────────────
+# ─── MAINTENANCE MODE ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 @app.route('/health')
 def health():
     """Эндпойнт для проверки доступности сервера.
@@ -145,7 +147,7 @@ def check_maintenance():
     return render_template('maintenance.html'), 503
 
 
-# ─── BLUEPRINTS ────────────────────────────────────────────────────────────────────────────��───────
+# ─── BLUEPRINTS ────────────────────────────────────────────────────────────────────────────────────
 from routes.phonebook_routes import phonebook_bp
 from routes.search_routes    import search_bp
 from routes.login_routes     import auth_bp
@@ -218,6 +220,28 @@ def handle_500(exc):
     except Exception:
         pass
     return render_template('500.html'), 500
+
+
+# ─── ACCESS LOG (prod) ──────────────────────────────────────────────────────
+# werkzeug в production подавлен до уровня ERROR, поэтому access-лог
+# реализован через @after_request — работает и с waitress, и с dev-сервером.
+# Фильтруем /ping, /health, /maintenance-status — хеартбит/polling
+# не засоряют консоль. /static/ тоже пропускаем.
+_ACCESS_SKIP = frozenset(('/ping', '/health', '/maintenance-status'))
+
+@app.after_request
+def _access_log(response):
+    if flask_request.path in _ACCESS_SKIP:
+        return response
+    if flask_request.path.startswith('/static/'):
+        return response
+    ts = datetime.now().strftime('%H:%M:%S')
+    print(
+        f"[{ts}] {flask_request.method} {flask_request.path} → {response.status_code}",
+        flush=True,
+        file=sys.stdout,
+    )
+    return response
 
 
 # ─── ИНИЦИАЛИЗАЦИЯ БД И ПЛАНИРОВЩИКА ─────────────────────────────────────────────────
