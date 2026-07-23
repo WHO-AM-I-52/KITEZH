@@ -15,6 +15,7 @@
 # ║  v3.0.0: /investor/<inn> — карточка инвестора (#13)          ║
 # ║  v3.0.1: fix — subject → project_name в запросе requests    ║
 # ║  v3.0.2: fix — phonebook_contacts запрос по inn (#14)        ║
+# ║  v3.1.0: CHANGELOG_LOCAL — ручные записи changelog (#88)     ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 from flask import Blueprint, render_template, session, jsonify, request as flask_request, redirect, url_for
@@ -26,6 +27,11 @@ from services.roadmap import ROADMAP
 from services.dashboard import build_dash
 from datetime import datetime
 import os
+
+try:
+    from changelog import CHANGELOG_LOCAL
+except ImportError:
+    CHANGELOG_LOCAL = []
 
 misc_bp = Blueprint('misc', __name__)
 
@@ -99,9 +105,11 @@ def changelog():
     ).fetchone()
     conn.close()
     tray_notify_level = row['value'] if row else 'critical'
-    current_version = CHANGELOG[0]['version'] if CHANGELOG else ''
+    # Ручные записи отображаются первыми (descending по дате)
+    combined = CHANGELOG_LOCAL + CHANGELOG
+    current_version = combined[0]['version'] if combined else ''
     session['seen_version'] = current_version
-    return render_template('changelog.html', changelog=CHANGELOG,
+    return render_template('changelog.html', changelog=combined,
                            version=current_version, roadmap=ROADMAP,
                            tray_notify_level=tray_notify_level)
 

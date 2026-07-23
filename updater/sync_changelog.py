@@ -20,6 +20,8 @@ from paths import CHANGELOG_PATH, ROADMAP_PATH
 # приложение (`from services.roadmap import ROADMAP`). Раньше генератор писал в корень
 # (roadmap.py), который после переноса в services/ перестал читаться — отсюда десинхрон.
 
+LOCAL_MARKER = "# ─── Ручные записи KITEZH"
+
 
 def load_token():
     env_path = os.path.join(BASE_DIR, ".env")
@@ -153,8 +155,30 @@ def fetch_roadmap():
     return roadmap
 
 
+def _load_local_tail() -> str:
+    """Читает changelog.py и возвращает хвост начиная с LOCAL_MARKER.
+
+    Если маркер не найден — возвращает пустую строку (первый запуск).
+    """
+    if not os.path.exists(CHANGELOG_PATH):
+        return ""
+    content = open(CHANGELOG_PATH, encoding="utf-8").read()
+    if LOCAL_MARKER in content:
+        return "\n\n" + content.split(LOCAL_MARKER, 1)[1].lstrip()
+    return ""
+
+
 def write_changelog(changelog):
-    """Пишет только CHANGELOG в changelog.py."""
+    """Пишет CHANGELOG в changelog.py, сохраняя хвост CHANGELOG_LOCAL.
+
+    Алгоритм:
+    1. Читаем текущий файл и вырезаем хвост после LOCAL_MARKER.
+    2. Генерируем новый блок CHANGELOG.
+    3. Записываем: новый CHANGELOG + маркер + сохранённый хвост.
+       Если маркера не было (первый запуск) — дописываем пустой CHANGELOG_LOCAL.
+    """
+    local_tail = _load_local_tail()
+
     lines = ["CHANGELOG = [\n"]
     for entry in changelog:
         lines.append("    {\n")
@@ -167,8 +191,20 @@ def write_changelog(changelog):
         lines.append("    },\n")
     lines.append("]\n")
 
+    generated = "".join(lines)
+
     with open(CHANGELOG_PATH, "w", encoding="utf-8") as f:
-        f.writelines(lines)
+        f.write(generated)
+        if local_tail:
+            # Восстанавливаем маркер + сохранённый хвост
+            f.write(LOCAL_MARKER)
+            f.write(local_tail)
+        else:
+            # Первый запуск — записываем пустой CHANGELOG_LOCAL
+            f.write(f"\n\n{LOCAL_MARKER} (не перезаписываются sync_changelog.py) ──────────────\n")
+            f.write("# Формат идентичен CHANGELOG, но source = 'local'.\n")
+            f.write("# Добавлять новые записи В НАЧАЛО списка (descending по дате).\n")
+            f.write("CHANGELOG_LOCAL = []\n")
 
 
 def write_roadmap(roadmap):
