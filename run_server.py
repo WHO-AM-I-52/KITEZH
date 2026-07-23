@@ -6,7 +6,9 @@
 # ║   sys.exit(42) — если _restart.flag существует              ║
 # ║   sys.exit(0)  — обычная остановка                          ║
 # ║ Батник читает код выхода и решает goto :start_server.       ║
-# ║ Если KITEZH_TRAY=1 — запускает иконку в системном трее.    ║
+# ║ KITEZH_TRAY=1 всегда — иконка в трее во всех режимах.     ║
+# ║ KITEZH_HIDE_CONSOLE=1 — скрыть консоль после старта            ║
+# ║   (только в режиме 3 — польный трей).                       ║
 # ║                                                              ║
 # ║ FIX: при авторестарте после обновления (os._exit(42))       ║
 # ║ батник делает goto :start_server без диалога режима,        ║
@@ -31,51 +33,55 @@ TRAY_LOCK     = os.path.join(BASE_DIR, '_tray_running.lock')
 PYTHON = sys.executable
 app_py = os.path.join(BASE_DIR, 'app.py')
 
-# ─── TRAY ────────────────────────────────────────────────────────────────────────────────────
-TRAY_MODE = os.environ.get('KITEZH_TRAY', '0') == '1'
+# ─── TRAY ──────────────────────────────────────────────────────────────────────────────────────
+# KITEZH_TRAY=1 во всех режимах (батник выставляет всегда).
+# KITEZH_HIDE_CONSOLE=1 — только в режиме 3 (полный трей).
+TRAY_MODE    = os.environ.get('KITEZH_TRAY', '0') == '1'
+HIDE_CONSOLE = os.environ.get('KITEZH_HIDE_CONSOLE', '0') == '1'
 
-# FIX: чистим лок при каждом старте батника.
-# Если предыдущий сеанс завершился нештатно — лок мог остаться,
-# и трей не запустился бы, оставив консоль скрытой без возможности вернуть.
-# При авторестарте (goto :start_server) дублирования не будет —
-# старый процесс и его трей уже мертвы.
+# Чистим лок при каждом старте — защита от зависшего лока
+# после нештатного завершения предыдущего сеанса.
 if TRAY_MODE:
     try:
         os.remove(TRAY_LOCK)
     except FileNotFoundError:
         pass
 
-# Запускаем трей только если:
-#   1. Выбран tray-режим (KITEZH_TRAY=1)
+# Запускаем трей если:
+#   1. KITEZH_TRAY=1 (tray-режим)
 #   2. Трей ещё не запущен в этом процессе (нет _tray_running.lock)
-# Это защищает от двойной иконки при авторестарте после обновления.
+# HIDE_CONSOLE передаётся в hide_on_start — иконка есть всегда,
+# а скрытие консоли — только в режиме 3.
 
 _tray_started = False
 
 if TRAY_MODE and not os.path.exists(TRAY_LOCK):
     try:
         from tray import start_tray_thread
-        start_tray_thread(hide_on_start=True)
+        start_tray_thread(hide_on_start=HIDE_CONSOLE)
         _tray_started = True
         try:
             with open(TRAY_LOCK, 'w') as _f:
                 _f.write(str(os.getpid()))
         except Exception:
             pass
-        print("  Трей-режим: иконка KITEZH появится в системном трее")
+        if HIDE_CONSOLE:
+            print('  Tray-режим: консоль свернётся, иконка KITEZH появится в трее')
+        else:
+            print('  Иконка KITEZH появилась в системном трее')
     except ImportError as e:
-        print(f"  [ПРЕДУПРЕЖДЕНИЕ] Трей недоступен: {e}")
-        print("  Запуск в обычном режиме...")
+        print(f'  [ПРЕДУПРЕЖДЕНИЕ] Трей недоступен: {e}')
+        print('  Запуск без иконки трея...')
 elif TRAY_MODE and os.path.exists(TRAY_LOCK):
-    print("  Трей-режим: иконка уже запущена (авторестарт), повторный запуск пропущен.")
+    print('  Трей-режим: иконка уже запущена (авторестарт), повторный запуск пропущен.')
 
-# ─── ЗАПУСК Flask ───────────────────────────────────────────────────────────────────────────────
+# ─── ЗАПУСК Flask ─────────────────────────────────────────────────────────────────────────────────
 creation_flags = 0
 if sys.platform == 'win32':
     creation_flags = subprocess.CREATE_NEW_PROCESS_GROUP
-    if TRAY_MODE:
-        # В tray-режиме скрываем окно консоли дочернего процесса app.py.
-        # Без этого Popen открывает новое окно консоли, несмотря на hide_on_start.
+    if HIDE_CONSOLE:
+        # В tray-режиме (консоль скрыта) — дочерний app.py
+        # не должен открывать новое окно консоли.
         creation_flags |= subprocess.CREATE_NO_WINDOW
 
 proc = subprocess.Popen(
@@ -114,8 +120,6 @@ except KeyboardInterrupt:
         proc.kill()
 
 # Даём werkzeug время закрыть сокет и дописать последние access-логи.
-# Без паузы лог-строки от последних polling-запросов клиентов
-# вклиниваются в stdin cmd-сессии и ломают set /p меню в .bat.
 time.sleep(1.5)
 
 try:

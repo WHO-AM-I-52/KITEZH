@@ -143,10 +143,11 @@ if exist "%APP_DIR%_restart.flag" (
   del /f /q "%APP_DIR%_update_available.json" 2>nul
   del /f /q "%APP_DIR%_updating.lock" 2>nul
   del /f /q "%APP_DIR%.maintenance" 2>nul
-  :: FIX #1+#2: задаём дефолты production, так как ask_mode ещё не выполнялся
+  :: Дефолты production — трей всегда, консоль не скрывать
   if not defined FLASK_ENV set "FLASK_ENV=production"
   if not defined APP_DEBUG set "APP_DEBUG=0"
-  if not defined KITEZH_TRAY set "KITEZH_TRAY=0"
+  set "KITEZH_TRAY=1"
+  if not defined KITEZH_HIDE_CONSOLE set "KITEZH_HIDE_CONSOLE=0"
   echo.
   echo ============================================
   echo  [AUTO-RESTART] Обновление применено.
@@ -193,24 +194,27 @@ if exist "%APP_DIR%updater\_updater.py" (
 :: Режим запуска
 :ask_mode
 echo  Выбери режим:
-echo    [1] Production
-echo    [2] Debug
-echo    [3] Tray (Production + иконка в трее)
+echo    [1] Production          (иконка в трее, консоль видна)
+echo    [2] Debug               (иконка в трее, консоль видна)
+echo    [3] Tray                (иконка в трее, консоль скрыта)
 echo.
 set "MODE_CHOICE="
 set /p MODE_CHOICE=  Режим (1/2/3): 
 if "%MODE_CHOICE%"=="1" (
   set "FLASK_ENV=production"
   set "APP_DEBUG=0"
-  set "KITEZH_TRAY=0"
+  set "KITEZH_TRAY=1"
+  set "KITEZH_HIDE_CONSOLE=0"
 ) else if "%MODE_CHOICE%"=="2" (
   set "FLASK_ENV=development"
   set "APP_DEBUG=1"
-  set "KITEZH_TRAY=0"
+  set "KITEZH_TRAY=1"
+  set "KITEZH_HIDE_CONSOLE=0"
 ) else if "%MODE_CHOICE%"=="3" (
   set "FLASK_ENV=production"
   set "APP_DEBUG=0"
   set "KITEZH_TRAY=1"
+  set "KITEZH_HIDE_CONSOLE=1"
 ) else (
   echo  Неверный выбор.
   goto :ask_mode
@@ -247,7 +251,7 @@ echo ============================================
 echo.
 
 :start_server
-if "%KITEZH_TRAY%"=="1" (
+if "%KITEZH_HIDE_CONSOLE%"=="1" (
   echo  Tray-режим: консоль свернётся через 2 сек.
 ) else (
   echo  Сервер запущен... Для остановки нажми Ctrl+C
@@ -256,6 +260,7 @@ echo.
 set FLASK_ENV=%FLASK_ENV%
 set APP_DEBUG=%APP_DEBUG%
 set KITEZH_TRAY=%KITEZH_TRAY%
+set KITEZH_HIDE_CONSOLE=%KITEZH_HIDE_CONSOLE%
 set PYTHONUTF8=1
 set PYTHONPATH=%APP_DIR%
 cd /d "%APP_DIR%"
@@ -277,10 +282,11 @@ if "!EXIT_CODE!"=="42" (
   del /f /q "%APP_DIR%_updating.lock" 2>nul
   del /f /q "%APP_DIR%_restart.flag" 2>nul
   del /f /q "%APP_DIR%.maintenance" 2>nul
-  :: FIX #1: дефолты на случай повторного рестарта
+  :: Дефолты на случай повторного рестарта
   if not defined FLASK_ENV set "FLASK_ENV=production"
   if not defined APP_DEBUG set "APP_DEBUG=0"
-  if not defined KITEZH_TRAY set "KITEZH_TRAY=0"
+  set "KITEZH_TRAY=1"
+  if not defined KITEZH_HIDE_CONSOLE set "KITEZH_HIDE_CONSOLE=0"
   echo.
   echo ============================================
   echo  [AUTO-RESTART] Обновление применено.
@@ -291,8 +297,6 @@ if "!EXIT_CODE!"=="42" (
 )
 
 :: Пауза перед меню: даём Flask-процессу время полностью закрыть сокет.
-:: Без паузы polling-запросы клиентов (каждые 3 сек) вклиниваются в stdin
-:: и ломают set /p — нажатия 1/2 не распознаются.
 timeout /t 2 /nobreak >nul
 
 echo   [1] Повторный запуск
