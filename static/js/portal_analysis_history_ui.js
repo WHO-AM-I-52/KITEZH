@@ -1,132 +1,15 @@
 (() => {
   const endpoint = '/api/portal-analysis-v2';
-
-  function element(tag, className, text) {
-    const node = document.createElement(tag);
-    if (className) node.className = className;
-    if (text !== undefined) node.textContent = text;
-    return node;
-  }
-
-  function copyText(text, button) {
-    navigator.clipboard.writeText(text).then(() => {
-      const original = button.textContent;
-      button.textContent = 'Скопировано';
-      setTimeout(() => { button.textContent = original; }, 1500);
-    });
-  }
-
-  function container() {
-    let root = document.getElementById('portal-analysis-v2-extra');
-    if (root) return root;
-    root = element('section', 'mt-4', '');
-    root.id = 'portal-analysis-v2-extra';
-    const anchor = document.querySelector('main, .container, .container-fluid') || document.body;
-    anchor.appendChild(root);
-    return root;
-  }
-
-  function card(title) {
-    const box = element('div', 'card mb-3 shadow-sm');
-    const header = element('div', 'card-header fw-bold', title);
-    const body = element('div', 'card-body');
-    box.append(header, body);
-    return { box, body };
-  }
-
-  function renderSummary(payload, root) {
-    const overview = payload.history_overview || {};
-    const latest = overview.latest || payload.history || {};
-    const reference = overview.manual_reference || {};
-    const comparison = overview.comparison || {};
-    const view = card('Сводка запуска V2');
-    const list = element('div', 'row g-2');
-    const values = [
-      ['Всего площадок', payload.total_sites],
-      ['Активных', payload.active_sites],
-      ['Исключённых', payload.excluded_sites],
-      ['Средний процент', payload.avg_score === undefined ? '—' : `${payload.avg_score}%`],
-      ['Ручной ориентир', reference.average_score ? `${reference.sites} площадок · ${reference.average_score}%` : '—'],
-      ['Изменено данных', comparison.changed_source_sites ?? '—'],
-      ['Улучшилось', comparison.improved_sites ?? '—'],
-      ['Ухудшилось', comparison.worsened_sites ?? '—'],
-    ];
-    values.forEach(([label, value]) => {
-      const col = element('div', 'col-sm-6 col-lg-3');
-      const block = element('div', 'border rounded p-2 h-100');
-      block.append(element('div', 'small text-muted', label), element('div', 'fs-5 fw-bold', String(value)));
-      col.appendChild(block);
-      list.appendChild(col);
-    });
-    view.body.appendChild(list);
-    if (latest && latest.id) view.body.appendChild(element('p', 'small text-muted mt-3 mb-0', `Запуск №${latest.id}: данные сохранены в истории.`));
-    root.appendChild(view.box);
-  }
-
-  function renderAi(payload, root) {
-    const sites = payload.site_results || [];
-    if (!sites.length) return;
-    const view = card('Текст для ИИ');
-    const select = element('select', 'form-select mb-2');
-    const text = element('textarea', 'form-control mb-2');
-    text.rows = 12;
-    text.readOnly = true;
-    const copy = element('button', 'btn btn-outline-primary btn-sm', 'Копировать');
-    sites.forEach((site, index) => {
-      const option = element('option', '', `${site.id || 'без ID'} — ${site.name}`);
-      option.value = String(index);
-      select.appendChild(option);
-    });
-    function show() { text.value = sites[Number(select.value)].ai_text || ''; }
-    select.addEventListener('change', show);
-    copy.addEventListener('click', () => copyText(text.value, copy));
-    show();
-    view.body.append(select, text, copy);
-    root.appendChild(view.box);
-  }
-
-  function renderMessages(payload, root) {
-    const messages = payload.messages || [];
-    if (!messages.length) return;
-    const view = card('Сообщения контактным лицам');
-    messages.forEach(message => {
-      const details = element('details', 'border rounded p-2 mb-2');
-      const summary = element('summary', 'fw-bold', message.contact === '__no_contact__' ? 'Площадки без контактного лица' : message.contact);
-      const text = element('textarea', 'form-control my-2');
-      text.rows = 8;
-      text.readOnly = true;
-      text.value = message.text || '';
-      const copy = element('button', 'btn btn-outline-primary btn-sm', 'Копировать сообщение');
-      copy.addEventListener('click', () => copyText(text.value, copy));
-      details.append(summary, text, copy);
-      view.body.appendChild(details);
-    });
-    root.appendChild(view.box);
-  }
-
-  function render(payload) {
-    const root = container();
-    root.replaceChildren();
-    renderSummary(payload, root);
-    renderAi(payload, root);
-    renderMessages(payload, root);
-  }
-
-  function installFetchHook() {
-    const originalFetch = window.fetch;
-    if (!originalFetch || window.__portalAnalysisV2HookInstalled) return;
-    window.__portalAnalysisV2HookInstalled = true;
-    window.fetch = async function (...args) {
-      const response = await originalFetch.apply(this, args);
-      const url = String(args[0] instanceof Request ? args[0].url : args[0] || '');
-      if (url.includes(endpoint) && !url.includes('/history') && response.ok) {
-        response.clone().json().then(data => {
-          if (data && data.site_results) render(data);
-        }).catch(() => {});
-      }
-      return response;
-    };
-  }
-
-  document.addEventListener('DOMContentLoaded', installFetchHook);
+  function element(tag, className, text) { const node = document.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = text; return node; }
+  function copyText(text, button) { navigator.clipboard.writeText(text).then(() => { const original = button.textContent; button.textContent = 'Скопировано'; setTimeout(() => { button.textContent = original; }, 1500); }); }
+  function container() { let root = document.getElementById('portal-analysis-v2-extra'); if (root) return root; root = element('section', 'mt-4', ''); root.id = 'portal-analysis-v2-extra'; const anchor = document.querySelector('main, .container, .container-fluid') || document.body; anchor.appendChild(root); return root; }
+  function card(title) { const box = element('div', 'card mb-3 shadow-sm'); const header = element('div', 'card-header fw-bold', title); const body = element('div', 'card-body'); box.append(header, body); return { box, body }; }
+  function renderSummary(payload, root) { const overview = payload.history_overview || {}; const latest = overview.latest || payload.history || {}; const reference = overview.manual_reference || {}; const comparison = overview.comparison || {}; const view = card('Сводка запуска V2'); const list = element('div', 'row g-2'); const values = [['Всего площадок', payload.total_sites], ['Активных', payload.active_sites], ['Исключённых', payload.excluded_sites], ['Средний процент', payload.avg_score === undefined ? '—' : `${payload.avg_score}%`], ['Ручной ориентир', reference.average_score ? `${reference.sites} площадок · ${reference.average_score}%` : '—'], ['Изменено данных', comparison.changed_source_sites ?? '—'], ['Улучшилось', comparison.improved_sites ?? '—'], ['Ухудшилось', comparison.worsened_sites ?? '—']]; values.forEach(([label, value]) => { const col = element('div', 'col-sm-6 col-lg-3'); const block = element('div', 'border rounded p-2 h-100'); block.append(element('div', 'small text-muted', label), element('div', 'fs-5 fw-bold', String(value))); col.appendChild(block); list.appendChild(col); }); view.body.appendChild(list); if (latest && latest.id) view.body.appendChild(element('p', 'small text-muted mt-3 mb-0', `Запуск №${latest.id}: данные сохранены в истории.`)); root.appendChild(view.box); }
+  function renderAi(payload, root) { const sites = payload.site_results || []; if (!sites.length) return; const view = card('Текст для ИИ'); const select = element('select', 'form-select mb-2'); const text = element('textarea', 'form-control mb-2'); text.rows = 12; text.readOnly = true; const copy = element('button', 'btn btn-outline-primary btn-sm', 'Копировать'); sites.forEach((site, index) => { const option = element('option', '', `${site.id || 'без ID'} — ${site.name}`); option.value = String(index); select.appendChild(option); }); function show() { text.value = sites[Number(select.value)].ai_text || ''; } select.addEventListener('change', show); copy.addEventListener('click', () => copyText(text.value, copy)); show(); view.body.append(select, text, copy); root.appendChild(view.box); }
+  function renderMessages(payload, root) { const messages = payload.messages || []; if (!messages.length) return; const view = card('Сообщения контактным лицам'); messages.forEach(message => { const details = element('details', 'border rounded p-2 mb-2'); const summary = element('summary', 'fw-bold', message.contact === '__no_contact__' ? 'Площадки без контактного лица' : message.contact); const text = element('textarea', 'form-control my-2'); text.rows = 8; text.readOnly = true; text.value = message.text || ''; const copy = element('button', 'btn btn-outline-primary btn-sm', 'Копировать сообщение'); copy.addEventListener('click', () => copyText(text.value, copy)); details.append(summary, text, copy); view.body.appendChild(details); }); root.appendChild(view.box); }
+  function render(payload) { const root = container(); root.replaceChildren(); renderSummary(payload, root); renderAi(payload, root); renderMessages(payload, root); root.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  async function runSummary(button, fileInput) { const file = fileInput.files && fileInput.files[0]; if (!file) { alert('Сначала выберите файл .xlsx.'); return; } const formData = new FormData(); formData.append('file', file); const original = button.textContent; button.disabled = true; button.textContent = 'Формирую сводку…'; try { const response = await fetch(endpoint, { method: 'POST', body: formData }); const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Не удалось выполнить анализ.'); render(data); } catch (error) { alert(`Ошибка сводки V2: ${error.message}`); } finally { button.disabled = false; button.textContent = original; } }
+  function addRunButton() { if (document.getElementById('portal-analysis-v2-run-summary')) return; const fileInput = document.querySelector('input[type="file"]'); if (!fileInput) { setTimeout(addRunButton, 400); return; } const button = element('button', 'btn btn-outline-primary w-100 mt-2', 'Сформировать сводку V2, ИИ-текст и сообщения'); button.type = 'button'; button.id = 'portal-analysis-v2-run-summary'; button.addEventListener('click', () => runSummary(button, fileInput)); fileInput.parentElement.appendChild(button); }
+  function installFetchHook() { const originalFetch = window.fetch; if (!originalFetch || window.__portalAnalysisV2HookInstalled) return; window.__portalAnalysisV2HookInstalled = true; window.fetch = async function (...args) { const response = await originalFetch.apply(this, args); const url = String(args[0] instanceof Request ? args[0].url : args[0] || ''); if (url.includes(endpoint) && !url.includes('/history') && response.ok) response.clone().json().then(data => { if (data && data.site_results) render(data); }).catch(() => {}); return response; }; }
+  document.addEventListener('DOMContentLoaded', () => { installFetchHook(); addRunButton(); });
 })();
