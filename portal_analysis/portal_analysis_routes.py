@@ -12,6 +12,7 @@ from .batch_analysis import analyze_and_save_rows
 from .export_normalizer import normalize_export_rows
 from .portal_checker import calc_portal_score
 from .portal_message_builder import build_messages, FIELD_HINTS, _get_site_name, _get_site_id, _get_contact
+from .presentation import build_site_results
 
 portal_analysis_bp = Blueprint('portal_analysis', __name__)
 
@@ -69,8 +70,9 @@ def api_analyze():
         return jsonify({'error': 'Ошибка сохранения истории анализа: ' + str(exc)}), 500
     finally:
         conn.close()
-    excluded = {'продана', 'предоставлена в аренду', 'использована для других целей', 'снята с реализации'}
-    included_rows = [row for row in rows if row.get('Статус площадки', '').strip().casefold() not in excluded]
+
+    site_results = build_site_results(rows)
+    included_rows = [row for row, site in zip(rows, site_results) if site['included']]
     messages = build_messages(included_rows)
     groups, no_contact_rows = {}, []
     for row in included_rows:
@@ -81,5 +83,5 @@ def api_analyze():
         scores_map['__no_contact__'] = _scores_for_message(no_contact_rows)
     for message in messages:
         message['scores'] = scores_map.get(message['contact'], [])
-    all_scores = [score['score'] for message in messages for score in message.get('scores', [])]
-    return jsonify({'messages': messages, 'total_sites': history['total_sites'], 'active_sites': history['active_sites'], 'excluded_sites': history['excluded_sites'], 'total_contacts': sum(1 for message in messages if message['contact'] != '__no_contact__'), 'avg_score': round(sum(all_scores) / len(all_scores)) if all_scores else 0, 'low_score_count': sum(1 for score in all_scores if score < 60), 'history': history})
+    all_scores = [site['score'] for site in site_results if site['included']]
+    return jsonify({'messages': messages, 'site_results': site_results, 'total_sites': history['total_sites'], 'active_sites': history['active_sites'], 'excluded_sites': history['excluded_sites'], 'total_contacts': sum(1 for message in messages if message['contact'] != '__no_contact__'), 'avg_score': round(sum(all_scores) / len(all_scores)) if all_scores else 0, 'low_score_count': sum(1 for score in all_scores if score < 60), 'history': history})
