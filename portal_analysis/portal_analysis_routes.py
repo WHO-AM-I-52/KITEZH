@@ -1,6 +1,6 @@
 import io
 
-from flask import Blueprint, jsonify, render_template, request, session
+from flask import Blueprint, jsonify, render_template, request, session, url_for
 
 try:
     import pandas as pd
@@ -32,9 +32,11 @@ def _excel_to_rows(file_bytes: bytes) -> list:
 @portal_analysis_bp.route('/portal-analysis-v2')
 def page():
     if _require_login():
-        from flask import redirect, url_for
+        from flask import redirect
         return redirect(url_for('auth.login'))
-    return render_template('portal_analysis_v2.html')
+    html = render_template('portal_analysis_v2.html')
+    script = f'<script src="{url_for("static", filename="js/portal_analysis_history_ui.js")}"></script>'
+    return html.replace('</body>', script + '</body>')
 
 
 @portal_analysis_bp.route('/api/portal-analysis-v2/history')
