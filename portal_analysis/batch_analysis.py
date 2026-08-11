@@ -201,7 +201,11 @@ def run_batch_history(
             # уникальной строки. V2 scorer сам определяет свой результат.
             result = score_fn(row)
 
-            if isinstance(result, dict) and result.get("score") is not None:
+            if (
+                included
+                and isinstance(result, dict)
+                and result.get("score") is not None
+            ):
                 scores.append(result["score"])
 
             field_hash = make_fields_hash(row, HASH_FIELDS)
