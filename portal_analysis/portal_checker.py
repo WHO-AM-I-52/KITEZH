@@ -445,6 +445,11 @@ def calc_portal_score(row: dict) -> dict:
 #   - Подсчёт score, PORTAL_FIELDS и CONDITIONAL_SKIP — идентичны V1
 # ──────────────────────────────────────────────────────────────────────────────
 
+# Явная версия canonical V2 scorer для history runs.
+# Не связана с legacy FORMULA_VERSION из batch_analysis.py.
+V2_FORMULA_VERSION = "2.0.0"
+
+
 def _resolve_hint(
     target_field_lower: str,
     rules_map: dict,
