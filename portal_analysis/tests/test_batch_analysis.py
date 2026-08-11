@@ -238,6 +238,8 @@ def test_scorer_error_does_not_stop_two_valid_rows():
     assert len(result["errors"]) == 1
     assert result["errors"][0]["site_id"] == "1002"
     assert result["errors"][0]["error_type"] == "score_or_snapshot_error"
+    assert result["results"][1]["analysis_status"] == "error"
+    assert result["results"][1]["error"] == "Ошибка расчёта 1002"
     assert [
         (row["site_id"], row["analysis_status"])
         for row in snapshots
@@ -416,3 +418,103 @@ def test_previous_snapshot_id_links_same_global_id_between_runs():
     ).fetchone()
 
     assert second_snapshot["previous_snapshot_id"] == first_snapshot["id"]
+
+def test_batch_results_preserve_order_for_invalid_global_id():
+    conn = _connection()
+    calls = []
+
+    def score_fn(row):
+        calls.append(row["global_id"])
+        return _v2_result(score=70 if row["global_id"] == "1001" else 80)
+
+    result = run_batch_history(
+        conn=conn,
+        source_rows=[
+            _site(global_id="1001"),
+            _site(global_id="   "),
+            _site(global_id="1002"),
+        ],
+        score_fn=score_fn,
+        formula_version="v2.1.0",
+    )
+
+    snapshot_count = conn.execute(
+        """
+        SELECT COUNT(*)
+        FROM portal_analysis_site_snapshots
+        WHERE run_id = ?
+        """,
+        (result["run_id"],),
+    ).fetchone()[0]
+
+    assert calls == ["1001", "1002"]
+    assert snapshot_count == 2
+    assert len(result["results"]) == 3
+    assert [item["row_index"] for item in result["results"]] == [0, 1, 2]
+    assert [item["analysis_status"] for item in result["results"]] == [
+        "ok",
+        "invalid_id",
+        "ok",
+    ]
+
+    invalid_item = result["results"][1]
+    assert invalid_item["site_id"] == ""
+    assert invalid_item["included"] is None
+    assert invalid_item["snapshot_saved"] is False
+    assert invalid_item["result"] is None
+    assert invalid_item["error"] == "Пустой или некорректный global_id"
+
+
+def test_batch_results_preserve_order_for_duplicate_global_id():
+    conn = _connection()
+    calls = []
+
+    def score_fn(row):
+        calls.append(row["global_id"])
+        return _v2_result(score=70 if row["global_id"] == "1001" else 80)
+
+    result = run_batch_history(
+        conn=conn,
+        source_rows=[
+            _site(global_id="1001", name="Первая"),
+            _site(global_id="1001", name="Повтор"),
+            _site(global_id="1002", name="Третья"),
+        ],
+        score_fn=score_fn,
+        formula_version="v2.1.0",
+    )
+
+    snapshots = conn.execute(
+        """
+        SELECT site_id, site_name
+        FROM portal_analysis_site_snapshots
+        WHERE run_id = ?
+        ORDER BY site_id
+        """,
+        (result["run_id"],),
+    ).fetchall()
+
+    assert calls == ["1001", "1002"]
+    assert len(snapshots) == 2
+    assert [
+        (row["site_id"], row["site_name"])
+        for row in snapshots
+    ] == [
+        ("1001", "Первая"),
+        ("1002", "Третья"),
+    ]
+
+    assert len(result["results"]) == 3
+    assert [item["row_index"] for item in result["results"]] == [0, 1, 2]
+    assert [item["analysis_status"] for item in result["results"]] == [
+        "ok",
+        "error",
+        "ok",
+    ]
+
+    duplicate_item = result["results"][1]
+    assert duplicate_item["site_id"] == "1001"
+    assert duplicate_item["included"] is None
+    assert duplicate_item["snapshot_saved"] is False
+    assert duplicate_item["result"] is None
+    assert duplicate_item["error"] == "Повторный global_id в одном пакете"
