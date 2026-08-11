@@ -123,6 +123,7 @@ def investmap_v2_post():
                 'format': fmt,
                 'count':  export.get('count', len(results)),
                 'text':   export.get('text', ''),
+                'texts':  export.get('texts', []),
             },
             'error': None,
         })
