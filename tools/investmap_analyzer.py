@@ -540,7 +540,117 @@ def build_summary_sms(analysis_list: list[dict]) -> str | None:
 
     lines.append('После внесения изменений просим сообщить — проверим обновлённый процент.')
     return '\n'.join(lines)
+def build_v2_summary_sms(results: list[dict], source_rows: list[dict]) -> str | None:
+    """
+    Краткая сводка пакетного анализа V2 для ручного копирования.
 
+    Не использует исходные значения Excel: в текст попадают только безопасные
+    идентификаторы площадки, score, названия незаполненных полей и подсказки.
+    """
+    if not results:
+        return None
+
+    def _safe_text(value: object, limit: int = 180) -> str:
+        text = _strip_html(str(value or ''))
+        text = re.sub(r'\s+', ' ', text).strip()
+        return text[:limit].rstrip()
+
+    def _row_value(row: dict, *keys: str) -> str:
+        for key in keys:
+            value = _find_exact(row, key)
+            if _is_filled(value):
+                return _safe_text(value)
+        return ''
+
+    def _site_label(row: dict, number: int) -> str:
+        global_id = _row_value(row, 'global_id')
+        if global_id:
+            return f'ID {global_id}'
+
+        name = _row_value(
+            row,
+            'Название площадки',
+            'Наименование площадки',
+            'Название объекта',
+            'Наименование объекта',
+        )
+        if name:
+            return name
+
+        return f'Площадка {number}'
+
+    def _score(result: dict) -> float:
+        value = result.get('score', result.get('total', 0))
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return 0.0
+
+    total_sites = len(results)
+    scores = [_score(result) for result in results]
+    average_score = sum(scores) / total_sites
+
+    sites_with_missing = 0
+    total_missing = 0
+    problem_lines = []
+
+    for index, result in enumerate(results):
+        row = source_rows[index] if index < len(source_rows) else {}
+        missing = result.get('missing') or []
+
+        if not missing:
+            continue
+
+        sites_with_missing += 1
+        total_missing += len(missing)
+
+        if len(problem_lines) >= 20:
+            continue
+
+        site_number = index + 1
+        problem_lines.append(
+            f'{len(problem_lines) + 1}. {_site_label(row, site_number)} '
+            f'— score: {_score(result):.1f}%.'
+        )
+
+        fields_added = 0
+        for item in missing:
+            if fields_added >= 3:
+                break
+
+            if not isinstance(item, dict):
+                continue
+
+            field = _safe_text(item.get('field'))
+            if not field:
+                continue
+
+            hint = _safe_text(item.get('hint'))
+            if not hint:
+                hint = 'Заполните поле на портале.'
+
+            problem_lines.append(f'   • {field} — {hint}.')
+            fields_added += 1
+
+    lines = [
+        'Добрый день!',
+        '',
+        f'Проверено площадок: {total_sites}.',
+        f'Средний score: {average_score:.1f}%.',
+        f'Площадок с незаполненными полями: {sites_with_missing}.',
+        f'Всего незаполненных полей: {total_missing}.',
+    ]
+
+    if not sites_with_missing:
+        lines.extend([
+            '',
+            'Все проверенные площадки заполнены: незаполненных полей не обнаружено.',
+        ])
+        return '\n'.join(lines)
+
+    lines.extend(['', 'Требуют доработки:'])
+    lines.extend(problem_lines)
+    return '\n'.join(lines)
 
 def _score_portal(data: dict, fmt: str) -> tuple[int, list[str]]:
     filled_count = 0
