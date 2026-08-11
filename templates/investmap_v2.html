@@ -459,9 +459,16 @@
 
   function buildBatchSummary(list){
     var active = list.filter(function(d){
-      return d
-        && d.analysis_status === 'ok'
-        && d.is_included === true;
+      if (!d) return false;
+
+      var status = d.analysis_status;
+      var isSuccessful = (
+        status === undefined
+        || status === null
+        || status === 'ok'
+      );
+
+      return isSuccessful && d.is_included !== false;
     });
 
     var total = active.length;
