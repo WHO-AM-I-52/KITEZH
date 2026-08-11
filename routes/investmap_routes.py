@@ -19,7 +19,11 @@ from db import get_db
 from core.kitezh_logger import err_logger
 from portal_analysis.portal_checker import calc_portal_score_v2
 from tools.investmap_export import convert_excel_to_text
-from tools.investmap_analyzer import analyze, build_summary_sms
+from tools.investmap_analyzer import (
+    analyze,
+    build_summary_sms,
+    build_v2_summary_sms,
+)
 
 investmap_bp = Blueprint('investmap', __name__)
 
@@ -110,21 +114,33 @@ def investmap_v2_post():
         else:
             results = [calc_portal_score_v2(data, db)]
 
-        summary_sms = build_summary_sms(results) if len(results) > 1 else None
+        summary_sms = (
+            build_v2_summary_sms(results, data)
+            if fmt == 2 and isinstance(data, list)
+            else None
+        )
+
 
         log_action(db, getattr(g, 'user', {}).get('id'), 'investmap_v2_score',
                    detail=f'count={len(results)}')
 
+        export_payload = {
+            'format': fmt,
+            'count': export.get('count', len(results)),
+        }
+
+        if fmt == 2:
+            export_payload['texts'] = export.get('texts', [])
+        else:
+            text = export.get('text', '')
+            export_payload['text'] = text
+            export_payload['texts'] = [text]
+
         return jsonify({
-            'results':     results,
-            'count':       len(results),
+            'results': results,
+            'count': len(results),
             'summary_sms': summary_sms,
-            'export': {
-                'format': fmt,
-                'count':  export.get('count', len(results)),
-                'text':   export.get('text', ''),
-                'texts':  export.get('texts', []),
-            },
+            'export': export_payload,
             'error': None,
         })
 
