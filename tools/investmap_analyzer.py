@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 
 PORTAL_FIELD_GAIN = 4  # ориентировочный прирост % за одно поле для текста уведомления
+V2_SUMMARY_SMS_MAX_LENGTH = 4000
 
 # ---------------------------------------------------------------------------
 # БЛОК 1. СВЕДЕНИЯ ОБ ОБЪЕКТЕ (вес 15%)
@@ -587,6 +588,21 @@ def build_v2_summary_sms(results: list[dict], source_rows: list[dict]) -> str | 
             return float(value)
         except (TypeError, ValueError):
             return 0.0
+    def _render_limited(lines: list[str]) -> str:
+        result = ''
+
+        for line in lines:
+            candidate = f'{result}\n{line}' if result else line
+            if len(candidate) <= V2_SUMMARY_SMS_MAX_LENGTH:
+                result = candidate
+                continue
+
+            suffix = '\n… Список сокращён до лимита 4000 символов.'
+            if len(result) + len(suffix) <= V2_SUMMARY_SMS_MAX_LENGTH:
+                return result + suffix
+            return result
+
+        return result
 
     total_sites = len(results)
     scores = [_score(result) for result in results]
@@ -648,12 +664,11 @@ def build_v2_summary_sms(results: list[dict], source_rows: list[dict]) -> str | 
             '',
             'Все проверенные площадки заполнены: незаполненных полей не обнаружено.',
         ])
-        return '\n'.join(lines)
+        return _render_limited(lines)
 
     lines.extend(['', 'Требуют доработки:'])
     lines.extend(problem_lines)
-    return '\n'.join(lines)
-
+    return _render_limited(lines)
 
 
 def _score_portal(data: dict, fmt: str) -> tuple[int, list[str]]:
