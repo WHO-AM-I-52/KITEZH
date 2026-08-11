@@ -458,27 +458,47 @@
   }
 
   function buildBatchSummary(list){
-    var total = list.length;
-    var scores = list
-      .map(function(d){ return d && typeof d.score === 'number' ? d.score : null; })
-      .filter(function(score){ return score !== null; });
+    var active = list.filter(function(d){
+      return d
+        && d.analysis_status === 'ok'
+        && d.is_included === true;
+    });
+
+    var total = active.length;
+    var scores = active
+      .map(function(d){
+        return typeof d.score === 'number' ? d.score : null;
+      })
+      .filter(function(score){
+        return score !== null;
+      });
+
     var average = scores.length
-      ? (scores.reduce(function(sum, score){ return sum + score; }, 0) / scores.length).toFixed(1)
+      ? (
+          scores.reduce(function(sum, score){
+            return sum + score;
+          }, 0) / scores.length
+        ).toFixed(1)
       : null;
+
     var high = scores.filter(function(score){ return score >= 85; }).length;
-    var medium = scores.filter(function(score){ return score >= 65 && score < 85; }).length;
+    var medium = scores.filter(function(score){
+      return score >= 65 && score < 85;
+    }).length;
     var low = scores.filter(function(score){ return score < 65; }).length;
-    var missing = list.reduce(function(sum, d){
-      return sum + (d && Array.isArray(d.missing) ? d.missing.length : 0);
+
+    var missing = active.reduce(function(sum, d){
+      return sum + (Array.isArray(d.missing) ? d.missing.length : 0);
     }, 0);
 
     var lines = [];
-    lines.push('Площадок в выгрузке: ' + total);
+    lines.push('Активных площадок: ' + total);
     if (average !== null) lines.push('Средний score: ' + average + '%');
     lines.push('≥85%: ' + high);
     lines.push('65–84%: ' + medium);
     lines.push('<65%: ' + low);
     lines.push('Всего незаполненных полей: ' + missing);
+
     return lines.join('\n');
   }
 
@@ -506,30 +526,51 @@
 
   function buildAnalysisBlock(d) {
     if (!d) return '';
-    var score   = typeof d.score   === 'number' ? d.score   : 0;
-    var filled  = typeof d.filled  === 'number' ? d.filled  : 0;
-    var total   = typeof d.total   === 'number' ? d.total   : 0;
+
+    var isError = d.analysis_status === 'invalid_id'
+      || d.analysis_status === 'error';
+
+    if (isError) {
+      return [
+        '━━━ ОШИБКА ОБРАБОТКИ СТРОКИ ━━━',
+        d.global_id ? ('ID: ' + d.global_id) : 'ID площадки не указан',
+        d.error || 'Неизвестная ошибка обработки строки.',
+      ].join('\n');
+    }
+
+    var score   = typeof d.score === 'number' ? d.score : 0;
+    var filled  = typeof d.filled === 'number' ? d.filled : 0;
+    var total   = typeof d.total === 'number' ? d.total : 0;
     var missing = Array.isArray(d.missing) ? d.missing : [];
     var skipped = Array.isArray(d.skipped) ? d.skipped : [];
     var cat     = d.category || '';
 
     var lines = [];
     lines.push('━━━ РЕЗУЛЬТАТ АНАЛИЗА ━━━');
+
+    if (d.analysis_status === 'excluded') {
+      lines.push('Статус: исключена из агрегатов пакета');
+    }
+
     lines.push('Score: ' + score + '%' + (cat ? ' (' + cat + ')' : ''));
     lines.push('Заполнено полей: ' + filled + ' из ' + total);
     lines.push('Незаполненных (учитывается в счёте): ' + missing.length);
+
     if (missing.length > 0) {
       missing.forEach(function(f) {
         lines.push('  • ' + fieldName(f));
         if (fieldHint(f)) lines.push('    → ' + fieldHint(f));
       });
     }
+
     lines.push('Пропущенных (не учитывается в счёте): ' + skipped.length);
+
     if (skipped.length > 0) {
       skipped.forEach(function(f) {
         lines.push('  • ' + fieldName(f));
       });
     }
+
     return lines.join('\n');
   }
 
@@ -573,60 +614,135 @@
 
   /* ─── Рендер одной площадки ──────────────────────────────────────── */
   function renderPlot(d){
+    var isError = d && (
+      d.analysis_status === 'invalid_id'
+      || d.analysis_status === 'error'
+    );
+
+    var circle = document.getElementById('scoreCircle');
+    var scoreLabel = document.getElementById('scoreLabel');
+    var bar = document.getElementById('progressBar');
+    var plotTitle = document.getElementById('plotTitle');
+    var missingCard = document.getElementById('missingCard');
+    var skippedCard = document.getElementById('skippedCard');
+
+    if (isError) {
+      circle.style.borderColor = '#dc3545';
+      circle.style.color = '#dc3545';
+      circle.textContent = '—';
+
+      scoreLabel.textContent = 'Ошибка обработки строки';
+      scoreLabel.style.color = '#dc3545';
+
+      bar.style.width = '0%';
+      bar.style.background = '#dc3545';
+      bar.setAttribute('aria-valuenow', '0');
+
+      plotTitle.textContent = d.global_id
+        ? ('⚠ Ошибка: ' + d.global_id)
+        : '⚠ Ошибка обработки строки';
+
+      document.getElementById('statFilled').textContent = '—';
+      document.getElementById('statTotal').textContent = '—';
+      document.getElementById('statMissing').textContent = '—';
+      document.getElementById('statSkipped').textContent = '—';
+
+      uploadHint.classList.add('d-none');
+      summaryStats.classList.remove('d-none');
+
+      renderSummaryTable(
+        null,
+        0,
+        0,
+        0,
+        0,
+        '#dc3545',
+        d.error || 'Неизвестная ошибка обработки строки.'
+      );
+
+      missingCard.style.display = 'none';
+      skippedCard.style.display = 'none';
+      resultsBlock.classList.remove('d-none');
+      return;
+    }
+
     var score   = typeof d.score === 'number' ? d.score : 0;
     var missing = Array.isArray(d.missing) ? d.missing : [];
     var skipped = Array.isArray(d.skipped) ? d.skipped : [];
-    var total   = typeof d.total === 'number' ? d.total : (missing.length + (typeof d.filled === 'number' ? d.filled : 0));
-    var filled  = typeof d.filled === 'number' ? d.filled : (total - missing.length);
+    var total   = typeof d.total === 'number'
+      ? d.total
+      : (missing.length + (typeof d.filled === 'number' ? d.filled : 0));
+    var filled  = typeof d.filled === 'number'
+      ? d.filled
+      : (total - missing.length);
 
-    var col    = scoreColor(score);
-    var circle = document.getElementById('scoreCircle');
+    var col = scoreColor(score);
     circle.style.borderColor = col;
-    circle.style.color       = col;
-    circle.textContent       = score + '%';
+    circle.style.color = col;
+    circle.textContent = score + '%';
 
     var catMap = {
-      'высокая':    'Высокая заполняемость',
-      'средняя':    'Средняя заполняемость',
-      'низкая':     'Низкая заполняемость',
+      'высокая': 'Высокая заполняемость',
+      'средняя': 'Средняя заполняемость',
+      'низкая': 'Низкая заполняемость',
       'критическая': 'Критическая заполняемость'
     };
-    var scoreLabel = document.getElementById('scoreLabel');
-    scoreLabel.textContent = d.category ? (catMap[d.category] || d.category) : '';
-    scoreLabel.style.color = col;
 
-    var bar = document.getElementById('progressBar');
-    bar.style.width      = score + '%';
+    scoreLabel.textContent = d.analysis_status === 'excluded'
+      ? 'Исключена из агрегатов пакета'
+      : (d.category ? (catMap[d.category] || d.category) : '');
+    scoreLabel.style.color = d.analysis_status === 'excluded'
+      ? '#6c757d'
+      : col;
+
+    bar.style.width = score + '%';
     bar.style.background = col;
     bar.setAttribute('aria-valuenow', score);
 
-    document.getElementById('plotTitle').textContent = d.id ? ('📍 ' + d.id) : '';
+    plotTitle.textContent = d.id
+      ? ('📍 ' + d.id)
+      : (d.global_id ? ('📍 ' + d.global_id) : '');
 
-    document.getElementById('statFilled').textContent  = filled;
-    document.getElementById('statTotal').textContent   = total;
+    document.getElementById('statFilled').textContent = filled;
+    document.getElementById('statTotal').textContent = total;
     document.getElementById('statMissing').textContent = missing.length;
     document.getElementById('statSkipped').textContent = skipped.length;
+
     uploadHint.classList.add('d-none');
     summaryStats.classList.remove('d-none');
 
-    renderSummaryTable(score, filled, total, missing.length, skipped.length, col);
+    renderSummaryTable(
+      score,
+      filled,
+      total,
+      missing.length,
+      skipped.length,
+      col
+    );
+
+    missingCard.style.display = '';
     renderMissingAccordion(missing);
 
-    var skippedBody  = document.getElementById('skippedBody');
+    var skippedBody = document.getElementById('skippedBody');
     var skippedEmpty = document.getElementById('skippedEmpty');
     document.getElementById('skippedCount').textContent = skipped.length;
     skippedBody.innerHTML = '';
-    var skippedCard = document.getElementById('skippedCard');
+
     if (skipped.length === 0){
       skippedCard.style.display = 'none';
     } else {
       skippedCard.style.display = '';
       skippedEmpty.classList.add('d-none');
+
       skipped.forEach(function(f){
         var tr = document.createElement('tr');
         tr.innerHTML =
-          '<td class="px-3 py-1 text-secondary"><i class="bi bi-info-circle-fill"></i></td>' +
-          '<td class="px-3 py-1 text-muted">' + escHtml(fieldName(f)) + '</td>';
+          '<td class="px-3 py-1 text-secondary">' +
+            '<i class="bi bi-info-circle-fill"></i>' +
+          '</td>' +
+          '<td class="px-3 py-1 text-muted">' +
+            escHtml(fieldName(f)) +
+          '</td>';
         skippedBody.appendChild(tr);
       });
     }
@@ -635,9 +751,30 @@
   }
 
   /* ─── Сводная таблица ─────────────────────────────────────────────── */
-  function renderSummaryTable(score, filled, total, missingCnt, skippedCnt, col){
+  function renderSummaryTable(
+    score,
+    filled,
+    total,
+    missingCnt,
+    skippedCnt,
+    col,
+    errorText
+  ){
     var tbody = document.getElementById('summaryTableBody');
     tbody.innerHTML = '';
+
+    if (errorText) {
+      var errorRow = document.createElement('tr');
+      errorRow.innerHTML =
+        '<td colspan="2" class="px-3 py-3 text-danger">' +
+          '<i class="bi bi-exclamation-triangle me-2"></i>' +
+          '<strong>Ошибка обработки строки</strong>' +
+          '<div class="mt-1 small">' + escHtml(errorText) + '</div>' +
+        '</td>';
+      tbody.appendChild(errorRow);
+      return;
+    }
+
     var rows = [
       ['Score (заполняемость)',
        '<span class="fw-semibold" style="color:' + col + '">' + score + '%</span>'],
@@ -652,6 +789,7 @@
          ? '<span class="badge bg-secondary">' + skippedCnt + '</span>'
          : '<span class="text-muted">нет</span>']
     ];
+
     rows.forEach(function(r){
       var tr = document.createElement('tr');
       tr.innerHTML =
@@ -660,7 +798,6 @@
       tbody.appendChild(tr);
     });
   }
-
   /* ─── Аккордеон missing ───────────────────────────────────────────── */
   function renderMissingAccordion(missing){
     var accordion    = document.getElementById('missingAccordion');
