@@ -540,6 +540,7 @@ def build_summary_sms(analysis_list: list[dict]) -> str | None:
 
     lines.append('После внесения изменений просим сообщить — проверим обновлённый процент.')
     return '\n'.join(lines)
+    
 def build_v2_summary_sms(results: list[dict], source_rows: list[dict]) -> str | None:
     """
     Краткая сводка пакетного анализа V2 для ручного копирования.
@@ -651,6 +652,7 @@ def build_v2_summary_sms(results: list[dict], source_rows: list[dict]) -> str | 
     lines.extend(['', 'Требуют доработки:'])
     lines.extend(problem_lines)
     return '\n'.join(lines)
+
 
 def _score_portal(data: dict, fmt: str) -> tuple[int, list[str]]:
     filled_count = 0
