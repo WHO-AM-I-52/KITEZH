@@ -17,6 +17,7 @@ from paths import (
     UPLOADS_TMP,
     REPORTS_DIR,
 )
+from portal_analysis.analysis_history import create_analysis_history_tables
 
 ALLOWED_EXT = {'pdf', 'ppt', 'pptx', 'doc', 'docx', 'xlsx', 'zip'}
 
@@ -687,6 +688,7 @@ def _migrate(conn):
             "ALTER TABLE requests ADD COLUMN appeal_text TEXT"
         )
 
+    create_analysis_history_tables(conn)
     conn.commit()
 
 
