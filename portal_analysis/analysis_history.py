@@ -76,6 +76,7 @@ CREATE TABLE IF NOT EXISTS portal_analysis_site_snapshots (
     skipped_fields_json TEXT NOT NULL DEFAULT '[]',
     field_values_hash TEXT,
     error_message TEXT,
+    analysis_status TEXT NOT NULL DEFAULT 'ok',
     previous_snapshot_id INTEGER REFERENCES portal_analysis_site_snapshots(id),
     UNIQUE(run_id, site_id)
 );
@@ -87,6 +88,29 @@ CREATE INDEX IF NOT EXISTS idx_portal_analysis_snapshots_run
 CREATE INDEX IF NOT EXISTS idx_portal_analysis_snapshots_included
     ON portal_analysis_site_snapshots(run_id, is_included);
 """)
+
+    snapshot_columns = {
+        row[1]
+        for row in conn.execute("PRAGMA table_info(portal_analysis_site_snapshots)")
+    }
+    if "analysis_status" not in snapshot_columns:
+        conn.execute(
+            """
+            ALTER TABLE portal_analysis_site_snapshots
+            ADD COLUMN analysis_status TEXT NOT NULL DEFAULT 'ok'
+            """
+        )
+        conn.execute(
+            """
+            UPDATE portal_analysis_site_snapshots
+            SET analysis_status = CASE
+                WHEN COALESCE(TRIM(error_message), '') <> '' THEN 'error'
+                WHEN is_included = 0
+                     AND COALESCE(TRIM(exclusion_reason), '') <> '' THEN 'excluded'
+                ELSE 'ok'
+            END
+            """
+        )
 
 
 def create_run(conn, formula_version: str, initiated_by: int | None = None, source_label: str | None = None) -> int:
@@ -136,22 +160,38 @@ def save_snapshot(
     previous_id = previous["id"] if previous else None
     result = result or {}
 
+    if error_message and str(error_message).strip():
+        analysis_status = "error"
+    elif not is_included and exclusion_reason:
+        analysis_status = "excluded"
+    else:
+        analysis_status = "ok"
+
     cursor = conn.execute(
         """
         INSERT INTO portal_analysis_site_snapshots (
             run_id, site_id, site_name, site_status, is_included, exclusion_reason,
             score_percent, required_fields_count, filled_fields_count,
             missing_fields_json, skipped_fields_json, field_values_hash,
-            error_message, previous_snapshot_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            error_message, analysis_status, previous_snapshot_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
-            run_id, str(site_id), None if site_name is None else str(site_name), status_text,
-            is_included, exclusion_reason, result.get("score"), result.get("total"),
+            run_id,
+            str(site_id),
+            None if site_name is None else str(site_name),
+            status_text,
+            is_included,
+            exclusion_reason,
+            result.get("score"),
+            result.get("total"),
             result.get("filled"),
             json.dumps(result.get("missing", []), ensure_ascii=False),
             json.dumps(result.get("skipped", []), ensure_ascii=False),
-            field_values_hash, error_message, previous_id,
+            field_values_hash,
+            error_message,
+            analysis_status,
+            previous_id,
         ),
     )
     return int(cursor.lastrowid)
