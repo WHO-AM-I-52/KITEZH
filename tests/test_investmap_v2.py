@@ -1,8 +1,11 @@
 import io
+import sqlite3
+import tempfile
 import unittest
 from unittest.mock import patch
 
 from flask import Flask
+from portal_analysis.analysis_history import create_analysis_history_tables
 
 from routes import investmap_routes
 from tools.investmap_analyzer import (
@@ -168,6 +171,10 @@ class BuildV2SummarySmsTest(unittest.TestCase):
 
 class InvestmapV2RouteTest(unittest.TestCase):
     def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.db_path = f"{self.temp_dir.name}/investmap-v2-test.db"
+        self._prepare_test_db()
+
         self.app = Flask(__name__)
         self.app.config.update(
             TESTING=True,
@@ -180,6 +187,34 @@ class InvestmapV2RouteTest(unittest.TestCase):
             session['user_id'] = 1
             session['role'] = 'admin'
 
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def _open_test_db(self):
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    def _prepare_test_db(self):
+        conn = self._open_test_db()
+        try:
+            create_analysis_history_tables(conn)
+            conn.execute(
+                """
+                CREATE TABLE activity_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER,
+                    action TEXT NOT NULL,
+                    request_id INTEGER,
+                    detail TEXT,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
     def _post_v2(self, export_result, score_results):
         with (
             patch.object(
@@ -191,15 +226,14 @@ class InvestmapV2RouteTest(unittest.TestCase):
                 investmap_routes,
                 'calc_portal_score_v2',
                 side_effect=score_results,
-            ),
+            ) as score_fn,
             patch.object(
                 investmap_routes,
                 'get_db',
-                return_value=object(),
+                side_effect=self._open_test_db,
             ),
-            patch.object(investmap_routes, 'log_action'),
         ):
-            return self.client.post(
+            response = self.client.post(
                 '/investmap/v2',
                 data={
                     'file': (
@@ -210,13 +244,18 @@ class InvestmapV2RouteTest(unittest.TestCase):
                 content_type='multipart/form-data',
             )
 
+        return response, score_fn
+        
     def test_format_2_has_texts_without_text(self):
         export_result = {
             'format': 2,
             'count': 2,
             'data': [
                 {'global_id': '3001'},
-                {'Название площадки': 'Площадка без ID'},
+                {
+                    'global_id': '3002',
+                    'Название площадки': 'Площадка 3002',
+                },
             ],
             'text': 'Этот единый текст не должен попасть в V2 batch export.',
             'texts': ['Текст площадки 1', 'Текст площадки 2'],
@@ -237,12 +276,17 @@ class InvestmapV2RouteTest(unittest.TestCase):
             },
         ]
 
-        response = self._post_v2(export_result, score_results)
+        response, score_fn = self._post_v2(export_result, score_results)
 
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
 
-        self.assertEqual(payload['count'], 2)
+        self.assertEqual(score_fn.call_count, 2)
+        self.assertIsNotNone(payload['history'])
+        self.assertEqual(payload['history']['total_sites'], 2)
+        self.assertEqual(payload['history']['active_sites'], 2)
+        self.assertEqual(payload['history']['excluded_sites'], 0)
+        self.assertEqual(payload['history']['error_sites'], 0)
         self.assertIsNotNone(payload['summary_sms'])
         self.assertEqual(payload['export']['format'], 2)
         self.assertEqual(
@@ -250,6 +294,29 @@ class InvestmapV2RouteTest(unittest.TestCase):
             ['Текст площадки 1', 'Текст площадки 2'],
         )
         self.assertNotIn('text', payload['export'])
+
+        conn = self._open_test_db()
+        try:
+            run_count = conn.execute(
+                "SELECT COUNT(*) FROM portal_analysis_runs"
+            ).fetchone()[0]
+            snapshot_count = conn.execute(
+                "SELECT COUNT(*) FROM portal_analysis_site_snapshots"
+            ).fetchone()[0]
+            activity_count = conn.execute(
+                """
+                SELECT COUNT(*)
+                FROM activity_log
+                WHERE action = ?
+                """,
+                ('investmap_v2_score',),
+            ).fetchone()[0]
+        finally:
+            conn.close()
+
+        self.assertEqual(run_count, 1)
+        self.assertEqual(snapshot_count, 2)
+        self.assertEqual(activity_count, 1)
 
     def test_format_1_and_3_have_text_and_single_item_texts(self):
         for export_format in (1, 3):
@@ -273,12 +340,14 @@ class InvestmapV2RouteTest(unittest.TestCase):
                     },
                 ]
 
-                response = self._post_v2(export_result, score_results)
+                response, score_fn = self._post_v2(export_result, score_results)
 
                 self.assertEqual(response.status_code, 200)
                 payload = response.get_json()
 
                 self.assertIsNone(payload['summary_sms'])
+                self.assertIsNone(payload['history'])
+                self.assertEqual(score_fn.call_count, 1)
                 self.assertEqual(payload['export']['format'], export_format)
                 self.assertEqual(
                     payload['export']['text'],
@@ -308,12 +377,15 @@ class InvestmapV2RouteTest(unittest.TestCase):
             },
         ]
 
-        response = self._post_v2(export_result, score_results)
+        response, score_fn = self._post_v2(export_result, score_results)
 
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
 
         self.assertIsNone(payload['summary_sms'])
+        self.assertIsNotNone(payload['history'])
+        self.assertEqual(payload['history']['total_sites'], 1)
+        self.assertEqual(score_fn.call_count, 1)
         self.assertEqual(payload['export']['texts'], ['Текст площадки 5001'])
         self.assertNotIn('text', payload['export'])
 
