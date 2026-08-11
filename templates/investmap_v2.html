@@ -123,6 +123,23 @@
   </div>
 </div>
 
+{# ─── Условная SMS-сводка ─────────────────────────────────────────── #}
+<div id="summarySmsBlock" class="card mb-3 d-none">
+  <div class="card-header py-2 px-3 d-flex align-items-center gap-2">
+    <i class="bi bi-chat-square-text" style="color:#1B5E7B"></i>
+    <span class="fw-semibold" style="font-size:14px">Краткая сводка для SMS</span>
+    <button class="btn btn-sm btn-outline-secondary ms-auto" id="copySummarySmsBtn"
+            style="font-size:12px">
+      <i class="bi bi-clipboard me-1"></i>Копировать
+    </button>
+  </div>
+  <div class="card-body p-2">
+    <textarea id="summarySmsText" class="form-control"
+              style="min-height:90px;font-size:12px;resize:vertical"
+              readonly></textarea>
+  </div>
+</div>
+  
 {# ─── Навигатор площадок ───────────────────────────────────────── #}
 <div id="plotNav" class="d-none mb-3">
   <div class="card">
@@ -268,6 +285,9 @@
   var resultText  = document.getElementById('resultText');
   var copyBtn     = document.getElementById('copyBtn');
   var formatBadge = document.getElementById('formatBadge');
+  var summarySmsBlock   = document.getElementById('summarySmsBlock');
+  var summarySmsText    = document.getElementById('summarySmsText');
+  var copySummarySmsBtn = document.getElementById('copySummarySmsBtn');
 
   var allData    = null;
   var currentIdx = 0;
@@ -342,13 +362,9 @@
       initNav(list);
       renderPlot(list[0]);
 
-      /* Заполняем textarea: текст площадки + результат анализа */
-      var exportText = resp.export ? resp.export.text : '';
       var fmt = (resp.export && resp.export.format) ? resp.export.format : 'txt';
-      if (exportText) {
-        var analysisBlock = buildAnalysisBlock(list[0]);
-        setAiText(exportText + (analysisBlock ? ('\n\n' + analysisBlock) : ''), fmt);
-      }
+      setAiText(buildV2AiText(list, currentIdx), fmt);
+      setSummarySms(list[0]);
     })
     .catch(function(e){ setLoading(false); showError('Сетевая ошибка: ' + e); });
   });
@@ -400,13 +416,84 @@
     }, 1800);
   }
 
+    copySummarySmsBtn.addEventListener('click', function(){
+    var txt = summarySmsText.value;
+    if (!txt) return;
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(txt).then(function(){
+        flashSummarySmsCopyBtn();
+      });
+    } else {
+      summarySmsText.select();
+      document.execCommand('copy');
+      flashSummarySmsCopyBtn();
+    }
+  });
+
+  function flashSummarySmsCopyBtn(){
+    var orig = copySummarySmsBtn.innerHTML;
+    copySummarySmsBtn.innerHTML = '<i class="bi bi-check2 me-1"></i>Скопировано';
+    copySummarySmsBtn.classList.add('btn-success');
+    copySummarySmsBtn.classList.remove('btn-outline-secondary');
+    setTimeout(function(){
+      copySummarySmsBtn.innerHTML = orig;
+      copySummarySmsBtn.classList.remove('btn-success');
+      copySummarySmsBtn.classList.add('btn-outline-secondary');
+    }, 1800);
+  }
+
   function setAiText(text, format){
     resultText.value = text;
     formatBadge.textContent = format || 'txt';
     aiTextBlock.classList.remove('d-none');
   }
 
+
+  function getExportText(idx){
+    var exportData = lastResp && lastResp.export ? lastResp.export : {};
+    var texts = Array.isArray(exportData.texts) ? exportData.texts : [];
+    if (typeof texts[idx] === 'string' && texts[idx]) return texts[idx];
+    if (typeof exportData.text === 'string' && exportData.text) return exportData.text;
+    return '';
+  }
+
+  function buildBatchSummary(list){
+    var total = list.length;
+    var scores = list
+      .map(function(d){ return d && typeof d.score === 'number' ? d.score : null; })
+      .filter(function(score){ return score !== null; });
+    var average = scores.length
+      ? Math.round(scores.reduce(function(sum, score){ return sum + score; }, 0) / scores.length)
+      : null;
+    var missing = list.reduce(function(sum, d){
+      return sum + (d && Array.isArray(d.missing) ? d.missing.length : 0);
+    }, 0);
+
+    var lines = ['ПАКЕТНАЯ СВОДКА'];
+    lines.push('Площадок в выгрузке: ' + total);
+    if (average !== null) lines.push('Средний score: ' + average + '%');
+    lines.push('Всего незаполненных полей: ' + missing);
+    return lines.join('\n');
+  }
+
+  function buildV2AiText(list, idx){
+    var blocks = ['━━━ РЕЗУЛЬТАТ АНАЛИЗА V2 ━━━'];
+    var exportText = getExportText(idx);
+    if (exportText) blocks.push(exportText);
+    blocks.push(buildBatchSummary(list));
+    var analysisBlock = buildAnalysisBlock(list[idx]);
+    if (analysisBlock) blocks.push(analysisBlock);
+    return blocks.join('\n\n');
+  }
+
+  function setSummarySms(d){
+    var text = d && typeof d.summary_sms === 'string' ? d.summary_sms.trim() : '';
+    summarySmsText.value = text;
+    summarySmsBlock.classList.toggle('d-none', !text);
+  }
+
   /* ─── Формируем блок результата анализа для вставки в textarea ───── */
+
   function buildAnalysisBlock(d) {
     if (!d) return '';
     var score   = typeof d.score   === 'number' ? d.score   : 0;
@@ -459,11 +546,11 @@
     renderPlot(allData[idx]);
     if (lastResp && !aiTextBlock.classList.contains('d-none')) {
       setAiText(
-        (lastResp.export && lastResp.export.text ? lastResp.export.text : '') +
-        '\n\n' + buildAnalysisBlock(allData[idx]),
+        buildV2AiText(allData, currentIdx),
         lastResp.export && lastResp.export.format ? lastResp.export.format : 'txt'
       );
     }
+    setSummarySms(allData[idx]);
     resultsBlock.scrollIntoView({behavior:'smooth', block:'start'});
   }
 
@@ -655,6 +742,8 @@
     summaryStats.classList.add('d-none');
     aiTextBlock.classList.add('d-none');
     resultText.value = '';
+    summarySmsBlock.classList.add('d-none');
+    summarySmsText.value = '';
     allData    = null;
     currentIdx = 0;
     lastResp   = null;
