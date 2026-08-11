@@ -364,7 +364,7 @@
 
       var fmt = (resp.export && resp.export.format) ? resp.export.format : 'txt';
       setAiText(buildV2AiText(list, currentIdx), fmt);
-      setSummarySms(list[0]);
+      setSummarySms(lastResp.summary_sms);
     })
     .catch(function(e){ setLoading(false); showError('Сетевая ошибка: ' + e); });
   });
@@ -463,31 +463,41 @@
       .map(function(d){ return d && typeof d.score === 'number' ? d.score : null; })
       .filter(function(score){ return score !== null; });
     var average = scores.length
-      ? Math.round(scores.reduce(function(sum, score){ return sum + score; }, 0) / scores.length)
+      ? (scores.reduce(function(sum, score){ return sum + score; }, 0) / scores.length).toFixed(1)
       : null;
+    var high = scores.filter(function(score){ return score >= 85; }).length;
+    var medium = scores.filter(function(score){ return score >= 65 && score < 85; }).length;
+    var low = scores.filter(function(score){ return score < 65; }).length;
     var missing = list.reduce(function(sum, d){
       return sum + (d && Array.isArray(d.missing) ? d.missing.length : 0);
     }, 0);
 
-    var lines = ['ПАКЕТНАЯ СВОДКА'];
+    var lines = [];
     lines.push('Площадок в выгрузке: ' + total);
     if (average !== null) lines.push('Средний score: ' + average + '%');
+    lines.push('≥85%: ' + high);
+    lines.push('65–84%: ' + medium);
+    lines.push('<65%: ' + low);
     lines.push('Всего незаполненных полей: ' + missing);
     return lines.join('\n');
   }
 
   function buildV2AiText(list, idx){
-    var blocks = ['━━━ РЕЗУЛЬТАТ АНАЛИЗА V2 ━━━'];
-    var exportText = getExportText(idx);
-    if (exportText) blocks.push(exportText);
-    blocks.push(buildBatchSummary(list));
     var analysisBlock = buildAnalysisBlock(list[idx]);
-    if (analysisBlock) blocks.push(analysisBlock);
-    return blocks.join('\n\n');
+    var exportText = getExportText(idx);
+
+    return [
+      '━━━ РЕЗУЛЬТАТ АНАЛИЗА V2 ━━━',
+      analysisBlock,
+      '━━━ СВОДКА ПАКЕТА ━━━',
+      buildBatchSummary(list),
+      '━━━ ИСХОДНЫЕ ДАННЫЕ ПЛОЩАДКИ ━━━',
+      exportText
+    ].filter(Boolean).join('\n\n');
   }
 
-  function setSummarySms(d){
-    var text = d && typeof d.summary_sms === 'string' ? d.summary_sms.trim() : '';
+  function setSummarySms(text){
+    text = typeof text === 'string' ? text.trim() : '';
     summarySmsText.value = text;
     summarySmsBlock.classList.toggle('d-none', !text);
   }
@@ -550,7 +560,6 @@
         lastResp.export && lastResp.export.format ? lastResp.export.format : 'txt'
       );
     }
-    setSummarySms(allData[idx]);
     resultsBlock.scrollIntoView({behavior:'smooth', block:'start'});
   }
 
