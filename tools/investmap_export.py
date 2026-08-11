@@ -170,17 +170,29 @@ def convert_excel_to_text(file_bytes):
 
         if fmt == 'f3':
             lines, data = parse_format3(ws)
-            return {'format': 3, 'count': 1, 'text': '\n'.join(lines), 'data': data, 'error': None}
+            text = '\n'.join(lines)
+            return {
+                'format': 3, 'count': 1, 'text': text, 'texts': [text],
+                'data': data, 'error': None,
+            }
 
         elif fmt == 'f1':
             lines, data = parse_format1(ws)
-            return {'format': 1, 'count': 1, 'text': '\n'.join(lines), 'data': data, 'error': None}
+            text = '\n'.join(lines)
+            return {
+                'format': 1, 'count': 1, 'text': text, 'texts': [text],
+                'data': data, 'error': None,
+            }
 
         else:
             blocks = parse_format2(ws)
-            text = '\n\n'.join(['\n'.join(b[0]) for b in blocks])
+            texts = ['\n'.join(block[0]) for block in blocks]
+            text = '\n\n'.join(texts)
             data_list = [b[1] for b in blocks]
-            return {'format': 2, 'count': len(blocks), 'text': text, 'data': data_list, 'error': None}
+            return {
+                'format': 2, 'count': len(blocks), 'text': text, 'texts': texts,
+                'data': data_list, 'error': None,
+            }
 
     except Exception as e:
         return {'format': None, 'count': 0, 'text': '', 'data': {}, 'error': str(e)}
