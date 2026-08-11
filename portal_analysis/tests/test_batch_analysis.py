@@ -518,3 +518,70 @@ def test_batch_results_preserve_order_for_duplicate_global_id():
     assert duplicate_item["snapshot_saved"] is False
     assert duplicate_item["result"] is None
     assert duplicate_item["error"] == "Повторный global_id в одном пакете"
+
+def test_excluded_score_is_saved_but_not_in_history_average():
+    conn = _connection()
+
+    def score_fn(row):
+        return _v2_result(
+            score=80 if row["global_id"] == "1001" else 20,
+            filled=3,
+            total=4,
+            missing=[{"field": "Тестовое поле", "hint": "Заполните значение"}],
+            skipped=[{"field": "Комментарий", "reason": "optional"}],
+        )
+
+    result = run_batch_history(
+        conn=conn,
+        source_rows=[
+            _site(global_id="1001", status="Свободна"),
+            _site(global_id="1002", status="Продана"),
+        ],
+        score_fn=score_fn,
+        formula_version="v2.1.0",
+    )
+
+    run = conn.execute(
+        """
+        SELECT average_score
+        FROM portal_analysis_runs
+        WHERE id = ?
+        """,
+        (result["run_id"],),
+    ).fetchone()
+
+    excluded_snapshot = conn.execute(
+        """
+        SELECT
+            site_id,
+            site_status,
+            is_included,
+            exclusion_reason,
+            score_percent,
+            missing_fields_json,
+            skipped_fields_json,
+            field_values_hash,
+            analysis_status
+        FROM portal_analysis_site_snapshots
+        WHERE run_id = ? AND site_id = ?
+        """,
+        (result["run_id"], "1002"),
+    ).fetchone()
+
+    assert result["active_sites"] == 1
+    assert result["excluded_sites"] == 1
+    assert run["average_score"] == 80.0
+
+    assert excluded_snapshot["site_id"] == "1002"
+    assert excluded_snapshot["site_status"] == "Продана"
+    assert excluded_snapshot["is_included"] == 0
+    assert excluded_snapshot["exclusion_reason"] == "продана"
+    assert excluded_snapshot["score_percent"] == 20
+    assert json.loads(excluded_snapshot["missing_fields_json"]) == [
+        {"field": "Тестовое поле", "hint": "Заполните значение"}
+    ]
+    assert json.loads(excluded_snapshot["skipped_fields_json"]) == [
+        {"field": "Комментарий", "reason": "optional"}
+    ]
+    assert excluded_snapshot["field_values_hash"]
+    assert excluded_snapshot["analysis_status"] == "excluded"
