@@ -116,7 +116,7 @@ def investmap_v2_post():
 
         summary_sms = (
             build_v2_summary_sms(results, data)
-            if fmt == 2 and isinstance(data, list)
+            if fmt == 2 and isinstance(data, list) and len(results) > 1
             else None
         )
 
