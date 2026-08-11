@@ -610,6 +610,7 @@ def build_v2_summary_sms(results: list[dict], source_rows: list[dict]) -> str | 
 
     sites_with_missing = 0
     total_missing = 0
+    displayed_sites = 0
     problem_lines = []
 
     for index, result in enumerate(results):
@@ -622,14 +623,15 @@ def build_v2_summary_sms(results: list[dict], source_rows: list[dict]) -> str | 
         sites_with_missing += 1
         total_missing += len(missing)
 
-        if len(problem_lines) >= 20:
+        if displayed_sites >= 20:
             continue
 
         site_number = index + 1
         problem_lines.append(
-            f'{len(problem_lines) + 1}. {_site_label(row, site_number)} '
+            f'{displayed_sites + 1}. {_site_label(row, site_number)} '
             f'— score: {_score(result):.1f}%.'
         )
+        displayed_sites += 1
 
         fields_added = 0
         for item in missing:
