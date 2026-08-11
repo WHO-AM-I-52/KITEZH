@@ -4,7 +4,11 @@ from core.activity_log import log_action
 from core.auth_utils import login_required, permission_required
 from db import get_db
 from core.kitezh_logger import err_logger
-from portal_analysis.portal_checker import calc_portal_score_v2
+from portal_analysis.batch_analysis import run_batch_history
+from portal_analysis.portal_checker import (
+    V2_FORMULA_VERSION,
+    calc_portal_score_v2,
+)
 from tools.investmap_export import convert_excel_to_text
 from tools.investmap_analyzer import (
     analyze,
@@ -13,6 +17,46 @@ from tools.investmap_analyzer import (
 )
 
 investmap_bp = Blueprint('investmap', __name__)
+_HISTORY_ERROR_STATUSES = frozenset({"invalid_id", "error"})
+
+
+def _history_item_to_api_result(item: dict) -> dict:
+    """Преобразует history item в совместимый API result V2.
+
+    Успешный scorer result сохраняется в исходной форме и дополняется
+    техническими полями истории. Ошибочный item остаётся позиционно
+    совместимым с export.texts, но не маскируется как реальная оценка 0%.
+    """
+    canonical_result = item.get("result")
+    analysis_status = item.get("analysis_status")
+
+    if canonical_result is not None:
+        api_result = dict(canonical_result)
+        api_result["is_included"] = item.get("included") is True
+        api_result["analysis_status"] = analysis_status
+        return api_result
+
+    return {
+        "score": None,
+        "filled": 0,
+        "total": 0,
+        "missing": [],
+        "skipped": [],
+        "is_included": False,
+        "analysis_status": analysis_status,
+        "error": item.get("error"),
+        "global_id": item.get("site_id"),
+    }
+
+
+def _active_sms_pairs(results: list[dict], source_rows: list[dict]):
+    """Возвращает только активные успешно рассчитанные пары result/source row."""
+    return [
+        (result, source_row)
+        for result, source_row in zip(results, source_rows)
+        if result.get("analysis_status") == "ok"
+        and result.get("is_included") is True
+    ]
 
 
 @investmap_bp.route('/investmap')
@@ -65,42 +109,74 @@ def investmap_v2_post():
     """
     Batch-оценка площадок через calc_portal_score_v2.
 
-    POST /investmap/v2
-    Content-Type: multipart/form-data
-    file: .xlsx
+    Для format 2 создаёт history run в той же транзакции, что и activity log.
+    Format 1/3 сохраняют текущий одиночный сценарий без history run.
     """
     f = request.files.get('file')
     if not f:
         return jsonify({'error': 'Файл не передан', 'results': [], 'count': 0}), 400
     if not f.filename.lower().endswith('.xlsx'):
-        return jsonify({'error': 'Поддерживается только формат .xlsx', 'results': [], 'count': 0}), 400
+        return jsonify({
+            'error': 'Поддерживается только формат .xlsx',
+            'results': [],
+            'count': 0,
+        }), 400
 
     user = getattr(g, 'user', {}).get('login', 'unknown')
+    user_id = getattr(g, 'user', {}).get('id')
     db = None
+
     try:
         file_bytes = f.read()
         export = convert_excel_to_text(file_bytes)
 
         if export.get('error'):
-            return jsonify({'results': [], 'count': 0, 'error': export['error']}), 400
+            return jsonify({
+                'results': [],
+                'count': 0,
+                'error': export['error'],
+            }), 400
 
         data = export.get('data', {})
         fmt = export.get('format')
         db = get_db()
 
+        history_summary = None
+
         if fmt == 2 and isinstance(data, list):
-            results = [calc_portal_score_v2(r, db) for r in data]
+            batch_result = run_batch_history(
+                conn=db,
+                source_rows=data,
+                score_fn=lambda row: calc_portal_score_v2(row, db),
+                formula_version=V2_FORMULA_VERSION,
+                initiated_by=user_id,
+                source_label=f.filename,
+            )
+
+            results = [
+                _history_item_to_api_result(item)
+                for item in batch_result['results']
+            ]
+
+            history_summary = {
+                'run_id': batch_result['run_id'],
+                'total_sites': batch_result['total_sites'],
+                'active_sites': batch_result['active_sites'],
+                'excluded_sites': batch_result['excluded_sites'],
+                'error_sites': batch_result['error_sites'],
+            }
+
+            sms_pairs = _active_sms_pairs(results, data)
+            sms_results = [result for result, _ in sms_pairs]
+            sms_rows = [row for _, row in sms_pairs]
+            summary_sms = (
+                build_v2_summary_sms(sms_results, sms_rows)
+                if len(sms_results) > 1
+                else None
+            )
         else:
             results = [calc_portal_score_v2(data, db)]
-
-        summary_sms = (
-            build_v2_summary_sms(results, data)
-            if fmt == 2 and isinstance(data, list) and len(results) > 1
-            else None
-        )
-
-        log_action(db, getattr(g, 'user', {}).get('id'), 'investmap_v2_score',
-                   detail=f'count={len(results)}')
+            summary_sms = None
 
         export_payload = {
             'format': fmt,
@@ -114,24 +190,49 @@ def investmap_v2_post():
             export_payload['text'] = text
             export_payload['texts'] = [text]
 
+        if not log_action(
+            db,
+            user_id,
+            'investmap_v2_score',
+            detail=f'count={len(results)}',
+        ):
+            raise RuntimeError('Не удалось записать действие investmap_v2_score')
+
+        db.commit()
+
         return jsonify({
             'results': results,
             'count': len(results),
             'summary_sms': summary_sms,
             'export': export_payload,
             'error': None,
+            'history': history_summary,
         })
 
     except Exception as exc:
+        if db is not None:
+            try:
+                db.rollback()
+            except Exception:
+                err_logger.exception(
+                    'investmap_v2 POST rollback error | user=%s',
+                    user,
+                )
+
         err_logger.exception('investmap_v2 POST error | user=%s | %s', user, exc)
-        return jsonify({'results': [], 'count': 0, 'error': 'Внутренняя ошибка сервера'}), 500
+        return jsonify({
+            'results': [],
+            'count': 0,
+            'error': 'Внутренняя ошибка сервера',
+        }), 500
     finally:
         if db is not None:
             try:
                 db.close()
             except Exception:
                 err_logger.exception(
-                    'investmap_v2 POST close error | user=%s', user
+                    'investmap_v2 POST close error | user=%s',
+                    user,
                 )
 
 
