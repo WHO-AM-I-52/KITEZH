@@ -1,3 +1,4 @@
+import json
 import sqlite3
 
 import migrations
@@ -287,3 +288,53 @@ def test_init_and_migrate_db_use_history_bootstrap(monkeypatch, tmp_path):
         conn.close()
 
     assert {"portal_analysis_runs", "portal_analysis_site_snapshots"} <= tables
+    
+def test_save_snapshot_preserves_v2_missing_and_skipped_json():
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    create_analysis_history_tables(conn)
+
+    run_id = create_run(conn, "v2.1.0")
+
+    missing = [
+        {"field": "Инфраструктура", "hint": "Укажите расстояние до точки подключения"},
+        {"field": "Транспорт", "hint": "Укажите расстояние до трассы"},
+    ]
+    skipped = [
+        {"field": "Комментарий", "reason": "optional"},
+    ]
+
+    snapshot_id = save_snapshot(
+        conn,
+        run_id,
+        "site-123",
+        "Тестовая площадка",
+        "Свободна",
+        result={
+            "score": 55,
+            "filled": 2,
+            "total": 4,
+            "missing": missing,
+            "skipped": skipped,
+        },
+    )
+
+    row = conn.execute(
+        """
+        SELECT
+            score_percent,
+            filled_fields_count,
+            required_fields_count,
+            missing_fields_json,
+            skipped_fields_json
+        FROM portal_analysis_site_snapshots
+        WHERE id = ?
+        """,
+        (snapshot_id,),
+    ).fetchone()
+
+    assert row["score_percent"] == 55
+    assert row["filled_fields_count"] == 2
+    assert row["required_fields_count"] == 4
+    assert json.loads(row["missing_fields_json"]) == missing
+    assert json.loads(row["skipped_fields_json"]) == skipped
