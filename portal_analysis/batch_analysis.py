@@ -129,26 +129,63 @@ def run_batch_history(
         site_status = row.get(SITE_STATUS_FIELD)
 
         if not site_id:
+            error_message = "Пустой или некорректный global_id"
             error_sites += 1
             errors.append(
                 _error_item(
                     row_index,
                     site_id,
                     "invalid_global_id",
-                    "Пустой или некорректный global_id",
+                    error_message,
                 )
+            )
+            results.append(
+                {
+                    "row_index": row_index,
+                    "site_id": "",
+                    "included": None,
+                    "snapshot_saved": False,
+                    "is_new": False,
+                    "changed_source": False,
+                    "changed_inclusion": False,
+                    "changed_score": False,
+                    "result": None,
+                    "analysis_status": "invalid_id",
+                    "error": error_message,
+                }
             )
             continue
 
         if site_id in seen_site_ids:
+            error_message = "Повторный global_id в одном пакете"
             error_sites += 1
             errors.append(
                 _error_item(
                     row_index,
                     site_id,
                     "duplicate_global_id",
-                    "Повторный global_id в одном пакете",
+                    error_message,
                 )
+            )
+            results.append(
+                {
+                    "row_index": row_index,
+                    "site_id": site_id,
+                    "included": None,
+                    "snapshot_saved": False,
+                    "is_new": False,
+                    "changed_source": False,
+                    "changed_inclusion": False,
+                    "changed_score": False,
+                    "result": None,
+                    "analysis_status": "error",
+                    "error": error_message,
+                    "changed_inclusion": False,
+                    "changed_score": False,
+                    "result": None,
+                    "analysis_status": "error",
+                    "error": error_message,
+                }
             )
             continue
 
@@ -208,6 +245,8 @@ def run_batch_history(
                         previous and previous_score != current_score
                     ),
                     "result": result,
+                    "analysis_status": "ok" if included else "excluded",
+                    "error": None,
                 }
             )
         except Exception as exc:
