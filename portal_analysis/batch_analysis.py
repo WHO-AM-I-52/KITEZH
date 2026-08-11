@@ -180,11 +180,6 @@ def run_batch_history(
                     "result": None,
                     "analysis_status": "error",
                     "error": error_message,
-                    "changed_inclusion": False,
-                    "changed_score": False,
-                    "result": None,
-                    "analysis_status": "error",
-                    "error": error_message,
                 }
             )
             continue
@@ -293,6 +288,8 @@ def run_batch_history(
                     "changed_inclusion": False,
                     "changed_score": False,
                     "result": None,
+                    "analysis_status": "error",
+                    "error": error_message,
                 }
             )
 
