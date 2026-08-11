@@ -120,7 +120,6 @@ def investmap_v2_post():
             else None
         )
 
-
         log_action(db, getattr(g, 'user', {}).get('id'), 'investmap_v2_score',
                    detail=f'count={len(results)}')
 
