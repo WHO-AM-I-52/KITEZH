@@ -14,6 +14,7 @@ from db import DB_PATH
 from core.auth_utils import hash_pw
 from spravochnik import LEGAL_FORMS_DEFAULT, DISTRICTS_DEFAULT, SOURCE_TYPES_DEFAULT
 from db import get_db
+from portal_analysis.analysis_history import create_analysis_history_tables
 
 # ──────────────────────────────────────────────────────────────────────────────
 # НОВЫЕ КОЛОНКИ requests (#53)
@@ -712,6 +713,7 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
                         "INSERT INTO classifiers (category,value) VALUES ('source_type',?)", (v,)
                     )
 
+        create_analysis_history_tables(conn)
         conn.commit()
     finally:
         conn.close()
@@ -808,6 +810,7 @@ CREATE INDEX IF NOT EXISTS idx_pb_name ON phonebook(full_name);
             "CREATE INDEX IF NOT EXISTS idx_phonebook_inn ON phonebook(inn)"
         )
 
+        create_analysis_history_tables(conn)
         conn.commit()
     finally:
         conn.close()
