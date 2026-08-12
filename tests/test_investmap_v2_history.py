@@ -128,6 +128,234 @@ class InvestmapV2HistoryIntegrationTest(unittest.TestCase):
             "skipped": [],
         }
 
+    def _get_history(self, path):
+        with patch.object(
+            investmap_routes,
+            "get_db",
+            side_effect=self._open_test_db,
+        ):
+            return self.client.get(path)
+
+    def _create_history_run(
+        self,
+        created_at,
+        formula_version="2.0.0",
+        source_label="history.xlsx",
+    ):
+        conn = self._open_test_db()
+        try:
+            cursor = conn.execute(
+                """
+                INSERT INTO portal_analysis_runs (
+                    created_at,
+                    formula_version,
+                    source_label
+                ) VALUES (?, ?, ?)
+                """,
+                (
+                    created_at,
+                    formula_version,
+                    source_label,
+                ),
+            )
+            conn.commit()
+            return cursor.lastrowid
+        finally:
+            conn.close()
+
+    def _create_history_snapshot(
+        self,
+        run_id,
+        site_id,
+        *,
+        score=50,
+        included=1,
+        analysis_status="ok",
+        fields_hash="same",
+        error_message=None,
+    ):
+        conn = self._open_test_db()
+        try:
+            conn.execute(
+                """
+                INSERT INTO portal_analysis_site_snapshots (
+                    run_id,
+                    site_id,
+                    is_included,
+                    score_percent,
+                    field_values_hash,
+                    error_message,
+                    analysis_status
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    run_id,
+                    site_id,
+                    included,
+                    score,
+                    fields_hash,
+                    error_message,
+                    analysis_status,
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_history_endpoint_handles_no_runs_and_one_run(self):
+        response = self._get_history("/investmap/v2/history")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIsNone(payload["latest"])
+        self.assertIsNone(payload["previous"])
+        self.assertFalse(payload["comparison"]["available"])
+        self.assertEqual(payload["comparison"]["reason"], "no_runs")
+
+        run_id = self._create_history_run(
+            "2026-08-12T10:00:00+00:00",
+        )
+
+        response = self._get_history("/investmap/v2/history")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["latest"]["id"], run_id)
+        self.assertIsNone(payload["previous"])
+        self.assertFalse(payload["comparison"]["available"])
+        self.assertEqual(
+            payload["comparison"]["reason"],
+            "no_previous_run",
+        )
+
+    def test_history_endpoint_returns_adjacent_runs_and_formula_mismatch(self):
+        previous_id = self._create_history_run(
+            "2026-08-11T10:00:00+00:00",
+            formula_version="2.0.0",
+            source_label="previous.xlsx",
+        )
+        current_id = self._create_history_run(
+            "2026-08-12T10:00:00+00:00",
+            formula_version="2.0.0",
+            source_label="current.xlsx",
+        )
+        self._create_history_snapshot(previous_id, "1001", score=60)
+        self._create_history_snapshot(current_id, "1001", score=80)
+
+        response = self._get_history("/investmap/v2/history")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["latest"]["id"], current_id)
+        self.assertEqual(payload["previous"]["id"], previous_id)
+        self.assertTrue(payload["comparison"]["available"])
+        self.assertIsNone(payload["comparison"]["reason"])
+        self.assertEqual(payload["comparison"]["improved_sites"], 1)
+
+        mismatch_id = self._create_history_run(
+            "2026-08-13T10:00:00+00:00",
+            formula_version="2.1.0",
+            source_label="mismatch.xlsx",
+        )
+
+        response = self._get_history("/investmap/v2/history")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["latest"]["id"], mismatch_id)
+        self.assertEqual(payload["previous"]["id"], current_id)
+        self.assertFalse(payload["comparison"]["available"])
+        self.assertEqual(
+            payload["comparison"]["reason"],
+            "formula_version_mismatch",
+        )
+
+    def test_history_changes_endpoint_contracts_and_compact_payload(self):
+        response = self._get_history(
+            "/investmap/v2/history/runs/999/changes",
+        )
+        self.assertEqual(response.status_code, 404)
+
+        first_id = self._create_history_run(
+            "2026-08-11T10:00:00+00:00",
+        )
+
+        response = self._get_history(
+            f"/investmap/v2/history/runs/{first_id}/changes",
+        )
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(
+            response.get_json()["reason"],
+            "no_previous_run",
+        )
+
+        second_id = self._create_history_run(
+            "2026-08-12T10:00:00+00:00",
+        )
+        self._create_history_snapshot(
+            first_id,
+            "1001",
+            score=50,
+            fields_hash="previous",
+        )
+        self._create_history_snapshot(
+            second_id,
+            "1001",
+            score=70,
+            fields_hash="current",
+        )
+
+        response = self._get_history(
+            f"/investmap/v2/history/runs/{second_id}/changes"
+            "?kind=all&limit=1&offset=0",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["limit"], 1)
+        self.assertEqual(payload["offset"], 0)
+        self.assertEqual(payload["total"], 1)
+        self.assertEqual(len(payload["items"]), 1)
+        self.assertEqual(payload["items"][0]["site_id"], "1001")
+        self.assertEqual(payload["items"][0]["primary_kind"], "improved")
+
+        forbidden = {
+            "error_message",
+            "missing_fields_json",
+            "skipped_fields_json",
+            "previous_snapshot_id",
+            "field_values_hash",
+        }
+        self.assertFalse(forbidden & set(payload["items"][0]))
+
+        for query in (
+            "?kind=bad",
+            "?limit=0",
+            "?limit=101",
+            "?offset=-1",
+            "?offset=not-a-number",
+        ):
+            with self.subTest(query=query):
+                response = self._get_history(
+                    f"/investmap/v2/history/runs/{second_id}/changes"
+                    f"{query}",
+                )
+                self.assertEqual(response.status_code, 400)
+
+        mismatch_id = self._create_history_run(
+            "2026-08-13T10:00:00+00:00",
+            formula_version="2.1.0",
+        )
+
+        response = self._get_history(
+            f"/investmap/v2/history/runs/{mismatch_id}/changes",
+        )
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(
+            response.get_json()["reason"],
+            "formula_version_mismatch",
+        )
+    
     def test_batch_creates_one_run_snapshots_and_preserves_result_order(self):
         calls = []
 
