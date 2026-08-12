@@ -188,7 +188,8 @@ class HistorySummaryTest(unittest.TestCase):
             "field_values_hash",
         }
         self.assertFalse(forbidden & set(filtered["items"][0]))
-                self.assertEqual(
+
+        self.assertEqual(
             get_paginated_run_changes(
                 self.conn,
                 current,
