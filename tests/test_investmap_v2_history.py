@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from flask import Flask
+from flask import Flask, g
 
 from portal_analysis.analysis_history import create_analysis_history_tables
 from routes import investmap_routes
@@ -22,6 +22,15 @@ class InvestmapV2HistoryIntegrationTest(unittest.TestCase):
             SECRET_KEY="investmap-v2-history-test-secret",
         )
         self.app.register_blueprint(investmap_routes.investmap_bp)
+
+        @self.app.before_request
+        def set_test_user():
+            g.user = {
+                "id": 1,
+                "login": "investmap-v2-test-user",
+            }
+
+        self.client = self.app.test_client()
 
         self.client = self.app.test_client()
         with self.client.session_transaction() as session:
@@ -125,8 +134,12 @@ class InvestmapV2HistoryIntegrationTest(unittest.TestCase):
         calls = []
 
         def score_fn(row, db):
-            calls.append(row["global_id"])
-            return self._result(80 if row["global_id"] == "1001" else 60)
+            scores = {
+                "1001": 80,
+                "1002": 20,
+                "1003": 60,
+            }
+            return self._result(scores[row["global_id"]])
 
         data = [
             {"global_id": "1001", "Статус площадки": "Свободна"},
