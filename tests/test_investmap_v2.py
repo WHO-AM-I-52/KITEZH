@@ -389,6 +389,51 @@ class InvestmapV2RouteTest(unittest.TestCase):
         self.assertEqual(payload['export']['texts'], ['Текст площадки 5001'])
         self.assertNotIn('text', payload['export'])
 
+    def test_format_2_normalizes_row_before_v2_scoring(self):
+        export_result = {
+            'format': 2,
+            'count': 1,
+            'data': [{
+                'global_id': '2511878',
+                'Порядок определения стоимости': 'Тестовый порядок',
+                'Широта объекта в координатах WGS-84': '56.3178713',
+                'Долгота объекта в координатах WGS-84': '43.9180724',
+            }],
+            'texts': ['Тестовая площадка'],
+        }
+        score_results = [{
+            'score': 60,
+            'filled': 30,
+            'total': 50,
+            'missing': [],
+            'skipped': [],
+        }]
+
+        normalized_row = {
+            **export_result['data'][0],
+            'Порядок определения стоимости (для всех форм сделки)':
+                'Тестовый порядок',
+            'Геопривязка': 'Заполнено по координатам WGS-84',
+        }
+
+        with patch.object(
+            investmap_routes,
+            'normalize_export_row',
+            return_value=normalized_row,
+        ) as normalize_row:
+            response, score_fn = self._post_v2(
+                export_result,
+                score_results,
+            )
+
+        self.assertEqual(response.status_code, 200)
+        normalize_row.assert_called_once_with(export_result['data'][0])
+        self.assertEqual(score_fn.call_count, 1)
+        self.assertEqual(
+            score_fn.call_args.args[0],
+            normalized_row,
+        )
+
 
 if __name__ == '__main__':
     unittest.main()
