@@ -349,7 +349,8 @@ class InvestmapV2HistoryIntegrationTest(unittest.TestCase):
             capped_response.get_json()["limit"],
             100,
         )
-                mismatch_id = self._create_history_run(
+
+        mismatch_id = self._create_history_run(
             "2026-08-13T10:00:00+00:00",
             formula_version="2.1.0",
         )
