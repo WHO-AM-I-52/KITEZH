@@ -16,6 +16,7 @@ from portal_analysis.portal_checker import (
     calc_portal_score_v2,
 )
 from tools.investmap_export import convert_excel_to_text
+from portal_analysis.export_normalizer import normalize_export_row
 from tools.investmap_analyzer import (
     analyze,
     build_summary_sms,
@@ -310,7 +311,7 @@ def investmap_v2_post():
             batch_result = run_batch_history(
                 conn=db,
                 source_rows=data,
-                score_fn=lambda row: calc_portal_score_v2(row, db),
+                score_fn=lambda row: calc_portal_score_v2(normalize_export_row(row), db),
                 formula_version=V2_FORMULA_VERSION,
                 initiated_by=user_id,
                 source_label=f.filename,
@@ -338,7 +339,7 @@ def investmap_v2_post():
                 else None
             )
         else:
-            results = [calc_portal_score_v2(data, db)]
+            results = [calc_portal_score_v2(normalize_export_row(data), db)]
             summary_sms = None
 
         export_payload = {
