@@ -328,25 +328,40 @@
 
   {# Таблица skipped ─ пропущенные (ℹ) #}
   <div class="card mb-3" id="skippedCard">
-    <div class="card-header py-2 px-3 d-flex align-items-center gap-2">
-      <i class="bi bi-info-circle text-secondary"></i>
-      <span class="fw-semibold" style="font-size:14px">Пропущенные поля</span>
-      <span id="skippedCount" class="badge bg-secondary ms-1">0</span>
-      <small class="text-muted ms-1" style="font-size:11px">не учитываются в счёте</small>
+    <div class="card-header p-0">
+      <button type="button"
+              class="btn w-100 text-start px-3 py-2 d-flex align-items-center gap-2"
+              data-bs-toggle="collapse"
+              data-bs-target="#skippedDetails"
+              aria-expanded="false"
+              aria-controls="skippedDetails">
+        <i class="bi bi-info-circle text-secondary"></i>
+        <span class="fw-semibold" style="font-size:14px">Пропущенные поля</span>
+        <span id="skippedCount" class="badge bg-secondary ms-1">0</span>
+        <small class="text-muted ms-1" style="font-size:11px">
+          не учитываются в счёте
+        </small>
+        <i class="bi bi-chevron-down ms-auto text-muted"></i>
+      </button>
     </div>
-    <div class="card-body p-0">
-      <table class="table table-sm mb-0" style="font-size:13px">
-        <thead style="background:var(--surface2)">
-          <tr>
-            <th class="px-3 py-2" style="width:32px"></th>
-            <th class="px-3 py-2">Поле</th>
-          </tr>
-        </thead>
-        <tbody id="skippedBody"></tbody>
-      </table>
-      <div id="skippedEmpty" class="text-center py-3 d-none"
-           style="font-size:13px;color:var(--text-muted)">
-        <i class="bi bi-info-circle text-secondary me-1"></i>Пропущенных полей нет
+
+    <div id="skippedDetails" class="collapse">
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0" style="font-size:13px">
+          <thead style="background:var(--surface2)">
+            <tr>
+              <th class="px-3 py-2" style="width:32px"></th>
+              <th class="px-3 py-2">Поле</th>
+            </tr>
+          </thead>
+          <tbody id="skippedBody"></tbody>
+        </table>
+
+        <div id="skippedEmpty" class="text-center py-3 d-none"
+             style="font-size:13px;color:var(--text-muted)">
+          <i class="bi bi-info-circle text-secondary me-1"></i>
+          Пропущенных полей нет
+        </div>
       </div>
     </div>
   </div>
