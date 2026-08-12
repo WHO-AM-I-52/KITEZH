@@ -446,6 +446,7 @@
       var fmt = (resp.export && resp.export.format) ? resp.export.format : 'txt';
       setAiText(buildV2AiText(list, currentIdx), fmt);
       setSummarySms(lastResp.summary_sms);
+      window.investmapV2History?.refreshAfterRun(resp.history?.run_id);
     })
     .catch(function(e){ setLoading(false); showError('Сетевая ошибка: ' + e); });
   });
@@ -995,4 +996,5 @@
 
 })();
 </script>
+<script src="{{ url_for('static', filename='js/investmap_v2_history.js') }}"></script>
 {% endblock %}
