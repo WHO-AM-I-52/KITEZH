@@ -59,6 +59,8 @@
   function setExpanded(expanded) {
     state.expanded = expanded;
     show(body, expanded);
+    show(refreshButton, expanded);
+    
     if (toggleButton) {
       toggleButton.textContent = expanded ? 'Скрыть' : 'Показать';
       toggleButton.setAttribute('aria-expanded', String(expanded));
