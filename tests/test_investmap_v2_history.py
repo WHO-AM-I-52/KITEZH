@@ -349,6 +349,19 @@ class InvestmapV2HistoryIntegrationTest(unittest.TestCase):
             capped_response.get_json()["limit"],
             100,
         )
+                mismatch_id = self._create_history_run(
+            "2026-08-13T10:00:00+00:00",
+            formula_version="2.1.0",
+        )
+
+        response = self._get_history(
+            f"/investmap/v2/history/runs/{mismatch_id}/changes",
+        )
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(
+            response.get_json()["reason"],
+            "formula_version_mismatch",
+        )
     
     def test_batch_creates_one_run_snapshots_and_preserves_result_order(self):
         calls = []
