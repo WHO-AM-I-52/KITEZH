@@ -108,6 +108,8 @@ class HistorySummaryTest(unittest.TestCase):
         self.add_snapshot(current, "down", score=20)
         self.add_snapshot(previous, "out", included=1)
         self.add_snapshot(current, "out", included=0)
+        self.add_snapshot(previous, "back", included=0)
+        self.add_snapshot(current, "back", included=1)
         self.add_snapshot(
             previous,
             "error",
@@ -124,17 +126,21 @@ class HistorySummaryTest(unittest.TestCase):
         )
         items = {item["site_id"]: item for item in result["items"]}
 
-        self.assertEqual(result["total"], 7)
-        self.assertEqual(len(items), 7)
+        self.assertEqual(result["total"], 8)
+        self.assertEqual(len(items), 8)
         self.assertEqual(items["up"]["primary_kind"], "improved")
         self.assertTrue(items["up"]["changed_source"])
         self.assertEqual(items["error"]["primary_kind"], "error")
         self.assertTrue(items["out"]["changed_inclusion"])
         self.assertFalse(items["out"]["improved"])
         self.assertFalse(items["out"]["worsened"])
+        self.assertTrue(items["back"]["changed_inclusion"])
+        self.assertFalse(items["back"]["improved"])
+        self.assertFalse(items["back"]["worsened"])
 
         comparison = get_run_comparison(self.conn, current, previous)
-        self.assertEqual(comparison["changes_total"], 7)
+        self.assertEqual(comparison["changes_total"], 8)
+        self.assertEqual(comparison["changed_inclusion_sites"], 2)
         self.assertEqual(comparison["new_sites"], 1)
         self.assertEqual(comparison["removed_sites"], 1)
         self.assertEqual(comparison["improved_sites"], 1)
@@ -182,6 +188,15 @@ class HistorySummaryTest(unittest.TestCase):
             "field_values_hash",
         }
         self.assertFalse(forbidden & set(filtered["items"][0]))
+                self.assertEqual(
+            get_paginated_run_changes(
+                self.conn,
+                current,
+                previous,
+                kind="removed",
+            )["total"],
+            0,
+        )
 
     def test_invalid_pagination_and_non_adjacent_pair(self):
         first = self.add_run("2026-08-01T00:00:00+00:00")
