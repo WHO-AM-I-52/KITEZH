@@ -86,19 +86,71 @@
     return fetch(url, { credentials: 'same-origin' }).then(function (response) { if (!response.ok) throw new Error('history changes'); return response.json(); }).then(function (payload) { state.total = payload.total || 0; state.items = append ? state.items.concat(payload.items || []) : (payload.items || []); renderFilters(); renderChanges(append); }).catch(errorState);
   }
 
-  function load() {
-    resetView(); show(panel, true); show(loading, true);
-    return fetch('/investmap/v2/history', { credentials: 'same-origin' }).then(function (response) { if (!response.ok) throw new Error('history summary'); return response.json(); }).then(function (payload) {
-      resetView(); show(panel, true);
+function load() {
+  resetView();
+
+  return fetch('/investmap/v2/history', { credentials: 'same-origin' })
+    .then(function (response) {
+      if (!response.ok) throw new Error('history summary');
+      return response.json();
+    })
+    .then(function (payload) {
+      resetView();
+      show(panel, true);
+
       var comparison = payload.comparison || {};
-      if (comparison.reason === 'no_runs') { show(empty, true); return; }
-      renderRun(latestBox, 'Последний запуск', payload.latest, 'Запусков пока нет.'); renderRun(previousBox, 'Предыдущий запуск', payload.previous, 'Нет предыдущего запуска для сравнения.'); show(content, true);
+
+      if (comparison.reason === 'no_runs') {
+        show(empty, true);
+        return;
+      }
+
+      renderRun(
+        latestBox,
+        'Последний запуск',
+        payload.latest,
+        'Запусков пока нет.'
+      );
+      renderRun(
+        previousBox,
+        'Предыдущий запуск',
+        payload.previous,
+        'Нет предыдущего запуска для сравнения.'
+      );
+      show(content, true);
+
       if (comparison.reason === 'no_previous_run') return;
-      if (comparison.reason === 'formula_version_mismatch') { var note = document.createElement('div'); note.className = 'alert alert-warning mb-0'; note.style.fontSize = '13px'; note.textContent = 'Сравнение недоступно: версии формулы расчёта не совпадают.'; clear(comparisonBox); comparisonBox.appendChild(note); show(comparisonBox, true); return; }
-      if (!comparison.available || !payload.latest) { errorState(); return; }
-      state.runId = payload.latest.id; state.kind = 'all'; state.offset = 0; state.total = 0; state.items = []; renderCounters(comparison); renderFilters(); return loadChanges(false);
-    }).catch(errorState);
-  }
+
+      if (comparison.reason === 'formula_version_mismatch') {
+        var note = document.createElement('div');
+        note.className = 'alert alert-warning mb-0';
+        note.style.fontSize = '13px';
+        note.textContent =
+          'Сравнение недоступно: версии формулы расчёта не совпадают.';
+
+        clear(comparisonBox);
+        comparisonBox.appendChild(note);
+        show(comparisonBox, true);
+        return;
+      }
+
+      if (!comparison.available || !payload.latest) {
+        errorState();
+        return;
+      }
+
+      state.runId = payload.latest.id;
+      state.kind = 'all';
+      state.offset = 0;
+      state.total = 0;
+      state.items = [];
+
+      renderCounters(comparison);
+      renderFilters();
+      return loadChanges(false);
+    })
+    .catch(errorState);
+}
 
   function refreshAfterRun(runId) { state.runId = runId || null; return load(); }
   window.investmapV2History = { load: load, refreshAfterRun: refreshAfterRun };
