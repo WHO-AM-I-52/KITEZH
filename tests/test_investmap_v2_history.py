@@ -31,8 +31,6 @@ class InvestmapV2HistoryIntegrationTest(unittest.TestCase):
             }
 
         self.client = self.app.test_client()
-
-        self.client = self.app.test_client()
         with self.client.session_transaction() as session:
             session["user_id"] = 1
             session["role"] = "admin"
@@ -130,16 +128,9 @@ class InvestmapV2HistoryIntegrationTest(unittest.TestCase):
             "skipped": [],
         }
 
-    def test_batch_creates_one_run_snapshots_and_preserves_result_order(self):
-        calls = []
-
         def score_fn(row, db):
-            scores = {
-                "1001": 80,
-                "1002": 20,
-                "1003": 60,
-            }
-            return self._result(scores[row["global_id"]])
+            calls.append(row["global_id"])
+            return self._result(80 if row["global_id"] == "1001" else 60)
 
         data = [
             {"global_id": "1001", "Статус площадки": "Свободна"},
@@ -269,7 +260,12 @@ class InvestmapV2HistoryIntegrationTest(unittest.TestCase):
 
     def test_excluded_site_keeps_snapshot_but_is_not_in_sms_or_average(self):
         def score_fn(row, db):
-            return self._result(80 if row["global_id"] == "1001" else 20)
+            scores = {
+                "1001": 80,
+                "1002": 20,
+                "1003": 60,
+            }
+            return self._result(scores[row["global_id"]])
 
         data = [
             {"global_id": "1001", "Статус площадки": "Свободна"},
