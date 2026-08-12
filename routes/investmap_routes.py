@@ -5,6 +5,12 @@ from core.auth_utils import login_required, permission_required
 from db import get_db
 from core.kitezh_logger import err_logger
 from portal_analysis.batch_analysis import run_batch_history
+from portal_analysis.history_summary import (
+    get_immediately_previous_run_metadata,
+    get_latest_run_metadata,
+    get_paginated_run_changes,
+    get_run_comparison,
+)
 from portal_analysis.portal_checker import (
     V2_FORMULA_VERSION,
     calc_portal_score_v2,
@@ -101,6 +107,163 @@ def investmap_v2():
             except Exception:
                 err_logger.exception('investmap_v2 close error | user=%s', user)
 
+def _history_comparison_payload(comparison):
+    """Преобразует service comparison в JSON contract history endpoint."""
+    return {
+        "available": comparison["comparison_available"],
+        "reason": comparison["reason"],
+        "new_sites": comparison["new_sites"],
+        "removed_sites": comparison["removed_sites"],
+        "changed_source_sites": comparison["changed_source_sites"],
+        "improved_sites": comparison["improved_sites"],
+        "worsened_sites": comparison["worsened_sites"],
+        "changed_inclusion_sites": comparison["changed_inclusion_sites"],
+        "error_sites": comparison["error_sites"],
+        "changes_total": comparison["changes_total"],
+    }
+
+
+def _history_query_int(name, default):
+    """Читает неотрицательный integer query parameter."""
+    value = request.args.get(name)
+
+    if value is None:
+        return default
+
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"invalid {name}") from None
+
+
+@investmap_bp.route("/investmap/v2/history")
+@login_required
+@permission_required("can_view_investmap")
+def investmap_v2_history():
+    """Возвращает metadata последних history runs и их comparison."""
+    db = None
+
+    try:
+        db = get_db()
+        latest = get_latest_run_metadata(db)
+
+        if latest is None:
+            return jsonify({
+                "latest": None,
+                "previous": None,
+                "comparison": {
+                    "available": False,
+                    "reason": "no_runs",
+                },
+            })
+
+        previous = get_immediately_previous_run_metadata(
+            db,
+            latest["id"],
+        )
+
+        if previous is None:
+            return jsonify({
+                "latest": latest,
+                "previous": None,
+                "comparison": {
+                    "available": False,
+                    "reason": "no_previous_run",
+                },
+            })
+
+        comparison = get_run_comparison(
+            db,
+            latest["id"],
+            previous["id"],
+        )
+
+        return jsonify({
+            "latest": latest,
+            "previous": previous,
+            "comparison": _history_comparison_payload(comparison),
+        })
+
+    except Exception as exc:
+        err_logger.exception("investmap_v2_history error | %s", exc)
+        return jsonify({"error": "Внутренняя ошибка сервера"}), 500
+    finally:
+        if db is not None:
+            try:
+                db.close()
+            except Exception:
+                err_logger.exception("investmap_v2_history close error")
+
+
+@investmap_bp.route("/investmap/v2/history/runs/<int:run_id>/changes")
+@login_required
+@permission_required("can_view_investmap")
+def investmap_v2_history_changes(run_id):
+    """Возвращает постраничный compact список изменений history run."""
+    db = None
+
+    try:
+        try:
+            limit = _history_query_int("limit", 25)
+            offset = _history_query_int("offset", 0)
+        except ValueError:
+            return jsonify({"error": "Некорректные параметры пагинации"}), 400
+
+        kind = request.args.get("kind", "all")
+
+        db = get_db()
+
+        try:
+            previous = get_immediately_previous_run_metadata(db, run_id)
+        except ValueError:
+            return jsonify({"error": "History run не найден"}), 404
+
+        if previous is None:
+            return jsonify({
+                "reason": "no_previous_run",
+            }), 409
+
+        try:
+            changes = get_paginated_run_changes(
+                db,
+                run_id,
+                previous["id"],
+                kind=kind,
+                limit=limit,
+                offset=offset,
+            )
+        except ValueError as exc:
+            message = str(exc)
+
+            if message == "previous_run_id is not immediately previous":
+                return jsonify({"error": "History run не найден"}), 404
+
+            return jsonify({
+                "error": "Некорректные параметры history changes",
+            }), 400
+
+        if not changes["comparison_available"]:
+            return jsonify({
+                "reason": changes["reason"],
+            }), 409
+
+        return jsonify(changes)
+
+    except Exception as exc:
+        err_logger.exception(
+            "investmap_v2_history_changes error | run_id=%s | %s",
+            run_id,
+            exc,
+        )
+        return jsonify({"error": "Внутренняя ошибка сервера"}), 500
+    finally:
+        if db is not None:
+            try:
+                db.close()
+            except Exception:
+                err_logger.exception(
+                    "investmap_v2_history_changes close error"
+                )
 
 @investmap_bp.route('/investmap/v2', methods=['POST'])
 @login_required
