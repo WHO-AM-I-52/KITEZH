@@ -331,7 +331,6 @@ class InvestmapV2HistoryIntegrationTest(unittest.TestCase):
         for query in (
             "?kind=bad",
             "?limit=0",
-            "?limit=101",
             "?offset=-1",
             "?offset=not-a-number",
         ):
@@ -354,6 +353,14 @@ class InvestmapV2HistoryIntegrationTest(unittest.TestCase):
         self.assertEqual(
             response.get_json()["reason"],
             "formula_version_mismatch",
+        )
+                capped_response = self._get_history(
+            f"/investmap/v2/history/runs/{second_id}/changes?limit=101",
+        )
+        self.assertEqual(capped_response.status_code, 200)
+        self.assertEqual(
+            capped_response.get_json()["limit"],
+            100,
         )
     
     def test_batch_creates_one_run_snapshots_and_preserves_result_order(self):
