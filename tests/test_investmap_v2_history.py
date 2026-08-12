@@ -128,6 +128,9 @@ class InvestmapV2HistoryIntegrationTest(unittest.TestCase):
             "skipped": [],
         }
 
+    def test_batch_creates_one_run_snapshots_and_preserves_result_order(self):
+        calls = []
+
         def score_fn(row, db):
             calls.append(row["global_id"])
             return self._result(80 if row["global_id"] == "1001" else 60)
