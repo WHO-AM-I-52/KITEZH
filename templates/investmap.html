@@ -63,5 +63,40 @@
     </a>
   </div>
 
+  {# ─── Плитка 3: Мониторинг Инвесткарты РФ ────────────────────── #}
+  <div class="col-12 col-md-6">
+    <a
+      href="{{ url_for('investmap.investmap_rf_monitor') }}"
+      class="text-decoration-none"
+    >
+      <div class="card h-100 p-3"
+           style="border-left:4px solid #198754; cursor:pointer;
+                  background:rgba(25,135,84,0.06);
+                  box-shadow:0 2px 8px rgba(0,0,0,.08);
+                  transition:box-shadow .2s,background .2s"
+           onmouseover="this.style.boxShadow='0 4px 16px rgba(0,0,0,.16)';this.style.background='rgba(25,135,84,0.10)'"
+           onmouseout="this.style.boxShadow='0 2px 8px rgba(0,0,0,.08)';this.style.background='rgba(25,135,84,0.06)'">
+        <div class="d-flex align-items-center gap-3">
+          <i class="bi bi-activity"
+             style="font-size:2.2rem;color:#198754"></i>
+          <div>
+            <div class="fw-bold mb-1"
+                 style="color:#198754;font-size:15px">
+              Мониторинг Инвесткарты РФ
+            </div>
+            <div class="text-muted" style="font-size:12px">
+              Снимки API-карточек, процент заполнения и история изменений
+            </div>
+          </div>
+        </div>
+        <div class="mt-3 text-end">
+          <span class="badge bg-success" style="font-size:11px">
+            Открыть <i class="bi bi-arrow-right ms-1"></i>
+          </span>
+        </div>
+      </div>
+    </a>
+  </div>
+
 </div>
 {% endblock %}
