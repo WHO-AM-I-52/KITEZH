@@ -143,7 +143,7 @@ class InvestmapRfBatchRunnerTest(unittest.TestCase):
                     status="new",
                     snapshot_id=1,
                     changes_count=0,
-                    "error": None,
+                    error=None,
                )
             ],
         )
