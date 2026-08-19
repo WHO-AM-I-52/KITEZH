@@ -1,0 +1,152 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+        <div>
+            <h1 class="h3 mb-1">Мониторинг Инвесткарты РФ</h1>
+            <p class="text-muted mb-0">
+                Сохранённые read-only снимки карточек API и история изменений.
+            </p>
+        </div>
+        <a class="btn btn-outline-secondary" href="{{ url_for('investmap.investmap') }}">
+            ← К разделу «Инвесткарта»
+        </a>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Карточек в мониторинге</div>
+                    <div class="display-6">{{ summary.cards_count }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Сохранённых снимков</div>
+                    <div class="display-6">{{ summary.snapshots_count }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Карточек с изменениями</div>
+                    <div class="display-6">{{ summary.changed_cards_count }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if cards %}
+    <div class="card">
+        <div class="card-header">
+            Последние сохранённые состояния карточек
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th scope="col">ID карточки</th>
+                            <th scope="col">Регион</th>
+                            <th scope="col">Заполнение</th>
+                            <th scope="col">Предыдущее</th>
+                            <th scope="col">Динамика</th>
+                            <th scope="col">Последний снимок</th>
+                            <th scope="col">Изменения</th>
+                            <th scope="col"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for card in cards %}
+                        <tr>
+                            <td>
+                                <a href="{{ url_for(
+                                    'investmap.investmap_rf_monitor_detail',
+                                    global_id=card.global_id
+                                ) }}">
+                                    {{ card.global_id }}
+                                </a>
+                            </td>
+                            <td>
+                                {% if card.region_code is not none %}
+                                {{ card.region_code }}
+                                {% else %}
+                                <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if card.filling_level is not none %}
+                                <strong>{{ card.filling_level }}%</strong>
+                                {% else %}
+                                <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if card.previous_filling_level is not none %}
+                                {{ card.previous_filling_level }}%
+                                {% else %}
+                                <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if card.filling_level_delta is none %}
+                                <span class="text-muted">—</span>
+                                {% elif card.filling_level_delta > 0 %}
+                                <span class="text-success">
+                                    +{{ card.filling_level_delta }} п.п.
+                                </span>
+                                {% elif card.filling_level_delta < 0 %}
+                                <span class="text-danger">
+                                    {{ card.filling_level_delta }} п.п.
+                                </span>
+                                {% else %}
+                                <span class="text-muted">0 п.п.</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <code>{{ card.fetched_at_utc }}</code>
+                            </td>
+                            <td>
+                                {% if card.changes_count %}
+                                <span class="badge text-bg-warning">
+                                    {{ card.changes_count }}
+                                </span>
+                                {% else %}
+                                <span class="text-muted">0</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                <a
+                                    class="btn btn-sm btn-outline-primary"
+                                    href="{{ url_for(
+                                        'investmap.investmap_rf_monitor_detail',
+                                        global_id=card.global_id
+                                    ) }}"
+                                >
+                                    Открыть
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="alert alert-info mb-0">
+        <h2 class="h5">Снимков пока нет</h2>
+        <p class="mb-0">
+            Сначала сохраните карточку через
+            <code>services.investmap_rf_snapshot_runner</code>
+            или запустите контролируемый batch runner.
+        </p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
