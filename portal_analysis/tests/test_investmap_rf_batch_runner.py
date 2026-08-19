@@ -115,6 +115,28 @@ class InvestmapRfBatchRunnerTest(unittest.TestCase):
         self.assertEqual(report.new_snapshots_count, 1)
         self.assertEqual(sleep_calls, [1.0])
 
+    def test_run_batch_marks_interruption_during_collection(self):
+        processed_ids = []
+
+        def interrupting_collect(global_id):
+            processed_ids.append(global_id)
+            raise KeyboardInterrupt
+
+        report = run_batch(
+            [1, 2, 3],
+            delay_seconds=1.0,
+            collect_snapshot_fn=interrupting_collect,
+            sleep_fn=lambda seconds: self.fail("Пауза не должна запускаться."),
+        )
+
+        self.assertTrue(report.interrupted)
+        self.assertEqual(report.requested_count, 3)
+        self.assertEqual(report.processed_count, 0)
+        self.assertEqual(report.new_snapshots_count, 0)
+        self.assertEqual(report.unchanged_count, 0)
+        self.assertEqual(report.errors_count, 0)
+        self.assertEqual(processed_ids, [1])
+
     def test_run_batch_rejects_delay_below_minimum(self):
         with self.assertRaisesRegex(ValueError, "не может быть меньше"):
             run_batch(
