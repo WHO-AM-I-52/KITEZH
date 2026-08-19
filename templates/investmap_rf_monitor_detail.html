@@ -1,0 +1,161 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+        <div>
+            <h1 class="h3 mb-1">
+                Карточка Инвесткарты РФ № {{ monitor_card.latest.global_id }}
+            </h1>
+            <p class="text-muted mb-0">
+                Последний сохранённый API-снимок и история изменений.
+            </p>
+        </div>
+        <a
+            class="btn btn-outline-secondary"
+            href="{{ url_for('investmap.investmap_rf_monitor') }}"
+        >
+            ← К мониторингу
+        </a>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Текущая заполненность</div>
+                    <div class="display-6">
+                        {% if monitor_card.latest.filling_level is not none %}
+                        {{ monitor_card.latest.filling_level }}%
+                        {% else %}
+                        —
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Регион</div>
+                    <div class="display-6">
+                        {% if monitor_card.latest.region_code is not none %}
+                        {{ monitor_card.latest.region_code }}
+                        {% else %}
+                        —
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Последний снимок</div>
+                    <div class="small mt-2">
+                        <code>{{ monitor_card.latest.fetched_at_utc }}</code>
+                    </div>
+                    <div class="text-muted small mt-2">
+                        Снимок № {{ monitor_card.latest.snapshot_id }}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">
+            История снимков ({{ monitor_card.snapshots|length }})
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th scope="col">Снимок</th>
+                            <th scope="col">Получен</th>
+                            <th scope="col">Заполнение</th>
+                            <th scope="col">Регион</th>
+                            <th scope="col">SHA-256</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for snapshot in monitor_card.snapshots %}
+                        <tr>
+                            <td>{{ snapshot.snapshot_id }}</td>
+                            <td><code>{{ snapshot.fetched_at_utc }}</code></td>
+                            <td>
+                                {% if snapshot.filling_level is not none %}
+                                {{ snapshot.filling_level }}%
+                                {% else %}
+                                <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if snapshot.region_code is not none %}
+                                {{ snapshot.region_code }}
+                                {% else %}
+                                <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <code class="small">{{ snapshot.payload_sha256 }}</code>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">
+            История изменений ({{ monitor_card.changes|length }})
+        </div>
+        <div class="card-body p-0">
+            {% if monitor_card.changes %}
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th scope="col">Дата</th>
+                            <th scope="col">Поле</th>
+                            <th scope="col">Было</th>
+                            <th scope="col">Стало</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for change in monitor_card.changes %}
+                        <tr>
+                            <td><code>{{ change.detected_at_utc }}</code></td>
+                            <td><code>{{ change.field_path }}</code></td>
+                            <td>
+                                <pre class="mb-0 small">{{ change.old_value | tojson(indent=2) }}</pre>
+                            </td>
+                            <td>
+                                <pre class="mb-0 small">{{ change.new_value | tojson(indent=2) }}</pre>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="p-3 text-muted">
+                Изменений между сохранёнными снимками пока нет.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            Полный JSON последнего API-снимка
+        </div>
+        <div class="card-body">
+            <pre class="mb-0"><code>{{ monitor_card.latest.payload | tojson(indent=2) }}</code></pre>
+        </div>
+    </div>
+</div>
+{% endblock %}
