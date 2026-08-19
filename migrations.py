@@ -428,7 +428,7 @@ CREATE TABLE IF NOT EXISTS investmap_rules (
             "VALUES (?,?,?,?,?,?)",
             row
         )
-def migrate_investmap_rf_snapshot_tables(conn):
+def _migrate_investmap_rf_snapshot_tables(conn):
     """Создаёт read-only хранилище API-снимков Инвестиционной карты РФ."""
     conn.executescript(
         """
