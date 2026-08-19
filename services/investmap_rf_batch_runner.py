@@ -101,6 +101,9 @@ def run_batch(
     for index, global_id in enumerate(global_ids):
         try:
             result = collect_snapshot_fn(global_id)
+        except KeyboardInterrupt:
+            interrupted = True
+            break
         except InvestmapRfClientError as exc:
             items.append(
                 BatchItemResult(
