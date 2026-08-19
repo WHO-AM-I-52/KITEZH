@@ -494,6 +494,36 @@ _FORM_SECTIONS_SEED = [
     ("appeal_text",  "Суть обращения",               "Текстовое описание проблемы или вопроса",     8),
 ]
 
+def _migrate_investmap_rf_monitor_registry_tables(conn):
+    """Создаёт реестр отслеживаемых площадок и журнал событий импорта."""
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS investmap_rf_monitored_cards (
+            global_id INTEGER PRIMARY KEY,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            source_filename TEXT NOT NULL,
+            imported_at_utc TEXT NOT NULL,
+            last_seen_import_at_utc TEXT NOT NULL,
+            last_source_status TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_investmap_rf_monitored_cards_active
+            ON investmap_rf_monitored_cards(is_active, global_id);
+
+        CREATE TABLE IF NOT EXISTS investmap_rf_monitor_registry_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            global_id INTEGER NOT NULL,
+            event_type TEXT NOT NULL,
+            previous_status TEXT,
+            current_status TEXT NOT NULL,
+            source_filename TEXT NOT NULL,
+            occurred_at_utc TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_investmap_rf_registry_events_card
+            ON investmap_rf_monitor_registry_events(global_id, id DESC);
+        """
+    )
 
 def _migrate_form_sections(conn):
     """feat #95 — системная таблица form_sections и расширение subject_types/requests."""
@@ -698,6 +728,7 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         _migrate_review_chain_table(conn)
         _migrate_investmap_tables(conn)
         _migrate_investmap_rf_snapshot_tables(conn)
+        _migrate_investmap_rf_monitor_registry_tables(conn)
         _migrate_letters_tables(conn)
         _migrate_tasks_tables(conn)
         _migrate_task_comments_table(conn)
@@ -765,6 +796,7 @@ def migrate_db():
         _migrate_review_chain_table(conn)
         _migrate_investmap_tables(conn)
         _migrate_investmap_rf_snapshot_tables(conn)
+        _migrate_investmap_rf_monitor_registry_tables(conn)
         _migrate_letters_tables(conn)
         _migrate_tasks_tables(conn)
         _migrate_task_comments_table(conn)
