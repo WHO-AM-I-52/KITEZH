@@ -3,6 +3,11 @@ from flask import Blueprint, render_template, request, jsonify, flash, g, redire
 from core.activity_log import log_action
 from core.auth_utils import login_required, permission_required
 from db import get_db
+from services.investmap_rf_monitor_queries import (
+    get_monitor_card_detail,
+    get_monitor_cards,
+    get_monitor_summary,
+)
 from core.kitezh_logger import err_logger
 from portal_analysis.batch_analysis import run_batch_history
 from portal_analysis.history_summary import (
@@ -73,6 +78,95 @@ def investmap():
     """Главная страница — плитки навигации."""
     return render_template('investmap.html')
 
+@investmap_bp.route('/investmap/rf-monitor')
+@login_required
+@permission_required('can_view_investmap')
+def investmap_rf_monitor():
+    """Read-only мониторинг сохранённых API-снимков Инвесткарты РФ."""
+    user = getattr(g, 'user', {}).get('login', 'unknown')
+    db = None
+
+    try:
+        db = get_db()
+        return render_template(
+            'investmap_rf_monitor.html',
+            summary=get_monitor_summary(db),
+            cards=get_monitor_cards(db),
+        )
+    except Exception as exc:
+        err_logger.exception(
+            'investmap_rf_monitor error | user=%s | %s',
+            user,
+            exc,
+        )
+        flash('Ошибка при загрузке мониторинга Инвесткарты РФ.', 'error')
+        return render_template(
+            'investmap_rf_monitor.html',
+            summary={
+                'cards_count': 0,
+                'snapshots_count': 0,
+                'changed_cards_count': 0,
+            },
+            cards=[],
+        ), 500
+    finally:
+        if db is not None:
+            try:
+                db.close()
+            except Exception:
+                err_logger.exception(
+                    'investmap_rf_monitor close error | user=%s',
+                    user,
+                )
+
+
+@investmap_bp.route('/investmap/rf-monitor/<int:global_id>')
+@login_required
+@permission_required('can_view_investmap')
+def investmap_rf_monitor_detail(global_id):
+    """Read-only просмотр снимков и изменений одной карточки."""
+    user = getattr(g, 'user', {}).get('login', 'unknown')
+    db = None
+
+    try:
+        db = get_db()
+        monitor_card = get_monitor_card_detail(db, global_id)
+
+        if monitor_card is None:
+            flash(
+                f'Снимки для карточки {global_id} пока не найдены.',
+                'error',
+            )
+            return redirect(url_for('investmap.investmap_rf_monitor'))
+
+        return render_template(
+            'investmap_rf_monitor_detail.html',
+            monitor_card=monitor_card,
+        )
+    except Exception as exc:
+        err_logger.exception(
+            'investmap_rf_monitor_detail error | '
+            'user=%s | global_id=%s | %s',
+            user,
+            global_id,
+            exc,
+        )
+        flash(
+            'Ошибка при загрузке карточки мониторинга Инвесткарты РФ.',
+            'error',
+        )
+        return redirect(url_for('investmap.investmap_rf_monitor'))
+    finally:
+        if db is not None:
+            try:
+                db.close()
+            except Exception:
+                err_logger.exception(
+                    'investmap_rf_monitor_detail close error | '
+                    'user=%s | global_id=%s',
+                    user,
+                    global_id,
+                )
 
 @investmap_bp.route('/investmap/v1')
 @login_required
