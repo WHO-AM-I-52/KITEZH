@@ -1,5 +1,14 @@
-from flask import Blueprint, render_template, request, jsonify, flash, g, redirect, url_for
-
+from flask import (
+    Blueprint,
+    current_app,
+    render_template,
+    request,
+    jsonify,
+    flash,
+    g,
+    redirect,
+    url_for,
+)
 from core.activity_log import log_action
 from core.auth_utils import login_required, permission_required
 from db import get_db
@@ -9,6 +18,7 @@ from services.investmap_rf_monitor_queries import (
     get_monitor_summary,
 )
 from core.kitezh_logger import err_logger
+from services.investmap_rf_registry import import_monitored_cards_xlsx
 from portal_analysis.batch_analysis import run_batch_history
 from portal_analysis.history_summary import (
     get_immediately_previous_run_metadata,
@@ -118,6 +128,64 @@ def investmap_rf_monitor():
                     'investmap_rf_monitor close error | user=%s',
                     user,
                 )
+
+@investmap_bp.route('/investmap')
+@login_required
+@permission_required('can_view_investmap')
+@investmap_bp.route("/investmap-rf/monitor/import", methods=["POST"])
+def import_investmap_rf_monitor_registry():
+    uploaded_file = request.files.get("xlsx_file")
+
+    if uploaded_file is None or not uploaded_file.filename:
+        flash("Выберите XLSX-файл для импорта.", "danger")
+        return redirect(url_for("investmap.investmap_rf_monitor"))
+
+    source_filename = uploaded_file.filename.strip()
+
+    if not source_filename.lower().endswith(".xlsx"):
+        flash("Поддерживаются только файлы формата .xlsx.", "danger")
+        return redirect(url_for("investmap.investmap_rf_monitor"))
+
+    xlsx_bytes = uploaded_file.read()
+
+    if not xlsx_bytes:
+        flash("Выбранный XLSX-файл пустой.", "danger")
+        return redirect(url_for("investmap.investmap_rf_monitor"))
+
+    conn = get_db()
+
+    try:
+        report = import_monitored_cards_xlsx(
+            conn=conn,
+            xlsx_bytes=xlsx_bytes,
+            source_filename=source_filename,
+        )
+        conn.commit()
+    except (RuntimeError, ValueError) as exc:
+        conn.rollback()
+        flash(f"Импорт не выполнен: {exc}", "danger")
+        return redirect(url_for("investmap.investmap_rf_monitor"))
+    except Exception:
+        conn.rollback()
+        current_app.logger.exception(
+            "Ошибка импорта реестра мониторинга Инвесткарты РФ."
+        )
+        flash("Импорт не выполнен из-за внутренней ошибки.", "danger")
+        return redirect(url_for("investmap.investmap_rf_monitor"))
+    finally:
+        conn.close()
+
+    flash(
+        "Импорт завершён: "
+        f"свободных строк — {report['free_rows']}, "
+        f"добавлено — {report['added']}, "
+        f"реактивировано — {report['reactivated']}, "
+        f"снято с мониторинга — {report['deactivated']}, "
+        f"некорректных строк — {report['invalid_rows']}.",
+        "success",
+    )
+
+    return redirect(url_for("investmap.investmap_rf_monitor"))
 
 
 @investmap_bp.route('/investmap/rf-monitor/<int:global_id>')
