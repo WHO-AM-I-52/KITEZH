@@ -428,7 +428,43 @@ CREATE TABLE IF NOT EXISTS investmap_rules (
             "VALUES (?,?,?,?,?,?)",
             row
         )
+def migrate_investmap_rf_snapshot_tables(conn):
+    """Создаёт read-only хранилище API-снимков Инвестиционной карты РФ."""
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS investmap_rf_card_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            global_id INTEGER NOT NULL,
+            payload_json TEXT NOT NULL,
+            payload_sha256 TEXT NOT NULL,
+            fetched_at_utc TEXT NOT NULL,
+            filling_level INTEGER,
+            region_code INTEGER,
+            UNIQUE(global_id, payload_sha256)
+        );
 
+        CREATE INDEX IF NOT EXISTS idx_investmap_rf_snapshots_card_fetched
+            ON investmap_rf_card_snapshots(global_id, fetched_at_utc);
+
+        CREATE TABLE IF NOT EXISTS investmap_rf_card_changes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            global_id INTEGER NOT NULL,
+            previous_snapshot_id INTEGER NOT NULL,
+            current_snapshot_id INTEGER NOT NULL,
+            field_path TEXT NOT NULL,
+            old_value_json TEXT,
+            new_value_json TEXT,
+            detected_at_utc TEXT NOT NULL,
+            FOREIGN KEY (previous_snapshot_id)
+                REFERENCES investmap_rf_card_snapshots(id),
+            FOREIGN KEY (current_snapshot_id)
+                REFERENCES investmap_rf_card_snapshots(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_investmap_rf_changes_card_detected
+            ON investmap_rf_card_changes(global_id, detected_at_utc);
+        """
+    )
 
 # ──────────────────────────────────────────────────────────────────────────────
 # feat #95 — Умный справочник предметов обращения
@@ -661,6 +697,7 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         _migrate_districts_table(conn)
         _migrate_review_chain_table(conn)
         _migrate_investmap_tables(conn)
+        _migrate_investmap_rf_snapshot_tables(conn)
         _migrate_letters_tables(conn)
         _migrate_tasks_tables(conn)
         _migrate_task_comments_table(conn)
@@ -727,6 +764,7 @@ def migrate_db():
         _migrate_districts_table(conn)
         _migrate_review_chain_table(conn)
         _migrate_investmap_tables(conn)
+        _migrate_investmap_rf_snapshot_tables(conn)
         _migrate_letters_tables(conn)
         _migrate_tasks_tables(conn)
         _migrate_task_comments_table(conn)
