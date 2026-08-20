@@ -7,6 +7,7 @@ from flask import (
     flash,
     g,
     redirect,
+    session,
     url_for,
 )
 from core.activity_log import log_action
@@ -113,6 +114,7 @@ def investmap_rf_monitor():
             cards=get_monitor_cards(db),
             registry_cards=get_monitor_registry_cards(db),
             registry_events=get_monitor_registry_events(db),
+            is_admin=session.get('role') == 'admin',
         )
     except Exception as exc:
         err_logger.exception(
@@ -131,6 +133,7 @@ def investmap_rf_monitor():
             cards=[],
             registry_cards=[],
             registry_events=[],
+            is_admin=session.get('role') == 'admin',
         ), 500
     finally:
         if db is not None:
