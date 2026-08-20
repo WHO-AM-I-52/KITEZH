@@ -356,6 +356,195 @@ def pause_sync_plan(
 
     return get_sync_plan(conn, plan_id)
 
+def resume_sync_plan(
+    conn,
+    *,
+    plan_id: int,
+    updated_by_user_id: int | None = None,
+) -> dict[str, Any]:
+    """
+    Возобновляет приостановленный цикл без сброса cursor_global_id.
+
+    Не создаёт новый run: следующий пакет продолжит текущий цикл
+    с площадки после последнего успешно сохранённого курсора.
+    """
+    plan = get_sync_plan(conn, plan_id)
+    if plan is None:
+        raise ValueError("План синхронизации не найден.")
+
+    if plan["status"] != PLAN_STATUS_PAUSED:
+        raise ValueError("Возобновить можно только приостановленный план.")
+
+    latest_run = get_latest_sync_run(conn, plan_id)
+    if latest_run is None:
+        raise ValueError("Для плана отсутствует цикл синхронизации.")
+
+    if latest_run["status"] not in {RUN_STATUS_PAUSED, RUN_STATUS_RUNNING}:
+        raise ValueError("Последний цикл плана нельзя возобновить.")
+
+    active_ids = get_active_registry_global_ids(conn)
+    if not active_ids:
+        raise ValueError("В реестре нет активных площадок для синхронизации.")
+
+    now = _utc_now()
+
+    conn.execute(
+        """
+        UPDATE investmap_rf_sync_plans
+        SET
+            is_enabled = 1,
+            status = ?,
+            next_run_at_utc = ?,
+            stop_requested = 0,
+            last_error = NULL,
+            updated_at_utc = ?,
+            updated_by_user_id = ?
+        WHERE id = ?
+        """,
+        (
+            PLAN_STATUS_RUNNING,
+            now,
+            now,
+            updated_by_user_id,
+            plan_id,
+        ),
+    )
+
+    if latest_run["status"] == RUN_STATUS_PAUSED:
+        conn.execute(
+            """
+            UPDATE investmap_rf_sync_runs
+            SET
+                status = ?,
+                finished_at_utc = NULL,
+                error_message = NULL
+            WHERE id = ?
+            """,
+            (RUN_STATUS_RUNNING, latest_run["id"]),
+        )
+
+    return {
+        "plan": get_sync_plan(conn, plan_id),
+        "run": get_latest_sync_run(conn, plan_id),
+        "active_cards_count": len(active_ids),
+    }
+
+
+def recover_interrupted_sync_batches(
+    conn,
+    *,
+    updated_by_user_id: int | None = None,
+) -> list[dict[str, Any]]:
+    """
+    Переводит зависшие running-пакеты после рестарта в безопасную паузу.
+
+    Никаких API-вызовов не выполняет. Возобновление требует явного
+    действия администратора через resume_sync_plan().
+    """
+    rows = conn.execute(
+        """
+        SELECT id, plan_id
+        FROM investmap_rf_sync_batches
+        WHERE status = ?
+        ORDER BY plan_id, id
+        """,
+        (BATCH_STATUS_RUNNING,),
+    ).fetchall()
+
+    if not rows:
+        return []
+
+    now = _utc_now()
+    message = (
+        "Пакет прерван перезапуском приложения; "
+        "возобновите план для повторного выполнения пакета."
+    )
+    recovered_plan_ids: set[int] = set()
+
+    for row in rows:
+        batch_id = int(row["id"])
+        plan_id = int(row["plan_id"])
+
+        conn.execute(
+            """
+            UPDATE investmap_rf_sync_batches
+            SET
+                status = ?,
+                finished_at_utc = ?,
+                error_message = ?
+            WHERE id = ? AND status = ?
+            """,
+            (
+                BATCH_STATUS_FAILED,
+                now,
+                message,
+                batch_id,
+                BATCH_STATUS_RUNNING,
+            ),
+        )
+
+        recovered_plan_ids.add(plan_id)
+
+    recovered: list[dict[str, Any]] = []
+
+    for plan_id in sorted(recovered_plan_ids):
+        plan = get_sync_plan(conn, plan_id)
+        if plan is None:
+            continue
+
+        if plan["status"] in {
+            PLAN_STATUS_RUNNING,
+            PLAN_STATUS_PAUSED,
+            PLAN_STATUS_STOPPING,
+        }:
+            conn.execute(
+                """
+                UPDATE investmap_rf_sync_plans
+                SET
+                    is_enabled = 0,
+                    status = ?,
+                    stop_requested = 0,
+                    next_run_at_utc = NULL,
+                    last_error = ?,
+                    updated_at_utc = ?,
+                    updated_by_user_id = ?
+                WHERE id = ?
+                """,
+                (
+                    PLAN_STATUS_PAUSED,
+                    message,
+                    now,
+                    updated_by_user_id,
+                    plan_id,
+                ),
+            )
+
+            latest_run = get_latest_sync_run(conn, plan_id)
+            if latest_run and latest_run["status"] == RUN_STATUS_RUNNING:
+                conn.execute(
+                    """
+                    UPDATE investmap_rf_sync_runs
+                    SET
+                        status = ?,
+                        error_message = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        RUN_STATUS_PAUSED,
+                        message,
+                        latest_run["id"],
+                    ),
+                )
+
+        recovered.append(
+            {
+                "plan_id": plan_id,
+                "plan": get_sync_plan(conn, plan_id),
+                "latest_run": get_latest_sync_run(conn, plan_id),
+            }
+        )
+
+    return recovered
 
 def request_stop_sync_plan(
     conn,
