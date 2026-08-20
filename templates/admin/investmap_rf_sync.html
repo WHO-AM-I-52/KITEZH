@@ -78,6 +78,7 @@
   {% set latest_run = item.latest_run %}
   {% set latest_batch = item.latest_batch %}
   {% set failed_batches = item.failed_batches or [] %}
+  {% set latest_retry_job = item.latest_retry_job %}
   <div class="card border-secondary">
     <div class="card-header bg-light d-flex flex-wrap align-items-center justify-content-between gap-2">
       <div>
@@ -196,6 +197,52 @@
           </div>
         </details>
       {% endif %}
+            {% if latest_retry_job %}
+        <div class="border rounded p-3 mt-3 small">
+          <div class="fw-semibold mb-2">
+            Повтор ошибочных площадок № {{ latest_retry_job.id }}
+          </div>
+          <div class="row g-2">
+            <div class="col-sm-6 col-lg-3">
+              Статус: <strong>{{ latest_retry_job.status }}</strong>
+            </div>
+            <div class="col-sm-6 col-lg-3">
+              Карточек: <strong>{{ latest_retry_job.processed_cards_count or 0 }}</strong>
+              / {{ latest_retry_job.requested_cards_count or 0 }}
+            </div>
+            <div class="col-sm-6 col-lg-3">
+              Успешно: <strong>{{ latest_retry_job.successful_cards_count or 0 }}</strong>
+            </div>
+            <div class="col-sm-6 col-lg-3">
+              Ошибок: <strong>{{ latest_retry_job.failed_cards_count or 0 }}</strong>
+            </div>
+          </div>
+
+          {% if latest_retry_job.error_message %}
+            <div class="alert alert-danger py-2 px-3 mt-3 mb-0">
+              <strong>Ошибка повтора:</strong> {{ latest_retry_job.error_message }}
+            </div>
+          {% endif %}
+        </div>
+      {% endif %}
+
+      {% if latest_run and failed_batches
+            and (
+              not latest_retry_job
+              or latest_retry_job.status not in ['pending', 'running']
+            ) %}
+        <form
+          method="post"
+          action="{{ url_for('admin.investmap_rf_sync_retry_failed', plan_id=plan.id) }}"
+          class="mt-3"
+          onsubmit="return confirm('Создать повторную синхронизацию для ошибочных площадок последнего цикла?');"
+        >
+          <button class="btn btn-sm btn-outline-danger" type="submit">
+            <i class="bi bi-arrow-repeat me-1"></i>
+            Повторить {{ latest_run.failed_cards_count or 0 }} ошибочных площадок
+          </button>
+        </form>
+      {% endif %}
     </div>
   </div>
 {% endmacro %}
@@ -221,6 +268,7 @@
         {% set latest_run = item.latest_run %}
         {% set latest_batch = item.latest_batch %}
         {% set failed_batches = item.failed_batches or [] %}
+        {% set latest_retry_job = item.latest_retry_job %}
 
         <div class="card">
           <div class="card-header bg-white d-flex flex-wrap align-items-center justify-content-between gap-2">
@@ -338,6 +386,53 @@
                   {% endfor %}
                 </div>
               </details>
+            {% endif %}
+
+            {% if latest_retry_job %}
+              <div class="border rounded p-3 mb-3 small">
+                <div class="fw-semibold mb-2">
+                  Повтор ошибочных площадок № {{ latest_retry_job.id }}
+                </div>
+                <div class="row g-2">
+                  <div class="col-sm-6 col-lg-3">
+                    Статус: <strong>{{ latest_retry_job.status }}</strong>
+                  </div>
+                  <div class="col-sm-6 col-lg-3">
+                    Карточек: <strong>{{ latest_retry_job.processed_cards_count or 0 }}</strong>
+                    / {{ latest_retry_job.requested_cards_count or 0 }}
+                  </div>
+                  <div class="col-sm-6 col-lg-3">
+                    Успешно: <strong>{{ latest_retry_job.successful_cards_count or 0 }}</strong>
+                  </div>
+                  <div class="col-sm-6 col-lg-3">
+                    Ошибок: <strong>{{ latest_retry_job.failed_cards_count or 0 }}</strong>
+                  </div>
+                </div>
+
+                {% if latest_retry_job.error_message %}
+                  <div class="alert alert-danger py-2 px-3 mt-3 mb-0">
+                    <strong>Ошибка повтора:</strong> {{ latest_retry_job.error_message }}
+                  </div>
+                {% endif %}
+              </div>
+            {% endif %}
+
+            {% if latest_run and failed_batches
+                  and (
+                    not latest_retry_job
+                    or latest_retry_job.status not in ['pending', 'running']
+                  ) %}
+              <form
+                method="post"
+                action="{{ url_for('admin.investmap_rf_sync_retry_failed', plan_id=plan.id) }}"
+                class="mb-3"
+                onsubmit="return confirm('Создать повторную синхронизацию для ошибочных площадок последнего цикла?');"
+              >
+                <button class="btn btn-sm btn-outline-danger" type="submit">
+                  <i class="bi bi-arrow-repeat me-1"></i>
+                  Повторить {{ latest_run.failed_cards_count or 0 }} ошибочных площадок
+                </button>
+              </form>
             {% endif %}
 
             <div class="d-flex flex-wrap gap-2 align-items-center">
@@ -463,7 +558,9 @@
         return {
           plan: item.plan,
           latest_run: item.latest_run,
-          latest_batch: item.latest_batch
+          latest_batch: item.latest_batch,
+          failed_batches: item.failed_batches,
+          latest_retry_job: item.latest_retry_job
         };
       })
     });
