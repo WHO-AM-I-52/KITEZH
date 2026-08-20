@@ -8,6 +8,7 @@ from services.investmap_rf_sync_scheduler import run_due_sync_plans
 INTERVAL_SEC = 60
 
 _lock = threading.Lock()
+_state_lock = threading.Lock()
 _timer: threading.Timer | None = None
 _started = False
 
@@ -22,7 +23,7 @@ def _run_once() -> None:
         finally:
             _lock.release()
     except Exception:
-        # Ошибка одного запуска не должна останавливать фоновый планировщик.
+        # Ошибка одной проверки не должна останавливать планировщик.
         pass
     finally:
         _schedule_next()
@@ -31,31 +32,34 @@ def _run_once() -> None:
 def _schedule_next() -> None:
     global _timer
 
-    if not _started:
-        return
+    with _state_lock:
+        if not _started:
+            return
 
-    _timer = threading.Timer(INTERVAL_SEC, _run_once)
-    _timer.daemon = True
-    _timer.start()
+        _timer = threading.Timer(INTERVAL_SEC, _run_once)
+        _timer.daemon = True
+        _timer.start()
 
 
 def start() -> None:
     """Запускает минутную проверку готовых планов один раз на процесс."""
     global _started
 
-    if _started:
-        return
+    with _state_lock:
+        if _started:
+            return
+        _started = True
 
-    _started = True
     _schedule_next()
 
 
 def stop() -> None:
-    """Останавливает планировщик; полезно при штатном завершении процесса."""
+    """Останавливает планировщик при штатном завершении процесса."""
     global _started, _timer
 
-    _started = False
+    with _state_lock:
+        _started = False
 
-    if _timer is not None:
-        _timer.cancel()
-        _timer = None
+        if _timer is not None:
+            _timer.cancel()
+            _timer = None
