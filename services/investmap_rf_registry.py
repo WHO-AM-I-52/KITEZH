@@ -94,7 +94,76 @@ def _append_event(
             changed_by_user_id,
         ),
     )
+    
+def deactivate_card_not_found_in_api(
+    conn,
+    *,
+    global_id: int,
+    changed_by_user_id: int | None = None,
+) -> dict[str, Any]:
+    """
+    Снимает активную площадку с мониторинга после подтверждённого HTTP 404.
 
+    Функция не выполняет API-запросов, не вызывает commit() и не закрывает
+    переданное соединение.
+    """
+    try:
+        normalized_global_id = int(global_id)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("global_id должен быть целым числом.") from exc
+
+    if normalized_global_id <= 0:
+        raise ValueError("global_id должен быть положительным числом.")
+
+    row = conn.execute(
+        """
+        SELECT
+            global_id,
+            is_active,
+            source_filename,
+            last_source_status
+        FROM investmap_rf_monitored_cards
+        WHERE global_id = ?
+        """,
+        (normalized_global_id,),
+    ).fetchone()
+
+    if row is None:
+        raise ValueError("Площадка не найдена в реестре мониторинга.")
+
+    if int(row["is_active"]) != 1:
+        raise ValueError("Площадка уже снята с мониторинга.")
+
+    occurred_at_utc = _utc_now()
+    reason = "Внешний API вернул HTTP 404: карточка не найдена."
+
+    conn.execute(
+        """
+        UPDATE investmap_rf_monitored_cards
+        SET is_active = 0
+        WHERE global_id = ?
+        """,
+        (normalized_global_id,),
+    )
+
+    _append_event(
+        conn,
+        global_id=normalized_global_id,
+        event_type=EVENT_DEACTIVATED_API_NOT_FOUND,
+        previous_status=row["last_source_status"],
+        current_status=row["last_source_status"],
+        source_filename=row["source_filename"],
+        occurred_at_utc=occurred_at_utc,
+        reason=reason,
+        changed_by_user_id=changed_by_user_id,
+    )
+
+    return {
+        "global_id": normalized_global_id,
+        "is_active": 0,
+        "reason": reason,
+        "occurred_at_utc": occurred_at_utc,
+    }
 
 def import_monitored_cards_xlsx(
     conn,
