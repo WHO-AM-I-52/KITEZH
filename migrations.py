@@ -517,13 +517,37 @@ def _migrate_investmap_rf_monitor_registry_tables(conn):
             previous_status TEXT,
             current_status TEXT NOT NULL,
             source_filename TEXT NOT NULL,
-            occurred_at_utc TEXT NOT NULL
+            occurred_at_utc TEXT NOT NULL,
+            reason TEXT,
+            changed_by_user_id INTEGER
         );
 
         CREATE INDEX IF NOT EXISTS idx_investmap_rf_registry_events_card
             ON investmap_rf_monitor_registry_events(global_id, id DESC);
         """
     )
+    event_columns = {
+        row["name"]
+        for row in conn.execute(
+            "PRAGMA table_info(investmap_rf_monitor_registry_events)"
+        ).fetchall()
+    }
+
+    if "reason" not in event_columns:
+        conn.execute(
+            """
+            ALTER TABLE investmap_rf_monitor_registry_events
+            ADD COLUMN reason TEXT
+            """
+        )
+
+    if "changed_by_user_id" not in event_columns:
+        conn.execute(
+            """
+            ALTER TABLE investmap_rf_monitor_registry_events
+            ADD COLUMN changed_by_user_id INTEGER
+            """
+        )
 
 def _migrate_investmap_rf_sync_plan_tables(conn):
     """Создаёт таблицы планов и истории пакетной синхронизации Инвесткарты РФ."""
