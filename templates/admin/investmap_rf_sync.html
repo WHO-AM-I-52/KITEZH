@@ -4,11 +4,7 @@
 <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
   <div>
     <div class="d-flex align-items-center gap-2">
-      <a
-        href="/admin"
-        class="btn btn-sm btn-outline-secondary"
-        title="Вернуться в администрирование"
-      >
+      <a href="/admin" class="btn btn-sm btn-outline-secondary" title="Вернуться в администрирование">
         <i class="bi bi-arrow-left"></i>
       </a>
       <h5 class="mb-0" style="color:#1B5E7B">
@@ -21,10 +17,7 @@
     </div>
   </div>
 
-  <a
-    href="{{ url_for('investmap.investmap_rf_monitor') }}"
-    class="btn btn-sm btn-outline-primary"
-  >
+  <a href="{{ url_for('investmap.investmap_rf_monitor') }}" class="btn btn-sm btn-outline-primary">
     <i class="bi bi-graph-up me-1"></i>
     Открыть мониторинг
   </a>
@@ -36,11 +29,9 @@
     <div>
       В активном реестре: <strong>{{ active_cards_count }}</strong> площадок.
       После запуска первый пакет будет обработан в течение минуты.
-      Остановка мягкая: текущая карточка или пакет завершается, после чего
-      новые пакеты не запускаются.
+      Остановка мягкая: текущая карточка или пакет завершается, после чего новые пакеты не запускаются.
     </div>
   </div>
-
   <div class="small text-nowrap text-muted">
     <i class="bi bi-arrow-clockwise me-1"></i>
     Автообновление: 10 сек.
@@ -55,60 +46,20 @@
       Новый план синхронизации
     </div>
   </div>
-
   <div class="card-body">
-    <form
-      method="post"
-      action="{{ url_for('admin.investmap_rf_sync_create') }}"
-      class="row g-3 align-items-end"
-    >
+    <form method="post" action="{{ url_for('admin.investmap_rf_sync_create') }}" class="row g-3 align-items-end">
       <div class="col-lg-5">
-        <label for="sync-plan-name" class="form-label">
-          Название плана
-        </label>
-        <input
-          id="sync-plan-name"
-          name="name"
-          class="form-control"
-          type="text"
-          maxlength="200"
-          placeholder="Например: Основная синхронизация"
-          required
-        >
+        <label for="sync-plan-name" class="form-label">Название плана</label>
+        <input id="sync-plan-name" name="name" class="form-control" type="text" maxlength="200" placeholder="Например: Основная синхронизация" required>
       </div>
-
       <div class="col-sm-4 col-lg-2">
-        <label for="sync-batch-size" class="form-label">
-          Размер пакета
-        </label>
-        <input
-          id="sync-batch-size"
-          name="batch_size"
-          class="form-control"
-          type="number"
-          min="1"
-          max="100"
-          value="5"
-          required
-        >
+        <label for="sync-batch-size" class="form-label">Размер пакета</label>
+        <input id="sync-batch-size" name="batch_size" class="form-control" type="number" min="1" max="100" value="5" required>
       </div>
-
       <div class="col-sm-4 col-lg-2">
-        <label for="sync-interval" class="form-label">
-          Интервал, мин.
-        </label>
-        <input
-          id="sync-interval"
-          name="interval_minutes"
-          class="form-control"
-          type="number"
-          min="1"
-          max="1440"
-          value="10"
-          required
-        >
+        <label for="sync-interval" class="form-label">Интервал, мин.</label>
+        <input id="sync-interval" name="interval_minutes" class="form-control" type="number" min="1" max="1440" value="10" required>
       </div>
-
       <div class="col-sm-4 col-lg-3">
         <button class="btn btn-primary w-100" type="submit">
           <i class="bi bi-plus-lg me-1"></i>
@@ -116,23 +67,62 @@
         </button>
       </div>
     </form>
-
     <div class="form-text mt-3">
-      Допустимый размер пакета — от 1 до 100 площадок, интервал — от 1 до
-      1440 минут. Созданный план выключен до нажатия «Старт».
+      Допустимый размер пакета — от 1 до 100 площадок, интервал — от 1 до 1440 минут. Созданный план выключен до нажатия «Старт».
     </div>
   </div>
 </div>
 
+{% macro inactive_plan_card(item) %}
+  {% set plan = item.plan %}
+  {% set latest_run = item.latest_run %}
+  {% set latest_batch = item.latest_batch %}
+  <div class="card border-secondary">
+    <div class="card-header bg-light d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <div>
+        <span class="fw-semibold">{{ plan.name }}</span>
+        <span class="text-muted small ms-2">ID {{ plan.id }}</span>
+      </div>
+      <span class="badge text-bg-light border text-dark">{{ plan.status }}</span>
+    </div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-sm-6 col-lg-3">
+          <div class="text-muted small">Размер пакета</div>
+          <div>{{ plan.batch_size }}</div>
+        </div>
+        <div class="col-sm-6 col-lg-3">
+          <div class="text-muted small">Интервал</div>
+          <div>{{ plan.interval_minutes }} мин.</div>
+        </div>
+        <div class="col-sm-6 col-lg-3">
+          <div class="text-muted small">Последний запуск</div>
+          <div class="small">{{ plan.last_run_started_at_utc or '—' }}</div>
+        </div>
+        <div class="col-sm-6 col-lg-3">
+          <div class="text-muted small">Последняя ошибка</div>
+          <div class="small">{{ plan.last_error or '—' }}</div>
+        </div>
+      </div>
+
+      {% if latest_run %}
+        <div class="small text-muted mt-3">
+          Последний цикл: {{ latest_run.status }}, обработано {{ latest_run.processed_cards_count or 0 }} из {{ latest_run.requested_cards_count or 0 }}.
+        </div>
+      {% endif %}
+
+      {% if latest_batch %}
+        <div class="small text-muted mt-1">
+          Последний пакет № {{ latest_batch.batch_number }}: {{ latest_batch.status }}.
+        </div>
+      {% endif %}
+    </div>
+  </div>
+{% endmacro %}
+
 {% if plans %}
-  {% set active_plans = plans
-    | selectattr('plan.status', 'in', ['running', 'stopping', 'paused'])
-    | list
-  %}
-  {% set inactive_plans = plans
-    | rejectattr('plan.status', 'in', ['running', 'stopping', 'paused'])
-    | list
-  %}
+  {% set active_plans = plans | selectattr('plan.status', 'in', ['running', 'stopping', 'paused']) | list %}
+  {% set inactive_plans = plans | rejectattr('plan.status', 'in', ['running', 'stopping', 'paused']) | list %}
   {% set recent_inactive_plans = inactive_plans[:5] %}
   {% set older_inactive_plans = inactive_plans[5:] %}
 
@@ -144,229 +134,147 @@
     <span class="badge text-bg-secondary">{{ plans|length }}</span>
   </div>
 
-  <div class="vstack gap-3">
-    {% for item in active_plans %}
-      {% set plan = item.plan %}
-      {% set latest_run = item.latest_run %}
-      {% set latest_batch = item.latest_batch %}
+  {% if active_plans %}
+    <div class="vstack gap-3">
+      {% for item in active_plans %}
+        {% set plan = item.plan %}
+        {% set latest_run = item.latest_run %}
+        {% set latest_batch = item.latest_batch %}
 
-      <div class="card">
-        <div class="card-header bg-white d-flex flex-wrap align-items-center justify-content-between gap-2">
-          <div>
-            <span class="fw-semibold">{{ plan.name }}</span>
-            <span class="text-muted small ms-2">ID {{ plan.id }}</span>
-          </div>
-
-          <div>
-            {% if plan.status == 'running' %}
-              <span class="badge text-bg-success">Выполняется</span>
-            {% elif plan.status == 'stopping' %}
-              <span class="badge text-bg-warning">Останавливается</span>
-            {% elif plan.status == 'paused' %}
-              <span class="badge text-bg-secondary">Приостановлен</span>
-            {% elif plan.status == 'completed' %}
-              <span class="badge text-bg-primary">Завершён</span>
-            {% elif plan.status == 'failed' %}
-              <span class="badge text-bg-danger">Ошибка</span>
-            {% else %}
-              <span class="badge text-bg-light border text-dark">Не запущен</span>
-            {% endif %}
-          </div>
-        </div>
-
-        <div class="card-body">
-          <div class="row g-3 mb-3">
-            <div class="col-sm-6 col-lg-3">
-              <div class="text-muted small">Размер пакета</div>
-              <div class="fw-semibold">{{ plan.batch_size }}</div>
+        <div class="card">
+          <div class="card-header bg-white d-flex flex-wrap align-items-center justify-content-between gap-2">
+            <div>
+              <span class="fw-semibold">{{ plan.name }}</span>
+              <span class="text-muted small ms-2">ID {{ plan.id }}</span>
             </div>
-
-            <div class="col-sm-6 col-lg-3">
-              <div class="text-muted small">Интервал</div>
-              <div class="fw-semibold">{{ plan.interval_minutes }} мин.</div>
-            </div>
-
-            <div class="col-sm-6 col-lg-3">
-              <div class="text-muted small">Следующий пакет</div>
-              <div class="small">
-                {% if plan.next_run_at_utc %}
-                  <code>{{ plan.next_run_at_utc }}</code>
-                {% else %}
-                  —
-                {% endif %}
-              </div>
-            </div>
-
-            <div class="col-sm-6 col-lg-3">
-              <div class="text-muted small">Последний запуск</div>
-              <div class="small">
-                {% if plan.last_run_started_at_utc %}
-                  <code>{{ plan.last_run_started_at_utc }}</code>
-                {% else %}
-                  —
-                {% endif %}
-              </div>
-            </div>
-          </div>
-
-          {% if latest_run %}
-            <div class="border rounded p-3 bg-light mb-3">
-              <div class="fw-semibold small mb-2">
-                Последний цикл № {{ latest_run.id }}
-              </div>
-              <div class="row g-2 small">
-                <div class="col-sm-6 col-lg-3">
-                  Статус:
-                  <strong>{{ latest_run.status }}</strong>
-                </div>
-                <div class="col-sm-6 col-lg-3">
-                  Карточек:
-                  <strong>{{ latest_run.processed_cards_count or 0 }}</strong>
-                  / {{ latest_run.requested_cards_count or 0 }}
-                </div>
-                <div class="col-sm-6 col-lg-3">
-                  Успешно:
-                  <strong>{{ latest_run.successful_cards_count or 0 }}</strong>
-                </div>
-                <div class="col-sm-6 col-lg-3">
-                  Ошибок:
-                  <strong>{{ latest_run.failed_cards_count or 0 }}</strong>
-                </div>
-              </div>
-            </div>
-          {% endif %}
-
-          {% if latest_batch %}
-            <div class="border rounded p-3 mb-3">
-              <div class="fw-semibold small mb-2">
-                Последний пакет № {{ latest_batch.batch_number }}
-              </div>
-              <div class="row g-2 small">
-                <div class="col-sm-6 col-lg-3">
-                  Статус:
-                  <strong>{{ latest_batch.status }}</strong>
-                </div>
-                <div class="col-sm-6 col-lg-3">
-                  Обработано:
-                  <strong>{{ latest_batch.processed_cards_count or 0 }}</strong>
-                </div>
-                <div class="col-sm-6 col-lg-3">
-                  Успешно:
-                  <strong>{{ latest_batch.successful_cards_count or 0 }}</strong>
-                </div>
-                <div class="col-sm-6 col-lg-3">
-                  Ошибок:
-                  <strong>{{ latest_batch.failed_cards_count or 0 }}</strong>
-                </div>
-              </div>
-
-              {% if latest_batch.error_message %}
-                <div class="alert alert-danger py-2 px-3 mt-3 mb-0 small">
-                  <strong>Ошибка пакета:</strong>
-                  {{ latest_batch.error_message }}
-                </div>
+            <div>
+              {% if plan.status == 'running' %}
+                <span class="badge text-bg-success">Выполняется</span>
+              {% elif plan.status == 'stopping' %}
+                <span class="badge text-bg-warning">Останавливается</span>
+              {% else %}
+                <span class="badge text-bg-secondary">Приостановлен</span>
               {% endif %}
             </div>
-          {% endif %}
-
-          {% if plan.last_error %}
-            <div class="alert alert-danger py-2 px-3 small">
-              <strong>Последняя ошибка:</strong> {{ plan.last_error }}
-            </div>
-          {% endif %}
-
-          <div class="d-flex flex-wrap gap-2 align-items-center">
-            {% if plan.status not in ['running', 'stopping'] %}
-              <form
-                method="post"
-                action="{{ url_for('admin.investmap_rf_sync_action', plan_id=plan.id) }}"
-              >
-                <input type="hidden" name="action" value="start">
-                <button class="btn btn-sm btn-success" type="submit">
-                  <i class="bi bi-play-fill me-1"></i>
-                  Старт
-                </button>
-              </form>
-            {% endif %}
-
-            {% if plan.status in ['running', 'stopping'] %}
-              <form
-                method="post"
-                action="{{ url_for('admin.investmap_rf_sync_action', plan_id=plan.id) }}"
-              >
-                <input type="hidden" name="action" value="pause">
-                <button class="btn btn-sm btn-outline-secondary" type="submit">
-                  <i class="bi bi-pause-fill me-1"></i>
-                  Пауза
-                </button>
-              </form>
-            {% endif %}
-
-            {% if plan.status in ['running', 'paused'] %}
-              <form
-                method="post"
-                action="{{ url_for('admin.investmap_rf_sync_action', plan_id=plan.id) }}"
-                onsubmit="return confirm('Запросить мягкую остановку плана «{{ plan.name|e }}»?');"
-              >
-                <input type="hidden" name="action" value="stop">
-                <button class="btn btn-sm btn-outline-danger" type="submit">
-                  <i class="bi bi-stop-fill me-1"></i>
-                  Остановить
-                </button>
-              </form>
-            {% endif %}
           </div>
 
-          <hr>
-
-          <form
-            method="post"
-            action="{{ url_for('admin.investmap_rf_sync_settings', plan_id=plan.id) }}"
-            class="row g-2 align-items-end"
-          >
-            <div class="col-sm-4 col-lg-2">
-              <label class="form-label form-label-sm" for="batch-size-{{ plan.id }}">
-                Размер пакета
-              </label>
-              <input
-                id="batch-size-{{ plan.id }}"
-                name="batch_size"
-                class="form-control form-control-sm"
-                type="number"
-                min="1"
-                max="100"
-                value="{{ plan.batch_size }}"
-                required
-              >
+          <div class="card-body">
+            <div class="row g-3 mb-3">
+              <div class="col-sm-6 col-lg-3">
+                <div class="text-muted small">Размер пакета</div>
+                <div class="fw-semibold">{{ plan.batch_size }}</div>
+              </div>
+              <div class="col-sm-6 col-lg-3">
+                <div class="text-muted small">Интервал</div>
+                <div class="fw-semibold">{{ plan.interval_minutes }} мин.</div>
+              </div>
+              <div class="col-sm-6 col-lg-3">
+                <div class="text-muted small">Следующий пакет</div>
+                <div class="small">
+                  {% if plan.next_run_at_utc %}
+                    <code>{{ plan.next_run_at_utc }}</code>
+                  {% else %}
+                    —
+                  {% endif %}
+                </div>
+              </div>
+              <div class="col-sm-6 col-lg-3">
+                <div class="text-muted small">Последний запуск</div>
+                <div class="small">
+                  {% if plan.last_run_started_at_utc %}
+                    <code>{{ plan.last_run_started_at_utc }}</code>
+                  {% else %}
+                    —
+                  {% endif %}
+                </div>
+              </div>
             </div>
 
-            <div class="col-sm-4 col-lg-2">
-              <label class="form-label form-label-sm" for="interval-{{ plan.id }}">
-                Интервал, мин.
-              </label>
-              <input
-                id="interval-{{ plan.id }}"
-                name="interval_minutes"
-                class="form-control form-control-sm"
-                type="number"
-                min="1"
-                max="1440"
-                value="{{ plan.interval_minutes }}"
-                required
-              >
+            {% if latest_run %}
+              <div class="border rounded p-3 bg-light mb-3">
+                <div class="fw-semibold small mb-2">Последний цикл № {{ latest_run.id }}</div>
+                <div class="row g-2 small">
+                  <div class="col-sm-6 col-lg-3">Статус: <strong>{{ latest_run.status }}</strong></div>
+                  <div class="col-sm-6 col-lg-3">Карточек: <strong>{{ latest_run.processed_cards_count or 0 }}</strong> / {{ latest_run.requested_cards_count or 0 }}</div>
+                  <div class="col-sm-6 col-lg-3">Успешно: <strong>{{ latest_run.successful_cards_count or 0 }}</strong></div>
+                  <div class="col-sm-6 col-lg-3">Ошибок: <strong>{{ latest_run.failed_cards_count or 0 }}</strong></div>
+                </div>
+              </div>
+            {% endif %}
+
+            {% if latest_batch %}
+              <div class="border rounded p-3 mb-3">
+                <div class="fw-semibold small mb-2">Последний пакет № {{ latest_batch.batch_number }}</div>
+                <div class="row g-2 small">
+                  <div class="col-sm-6 col-lg-3">Статус: <strong>{{ latest_batch.status }}</strong></div>
+                  <div class="col-sm-6 col-lg-3">Обработано: <strong>{{ latest_batch.processed_cards_count or 0 }}</strong></div>
+                  <div class="col-sm-6 col-lg-3">Успешно: <strong>{{ latest_batch.successful_cards_count or 0 }}</strong></div>
+                  <div class="col-sm-6 col-lg-3">Ошибок: <strong>{{ latest_batch.failed_cards_count or 0 }}</strong></div>
+                </div>
+                {% if latest_batch.error_message %}
+                  <div class="alert alert-danger py-2 px-3 mt-3 mb-0 small">
+                    <strong>Ошибка пакета:</strong> {{ latest_batch.error_message }}
+                  </div>
+                {% endif %}
+              </div>
+            {% endif %}
+
+            {% if plan.last_error %}
+              <div class="alert alert-danger py-2 px-3 small">
+                <strong>Последняя ошибка:</strong> {{ plan.last_error }}
+              </div>
+            {% endif %}
+
+            <div class="d-flex flex-wrap gap-2 align-items-center">
+              {% if plan.status in ['running', 'stopping'] %}
+                <form method="post" action="{{ url_for('admin.investmap_rf_sync_action', plan_id=plan.id) }}">
+                  <input type="hidden" name="action" value="pause">
+                  <button class="btn btn-sm btn-outline-secondary" type="submit">
+                    <i class="bi bi-pause-fill me-1"></i>
+                    Пауза
+                  </button>
+                </form>
+              {% endif %}
+
+              {% if plan.status in ['running', 'paused'] %}
+                <form method="post" action="{{ url_for('admin.investmap_rf_sync_action', plan_id=plan.id) }}" onsubmit="return confirm('Запросить мягкую остановку плана «{{ plan.name|e }}»?');">
+                  <input type="hidden" name="action" value="stop">
+                  <button class="btn btn-sm btn-outline-danger" type="submit">
+                    <i class="bi bi-stop-fill me-1"></i>
+                    Остановить
+                  </button>
+                </form>
+              {% endif %}
             </div>
 
-            <div class="col-sm-4 col-lg-3">
-              <button class="btn btn-sm btn-outline-primary w-100" type="submit">
-                <i class="bi bi-sliders me-1"></i>
-                Сохранить параметры
-              </button>
-            </div>
-          </form>
+            <hr>
+
+            <form method="post" action="{{ url_for('admin.investmap_rf_sync_settings', plan_id=plan.id) }}" class="row g-2 align-items-end">
+              <div class="col-sm-4 col-lg-2">
+                <label class="form-label form-label-sm" for="batch-size-{{ plan.id }}">Размер пакета</label>
+                <input id="batch-size-{{ plan.id }}" name="batch_size" class="form-control form-control-sm" type="number" min="1" max="100" value="{{ plan.batch_size }}" required>
+              </div>
+              <div class="col-sm-4 col-lg-2">
+                <label class="form-label form-label-sm" for="interval-{{ plan.id }}">Интервал, мин.</label>
+                <input id="interval-{{ plan.id }}" name="interval_minutes" class="form-control form-control-sm" type="number" min="1" max="1440" value="{{ plan.interval_minutes }}" required>
+              </div>
+              <div class="col-sm-4 col-lg-3">
+                <button class="btn btn-sm btn-outline-primary w-100" type="submit">
+                  <i class="bi bi-sliders me-1"></i>
+                  Сохранить параметры
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
-      </div>
-    {% endfor %}
-  </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="alert alert-secondary">
+      <i class="bi bi-pause-circle me-1"></i>
+      Активных планов синхронизации сейчас нет.
+    </div>
+  {% endif %}
 
   {% if inactive_plans %}
     <details class="mt-3">
@@ -377,59 +285,7 @@
 
       <div class="vstack gap-3 mt-3">
         {% for item in recent_inactive_plans %}
-          {% set plan = item.plan %}
-          {% set latest_run = item.latest_run %}
-          {% set latest_batch = item.latest_batch %}
-
-          <div class="card border-secondary">
-            <div class="card-header bg-light d-flex flex-wrap align-items-center justify-content-between gap-2">
-              <div>
-                <span class="fw-semibold">{{ plan.name }}</span>
-                <span class="text-muted small ms-2">ID {{ plan.id }}</span>
-              </div>
-              <span class="badge text-bg-light border text-dark">
-                {{ plan.status }}
-              </span>
-            </div>
-
-            <div class="card-body">
-              <div class="row g-3">
-                <div class="col-sm-6 col-lg-3">
-                  <div class="text-muted small">Размер пакета</div>
-                  <div>{{ plan.batch_size }}</div>
-                </div>
-                <div class="col-sm-6 col-lg-3">
-                  <div class="text-muted small">Интервал</div>
-                  <div>{{ plan.interval_minutes }} мин.</div>
-                </div>
-                <div class="col-sm-6 col-lg-3">
-                  <div class="text-muted small">Последний запуск</div>
-                  <div class="small">
-                    {{ plan.last_run_started_at_utc or '—' }}
-                  </div>
-                </div>
-                <div class="col-sm-6 col-lg-3">
-                  <div class="text-muted small">Последняя ошибка</div>
-                  <div class="small">{{ plan.last_error or '—' }}</div>
-                </div>
-              </div>
-
-              {% if latest_run %}
-                <div class="small text-muted mt-3">
-                  Последний цикл: {{ latest_run.status }},
-                  обработано {{ latest_run.processed_cards_count or 0 }}
-                  из {{ latest_run.requested_cards_count or 0 }}.
-                </div>
-              {% endif %}
-
-              {% if latest_batch %}
-                <div class="small text-muted mt-1">
-                  Последний пакет № {{ latest_batch.batch_number }}:
-                  {{ latest_batch.status }}.
-                </div>
-              {% endif %}
-            </div>
-          </div>
+          {{ inactive_plan_card(item) }}
         {% endfor %}
       </div>
 
@@ -442,61 +298,11 @@
 
           <div class="vstack gap-3 mt-3">
             {% for item in older_inactive_plans %}
-              {% set plan = item.plan %}
-              {% set latest_run = item.latest_run %}
-              {% set latest_batch = item.latest_batch %}
-
-              <div class="card border-secondary">
-                <div class="card-header bg-light d-flex flex-wrap align-items-center justify-content-between gap-2">
-                  <div>
-                    <span class="fw-semibold">{{ plan.name }}</span>
-                    <span class="text-muted small ms-2">ID {{ plan.id }}</span>
-                  </div>
-                  <span class="badge text-bg-light border text-dark">
-                    {{ plan.status }}
-                  </span>
-                </div>
-
-                <div class="card-body">
-                  <div class="row g-3">
-                    <div class="col-sm-6 col-lg-3">
-                      <div class="text-muted small">Размер пакета</div>
-                      <div>{{ plan.batch_size }}</div>
-                    </div>
-                    <div class="col-sm-6 col-lg-3">
-                      <div class="text-muted small">Интервал</div>
-                      <div>{{ plan.interval_minutes }} мин.</div>
-                    </div>
-                    <div class="col-sm-6 col-lg-3">
-                      <div class="text-muted small">Последний запуск</div>
-                      <div class="small">
-                        {{ plan.last_run_started_at_utc or '—' }}
-                      </div>
-                    </div>
-                    <div class="col-sm-6 col-lg-3">
-                      <div class="text-muted small">Последняя ошибка</div>
-                      <div class="small">{{ plan.last_error or '—' }}</div>
-                    </div>
-                  </div>
-
-                  {% if latest_run %}
-                    <div class="small text-muted mt-3">
-                      Последний цикл: {{ latest_run.status }},
-                      обработано {{ latest_run.processed_cards_count or 0 }}
-                      из {{ latest_run.requested_cards_count or 0 }}.
-                    </div>
-                  {% endif %}
-
-              {% if latest_batch %}
-                <div class="small text-muted mt-1">
-                  Последний пакет № {{ latest_batch.batch_number }}:
-                  {{ latest_batch.status }}.
-                </div>
-              {% endif %}
-            </div>
+              {{ inactive_plan_card(item) }}
+            {% endfor %}
           </div>
-        {% endfor %}
-      </div>
+        </details>
+      {% endif %}
     </details>
   {% endif %}
 {% else %}
@@ -530,23 +336,16 @@
 
   function hasUnsavedInput() {
     var activeElement = document.activeElement;
-
-    if (!activeElement) {
-      return false;
-    }
-
-    return activeElement.matches(
+    return Boolean(activeElement) && activeElement.matches(
       'input:not([type="hidden"]), textarea, select'
     );
   }
 
   function setLastCheck(text, isError) {
     var element = document.getElementById('sync-status-last-check');
-
     if (!element) {
       return;
     }
-
     element.textContent = text;
     element.classList.toggle('text-danger', Boolean(isError));
   }
@@ -555,37 +354,28 @@
     if (isRequestInProgress || hasUnsavedInput()) {
       return;
     }
-
     isRequestInProgress = true;
 
     fetch(statusUrl, {
       credentials: 'same-origin',
-      headers: {
-        'Accept': 'application/json'
-      }
+      headers: { 'Accept': 'application/json' }
     })
       .then(function (response) {
         if (!response.ok) {
           throw new Error('HTTP ' + response.status);
         }
-
         return response.json();
       })
       .then(function (payload) {
         if (!payload.ok) {
           throw new Error(payload.error || 'Статус недоступен');
         }
-
         var currentState = stablePlanState(payload);
-        var checkedAt = new Date().toLocaleTimeString('ru-RU');
-
-        setLastCheck('Проверено: ' + checkedAt, false);
-
+        setLastCheck('Проверено: ' + new Date().toLocaleTimeString('ru-RU'), false);
         if (previousState !== null && previousState !== currentState) {
           window.location.reload();
           return;
         }
-
         previousState = currentState;
       })
       .catch(function () {
