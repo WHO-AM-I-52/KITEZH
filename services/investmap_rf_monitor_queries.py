@@ -186,7 +186,7 @@ def get_monitor_cards(
             ON changes.global_id = latest.global_id
         LEFT JOIN latest_v2
             ON latest_v2.site_id = CAST(latest.global_id AS TEXT)
-        {where_sql}
+        {items_where_sql}
         ORDER BY latest.fetched_at_utc DESC, latest.snapshot_id DESC
         LIMIT ? OFFSET ?
         """,
