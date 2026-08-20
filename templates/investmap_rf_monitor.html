@@ -2,151 +2,163 @@
 
 {% block content %}
 <div class="container-fluid py-3">
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
         <div>
             <h1 class="h3 mb-1">Мониторинг Инвесткарты РФ</h1>
             <p class="text-muted mb-0">
-                Сохранённые read-only снимки карточек API и история изменений.
+                Реестр отслеживаемых площадок, снимки карточек и история изменений.
             </p>
         </div>
-        <a class="btn btn-outline-secondary" href="{{ url_for('investmap.investmap') }}">
-            ← К разделу «Инвесткарта»
-        </a>
     </div>
 
-    <div class="row g-3 mb-4">
+    <section class="card shadow-sm mb-4">
+        <div class="card-body">
+            <h2 class="h5 mb-2">Загрузка реестра из XLSX</h2>
+
+            <p class="text-muted mb-3">
+                Выберите выгрузку Инвестиционной карты РФ в формате XLSX.
+                В мониторинг включаются только площадки со статусом
+                <strong>«Свободна»</strong>. Если статус уже отслеживаемой
+                площадки изменился, она будет снята с мониторинга, а изменение
+                попадёт в журнал событий.
+            </p>
+
+            <form
+                method="post"
+                action="{{ url_for('investmap.import_investmap_rf_monitor_registry') }}"
+                enctype="multipart/form-data"
+                class="row g-3 align-items-end"
+            >
+                <div class="col-md-8">
+                    <label for="xlsx_file" class="form-label">
+                        Выберите XLSX-файл
+                    </label>
+                    <input
+                        id="xlsx_file"
+                        name="xlsx_file"
+                        type="file"
+                        class="form-control"
+                        accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        required
+                    >
+                </div>
+
+                <div class="col-md-4">
+                    <button type="submit" class="btn btn-primary w-100">
+                        Загрузить и импортировать
+                    </button>
+                </div>
+            </form>
+        </div>
+    </section>
+
+    <section class="row g-3 mb-4">
         <div class="col-md-4">
-            <div class="card h-100">
+            <div class="card h-100 shadow-sm">
                 <div class="card-body">
                     <div class="text-muted small">Карточек в мониторинге</div>
-                    <div class="display-6">{{ summary.cards_count }}</div>
+                    <div class="display-6">{{ summary.cards_count or 0 }}</div>
                 </div>
             </div>
         </div>
+
         <div class="col-md-4">
-            <div class="card h-100">
+            <div class="card h-100 shadow-sm">
                 <div class="card-body">
                     <div class="text-muted small">Сохранённых снимков</div>
-                    <div class="display-6">{{ summary.snapshots_count }}</div>
+                    <div class="display-6">{{ summary.snapshots_count or 0 }}</div>
                 </div>
             </div>
         </div>
+
         <div class="col-md-4">
-            <div class="card h-100">
+            <div class="card h-100 shadow-sm">
                 <div class="card-body">
                     <div class="text-muted small">Карточек с изменениями</div>
-                    <div class="display-6">{{ summary.changed_cards_count }}</div>
+                    <div class="display-6">{{ summary.changed_cards_count or 0 }}</div>
                 </div>
             </div>
         </div>
-    </div>
+    </section>
 
-    {% if cards %}
-    <div class="card">
+    <section class="card shadow-sm">
         <div class="card-header">
-            Последние сохранённые состояния карточек
+            Отслеживаемые карточки
         </div>
+
         <div class="card-body p-0">
+            {% if cards %}
             <div class="table-responsive">
                 <table class="table table-hover align-middle mb-0">
                     <thead>
                         <tr>
-                            <th scope="col">ID карточки</th>
-                            <th scope="col">Регион</th>
-                            <th scope="col">Заполнение</th>
-                            <th scope="col">Предыдущее</th>
-                            <th scope="col">Динамика</th>
-                            <th scope="col">Последний снимок</th>
-                            <th scope="col">Изменения</th>
-                            <th scope="col"></th>
+                            <th>ID карточки</th>
+                            <th>Регион</th>
+                            <th>Заполнение</th>
+                            <th>Предыдущее</th>
+                            <th>Динамика</th>
+                            <th>Последний снимок</th>
+                            <th>Изменения</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for card in cards %}
                         <tr>
                             <td>
-                                <a href="{{ url_for(
-                                    'investmap.investmap_rf_monitor_detail',
-                                    global_id=card.global_id
-                                ) }}">
+                                <a href="{{ url_for('investmap.investmap_rf_monitor_detail', global_id=card.global_id) }}">
                                     {{ card.global_id }}
                                 </a>
                             </td>
                             <td>
                                 {% if card.region_code is not none %}
-                                {{ card.region_code }}
+                                    {{ card.region_code }}
                                 {% else %}
-                                <span class="text-muted">—</span>
+                                    —
                                 {% endif %}
                             </td>
                             <td>
                                 {% if card.filling_level is not none %}
-                                <strong>{{ card.filling_level }}%</strong>
+                                    {{ card.filling_level }}%
                                 {% else %}
-                                <span class="text-muted">—</span>
+                                    —
                                 {% endif %}
                             </td>
                             <td>
                                 {% if card.previous_filling_level is not none %}
-                                {{ card.previous_filling_level }}%
+                                    {{ card.previous_filling_level }}%
                                 {% else %}
-                                <span class="text-muted">—</span>
+                                    —
                                 {% endif %}
                             </td>
                             <td>
                                 {% if card.filling_level_delta is none %}
-                                <span class="text-muted">—</span>
+                                    —
                                 {% elif card.filling_level_delta > 0 %}
-                                <span class="text-success">
-                                    +{{ card.filling_level_delta }} п.п.
-                                </span>
+                                    <span class="text-success">+{{ card.filling_level_delta }} п.п.</span>
                                 {% elif card.filling_level_delta < 0 %}
-                                <span class="text-danger">
-                                    {{ card.filling_level_delta }} п.п.
-                                </span>
+                                    <span class="text-danger">{{ card.filling_level_delta }} п.п.</span>
                                 {% else %}
-                                <span class="text-muted">0 п.п.</span>
+                                    0 п.п.
                                 {% endif %}
                             </td>
                             <td>
                                 <code>{{ card.fetched_at_utc }}</code>
                             </td>
                             <td>
-                                {% if card.changes_count %}
-                                <span class="badge text-bg-warning">
-                                    {{ card.changes_count }}
-                                </span>
-                                {% else %}
-                                <span class="text-muted">0</span>
-                                {% endif %}
-                            </td>
-                            <td class="text-end">
-                                <a
-                                    class="btn btn-sm btn-outline-primary"
-                                    href="{{ url_for(
-                                        'investmap.investmap_rf_monitor_detail',
-                                        global_id=card.global_id
-                                    ) }}"
-                                >
-                                    Открыть
-                                </a>
+                                {{ card.changes_count or 0 }}
                             </td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
+            {% else %}
+            <div class="p-4 text-muted">
+                В мониторинге пока нет карточек. Загрузите XLSX-файл со свободными
+                площадками через форму выше.
+            </div>
+            {% endif %}
         </div>
-    </div>
-    {% else %}
-    <div class="alert alert-info mb-0">
-        <h2 class="h5">Снимков пока нет</h2>
-        <p class="mb-0">
-            Сначала сохраните карточку через
-            <code>services.investmap_rf_snapshot_runner</code>
-            или запустите контролируемый batch runner.
-        </p>
-    </div>
-    {% endif %}
+    </section>
 </div>
 {% endblock %}
