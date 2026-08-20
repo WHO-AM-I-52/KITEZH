@@ -469,6 +469,7 @@ def _sync_plan_action_label(action: str) -> str:
     labels = {
         "create": "создание",
         "start": "запуск",
+        "resume": "возобновление",
         "pause": "пауза",
         "stop": "остановка",
         "settings": "изменение настроек",
@@ -595,6 +596,7 @@ def investmap_rf_sync_action(plan_id: int):
     from services.investmap_rf_sync_plans import (
         pause_sync_plan,
         request_stop_sync_plan,
+        resume_sync_plan,
         start_sync_plan,
     )
 
@@ -614,6 +616,17 @@ def investmap_rf_sync_action(plan_id: int):
             message = (
                 f"План «{plan['name']}» запущен. "
                 "Первый пакет будет обработан в течение минуты."
+            )
+        elif action == "resume":
+            result = resume_sync_plan(
+                conn,
+                plan_id=plan_id,
+                updated_by_user_id=user_id,
+            )
+            plan = result["plan"]
+            message = (
+                f"План «{plan['name']}» возобновлён. "
+                "Следующий пакет будет обработан в течение минуты."
             )
         elif action == "pause":
             plan = pause_sync_plan(
