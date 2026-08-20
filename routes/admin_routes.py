@@ -716,3 +716,42 @@ def investmap_rf_sync_settings(plan_id: int):
         conn.close()
 
     return redirect(url_for("admin.investmap_rf_sync"))
+    
+@admin_bp.route("/admin/investmap-rf-sync/status")
+@login_required
+@admin_required
+def investmap_rf_sync_status():
+    conn = get_db()
+
+    try:
+        plans = _get_sync_plan_overview(conn)
+        active_cards_count = conn.execute(
+            """
+            SELECT COUNT(*) AS count
+            FROM investmap_rf_monitored_cards
+            WHERE is_active = 1
+            """
+        ).fetchone()["count"]
+
+        return jsonify(
+            {
+                "ok": True,
+                "active_cards_count": active_cards_count,
+                "plans": plans,
+                "server_time_utc": datetime.utcnow().isoformat(
+                    timespec="seconds"
+                ) + "Z",
+            }
+        )
+    except Exception:
+        current_app.logger.exception(
+            "Ошибка получения статуса синхронизации Инвесткарты РФ."
+        )
+        return jsonify(
+            {
+                "ok": False,
+                "error": "Не удалось получить статус синхронизации.",
+            }
+        ), 500
+    finally:
+        conn.close()
