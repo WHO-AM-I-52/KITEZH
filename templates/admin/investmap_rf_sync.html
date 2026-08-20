@@ -197,7 +197,8 @@
           </div>
         </details>
       {% endif %}
-            {% if latest_retry_job %}
+      
+      {% if latest_retry_job %}
         <div class="border rounded p-3 mt-3 small">
           <div class="fw-semibold mb-2">
             Повтор ошибочных площадок № {{ latest_retry_job.id }}
