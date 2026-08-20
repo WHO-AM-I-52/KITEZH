@@ -129,10 +129,9 @@ def investmap_rf_monitor():
                     user,
                 )
 
-@investmap_bp.route('/investmap')
-@login_required
-@permission_required('can_view_investmap')
 @investmap_bp.route("/investmap-rf/monitor/import", methods=["POST"])
+@login_required
+@permission_required("can_view_investmap")
 def import_investmap_rf_monitor_registry():
     uploaded_file = request.files.get("xlsx_file")
 
