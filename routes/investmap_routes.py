@@ -98,6 +98,25 @@ def investmap():
     """Главная страница — плитки навигации."""
     return render_template('investmap.html')
 
+_MONITOR_CARDS_PER_PAGE = 50
+
+
+def _monitor_query_positive_int(name: str) -> int | None:
+    value = request.args.get(name)
+
+    if value is None or not value.strip():
+        return None
+
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{name} должен быть положительным целым числом.") from None
+
+    if parsed <= 0:
+        raise ValueError(f"{name} должен быть положительным целым числом.")
+
+    return parsed
+
 @investmap_bp.route('/investmap/rf-monitor')
 @login_required
 @permission_required('can_view_investmap')
@@ -107,15 +126,25 @@ def investmap_rf_monitor():
     db = None
 
     try:
-        db = get_db()
-        return render_template(
-            'investmap_rf_monitor.html',
-            summary=get_monitor_summary(db),
-            cards=get_monitor_cards(db),
-            registry_cards=get_monitor_registry_cards(db),
-            registry_events=get_monitor_registry_events(db),
-            is_admin=session.get('role') == 'admin',
-        )
+        page = _monitor_query_positive_int("page") or 1
+search_global_id = _monitor_query_positive_int("global_id")
+
+db = get_db()
+cards_page = get_monitor_cards(
+    db,
+    page=page,
+    per_page=_MONITOR_CARDS_PER_PAGE,
+    global_id=search_global_id,
+)
+
+return render_template(
+    'investmap_rf_monitor.html',
+    summary=get_monitor_summary(db),
+    cards_page=cards_page,
+    registry_cards=get_monitor_registry_cards(db),
+    registry_events=get_monitor_registry_events(db),
+    is_admin=session.get('role') == 'admin',
+)
     except Exception as exc:
         err_logger.exception(
             'investmap_rf_monitor error | user=%s | %s',
@@ -130,7 +159,16 @@ def investmap_rf_monitor():
                 'snapshots_count': 0,
                 'changed_cards_count': 0,
             },
-            cards=[],
+            cards_page={
+                'items': [],
+                'total': 0,
+                'page': 1,
+                'per_page': _MONITOR_CARDS_PER_PAGE,
+                'pages': 1,
+                'search_global_id': None,
+                'first_item_number': 0,
+                'last_item_number': 0,
+            },
             registry_cards=[],
             registry_events=[],
             is_admin=session.get('role') == 'admin',
