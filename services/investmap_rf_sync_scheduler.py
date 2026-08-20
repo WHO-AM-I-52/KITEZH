@@ -70,20 +70,57 @@ def run_due_sync_plans(
     now_utc: datetime | None = None,
 ) -> list[dict[str, Any]]:
     """
-    Выполняет не более одного пакета для каждого готового плана.
+    Финализирует запрошенные остановки и выполняет не более одного
+    пакета для каждого готового плана.
 
     Функция предназначена для вызова планировщиком раз в минуту.
-    Она не создаёт потоков и не вызывает commit() снаружи: каждая
-    операция подготовки и выполнения использует собственное подключение.
+    Каждая операция использует собственное подключение к БД.
     """
     conn = get_connection()
 
     try:
+        stopping_rows = conn.execute(
+            """
+            SELECT id
+            FROM investmap_rf_sync_plans
+            WHERE status = ?
+              AND stop_requested = 1
+            ORDER BY id
+            """,
+            ("stopping",),
+        ).fetchall()
+        stopping_plan_ids = [int(row["id"]) for row in stopping_rows]
+
         due_plan_ids = get_due_sync_plan_ids(conn, now_utc=now_utc)
     finally:
         conn.close()
 
     results: list[dict[str, Any]] = []
+
+    for plan_id in stopping_plan_ids:
+        conn = get_connection()
+
+        try:
+            final_plan = finalize_stop_sync_plan(conn, plan_id=plan_id)
+            conn.commit()
+            results.append(
+                {
+                    "plan_id": plan_id,
+                    "status": "stopped",
+                    "plan": final_plan,
+                }
+            )
+        except Exception as exc:
+            conn.rollback()
+            results.append(
+                {
+                    "plan_id": plan_id,
+                    "status": "stop_finalize_failed",
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
+            )
+        finally:
+            conn.close()
 
     for plan_id in due_plan_ids:
         conn = get_connection()
