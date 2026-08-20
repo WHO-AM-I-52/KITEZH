@@ -61,6 +61,15 @@ def _calculate_batch_metrics(report) -> dict[str, int]:
         "changed_cards_count": changed_cards_count,
     }
 
+def _collect_batch_errors(report) -> str | None:
+    """Собирает ошибки отдельных карточек в компактный текст для журнала."""
+    errors = [
+        f"{item.global_id}: {item.error}"
+        for item in report.items
+        if item.status == "error" and item.error
+    ]
+
+    return "\n".join(errors) if errors else None
 
 def execute_sync_batch(
     conn,
@@ -115,6 +124,7 @@ def execute_sync_batch(
         )
 
         metrics = _calculate_batch_metrics(report)
+        batch_errors = _collect_batch_errors(report)
 
         if report.interrupted:
             summary = fail_sync_batch(
@@ -137,11 +147,26 @@ def execute_sync_batch(
             **metrics,
         )
 
+        if batch_errors:
+            conn.execute(
+                """
+                UPDATE investmap_rf_sync_batches
+                SET error_message = ?
+                WHERE id = ? AND plan_id = ?
+                """,
+                (
+                    batch_errors,
+                    batch_id,
+                    plan_id,
+                ),
+            )
+
         return {
             "status": "completed",
             "plan_status": summary,
             "batch_id": batch_id,
             "report": report,
+            "item_errors": batch_errors,
         }
 
     except Exception as exc:
