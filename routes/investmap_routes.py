@@ -15,6 +15,8 @@ from db import get_db
 from services.investmap_rf_monitor_queries import (
     get_monitor_card_detail,
     get_monitor_cards,
+    get_monitor_registry_cards,
+    get_monitor_registry_events,
     get_monitor_summary,
 )
 from core.kitezh_logger import err_logger
@@ -102,6 +104,8 @@ def investmap_rf_monitor():
             'investmap_rf_monitor.html',
             summary=get_monitor_summary(db),
             cards=get_monitor_cards(db),
+            registry_cards=get_monitor_registry_cards(db),
+            registry_events=get_monitor_registry_events(db),
         )
     except Exception as exc:
         err_logger.exception(
@@ -118,6 +122,8 @@ def investmap_rf_monitor():
                 'changed_cards_count': 0,
             },
             cards=[],
+            registry_cards=[],
+            registry_events=[],
         ), 500
     finally:
         if db is not None:
