@@ -20,7 +20,10 @@ from services.investmap_rf_monitor_queries import (
     get_monitor_summary,
 )
 from core.kitezh_logger import err_logger
-from services.investmap_rf_registry import import_monitored_cards_xlsx
+from services.investmap_rf_registry import (
+    deactivate_card_not_found_in_api,
+    import_monitored_cards_xlsx,
+)
 from portal_analysis.batch_analysis import run_batch_history
 from portal_analysis.history_summary import (
     get_immediately_previous_run_metadata,
@@ -192,6 +195,63 @@ def import_investmap_rf_monitor_registry():
 
     return redirect(url_for("investmap.investmap_rf_monitor"))
 
+@investmap_bp.route(
+    "/investmap-rf/monitor/registry/<int:global_id>/deactivate-api-not-found",
+    methods=["POST"],
+)
+@login_required
+@permission_required("can_view_investmap")
+def deactivate_investmap_rf_monitor_registry_card(global_id):
+    """Снимает карточку с мониторинга после подтверждённого HTTP 404."""
+    user_id = getattr(g, "user", {}).get("id")
+    conn = get_db()
+
+    try:
+        result = deactivate_card_not_found_in_api(
+            conn,
+            global_id=global_id,
+            changed_by_user_id=user_id,
+        )
+
+        if not log_action(
+            conn,
+            user_id,
+            "investmap_rf_registry_deactivate_api_not_found",
+            detail=f"global_id={global_id}",
+        ):
+            raise RuntimeError(
+                "Не удалось записать действие снятия с мониторинга."
+            )
+
+        conn.commit()
+
+    except ValueError as exc:
+        conn.rollback()
+        flash(str(exc), "danger")
+
+    except Exception:
+        conn.rollback()
+        current_app.logger.exception(
+            "Ошибка ручного снятия с мониторинга Инвесткарты РФ: "
+            "global_id=%s",
+            global_id,
+        )
+        flash(
+            "Не удалось снять площадку с мониторинга из-за внутренней ошибки.",
+            "danger",
+        )
+
+    else:
+        flash(
+            f"Площадка {result['global_id']} снята с мониторинга: "
+            "внешний API подтвердил отсутствие карточки (HTTP 404).",
+            "success",
+        )
+
+    finally:
+        conn.close()
+
+    return redirect(url_for("investmap.investmap_rf_monitor"))
 
 @investmap_bp.route('/investmap/rf-monitor/<int:global_id>')
 @login_required
