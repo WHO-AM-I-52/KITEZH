@@ -463,3 +463,256 @@ def ocr_status():
         checked_at=datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
         ocr_logs=ocr_logs,
     )
+    # ─── Синхронизация Инвесткарты РФ ─────────────────────────────────────────────
+
+def _sync_plan_action_label(action: str) -> str:
+    labels = {
+        "create": "создание",
+        "start": "запуск",
+        "pause": "пауза",
+        "stop": "остановка",
+        "settings": "изменение настроек",
+    }
+    return labels.get(action, action)
+
+
+def _parse_positive_int(value: str | None, field_label: str) -> int:
+    try:
+        parsed = int(str(value).strip())
+    except (TypeError, ValueError):
+        raise ValueError(f"{field_label} должен быть целым числом.") from None
+
+    if parsed < 1:
+        raise ValueError(f"{field_label} должен быть больше нуля.")
+
+    return parsed
+
+
+def _get_sync_plan_overview(conn) -> list[dict]:
+    from services.investmap_rf_sync_plans import (
+        get_latest_sync_batch,
+        get_latest_sync_run,
+        get_sync_plans,
+    )
+
+    overview: list[dict] = []
+
+    for plan in get_sync_plans(conn):
+        plan_id = int(plan["id"])
+        overview.append(
+            {
+                "plan": plan,
+                "latest_run": get_latest_sync_run(conn, plan_id),
+                "latest_batch": get_latest_sync_batch(conn, plan_id),
+            }
+        )
+
+    return overview
+
+
+@admin_bp.route("/admin/investmap-rf-sync")
+@login_required
+@admin_required
+def investmap_rf_sync():
+    conn = get_db()
+
+    try:
+        plans = _get_sync_plan_overview(conn)
+        active_cards_count = conn.execute(
+            """
+            SELECT COUNT(*) AS count
+            FROM investmap_rf_registry_cards
+            WHERE is_active = 1
+            """
+        ).fetchone()["count"]
+
+        return render_template(
+            "admin/investmap_rf_sync.html",
+            plans=plans,
+            active_cards_count=active_cards_count,
+        )
+    finally:
+        conn.close()
+
+
+@admin_bp.route("/admin/investmap-rf-sync/create", methods=["POST"])
+@login_required
+@admin_required
+def investmap_rf_sync_create():
+    from services.investmap_rf_sync_plans import create_sync_plan
+
+    conn = get_db()
+
+    try:
+        plan = create_sync_plan(
+            conn,
+            name=request.form.get("name", ""),
+            batch_size=_parse_positive_int(
+                request.form.get("batch_size"),
+                "Размер пакета",
+            ),
+            interval_minutes=_parse_positive_int(
+                request.form.get("interval_minutes"),
+                "Интервал",
+            ),
+            created_by_user_id=session.get("user_id"),
+        )
+        log_action(
+            conn,
+            session.get("user_id"),
+            "investmap_rf_sync_create",
+            detail=(
+                f"plan_id={plan['id']}; "
+                f"name={plan['name']}; "
+                f"batch_size={plan['batch_size']}; "
+                f"interval_minutes={plan['interval_minutes']}"
+            ),
+        )
+        conn.commit()
+        flash(f"План «{plan['name']}» создан.", "success")
+    except ValueError as exc:
+        conn.rollback()
+        flash(str(exc), "error")
+    except Exception:
+        conn.rollback()
+        current_app.logger.exception(
+            "Ошибка создания плана синхронизации Инвесткарты РФ."
+        )
+        flash("Не удалось создать план синхронизации.", "error")
+    finally:
+        conn.close()
+
+    return redirect(url_for("admin.investmap_rf_sync"))
+
+
+@admin_bp.route(
+    "/admin/investmap-rf-sync/<int:plan_id>/action",
+    methods=["POST"],
+)
+@login_required
+@admin_required
+def investmap_rf_sync_action(plan_id: int):
+    from services.investmap_rf_sync_plans import (
+        pause_sync_plan,
+        request_stop_sync_plan,
+        start_sync_plan,
+    )
+
+    action = request.form.get("action", "").strip()
+    conn = get_db()
+
+    try:
+        user_id = session.get("user_id")
+
+        if action == "start":
+            result = start_sync_plan(
+                conn,
+                plan_id=plan_id,
+                started_by_user_id=user_id,
+            )
+            plan = result["plan"]
+            message = (
+                f"План «{plan['name']}» запущен. "
+                "Первый пакет будет обработан в течение минуты."
+            )
+        elif action == "pause":
+            plan = pause_sync_plan(
+                conn,
+                plan_id=plan_id,
+                updated_by_user_id=user_id,
+            )
+            message = f"План «{plan['name']}» приостановлен."
+        elif action == "stop":
+            plan = request_stop_sync_plan(
+                conn,
+                plan_id=plan_id,
+                updated_by_user_id=user_id,
+            )
+            message = (
+                f"Для плана «{plan['name']}» запрошена мягкая остановка."
+            )
+        else:
+            raise ValueError("Неизвестное действие над планом.")
+
+        log_action(
+            conn,
+            user_id,
+            "investmap_rf_sync_action",
+            detail=(
+                f"plan_id={plan_id}; "
+                f"action={_sync_plan_action_label(action)}; "
+                f"status={plan['status']}"
+            ),
+        )
+        conn.commit()
+        flash(message, "success")
+    except ValueError as exc:
+        conn.rollback()
+        flash(str(exc), "error")
+    except Exception:
+        conn.rollback()
+        current_app.logger.exception(
+            "Ошибка действия над планом синхронизации Инвесткарты РФ. "
+            "plan_id=%s; action=%s",
+            plan_id,
+            action,
+        )
+        flash("Не удалось выполнить действие над планом.", "error")
+    finally:
+        conn.close()
+
+    return redirect(url_for("admin.investmap_rf_sync"))
+
+
+@admin_bp.route(
+    "/admin/investmap-rf-sync/<int:plan_id>/settings",
+    methods=["POST"],
+)
+@login_required
+@admin_required
+def investmap_rf_sync_settings(plan_id: int):
+    from services.investmap_rf_sync_plans import update_sync_plan_settings
+
+    conn = get_db()
+
+    try:
+        plan = update_sync_plan_settings(
+            conn,
+            plan_id=plan_id,
+            batch_size=_parse_positive_int(
+                request.form.get("batch_size"),
+                "Размер пакета",
+            ),
+            interval_minutes=_parse_positive_int(
+                request.form.get("interval_minutes"),
+                "Интервал",
+            ),
+            updated_by_user_id=session.get("user_id"),
+        )
+        log_action(
+            conn,
+            session.get("user_id"),
+            "investmap_rf_sync_settings",
+            detail=(
+                f"plan_id={plan_id}; "
+                f"batch_size={plan['batch_size']}; "
+                f"interval_minutes={plan['interval_minutes']}"
+            ),
+        )
+        conn.commit()
+        flash(f"Настройки плана «{plan['name']}» сохранены.", "success")
+    except ValueError as exc:
+        conn.rollback()
+        flash(str(exc), "error")
+    except Exception:
+        conn.rollback()
+        current_app.logger.exception(
+            "Ошибка обновления настроек плана синхронизации "
+            "Инвесткарты РФ. plan_id=%s",
+            plan_id,
+        )
+        flash("Не удалось сохранить настройки плана.", "error")
+    finally:
+        conn.close()
+
+    return redirect(url_for("admin.investmap_rf_sync"))
