@@ -521,7 +521,7 @@ def investmap_rf_sync():
         active_cards_count = conn.execute(
             """
             SELECT COUNT(*) AS count
-            FROM investmap_rf_registry_cards
+            FROM investmap_rf_monitored_cards
             WHERE is_active = 1
             """
         ).fetchone()["count"]
