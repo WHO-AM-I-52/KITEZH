@@ -42,43 +42,103 @@ def get_monitor_summary(conn: sqlite3.Connection) -> dict[str, int]:
     }
 
 
-def get_monitor_cards(conn: sqlite3.Connection) -> list[dict[str, Any]]:
-    """
-    Возвращает последнюю карточку каждого global_id с предыдущим filling_level.
+MONITOR_CARDS_PER_PAGE = 50
+MAX_MONITOR_CARDS_PER_PAGE = 100
 
-    Результат не содержит полный payload_json: он доступен только на detail-экране.
+
+def get_monitor_cards(
+    conn: sqlite3.Connection,
+    *,
+    page: int = 1,
+    per_page: int = MONITOR_CARDS_PER_PAGE,
+    global_id: int | None = None,
+) -> dict[str, Any]:
     """
-    rows = conn.execute(
-        """
-        WITH ranked_snapshots AS (
-            SELECT
-                id,
-                global_id,
-                fetched_at_utc,
-                filling_level,
-                region_code,
-                ROW_NUMBER() OVER (
-                    PARTITION BY global_id
-                    ORDER BY id DESC
-                ) AS position
+    Возвращает страницу последних API-снимков по площадкам.
+
+    При global_id выполняется точный поиск по ID. Оценка V2 берётся только
+    из последнего сохранённого снимка анализа и никогда не рассчитывается
+    повторно при открытии страницы мониторинга.
+    """
+    if isinstance(page, bool) or not isinstance(page, int) or page < 1:
+        raise ValueError("page должен быть положительным целым числом.")
+
+    if (
+        isinstance(per_page, bool)
+        or not isinstance(per_page, int)
+        or not 1 <= per_page <= MAX_MONITOR_CARDS_PER_PAGE
+    ):
+        raise ValueError("per_page имеет недопустимое значение.")
+
+    if global_id is not None and (
+        isinstance(global_id, bool)
+        or not isinstance(global_id, int)
+        or global_id <= 0
+    ):
+        raise ValueError("global_id должен быть положительным целым числом.")
+
+    where_sql = ""
+    where_params: list[Any] = []
+
+    if global_id is not None:
+        where_sql = "WHERE global_id = ?"
+        where_params.append(global_id)
+
+    total_row = conn.execute(
+        f"""
+        WITH latest_snapshots AS (
+            SELECT global_id, MAX(id) AS snapshot_id
             FROM investmap_rf_card_snapshots
+            GROUP BY global_id
+        )
+        SELECT COUNT(*)
+        FROM latest_snapshots
+        {where_sql}
+        """,
+        where_params,
+    ).fetchone()
+    total = int(total_row[0])
+
+    items_where_sql = ""
+    if global_id is not None:
+        items_where_sql = "WHERE latest.global_id = ?"
+
+    pages = max(1, (total + per_page - 1) // per_page)
+
+    if page > pages:
+        page = pages
+
+    offset = (page - 1) * per_page
+
+    rows = conn.execute(
+        f"""
+        WITH latest_snapshot_ids AS (
+            SELECT global_id, MAX(id) AS snapshot_id
+            FROM investmap_rf_card_snapshots
+            GROUP BY global_id
         ),
         latest_snapshots AS (
             SELECT
-                id,
-                global_id,
-                fetched_at_utc,
-                filling_level,
-                region_code
-            FROM ranked_snapshots
-            WHERE position = 1
+                snapshots.id AS snapshot_id,
+                snapshots.global_id,
+                snapshots.fetched_at_utc,
+                snapshots.filling_level
+            FROM investmap_rf_card_snapshots AS snapshots
+            INNER JOIN latest_snapshot_ids
+                ON latest_snapshot_ids.snapshot_id = snapshots.id
         ),
         previous_snapshots AS (
             SELECT
-                global_id,
-                filling_level AS previous_filling_level
-            FROM ranked_snapshots
-            WHERE position = 2
+                latest.global_id,
+                (
+                    SELECT previous.filling_level
+                    FROM investmap_rf_card_snapshots AS previous
+                    WHERE previous.global_id = latest.global_id
+                      AND previous.id < latest.snapshot_id
+                    ORDER BY previous.id DESC
+                    LIMIT 1
+                ) AS previous_filling_level
+            FROM latest_snapshots AS latest
         ),
         changes AS (
             SELECT
@@ -86,25 +146,55 @@ def get_monitor_cards(conn: sqlite3.Connection) -> list[dict[str, Any]]:
                 COUNT(*) AS changes_count
             FROM investmap_rf_card_changes
             GROUP BY global_id
+        ),
+        latest_v2_snapshot_ids AS (
+            SELECT
+                site_id,
+                MAX(run_id) AS run_id
+            FROM portal_analysis_site_snapshots
+            GROUP BY site_id
+        ),
+        latest_v2 AS (
+            SELECT
+                snapshots.site_id,
+                snapshots.score_percent,
+                snapshots.analysis_status,
+                runs.created_at AS analyzed_at_utc,
+                runs.formula_version
+            FROM portal_analysis_site_snapshots AS snapshots
+            INNER JOIN latest_v2_snapshot_ids
+                ON latest_v2_snapshot_ids.site_id = snapshots.site_id
+               AND latest_v2_snapshot_ids.run_id = snapshots.run_id
+            INNER JOIN portal_analysis_runs AS runs
+                ON runs.id = snapshots.run_id
         )
         SELECT
-            latest_snapshots.id AS snapshot_id,
-            latest_snapshots.global_id,
-            latest_snapshots.fetched_at_utc,
-            latest_snapshots.filling_level,
-            previous_snapshots.previous_filling_level,
-            latest_snapshots.region_code,
-            COALESCE(changes.changes_count, 0) AS changes_count
-        FROM latest_snapshots
-        LEFT JOIN previous_snapshots
-            ON previous_snapshots.global_id = latest_snapshots.global_id
+            latest.snapshot_id,
+            latest.global_id,
+            latest.fetched_at_utc,
+            latest.filling_level,
+            previous.previous_filling_level,
+            COALESCE(changes.changes_count, 0) AS changes_count,
+            latest_v2.score_percent AS v2_score,
+            latest_v2.analysis_status AS v2_analysis_status,
+            latest_v2.analyzed_at_utc AS v2_analyzed_at_utc,
+            latest_v2.formula_version AS v2_formula_version
+        FROM latest_snapshots AS latest
+        LEFT JOIN previous_snapshots AS previous
+            ON previous.global_id = latest.global_id
         LEFT JOIN changes
-            ON changes.global_id = latest_snapshots.global_id
-        ORDER BY latest_snapshots.fetched_at_utc DESC, latest_snapshots.id DESC
-        """
+            ON changes.global_id = latest.global_id
+        LEFT JOIN latest_v2
+            ON latest_v2.site_id = CAST(latest.global_id AS TEXT)
+        {where_sql}
+        ORDER BY latest.fetched_at_utc DESC, latest.snapshot_id DESC
+        LIMIT ? OFFSET ?
+        """,
+        [*where_params, per_page, offset],
     ).fetchall()
 
-    cards: list[dict[str, Any]] = []
+    items: list[dict[str, Any]] = []
+
     for row in rows:
         filling_level = row["filling_level"]
         previous_filling_level = row["previous_filling_level"]
@@ -113,7 +203,7 @@ def get_monitor_cards(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         if filling_level is not None and previous_filling_level is not None:
             filling_level_delta = filling_level - previous_filling_level
 
-        cards.append(
+        items.append(
             {
                 "snapshot_id": row["snapshot_id"],
                 "global_id": row["global_id"],
@@ -121,12 +211,24 @@ def get_monitor_cards(conn: sqlite3.Connection) -> list[dict[str, Any]]:
                 "filling_level": filling_level,
                 "previous_filling_level": previous_filling_level,
                 "filling_level_delta": filling_level_delta,
-                "region_code": row["region_code"],
                 "changes_count": row["changes_count"],
+                "v2_score": row["v2_score"],
+                "v2_analysis_status": row["v2_analysis_status"],
+                "v2_analyzed_at_utc": row["v2_analyzed_at_utc"],
+                "v2_formula_version": row["v2_formula_version"],
             }
         )
 
-    return cards
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "pages": pages,
+        "search_global_id": global_id,
+        "first_item_number": offset + 1 if items else 0,
+        "last_item_number": offset + len(items),
+    }
 
 
 def get_monitor_card_detail(
