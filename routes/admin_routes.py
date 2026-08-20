@@ -493,6 +493,7 @@ def _get_sync_plan_overview(conn) -> list[dict]:
     from services.investmap_rf_sync_plans import (
         get_latest_sync_batch,
         get_latest_sync_run,
+        get_sync_batches_for_run,
         get_sync_plans,
     )
 
@@ -500,11 +501,27 @@ def _get_sync_plan_overview(conn) -> list[dict]:
 
     for plan in get_sync_plans(conn):
         plan_id = int(plan["id"])
+        latest_run = get_latest_sync_run(conn, plan_id)
+        failed_batches: list[dict] = []
+
+        if latest_run is not None:
+            all_batches = get_sync_batches_for_run(
+                conn,
+                int(latest_run["id"]),
+            )
+            failed_batches = [
+                batch
+                for batch in all_batches
+                if int(batch["failed_cards_count"] or 0) > 0
+                or str(batch["error_message"] or "").strip()
+            ]
+
         overview.append(
             {
                 "plan": plan,
-                "latest_run": get_latest_sync_run(conn, plan_id),
+                "latest_run": latest_run,
                 "latest_batch": get_latest_sync_batch(conn, plan_id),
+                "failed_batches": failed_batches,
             }
         )
 
