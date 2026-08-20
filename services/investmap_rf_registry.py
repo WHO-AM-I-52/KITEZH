@@ -14,6 +14,7 @@ FREE_STATUS = "Свободна"
 EVENT_ACTIVATED = "activated"
 EVENT_REACTIVATED = "reactivated"
 EVENT_DEACTIVATED_STATUS_CHANGED = "deactivated_status_changed"
+EVENT_DEACTIVATED_API_NOT_FOUND = "deactivated_api_not_found"
 
 
 def _utc_now() -> str:
@@ -65,6 +66,8 @@ def _append_event(
     current_status: str,
     source_filename: str,
     occurred_at_utc: str,
+    reason: str | None = None,
+    changed_by_user_id: int | None = None,
 ) -> None:
     conn.execute(
         """
@@ -74,9 +77,11 @@ def _append_event(
             previous_status,
             current_status,
             source_filename,
-            occurred_at_utc
+            occurred_at_utc,
+            reason,
+            changed_by_user_id
         )
-        VALUES (?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             global_id,
@@ -85,6 +90,8 @@ def _append_event(
             current_status,
             source_filename,
             occurred_at_utc,
+            reason,
+            changed_by_user_id,
         ),
     )
 
