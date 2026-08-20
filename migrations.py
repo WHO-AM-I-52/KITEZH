@@ -525,6 +525,78 @@ def _migrate_investmap_rf_monitor_registry_tables(conn):
         """
     )
 
+def _migrate_investmap_rf_sync_plan_tables(conn):
+    """Создаёт таблицы планов и истории пакетной синхронизации Инвесткарты РФ."""
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS investmap_rf_sync_plans (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            is_enabled INTEGER NOT NULL DEFAULT 0,
+            batch_size INTEGER NOT NULL DEFAULT 5,
+            interval_minutes INTEGER NOT NULL DEFAULT 10,
+            status TEXT NOT NULL DEFAULT 'idle',
+            next_run_at_utc TEXT,
+            cursor_global_id INTEGER,
+            current_cycle_started_at_utc TEXT,
+            last_run_started_at_utc TEXT,
+            last_run_finished_at_utc TEXT,
+            last_error TEXT,
+            stop_requested INTEGER NOT NULL DEFAULT 0,
+            created_at_utc TEXT NOT NULL,
+            updated_at_utc TEXT NOT NULL,
+            created_by_user_id INTEGER,
+            updated_by_user_id INTEGER
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_investmap_rf_sync_plans_due
+            ON investmap_rf_sync_plans(is_enabled, status, next_run_at_utc);
+
+        CREATE TABLE IF NOT EXISTS investmap_rf_sync_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            plan_id INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'running',
+            started_at_utc TEXT NOT NULL,
+            finished_at_utc TEXT,
+            requested_cards_count INTEGER NOT NULL DEFAULT 0,
+            processed_cards_count INTEGER NOT NULL DEFAULT 0,
+            successful_cards_count INTEGER NOT NULL DEFAULT 0,
+            failed_cards_count INTEGER NOT NULL DEFAULT 0,
+            changed_cards_count INTEGER NOT NULL DEFAULT 0,
+            started_by_user_id INTEGER,
+            error_message TEXT,
+            FOREIGN KEY(plan_id) REFERENCES investmap_rf_sync_plans(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_investmap_rf_sync_runs_plan
+            ON investmap_rf_sync_runs(plan_id, id DESC);
+
+        CREATE TABLE IF NOT EXISTS investmap_rf_sync_batches (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            plan_id INTEGER NOT NULL,
+            run_id INTEGER NOT NULL,
+            batch_number INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            global_ids_json TEXT NOT NULL,
+            started_at_utc TEXT,
+            finished_at_utc TEXT,
+            processed_cards_count INTEGER NOT NULL DEFAULT 0,
+            successful_cards_count INTEGER NOT NULL DEFAULT 0,
+            failed_cards_count INTEGER NOT NULL DEFAULT 0,
+            changed_cards_count INTEGER NOT NULL DEFAULT 0,
+            error_message TEXT,
+            FOREIGN KEY(plan_id) REFERENCES investmap_rf_sync_plans(id),
+            FOREIGN KEY(run_id) REFERENCES investmap_rf_sync_runs(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_investmap_rf_sync_batches_plan
+            ON investmap_rf_sync_batches(plan_id, id DESC);
+
+        CREATE INDEX IF NOT EXISTS idx_investmap_rf_sync_batches_run
+            ON investmap_rf_sync_batches(run_id, batch_number);
+        """
+    )
+
 def _migrate_form_sections(conn):
     """feat #95 — системная таблица form_sections и расширение subject_types/requests."""
 
@@ -729,6 +801,7 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         _migrate_investmap_tables(conn)
         _migrate_investmap_rf_snapshot_tables(conn)
         _migrate_investmap_rf_monitor_registry_tables(conn)
+        _migrate_investmap_rf_sync_plan_tables(conn)
         _migrate_letters_tables(conn)
         _migrate_tasks_tables(conn)
         _migrate_task_comments_table(conn)
@@ -797,6 +870,7 @@ def migrate_db():
         _migrate_investmap_tables(conn)
         _migrate_investmap_rf_snapshot_tables(conn)
         _migrate_investmap_rf_monitor_registry_tables(conn)
+        _migrate_investmap_rf_sync_plan_tables(conn)
         _migrate_letters_tables(conn)
         _migrate_tasks_tables(conn)
         _migrate_task_comments_table(conn)
