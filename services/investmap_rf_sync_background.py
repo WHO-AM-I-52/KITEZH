@@ -13,6 +13,7 @@ _state_lock = threading.Lock()
 _timer: threading.Timer | None = None
 _started = False
 
+
 def _recover_interrupted_batches() -> None:
     """Переводит пакеты, зависшие после перезапуска, в безопасную паузу."""
     conn = None
@@ -36,17 +37,21 @@ def _recover_interrupted_batches() -> None:
             except Exception:
                 pass
 
-def start() -> None:
-    """Запускает минутную проверку готовых планов один раз на процесс."""
-    global _started
 
-    with _state_lock:
-        if _started:
+def _run_once() -> None:
+    try:
+        if not _lock.acquire(blocking=False):
             return
-        _started = True
 
-    _recover_interrupted_batches()
-    _schedule_next()
+        try:
+            run_due_sync_plans(get_db)
+        finally:
+            _lock.release()
+    except Exception:
+        # Ошибка одной проверки не должна останавливать планировщик.
+        pass
+    finally:
+        _schedule_next()
 
 
 def _schedule_next() -> None:
@@ -70,6 +75,7 @@ def start() -> None:
             return
         _started = True
 
+    _recover_interrupted_batches()
     _schedule_next()
 
 
