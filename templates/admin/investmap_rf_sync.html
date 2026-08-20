@@ -487,21 +487,6 @@
                     </div>
                   {% endif %}
 
-                  {% if latest_batch %}
-                    <div class="small text-muted mt-1">
-                      Последний пакет № {{ latest_batch.batch_number }}:
-                      {{ latest_batch.status }}.
-                    </div>
-                  {% endif %}
-                </div>
-              </div>
-            {% endfor %}
-          </div>
-        </details>
-      {% endif %}
-    </details>
-  {% endif %}
-
               {% if latest_batch %}
                 <div class="small text-muted mt-1">
                   Последний пакет № {{ latest_batch.batch_number }}:
