@@ -30,13 +30,21 @@
   </a>
 </div>
 
-<div class="alert alert-info d-flex gap-2 align-items-start" role="alert">
-  <i class="bi bi-info-circle-fill mt-1"></i>
-  <div>
-    В активном реестре: <strong>{{ active_cards_count }}</strong> площадок.
-    После запуска первый пакет будет обработан в течение минуты.
-    Остановка мягкая: текущая карточка или пакет завершается, после чего
-    новые пакеты не запускаются.
+<div class="alert alert-info d-flex flex-wrap gap-2 align-items-start justify-content-between" role="alert">
+  <div class="d-flex gap-2 align-items-start">
+    <i class="bi bi-info-circle-fill mt-1"></i>
+    <div>
+      В активном реестре: <strong>{{ active_cards_count }}</strong> площадок.
+      После запуска первый пакет будет обработан в течение минуты.
+      Остановка мягкая: текущая карточка или пакет завершается, после чего
+      новые пакеты не запускаются.
+    </div>
+  </div>
+
+  <div class="small text-nowrap text-muted">
+    <i class="bi bi-arrow-clockwise me-1"></i>
+    Автообновление: 10 сек.
+    <span id="sync-status-last-check">Проверка…</span>
   </div>
 </div>
 
@@ -435,5 +443,98 @@
     </div>
   </div>
 {% endif %}
+
+<script>
+(function () {
+  var statusUrl = "{{ url_for('admin.investmap_rf_sync_status') }}";
+  var intervalMs = 10000;
+  var previousState = null;
+  var isRequestInProgress = false;
+
+  function stablePlanState(payload) {
+    return JSON.stringify({
+      active_cards_count: payload.active_cards_count,
+      plans: (payload.plans || []).map(function (item) {
+        return {
+          plan: item.plan,
+          latest_run: item.latest_run,
+          latest_batch: item.latest_batch
+        };
+      })
+    });
+  }
+
+  function hasUnsavedInput() {
+    var activeElement = document.activeElement;
+
+    if (!activeElement) {
+      return false;
+    }
+
+    return activeElement.matches(
+      'input:not([type="hidden"]), textarea, select'
+    );
+  }
+
+  function setLastCheck(text, isError) {
+    var element = document.getElementById('sync-status-last-check');
+
+    if (!element) {
+      return;
+    }
+
+    element.textContent = text;
+    element.classList.toggle('text-danger', Boolean(isError));
+  }
+
+  function pollStatus() {
+    if (isRequestInProgress || hasUnsavedInput()) {
+      return;
+    }
+
+    isRequestInProgress = true;
+
+    fetch(statusUrl, {
+      credentials: 'same-origin',
+      headers: {
+        'Accept': 'application/json'
+      }
+    })
+      .then(function (response) {
+        if (!response.ok) {
+          throw new Error('HTTP ' + response.status);
+        }
+
+        return response.json();
+      })
+      .then(function (payload) {
+        if (!payload.ok) {
+          throw new Error(payload.error || 'Статус недоступен');
+        }
+
+        var currentState = stablePlanState(payload);
+        var checkedAt = new Date().toLocaleTimeString('ru-RU');
+
+        setLastCheck('Проверено: ' + checkedAt, false);
+
+        if (previousState !== null && previousState !== currentState) {
+          window.location.reload();
+          return;
+        }
+
+        previousState = currentState;
+      })
+      .catch(function () {
+        setLastCheck('Ошибка проверки', true);
+      })
+      .finally(function () {
+        isRequestInProgress = false;
+      });
+  }
+
+  pollStatus();
+  window.setInterval(pollStatus, intervalMs);
+})();
+</script>
 
 {% endblock %}
