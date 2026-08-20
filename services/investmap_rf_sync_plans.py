@@ -124,7 +124,22 @@ def get_latest_sync_batch(conn, plan_id: int) -> dict[str, Any] | None:
         (plan_id,),
     ).fetchone()
     return _row_to_dict(row)
-
+    
+def get_sync_batches_for_run(
+    conn,
+    run_id: int,
+) -> list[dict[str, Any]]:
+    """Возвращает все пакеты указанного цикла в порядке выполнения."""
+    rows = conn.execute(
+        """
+        SELECT *
+        FROM investmap_rf_sync_batches
+        WHERE run_id = ?
+        ORDER BY batch_number ASC, id ASC
+        """,
+        (run_id,),
+    ).fetchall()
+    return [dict(row) for row in rows]
 
 def get_sync_plan_status(conn, plan_id: int) -> dict[str, Any] | None:
     """Возвращает план вместе с последним циклом и пакетом."""
