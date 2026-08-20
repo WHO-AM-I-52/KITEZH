@@ -220,3 +220,42 @@ def get_monitor_card_detail(
             for row in changes
         ],
     }
+    
+def get_monitor_registry_cards(conn, limit: int = 1000):
+    """Возвращает активные площадки из реестра мониторинга."""
+    return conn.execute(
+        """
+        SELECT
+            global_id,
+            is_active,
+            source_filename,
+            imported_at_utc,
+            last_seen_import_at_utc,
+            last_source_status
+        FROM investmap_rf_monitored_cards
+        WHERE is_active = 1
+        ORDER BY global_id
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+
+
+def get_monitor_registry_events(conn, limit: int = 30):
+    """Возвращает последние события активации и снятия с мониторинга."""
+    return conn.execute(
+        """
+        SELECT
+            id,
+            global_id,
+            event_type,
+            previous_status,
+            current_status,
+            source_filename,
+            occurred_at_utc
+        FROM investmap_rf_monitor_registry_events
+        ORDER BY id DESC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
