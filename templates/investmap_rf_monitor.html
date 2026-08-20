@@ -81,83 +81,200 @@
         </div>
     </section>
 
-    <section class="card shadow-sm">
-        <div class="card-header">
-            Отслеживаемые карточки
+       <section class="card shadow-sm">
+        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <button
+                class="btn btn-link p-0 text-decoration-none text-reset fw-semibold"
+                type="button"
+                data-bs-toggle="collapse"
+                data-bs-target="#monitor-cards-collapse"
+                aria-expanded="false"
+                aria-controls="monitor-cards-collapse"
+            >
+                Отслеживаемые карточки
+            </button>
+
+            <span class="badge text-bg-primary">
+                {{ cards_page.total }}
+            </span>
         </div>
 
-        <div class="card-body p-0">
-            {% if cards %}
-            <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0">
-                    <thead>
-                        <tr>
-                            <th>ID карточки</th>
-                            <th>Регион</th>
-                            <th>Заполнение</th>
-                            <th>Предыдущее</th>
-                            <th>Динамика</th>
-                            <th>Последний снимок</th>
-                            <th>Изменения</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for card in cards %}
-                        <tr>
-                            <td>
-                                <a href="{{ url_for('investmap.investmap_rf_monitor_detail', global_id=card.global_id) }}">
-                                    {{ card.global_id }}
-                                </a>
-                            </td>
-                            <td>
-                                {% if card.region_code is not none %}
-                                    {{ card.region_code }}
-                                {% else %}
-                                    —
-                                {% endif %}
-                            </td>
-                            <td>
-                                {% if card.filling_level is not none %}
-                                    {{ card.filling_level }}%
-                                {% else %}
-                                    —
-                                {% endif %}
-                            </td>
-                            <td>
-                                {% if card.previous_filling_level is not none %}
-                                    {{ card.previous_filling_level }}%
-                                {% else %}
-                                    —
-                                {% endif %}
-                            </td>
-                            <td>
-                                {% if card.filling_level_delta is none %}
-                                    —
-                                {% elif card.filling_level_delta > 0 %}
-                                    <span class="text-success">+{{ card.filling_level_delta }} п.п.</span>
-                                {% elif card.filling_level_delta < 0 %}
-                                    <span class="text-danger">{{ card.filling_level_delta }} п.п.</span>
-                                {% else %}
-                                    0 п.п.
-                                {% endif %}
-                            </td>
-                            <td>
-                                <code>{{ card.fetched_at_utc }}</code>
-                            </td>
-                            <td>
-                                {{ card.changes_count or 0 }}
-                            </td>
-                        </tr>
+        <div id="monitor-cards-collapse" class="collapse">
+            <div class="card-body border-bottom">
+                <form method="get" class="row g-2 align-items-end">
+                    <div class="col-sm-6 col-md-4">
+                        <label for="monitor-global-id" class="form-label mb-1">
+                            Поиск по ID площадки
+                        </label>
+                        <input
+                            id="monitor-global-id"
+                            name="global_id"
+                            type="number"
+                            min="1"
+                            step="1"
+                            class="form-control"
+                            value="{{ cards_page.search_global_id or '' }}"
+                            placeholder="Например, 1530550"
+                        >
+                    </div>
+
+                    <div class="col-sm-auto">
+                        <button type="submit" class="btn btn-primary">
+                            Найти
+                        </button>
+                    </div>
+
+                    {% if cards_page.search_global_id %}
+                    <div class="col-sm-auto">
+                        <a
+                            class="btn btn-outline-secondary"
+                            href="{{ url_for('investmap.investmap_rf_monitor') }}"
+                        >
+                            Сбросить
+                        </a>
+                    </div>
+                    {% endif %}
+                </form>
+            </div>
+
+            <div class="card-body p-0">
+                {% if cards_page.items %}
+                <div class="px-3 pt-3 text-muted small">
+                    Показано {{ cards_page.first_item_number }}–{{ cards_page.last_item_number }}
+                    из {{ cards_page.total }}.
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>ID карточки</th>
+                                <th>Заполнение API</th>
+                                <th>Предыдущее</th>
+                                <th>Динамика</th>
+                                <th>Оценка v2</th>
+                                <th>Последний снимок API</th>
+                                <th>Изменения</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for card in cards_page.items %}
+                            <tr>
+                                <td>
+                                    <a href="{{ url_for('investmap.investmap_rf_monitor_detail', global_id=card.global_id) }}">
+                                        {{ card.global_id }}
+                                    </a>
+                                </td>
+                                <td>
+                                    {% if card.filling_level is not none %}
+                                        {{ card.filling_level }}%
+                                    {% else %}
+                                        —
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if card.previous_filling_level is not none %}
+                                        {{ card.previous_filling_level }}%
+                                    {% else %}
+                                        —
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if card.filling_level_delta is none %}
+                                        —
+                                    {% elif card.filling_level_delta > 0 %}
+                                        <span class="text-success">+{{ card.filling_level_delta }} п.п.</span>
+                                    {% elif card.filling_level_delta < 0 %}
+                                        <span class="text-danger">{{ card.filling_level_delta }} п.п.</span>
+                                    {% else %}
+                                        0 п.п.
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if card.v2_analysis_status == 'ok' and card.v2_score is not none %}
+                                        <span class="fw-semibold">{{ card.v2_score }}%</span>
+                                        {% if card.v2_analyzed_at_utc %}
+                                        <div class="small text-muted">
+                                            <code>{{ card.v2_analyzed_at_utc }}</code>
+                                        </div>
+                                        {% endif %}
+                                    {% elif card.v2_analysis_status == 'excluded' %}
+                                        <span class="badge text-bg-secondary">Исключена</span>
+                                    {% elif card.v2_analysis_status == 'error' %}
+                                        <span class="badge text-bg-danger">Ошибка</span>
+                                    {% else %}
+                                        —
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <code>{{ card.fetched_at_utc }}</code>
+                                </td>
+                                <td>
+                                    {{ card.changes_count or 0 }}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                {% if cards_page.pages > 1 %}
+                <nav class="px-3 py-3" aria-label="Страницы отслеживаемых карточек">
+                    <ul class="pagination pagination-sm mb-0 flex-wrap">
+                        <li class="page-item {% if cards_page.page <= 1 %}disabled{% endif %}">
+                            <a
+                                class="page-link"
+                                href="{{ url_for(
+                                    'investmap.investmap_rf_monitor',
+                                    page=cards_page.page - 1,
+                                    global_id=cards_page.search_global_id
+                                ) }}"
+                            >
+                                Назад
+                            </a>
+                        </li>
+
+                        {% for page_number in range(1, cards_page.pages + 1) %}
+                        <li class="page-item {% if page_number == cards_page.page %}active{% endif %}">
+                            <a
+                                class="page-link"
+                                href="{{ url_for(
+                                    'investmap.investmap_rf_monitor',
+                                    page=page_number,
+                                    global_id=cards_page.search_global_id
+                                ) }}"
+                            >
+                                {{ page_number }}
+                            </a>
+                        </li>
                         {% endfor %}
-                    </tbody>
-                </table>
+
+                        <li class="page-item {% if cards_page.page >= cards_page.pages %}disabled{% endif %}">
+                            <a
+                                class="page-link"
+                                href="{{ url_for(
+                                    'investmap.investmap_rf_monitor',
+                                    page=cards_page.page + 1,
+                                    global_id=cards_page.search_global_id
+                                ) }}"
+                            >
+                                Вперёд
+                            </a>
+                        </li>
+                    </ul>
+                </nav>
+                {% endif %}
+                {% else %}
+                <div class="p-4 text-muted">
+                    {% if cards_page.search_global_id %}
+                        Карточка с ID {{ cards_page.search_global_id }} в сохранённых снимках не найдена.
+                    {% else %}
+                        В мониторинге пока нет карточек. Загрузите XLSX-файл со свободными
+                        площадками через форму выше.
+                    {% endif %}
+                </div>
+                {% endif %}
             </div>
-            {% else %}
-            <div class="p-4 text-muted">
-                В мониторинге пока нет карточек. Загрузите XLSX-файл со свободными
-                площадками через форму выше.
-            </div>
-            {% endif %}
         </div>
     </section>
     <section class="card shadow-sm mt-4">
