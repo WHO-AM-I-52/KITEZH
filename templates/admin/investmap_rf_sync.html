@@ -117,6 +117,18 @@
 </div>
 
 {% if plans %}
+  {% set active_plans = plans
+    | selectattr('plan.status', 'in', ['running', 'stopping', 'paused'])
+    | list
+  %}
+  {% set inactive_plans = plans
+    | rejectattr('plan.status', 'in', ['running', 'stopping', 'paused'])
+    | list
+  %}
+  {% set recent_inactive_plans = inactive_plans[:5] %}
+  {% set older_inactive_plans = inactive_plans[5:] %}
+  {% set visible_plans = active_plans + recent_inactive_plans %}
+
   <div class="d-flex align-items-center justify-content-between mb-3">
     <h6 class="mb-0" style="color:#1B5E7B">
       <i class="bi bi-list-task me-1"></i>
@@ -126,7 +138,7 @@
   </div>
 
   <div class="vstack gap-3">
-    {% for item in plans %}
+    {% for item in visible_plans %}
       {% set plan = item.plan %}
       {% set latest_run = item.latest_run %}
       {% set latest_batch = item.latest_batch %}
@@ -348,6 +360,73 @@
       </div>
     {% endfor %}
   </div>
+
+  {% if older_inactive_plans %}
+    <details class="mt-3">
+      <summary class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-archive me-1"></i>
+        Показать ещё {{ older_inactive_plans|length }} старых планов
+      </summary>
+
+      <div class="vstack gap-3 mt-3">
+        {% for item in older_inactive_plans %}
+          {% set plan = item.plan %}
+          {% set latest_run = item.latest_run %}
+          {% set latest_batch = item.latest_batch %}
+
+          <div class="card border-secondary">
+            <div class="card-header bg-light d-flex flex-wrap align-items-center justify-content-between gap-2">
+              <div>
+                <span class="fw-semibold">{{ plan.name }}</span>
+                <span class="text-muted small ms-2">ID {{ plan.id }}</span>
+              </div>
+              <span class="badge text-bg-light border text-dark">
+                {{ plan.status }}
+              </span>
+            </div>
+
+            <div class="card-body">
+              <div class="row g-3">
+                <div class="col-sm-6 col-lg-3">
+                  <div class="text-muted small">Размер пакета</div>
+                  <div>{{ plan.batch_size }}</div>
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                  <div class="text-muted small">Интервал</div>
+                  <div>{{ plan.interval_minutes }} мин.</div>
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                  <div class="text-muted small">Последний запуск</div>
+                  <div class="small">
+                    {{ plan.last_run_started_at_utc or '—' }}
+                  </div>
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                  <div class="text-muted small">Последняя ошибка</div>
+                  <div class="small">{{ plan.last_error or '—' }}</div>
+                </div>
+              </div>
+
+              {% if latest_run %}
+                <div class="small text-muted mt-3">
+                  Последний цикл: {{ latest_run.status }},
+                  обработано {{ latest_run.processed_cards_count or 0 }}
+                  из {{ latest_run.requested_cards_count or 0 }}.
+                </div>
+              {% endif %}
+
+              {% if latest_batch %}
+                <div class="small text-muted mt-1">
+                  Последний пакет № {{ latest_batch.batch_number }}:
+                  {{ latest_batch.status }}.
+                </div>
+              {% endif %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </details>
+  {% endif %}
 {% else %}
   <div class="card">
     <div class="card-body text-center text-muted py-5">
