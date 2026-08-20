@@ -516,12 +516,28 @@ def _get_sync_plan_overview(conn) -> list[dict]:
                 or str(batch["error_message"] or "").strip()
             ]
 
+        latest_retry_job_row = conn.execute(
+            """
+            SELECT *
+            FROM investmap_rf_sync_retry_jobs
+            WHERE plan_id = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (plan_id,),
+        ).fetchone()
+
         overview.append(
             {
                 "plan": plan,
                 "latest_run": latest_run,
                 "latest_batch": get_latest_sync_batch(conn, plan_id),
                 "failed_batches": failed_batches,
+                "latest_retry_job": (
+                    dict(latest_retry_job_row)
+                    if latest_retry_job_row is not None
+                    else None
+                ),
             }
         )
 
@@ -693,6 +709,64 @@ def investmap_rf_sync_action(plan_id: int):
 
     return redirect(url_for("admin.investmap_rf_sync"))
 
+@admin_bp.route(
+    "/admin/investmap-rf-sync/<int:plan_id>/retry-failed",
+    methods=["POST"],
+)
+@login_required
+@admin_required
+def investmap_rf_sync_retry_failed(plan_id: int):
+    from services.investmap_rf_sync_plans import (
+        create_failed_sync_retry_job,
+        get_latest_sync_run,
+    )
+
+    conn = get_db()
+
+    try:
+        latest_run = get_latest_sync_run(conn, plan_id)
+        if latest_run is None:
+            raise ValueError("Для плана отсутствует цикл синхронизации.")
+
+        retry_job = create_failed_sync_retry_job(
+            conn,
+            plan_id=plan_id,
+            source_run_id=int(latest_run["id"]),
+            created_by_user_id=session.get("user_id"),
+        )
+        log_action(
+            conn,
+            session.get("user_id"),
+            "investmap_rf_sync_retry_failed",
+            detail=(
+                f"plan_id={plan_id}; "
+                f"source_run_id={latest_run['id']}; "
+                f"retry_job_id={retry_job['id']}; "
+                f"cards_count={retry_job['requested_cards_count']}"
+            ),
+        )
+        conn.commit()
+        flash(
+            "Создана задача повтора для "
+            f"{retry_job['requested_cards_count']} ошибочных площадок. "
+            "Она будет запущена в течение минуты.",
+            "success",
+        )
+    except ValueError as exc:
+        conn.rollback()
+        flash(str(exc), "error")
+    except Exception:
+        conn.rollback()
+        current_app.logger.exception(
+            "Ошибка создания задачи повтора синхронизации Инвесткарты РФ. "
+            "plan_id=%s",
+            plan_id,
+        )
+        flash("Не удалось создать задачу повтора синхронизации.", "error")
+    finally:
+        conn.close()
+
+    return redirect(url_for("admin.investmap_rf_sync"))
 
 @admin_bp.route(
     "/admin/investmap-rf-sync/<int:plan_id>/settings",
