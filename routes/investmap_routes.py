@@ -10,7 +10,11 @@ from flask import (
     url_for,
 )
 from core.activity_log import log_action
-from core.auth_utils import login_required, permission_required
+from core.auth_utils import (
+    admin_required,
+    login_required,
+    permission_required,
+)
 from db import get_db
 from services.investmap_rf_monitor_queries import (
     get_monitor_card_detail,
@@ -200,7 +204,7 @@ def import_investmap_rf_monitor_registry():
     methods=["POST"],
 )
 @login_required
-@permission_required("can_view_investmap")
+@admin_required
 def deactivate_investmap_rf_monitor_registry_card(global_id):
     """Снимает карточку с мониторинга после подтверждённого HTTP 404."""
     user_id = getattr(g, "user", {}).get("id")
