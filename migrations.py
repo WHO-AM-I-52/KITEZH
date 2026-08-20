@@ -597,6 +597,38 @@ def _migrate_investmap_rf_sync_plan_tables(conn):
         """
     )
 
+def _migrate_investmap_rf_sync_retry_tables(conn):
+    """Создаёт очередь повторной синхронизации ошибочных площадок."""
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS investmap_rf_sync_retry_jobs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            plan_id INTEGER NOT NULL,
+            source_run_id INTEGER NOT NULL,
+            global_ids_json TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            requested_cards_count INTEGER NOT NULL DEFAULT 0,
+            processed_cards_count INTEGER NOT NULL DEFAULT 0,
+            successful_cards_count INTEGER NOT NULL DEFAULT 0,
+            failed_cards_count INTEGER NOT NULL DEFAULT 0,
+            changed_cards_count INTEGER NOT NULL DEFAULT 0,
+            error_message TEXT,
+            created_at_utc TEXT NOT NULL,
+            started_at_utc TEXT,
+            finished_at_utc TEXT,
+            created_by_user_id INTEGER,
+            FOREIGN KEY(plan_id) REFERENCES investmap_rf_sync_plans(id),
+            FOREIGN KEY(source_run_id) REFERENCES investmap_rf_sync_runs(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_investmap_rf_sync_retry_jobs_plan
+            ON investmap_rf_sync_retry_jobs(plan_id, id DESC);
+
+        CREATE INDEX IF NOT EXISTS idx_investmap_rf_sync_retry_jobs_status
+            ON investmap_rf_sync_retry_jobs(status, id ASC);
+        """
+    )
+
 def _migrate_form_sections(conn):
     """feat #95 — системная таблица form_sections и расширение subject_types/requests."""
 
@@ -802,6 +834,7 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         _migrate_investmap_rf_snapshot_tables(conn)
         _migrate_investmap_rf_monitor_registry_tables(conn)
         _migrate_investmap_rf_sync_plan_tables(conn)
+        _migrate_investmap_rf_sync_retry_tables(conn)
         _migrate_letters_tables(conn)
         _migrate_tasks_tables(conn)
         _migrate_task_comments_table(conn)
@@ -871,6 +904,7 @@ def migrate_db():
         _migrate_investmap_rf_snapshot_tables(conn)
         _migrate_investmap_rf_monitor_registry_tables(conn)
         _migrate_investmap_rf_sync_plan_tables(conn)
+        _migrate_investmap_rf_sync_retry_tables(conn)
         _migrate_letters_tables(conn)
         _migrate_tasks_tables(conn)
         _migrate_task_comments_table(conn)
