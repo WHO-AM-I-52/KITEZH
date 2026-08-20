@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -140,6 +141,112 @@ def get_sync_batches_for_run(
         (run_id,),
     ).fetchall()
     return [dict(row) for row in rows]
+
+def _extract_failed_global_ids(batches: list[dict[str, Any]]) -> list[int]:
+    """Извлекает уникальные ID площадок из диагностических сообщений пакетов."""
+    failed_ids: set[int] = set()
+
+    for batch in batches:
+        message = str(batch.get("error_message") or "")
+
+        for match in re.finditer(r"(?<!\d)(\d+)\s*:", message):
+            failed_ids.add(int(match.group(1)))
+
+    return sorted(failed_ids)
+
+
+def create_failed_sync_retry_job(
+    conn,
+    *,
+    plan_id: int,
+    source_run_id: int,
+    created_by_user_id: int | None = None,
+) -> dict[str, Any]:
+    """
+    Создаёт retry-задачу по ошибкам конкретного завершённого цикла.
+
+    Список площадок извлекается из error_message ошибочных пакетов.
+    Основной план, его cursor и исходный run не изменяются.
+    """
+    plan = get_sync_plan(conn, plan_id)
+    if plan is None:
+        raise ValueError("План синхронизации не найден.")
+
+    source_run = conn.execute(
+        """
+        SELECT *
+        FROM investmap_rf_sync_runs
+        WHERE id = ? AND plan_id = ?
+        """,
+        (source_run_id, plan_id),
+    ).fetchone()
+    if source_run is None:
+        raise ValueError("Исходный цикл синхронизации не найден.")
+
+    batches = get_sync_batches_for_run(conn, source_run_id)
+    failed_batches = [
+        batch
+        for batch in batches
+        if int(batch["failed_cards_count"] or 0) > 0
+        or str(batch["error_message"] or "").strip()
+    ]
+    global_ids = _extract_failed_global_ids(failed_batches)
+
+    if not global_ids:
+        raise ValueError(
+            "В ошибочных пакетах не найдены идентификаторы площадок для повтора."
+        )
+
+    active_job = conn.execute(
+        """
+        SELECT id
+        FROM investmap_rf_sync_retry_jobs
+        WHERE plan_id = ?
+          AND source_run_id = ?
+          AND status IN ('pending', 'running')
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        (plan_id, source_run_id),
+    ).fetchone()
+    if active_job is not None:
+        raise ValueError(
+            "Для ошибок этого цикла уже создана незавершённая задача повтора."
+        )
+
+    now = _utc_now()
+    cursor = conn.execute(
+        """
+        INSERT INTO investmap_rf_sync_retry_jobs (
+            plan_id,
+            source_run_id,
+            global_ids_json,
+            status,
+            requested_cards_count,
+            created_at_utc,
+            created_by_user_id
+        )
+        VALUES (?, ?, ?, 'pending', ?, ?, ?)
+        """,
+        (
+            plan_id,
+            source_run_id,
+            json.dumps(global_ids),
+            len(global_ids),
+            now,
+            created_by_user_id,
+        ),
+    )
+
+    row = conn.execute(
+        """
+        SELECT *
+        FROM investmap_rf_sync_retry_jobs
+        WHERE id = ?
+        """,
+        (cursor.lastrowid,),
+    ).fetchone()
+    return dict(row)
 
 def get_sync_plan_status(conn, plan_id: int) -> dict[str, Any] | None:
     """Возвращает план вместе с последним циклом и пакетом."""
