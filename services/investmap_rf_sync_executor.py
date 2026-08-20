@@ -356,7 +356,7 @@ def _read_retry_job_for_execution(
             normalized_ids.append(global_id)
 
         now = _retry_utc_now()
-        conn.execute(
+        cursor = conn.execute(
             """
             UPDATE investmap_rf_sync_retry_jobs
             SET
@@ -367,6 +367,11 @@ def _read_retry_job_for_execution(
             """,
             (now, retry_job_id),
         )
+        if cursor.rowcount != 1:
+            raise ValueError(
+                "Задача повторной синхронизации уже запущена или завершена."
+            )
+
         conn.commit()
 
         return {
