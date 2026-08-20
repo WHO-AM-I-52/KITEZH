@@ -28,6 +28,9 @@ class InvestmapRfRateLimitedError(InvestmapRfClientError):
 class InvestmapRfAccessError(InvestmapRfClientError):
     """Внешний API запретил доступ к карточке."""
 
+class InvestmapRfNotFoundError(InvestmapRfClientError):
+    """Внешний API не нашёл карточку."""
+
 
 @dataclass(frozen=True)
 class InvestmapRfCard:
@@ -134,6 +137,10 @@ def fetch_card(
             status_code = response.status
             raw_body = response.read()
     except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            raise InvestmapRfNotFoundError(
+                'Внешний API не нашёл карточку.'
+            ) from exc
         if exc.code == 429:
             raise InvestmapRfRateLimitedError(
                 'Инвестиционная карта РФ ограничила частоту запросов.'
