@@ -190,6 +190,9 @@
                                 <th>Первый импорт</th>
                                 <th>Последнее появление</th>
                                 <th>Исходный файл</th>
+                                {% if is_admin %}
+                                <th>Действие</th>
+                                {% endif %}
                             </tr>
                         </thead>
                         <tbody>
@@ -210,6 +213,26 @@
                                 <td class="text-break">
                                     {{ card.source_filename }}
                                 </td>
+                                {% if is_admin %}
+                                <td>
+                                    <form
+                                        method="post"
+                                        action="{{ url_for(
+                                            'investmap.deactivate_investmap_rf_monitor_registry_card',
+                                            global_id=card.global_id
+                                        ) }}"
+                                        onsubmit="return confirm(
+                                            'Снять площадку {{ card.global_id }} с мониторинга? ' +
+                                            'Подтверждайте действие только если внешний API вернул HTTP 404. ' +
+                                            'Операция будет записана в журнал.'
+                                        );"
+                                    >
+                                        <button type="submit" class="btn btn-sm btn-outline-danger">
+                                            Снять по 404
+                                        </button>
+                                    </form>
+                                </td>
+                                {% endif %}
                             </tr>
                             {% endfor %}
                         </tbody>
