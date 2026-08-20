@@ -48,7 +48,6 @@ def run_active_registry_batch(
         }
 
     batch_result = run_batch(
-        conn=conn,
         global_ids=global_ids,
         **batch_kwargs,
     )
