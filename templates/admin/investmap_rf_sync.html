@@ -1,0 +1,360 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+  <div>
+    <div class="d-flex align-items-center gap-2">
+      <a
+        href="/admin"
+        class="btn btn-sm btn-outline-secondary"
+        title="Вернуться в администрирование"
+      >
+        <i class="bi bi-arrow-left"></i>
+      </a>
+      <h5 class="mb-0" style="color:#1B5E7B">
+        <i class="bi bi-arrow-repeat me-1"></i>
+        Синхронизация Инвесткарты РФ
+      </h5>
+    </div>
+    <div class="text-muted small mt-2">
+      Управление пакетным обновлением API-снимков активных площадок.
+    </div>
+  </div>
+
+  <a
+    href="{{ url_for('investmap.investmap_rf_monitor') }}"
+    class="btn btn-sm btn-outline-primary"
+  >
+    <i class="bi bi-graph-up me-1"></i>
+    Открыть мониторинг
+  </a>
+</div>
+
+<div class="alert alert-info d-flex gap-2 align-items-start" role="alert">
+  <i class="bi bi-info-circle-fill mt-1"></i>
+  <div>
+    В активном реестре: <strong>{{ active_cards_count }}</strong> площадок.
+    После запуска первый пакет будет обработан в течение минуты.
+    Остановка мягкая: текущая карточка или пакет завершается, после чего
+    новые пакеты не запускаются.
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header bg-white">
+    <div class="fw-semibold" style="color:#1B5E7B">
+      <i class="bi bi-plus-circle me-1"></i>
+      Новый план синхронизации
+    </div>
+  </div>
+
+  <div class="card-body">
+    <form
+      method="post"
+      action="{{ url_for('admin.investmap_rf_sync_create') }}"
+      class="row g-3 align-items-end"
+    >
+      <div class="col-lg-5">
+        <label for="sync-plan-name" class="form-label">
+          Название плана
+        </label>
+        <input
+          id="sync-plan-name"
+          name="name"
+          class="form-control"
+          type="text"
+          maxlength="200"
+          placeholder="Например: Основная синхронизация"
+          required
+        >
+      </div>
+
+      <div class="col-sm-4 col-lg-2">
+        <label for="sync-batch-size" class="form-label">
+          Размер пакета
+        </label>
+        <input
+          id="sync-batch-size"
+          name="batch_size"
+          class="form-control"
+          type="number"
+          min="1"
+          max="100"
+          value="5"
+          required
+        >
+      </div>
+
+      <div class="col-sm-4 col-lg-2">
+        <label for="sync-interval" class="form-label">
+          Интервал, мин.
+        </label>
+        <input
+          id="sync-interval"
+          name="interval_minutes"
+          class="form-control"
+          type="number"
+          min="1"
+          max="1440"
+          value="10"
+          required
+        >
+      </div>
+
+      <div class="col-sm-4 col-lg-3">
+        <button class="btn btn-primary w-100" type="submit">
+          <i class="bi bi-plus-lg me-1"></i>
+          Создать план
+        </button>
+      </div>
+    </form>
+
+    <div class="form-text mt-3">
+      Допустимый размер пакета — от 1 до 100 площадок, интервал — от 1 до
+      1440 минут. Созданный план выключен до нажатия «Старт».
+    </div>
+  </div>
+</div>
+
+{% if plans %}
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h6 class="mb-0" style="color:#1B5E7B">
+      <i class="bi bi-list-task me-1"></i>
+      Планы синхронизации
+    </h6>
+    <span class="badge text-bg-secondary">{{ plans|length }}</span>
+  </div>
+
+  <div class="vstack gap-3">
+    {% for item in plans %}
+      {% set plan = item.plan %}
+      {% set latest_run = item.latest_run %}
+      {% set latest_batch = item.latest_batch %}
+
+      <div class="card">
+        <div class="card-header bg-white d-flex flex-wrap align-items-center justify-content-between gap-2">
+          <div>
+            <span class="fw-semibold">{{ plan.name }}</span>
+            <span class="text-muted small ms-2">ID {{ plan.id }}</span>
+          </div>
+
+          <div>
+            {% if plan.status == 'running' %}
+              <span class="badge text-bg-success">Выполняется</span>
+            {% elif plan.status == 'stopping' %}
+              <span class="badge text-bg-warning">Останавливается</span>
+            {% elif plan.status == 'paused' %}
+              <span class="badge text-bg-secondary">Приостановлен</span>
+            {% elif plan.status == 'completed' %}
+              <span class="badge text-bg-primary">Завершён</span>
+            {% elif plan.status == 'failed' %}
+              <span class="badge text-bg-danger">Ошибка</span>
+            {% else %}
+              <span class="badge text-bg-light border text-dark">Не запущен</span>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="card-body">
+          <div class="row g-3 mb-3">
+            <div class="col-sm-6 col-lg-3">
+              <div class="text-muted small">Размер пакета</div>
+              <div class="fw-semibold">{{ plan.batch_size }}</div>
+            </div>
+
+            <div class="col-sm-6 col-lg-3">
+              <div class="text-muted small">Интервал</div>
+              <div class="fw-semibold">{{ plan.interval_minutes }} мин.</div>
+            </div>
+
+            <div class="col-sm-6 col-lg-3">
+              <div class="text-muted small">Следующий пакет</div>
+              <div class="small">
+                {% if plan.next_run_at_utc %}
+                  <code>{{ plan.next_run_at_utc }}</code>
+                {% else %}
+                  —
+                {% endif %}
+              </div>
+            </div>
+
+            <div class="col-sm-6 col-lg-3">
+              <div class="text-muted small">Последний запуск</div>
+              <div class="small">
+                {% if plan.last_run_started_at_utc %}
+                  <code>{{ plan.last_run_started_at_utc }}</code>
+                {% else %}
+                  —
+                {% endif %}
+              </div>
+            </div>
+          </div>
+
+          {% if latest_run %}
+            <div class="border rounded p-3 bg-light mb-3">
+              <div class="fw-semibold small mb-2">
+                Последний цикл № {{ latest_run.id }}
+              </div>
+              <div class="row g-2 small">
+                <div class="col-sm-6 col-lg-3">
+                  Статус:
+                  <strong>{{ latest_run.status }}</strong>
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                  Карточек:
+                  <strong>{{ latest_run.processed_cards_count or 0 }}</strong>
+                  / {{ latest_run.requested_cards_count or 0 }}
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                  Успешно:
+                  <strong>{{ latest_run.successful_cards_count or 0 }}</strong>
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                  Ошибок:
+                  <strong>{{ latest_run.failed_cards_count or 0 }}</strong>
+                </div>
+              </div>
+            </div>
+          {% endif %}
+
+          {% if latest_batch %}
+            <div class="border rounded p-3 mb-3">
+              <div class="fw-semibold small mb-2">
+                Последний пакет № {{ latest_batch.batch_number }}
+              </div>
+              <div class="row g-2 small">
+                <div class="col-sm-6 col-lg-3">
+                  Статус:
+                  <strong>{{ latest_batch.status }}</strong>
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                  Обработано:
+                  <strong>{{ latest_batch.processed_cards_count or 0 }}</strong>
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                  Успешно:
+                  <strong>{{ latest_batch.successful_cards_count or 0 }}</strong>
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                  Ошибок:
+                  <strong>{{ latest_batch.failed_cards_count or 0 }}</strong>
+                </div>
+              </div>
+
+              {% if latest_batch.error_message %}
+                <div class="alert alert-danger py-2 px-3 mt-3 mb-0 small">
+                  <strong>Ошибка пакета:</strong>
+                  {{ latest_batch.error_message }}
+                </div>
+              {% endif %}
+            </div>
+          {% endif %}
+
+          {% if plan.last_error %}
+            <div class="alert alert-danger py-2 px-3 small">
+              <strong>Последняя ошибка:</strong> {{ plan.last_error }}
+            </div>
+          {% endif %}
+
+          <div class="d-flex flex-wrap gap-2 align-items-center">
+            {% if plan.status not in ['running', 'stopping'] %}
+              <form
+                method="post"
+                action="{{ url_for('admin.investmap_rf_sync_action', plan_id=plan.id) }}"
+              >
+                <input type="hidden" name="action" value="start">
+                <button class="btn btn-sm btn-success" type="submit">
+                  <i class="bi bi-play-fill me-1"></i>
+                  Старт
+                </button>
+              </form>
+            {% endif %}
+
+            {% if plan.status in ['running', 'stopping'] %}
+              <form
+                method="post"
+                action="{{ url_for('admin.investmap_rf_sync_action', plan_id=plan.id) }}"
+              >
+                <input type="hidden" name="action" value="pause">
+                <button class="btn btn-sm btn-outline-secondary" type="submit">
+                  <i class="bi bi-pause-fill me-1"></i>
+                  Пауза
+                </button>
+              </form>
+            {% endif %}
+
+            {% if plan.status in ['running', 'paused'] %}
+              <form
+                method="post"
+                action="{{ url_for('admin.investmap_rf_sync_action', plan_id=plan.id) }}"
+                onsubmit="return confirm('Запросить мягкую остановку плана «{{ plan.name|e }}»?');"
+              >
+                <input type="hidden" name="action" value="stop">
+                <button class="btn btn-sm btn-outline-danger" type="submit">
+                  <i class="bi bi-stop-fill me-1"></i>
+                  Остановить
+                </button>
+              </form>
+            {% endif %}
+          </div>
+
+          <hr>
+
+          <form
+            method="post"
+            action="{{ url_for('admin.investmap_rf_sync_settings', plan_id=plan.id) }}"
+            class="row g-2 align-items-end"
+          >
+            <div class="col-sm-4 col-lg-2">
+              <label class="form-label form-label-sm" for="batch-size-{{ plan.id }}">
+                Размер пакета
+              </label>
+              <input
+                id="batch-size-{{ plan.id }}"
+                name="batch_size"
+                class="form-control form-control-sm"
+                type="number"
+                min="1"
+                max="100"
+                value="{{ plan.batch_size }}"
+                required
+              >
+            </div>
+
+            <div class="col-sm-4 col-lg-2">
+              <label class="form-label form-label-sm" for="interval-{{ plan.id }}">
+                Интервал, мин.
+              </label>
+              <input
+                id="interval-{{ plan.id }}"
+                name="interval_minutes"
+                class="form-control form-control-sm"
+                type="number"
+                min="1"
+                max="1440"
+                value="{{ plan.interval_minutes }}"
+                required
+              >
+            </div>
+
+            <div class="col-sm-4 col-lg-3">
+              <button class="btn btn-sm btn-outline-primary w-100" type="submit">
+                <i class="bi bi-sliders me-1"></i>
+                Сохранить параметры
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="card">
+    <div class="card-body text-center text-muted py-5">
+      <i class="bi bi-inbox" style="font-size:2rem"></i>
+      <div class="mt-2">Планы синхронизации пока не созданы.</div>
+    </div>
+  </div>
+{% endif %}
+
+{% endblock %}
