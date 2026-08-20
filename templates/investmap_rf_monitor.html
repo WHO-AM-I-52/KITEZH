@@ -88,7 +88,7 @@
                 type="button"
                 data-bs-toggle="collapse"
                 data-bs-target="#monitor-cards-collapse"
-                aria-expanded="false"
+                aria-expanded="{{ 'true' if cards_page.search_global_id or cards_page.page > 1 else 'false' }}"
                 aria-controls="monitor-cards-collapse"
             >
                 Отслеживаемые карточки
@@ -99,7 +99,10 @@
             </span>
         </div>
 
-        <div id="monitor-cards-collapse" class="collapse">
+        <div
+    id="monitor-cards-collapse"
+    class="collapse{% if cards_page.search_global_id or cards_page.page > 1 %} show{% endif %}"
+>
             <div class="card-body border-bottom">
                 <form method="get" class="row g-2 align-items-end">
                     <div class="col-sm-6 col-md-4">
