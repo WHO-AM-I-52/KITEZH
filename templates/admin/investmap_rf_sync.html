@@ -77,6 +77,7 @@
   {% set plan = item.plan %}
   {% set latest_run = item.latest_run %}
   {% set latest_batch = item.latest_batch %}
+  {% set failed_batches = item.failed_batches or [] %}
   <div class="card border-secondary">
     <div class="card-header bg-light d-flex flex-wrap align-items-center justify-content-between gap-2">
       <div>
@@ -185,6 +186,7 @@
         {% set plan = item.plan %}
         {% set latest_run = item.latest_run %}
         {% set latest_batch = item.latest_batch %}
+        {% set failed_batches = item.failed_batches or [] %}
 
         <div class="card">
           <div class="card-header bg-white d-flex flex-wrap align-items-center justify-content-between gap-2">
@@ -268,6 +270,40 @@
               <div class="alert alert-danger py-2 px-3 small">
                 <strong>Последняя ошибка:</strong> {{ plan.last_error }}
               </div>
+            {% endif %}
+
+            {% if failed_batches %}
+              <details class="mb-3">
+                <summary class="btn btn-sm btn-outline-danger">
+                  <i class="bi bi-exclamation-triangle me-1"></i>
+                  Ошибки в пакетах текущего цикла ({{ failed_batches|length }})
+                </summary>
+
+                <div class="vstack gap-2 mt-3">
+                  {% for failed_batch in failed_batches %}
+                    <div class="border border-danger rounded p-3 small">
+                      <div class="d-flex flex-wrap justify-content-between gap-2">
+                        <strong>Пакет № {{ failed_batch.batch_number }}</strong>
+                        <span class="text-muted">
+                          Обработано {{ failed_batch.processed_cards_count or 0 }},
+                          успешно {{ failed_batch.successful_cards_count or 0 }},
+                          ошибок {{ failed_batch.failed_cards_count or 0 }}.
+                        </span>
+                      </div>
+
+                      {% if failed_batch.error_message %}
+                        <div class="text-danger mt-2">
+                          {{ failed_batch.error_message }}
+                        </div>
+                      {% else %}
+                        <div class="text-danger mt-2">
+                          Пакет завершён с ошибочными площадками без подробного сообщения.
+                        </div>
+                      {% endif %}
+                    </div>
+                  {% endfor %}
+                </div>
+              </details>
             {% endif %}
 
             <div class="d-flex flex-wrap gap-2 align-items-center">
