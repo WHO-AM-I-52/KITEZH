@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from typing import Any, Callable
 
 from services.investmap_rf_batch_runner import run_batch
@@ -280,5 +281,242 @@ def execute_sync_batch(
             get_connection,
             plan_id=plan_id,
             batch_id=batch_id,
+            error_message=f"{type(exc).__name__}: {exc}",
+        )
+def _retry_utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _get_pending_retry_job(conn, retry_job_id: int) -> dict[str, Any]:
+    """Возвращает ожидающую retry-задачу или сообщает об ошибке."""
+    row = conn.execute(
+        """
+        SELECT *
+        FROM investmap_rf_sync_retry_jobs
+        WHERE id = ?
+        """,
+        (retry_job_id,),
+    ).fetchone()
+
+    if row is None:
+        raise ValueError("Задача повторной синхронизации не найдена.")
+
+    job = dict(row)
+
+    if job["status"] != "pending":
+        raise ValueError(
+            "Выполнить можно только задачу повторной синхронизации "
+            "со статусом pending."
+        )
+
+    return job
+
+
+def _read_retry_job_for_execution(
+    get_connection: Callable[[], Any],
+    *,
+    retry_job_id: int,
+) -> dict[str, Any]:
+    """Переводит retry-задачу в running и читает ID до API-вызовов."""
+    conn = get_connection()
+
+    try:
+        job = _get_pending_retry_job(conn, retry_job_id)
+
+        try:
+            global_ids = json.loads(job["global_ids_json"])
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                "Задача повторной синхронизации содержит некорректный "
+                "список global_id."
+            ) from exc
+
+        if not isinstance(global_ids, list) or not global_ids:
+            raise ValueError(
+                "Задача повторной синхронизации не содержит global_id."
+            )
+
+        normalized_ids: list[int] = []
+
+        for value in global_ids:
+            if isinstance(value, bool):
+                raise ValueError(
+                    "Задача повторной синхронизации содержит некорректный "
+                    "global_id."
+                )
+
+            global_id = int(value)
+
+            if global_id <= 0:
+                raise ValueError(
+                    "Задача повторной синхронизации содержит некорректный "
+                    "global_id."
+                )
+
+            normalized_ids.append(global_id)
+
+        now = _retry_utc_now()
+        conn.execute(
+            """
+            UPDATE investmap_rf_sync_retry_jobs
+            SET
+                status = 'running',
+                started_at_utc = ?,
+                error_message = NULL
+            WHERE id = ? AND status = 'pending'
+            """,
+            (now, retry_job_id),
+        )
+        conn.commit()
+
+        return {
+            "job": job,
+            "global_ids": normalized_ids,
+        }
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
+
+
+def _save_completed_retry_job(
+    get_connection: Callable[[], Any],
+    *,
+    retry_job_id: int,
+    report,
+) -> dict[str, Any]:
+    """Сохраняет итоги retry-задачи после API-вызовов."""
+    conn = get_connection()
+
+    try:
+        metrics = _calculate_batch_metrics(report)
+        item_errors = _collect_batch_errors(report)
+
+        conn.execute(
+            """
+            UPDATE investmap_rf_sync_retry_jobs
+            SET
+                status = 'completed',
+                finished_at_utc = ?,
+                processed_cards_count = ?,
+                successful_cards_count = ?,
+                failed_cards_count = ?,
+                changed_cards_count = ?,
+                error_message = ?
+            WHERE id = ? AND status = 'running'
+            """,
+            (
+                _retry_utc_now(),
+                metrics["processed_cards_count"],
+                metrics["successful_cards_count"],
+                metrics["failed_cards_count"],
+                metrics["changed_cards_count"],
+                item_errors,
+                retry_job_id,
+            ),
+        )
+        conn.commit()
+
+        return {
+            "status": "completed",
+            "retry_job_id": retry_job_id,
+            "report": report,
+            "item_errors": item_errors,
+        }
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
+
+
+def _save_failed_retry_job(
+    get_connection: Callable[[], Any],
+    *,
+    retry_job_id: int,
+    error_message: str,
+) -> dict[str, Any]:
+    """Фиксирует фатальную ошибку retry-задачи без изменения основного плана."""
+    conn = get_connection()
+
+    try:
+        conn.execute(
+            """
+            UPDATE investmap_rf_sync_retry_jobs
+            SET
+                status = 'failed',
+                finished_at_utc = ?,
+                error_message = ?
+            WHERE id = ? AND status IN ('pending', 'running')
+            """,
+            (
+                _retry_utc_now(),
+                str(error_message or "Неизвестная ошибка повторной синхронизации."),
+                retry_job_id,
+            ),
+        )
+        conn.commit()
+
+        return {
+            "status": "failed",
+            "retry_job_id": retry_job_id,
+            "report": None,
+            "item_errors": error_message,
+        }
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
+
+
+def execute_sync_retry_job(
+    get_connection: Callable[[], Any],
+    *,
+    retry_job_id: int,
+    delay_seconds: float = 1.0,
+) -> dict[str, Any]:
+    """
+    Выполняет одну изолированную retry-задачу.
+
+    API-вызовы выполняются без открытого соединения SQLite. Результат
+    сохраняется только в investmap_rf_sync_retry_jobs; основной план,
+    его cursor, run и batch не изменяются.
+    """
+    try:
+        prepared = _read_retry_job_for_execution(
+            get_connection,
+            retry_job_id=retry_job_id,
+        )
+
+        report = run_batch(
+            global_ids=prepared["global_ids"],
+            delay_seconds=delay_seconds,
+        )
+
+        if report.interrupted:
+            return _save_failed_retry_job(
+                get_connection,
+                retry_job_id=retry_job_id,
+                error_message="Выполнение повторной синхронизации было прервано.",
+            )
+
+        return _save_completed_retry_job(
+            get_connection,
+            retry_job_id=retry_job_id,
+            report=report,
+        )
+
+    except Exception as exc:
+        return _save_failed_retry_job(
+            get_connection,
+            retry_job_id=retry_job_id,
             error_message=f"{type(exc).__name__}: {exc}",
         )
