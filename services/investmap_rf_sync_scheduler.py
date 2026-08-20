@@ -3,7 +3,10 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Callable
 
-from services.investmap_rf_sync_executor import execute_sync_batch
+from services.investmap_rf_sync_executor import (
+    execute_sync_batch,
+    execute_sync_retry_job,
+)
 from services.investmap_rf_sync_plans import (
     PLAN_STATUS_RUNNING,
     finalize_stop_sync_plan,
@@ -62,6 +65,19 @@ def get_due_sync_plan_ids(conn, *, now_utc: datetime | None = None) -> list[int]
 
     return due_plan_ids
 
+def get_pending_sync_retry_job_id(conn) -> int | None:
+    """Возвращает ID самой ранней ожидающей задачи повтора."""
+    row = conn.execute(
+        """
+        SELECT id
+        FROM investmap_rf_sync_retry_jobs
+        WHERE status = 'pending'
+        ORDER BY id ASC
+        LIMIT 1
+        """
+    ).fetchone()
+
+    return int(row["id"]) if row is not None else None
 
 def run_due_sync_plans(
     get_connection: Callable[[], Any],
@@ -92,11 +108,24 @@ def run_due_sync_plans(
         stopping_plan_ids = [int(row["id"]) for row in stopping_rows]
 
         due_plan_ids = get_due_sync_plan_ids(conn, now_utc=now_utc)
+        pending_retry_job_id = get_pending_sync_retry_job_id(conn)
     finally:
         conn.close()
 
     results: list[dict[str, Any]] = []
-
+    if pending_retry_job_id is not None:
+        retry_result = execute_sync_retry_job(
+            get_connection,
+            retry_job_id=pending_retry_job_id,
+            delay_seconds=delay_seconds,
+        )
+        results.append(
+            {
+                "retry_job_id": pending_retry_job_id,
+                "status": retry_result["status"],
+                "item_errors": retry_result.get("item_errors"),
+            }
+        )
     for plan_id in stopping_plan_ids:
         conn = get_connection()
 
