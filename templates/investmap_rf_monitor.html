@@ -394,6 +394,8 @@
                                 <th>Предыдущий статус</th>
                                 <th>Текущий статус</th>
                                 <th>Файл</th>
+                                <th>Причина</th>
+                                <th>Кем выполнено</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -416,6 +418,10 @@
                                     <span class="badge text-bg-warning">
                                         Снята с мониторинга
                                     </span>
+                                    {% elif event.event_type == 'deactivated_api_not_found' %}
+                                    <span class="badge text-bg-danger">
+                                         Снята по HTTP 404
+                                    </span>
                                     {% else %}
                                     <span class="badge text-bg-secondary">
                                         {{ event.event_type }}
@@ -426,7 +432,26 @@
                                 <td>{{ event.current_status }}</td>
                                 <td class="text-break">
                                     {{ event.source_filename }}
+                                </td>                              
+                                <td class="text-break">
+                                    {{ event.source_filename }}
                                 </td>
+                                <td class="text-break">
+                                    {{ event.reason or '—' }}
+                                </td>
+                                <td>
+                                    {% if event.changed_by_full_name and event.changed_by_username %}
+                                        {{ event.changed_by_full_name }}
+                                        <div class="small text-muted">
+                                            {{ event.changed_by_username }}
+                                        </div>
+                                    {% elif event.changed_by_username %}
+                                        {{ event.changed_by_username }}
+                                    {% else %}
+                                        —
+                                    {% endif %}
+                                </td>
+                            </tr>
                             </tr>
                             {% endfor %}
                         </tbody>
