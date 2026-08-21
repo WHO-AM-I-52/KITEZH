@@ -429,11 +429,7 @@
                                     {% endif %}
                                 </td>
                                 <td>{{ event.previous_status or '—' }}</td>
-                                <td>{{ event.current_status }}</td>
-                                <td class="text-break">
-                                    {{ event.source_filename }}
-                                </td>                              
-                                <td class="text-break">
+                                <td>{{ event.current_status }}</td>                                <td class="text-break">
                                     {{ event.source_filename }}
                                 </td>
                                 <td class="text-break">
@@ -451,7 +447,6 @@
                                         —
                                     {% endif %}
                                 </td>
-                            </tr>
                             </tr>
                             {% endfor %}
                         </tbody>
