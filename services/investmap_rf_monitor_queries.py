@@ -344,19 +344,25 @@ def get_monitor_registry_cards(conn, limit: int = 1000):
 
 
 def get_monitor_registry_events(conn, limit: int = 30):
-    """Возвращает последние события активации и снятия с мониторинга."""
+    """Возвращает последние события реестра с причиной и автором изменения."""
     return conn.execute(
         """
         SELECT
-            id,
-            global_id,
-            event_type,
-            previous_status,
-            current_status,
-            source_filename,
-            occurred_at_utc
-        FROM investmap_rf_monitor_registry_events
-        ORDER BY id DESC
+            events.id,
+            events.global_id,
+            events.event_type,
+            events.previous_status,
+            events.current_status,
+            events.source_filename,
+            events.occurred_at_utc,
+            events.reason,
+            events.changed_by_user_id,
+            users.username AS changed_by_username,
+            users.full_name AS changed_by_full_name
+        FROM investmap_rf_monitor_registry_events AS events
+        LEFT JOIN users
+            ON users.id = events.changed_by_user_id
+        ORDER BY events.id DESC
         LIMIT ?
         """,
         (limit,),
