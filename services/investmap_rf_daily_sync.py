@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import datetime, time, timezone
 from typing import Any, Callable
-from zoneinfo import ZoneInfo
 
 from services.investmap_rf_sync_plans import (
     PLAN_STATUS_PAUSED,
@@ -14,7 +13,7 @@ from services.investmap_rf_sync_plans import (
     start_sync_plan,
 )
 
-MOSCOW_TZ = ZoneInfo("Europe/Moscow")
+MOSCOW_TZ = timezone(timedelta(hours=3), name="MSK")
 DAILY_START_TIME = time(hour=13, minute=0)
 DAILY_PLAN_NAME = "Автоматическая синхронизация активных площадок"
 DAILY_BATCH_SIZE = 5
