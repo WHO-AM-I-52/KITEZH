@@ -173,7 +173,6 @@ from tasks   import tasks_bp
 from suggestions import suggestions_bp
 import services.backup_scheduler as backup_scheduler
 import services.investmap_rf_sync_background as investmap_rf_sync_background
-import services.investmap_rf_sync_background as investmap_rf_sync_background
 
 for bp in [
     phonebook_bp, search_bp,
@@ -271,6 +270,7 @@ def _startup():
     migrate_districts()
     run_migrations()
     backup_scheduler.start()
+    investmap_rf_sync_background.start()
     investmap_rf_sync_background.start()
 
 
