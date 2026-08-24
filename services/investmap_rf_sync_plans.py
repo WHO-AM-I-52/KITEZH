@@ -111,6 +111,53 @@ def get_latest_sync_run(conn, plan_id: int) -> dict[str, Any] | None:
     ).fetchone()
     return _row_to_dict(row)
 
+def _get_run_global_ids(conn, run_id: int) -> list[int]:
+    """Возвращает зафиксированный список площадок конкретного цикла."""
+    row = conn.execute(
+        """
+        SELECT global_ids_json
+        FROM investmap_rf_sync_runs
+        WHERE id = ?
+        """,
+        (run_id,),
+    ).fetchone()
+
+    if row is None:
+        raise ValueError("Цикл синхронизации не найден.")
+
+    try:
+        raw_ids = json.loads(row["global_ids_json"])
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            "Цикл синхронизации содержит некорректный список global_id."
+        ) from exc
+
+    if not isinstance(raw_ids, list):
+        raise ValueError(
+            "Цикл синхронизации содержит некорректный список global_id."
+        )
+
+    global_ids: list[int] = []
+    seen: set[int] = set()
+
+    for value in raw_ids:
+        if isinstance(value, bool):
+            raise ValueError(
+                "Цикл синхронизации содержит некорректный global_id."
+            )
+
+        global_id = int(value)
+
+        if global_id <= 0:
+            raise ValueError(
+                "Цикл синхронизации содержит некорректный global_id."
+            )
+
+        if global_id not in seen:
+            seen.add(global_id)
+            global_ids.append(global_id)
+
+    return global_ids
 
 def get_latest_sync_batch(conn, plan_id: int) -> dict[str, Any] | None:
     """Возвращает последний пакет выполнения плана."""
@@ -382,6 +429,7 @@ def start_sync_plan(
             status,
             started_at_utc,
             requested_cards_count,
+            global_ids_json,
             started_by_user_id
         )
         VALUES (?, ?, ?, ?, ?)
@@ -391,6 +439,7 @@ def start_sync_plan(
             RUN_STATUS_RUNNING,
             now,
             len(active_ids),
+            json.dumps(active_ids),
             started_by_user_id,
         ),
     )
@@ -789,9 +838,12 @@ def prepare_next_sync_batch(
     if not plan["is_enabled"] or plan["status"] != PLAN_STATUS_RUNNING:
         return None
 
-    active_ids = get_active_registry_global_ids(conn)
-    if not active_ids:
-        raise ValueError("В реестре нет активных площадок для синхронизации.")
+    latest_run = get_latest_sync_run(conn, plan_id)
+
+    if latest_run is None or latest_run["status"] != RUN_STATUS_RUNNING:
+        raise ValueError("Для плана отсутствует активный цикл синхронизации.")
+
+    active_ids = _get_run_global_ids(conn, int(latest_run["id"]))
 
     cursor_global_id = plan["cursor_global_id"]
     if cursor_global_id is None:
@@ -808,10 +860,6 @@ def prepare_next_sync_batch(
 
     batch_size = _validate_batch_size(int(plan["batch_size"]))
     batch_ids = remaining_ids[:batch_size]
-    latest_run = get_latest_sync_run(conn, plan_id)
-
-    if latest_run is None or latest_run["status"] != RUN_STATUS_RUNNING:
-        raise ValueError("Для плана отсутствует активный цикл синхронизации.")
 
     batch_number_row = conn.execute(
         """
@@ -964,7 +1012,7 @@ def complete_sync_batch(
     if plan["stop_requested"]:
         return finalize_stop_sync_plan(conn, plan_id=plan_id)
 
-    active_ids = get_active_registry_global_ids(conn)
+    active_ids = _get_run_global_ids(conn, int(latest_run["id"]))
     is_cycle_complete = not any(
         int(global_id) > cursor_global_id for global_id in active_ids
     )
