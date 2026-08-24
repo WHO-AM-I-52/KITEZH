@@ -432,7 +432,7 @@ def start_sync_plan(
             global_ids_json,
             started_by_user_id
         )
-        VALUES (?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?)
         """,
         (
             plan_id,
