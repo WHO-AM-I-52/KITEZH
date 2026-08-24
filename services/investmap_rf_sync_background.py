@@ -3,6 +3,7 @@ from __future__ import annotations
 import threading
 
 from db import get_db
+from services.investmap_rf_daily_sync import run_weekday_daily_sync
 from services.investmap_rf_sync_plans import recover_interrupted_sync_batches
 from services.investmap_rf_sync_scheduler import run_due_sync_plans
 
@@ -44,6 +45,7 @@ def _run_once() -> None:
             return
 
         try:
+            run_weekday_daily_sync(get_db)
             run_due_sync_plans(get_db)
         finally:
             _lock.release()
