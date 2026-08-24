@@ -549,9 +549,102 @@ def _migrate_investmap_rf_monitor_registry_tables(conn):
             """
         )
 
+_INVESTMAP_RF_MUNICIPALITY_MANAGER_RULES = [
+    ("Балахнинской муниципальный округ", "Балахн", "Гусев Олег Викторович"),
+    ("м.о.г.Чкаловск", "Чкалов", "Гусев Олег Викторович"),
+    ("Городецкий муниципальный округ", "Городец", "Гусев Олег Викторович"),
+    ("м.о.Сокольский", "Сокольск", "Гусев Олег Викторович"),
+    ("Ковернинский муниципальный округ", "Ковернин", "Гусев Олег Викторович"),
+    ("м.о.г.м.о.СеменовскийБор", "Семенов", "Гусев Олег Викторович"),
+    ("Воскресенский муниципальный округ", "Воскресенск", "Зайцева Галина Павловна"),
+    ("Краснобаковский муниципальный округ", "Краснобак", "Зайцева Галина Павловна"),
+    ("Варнавинский муниципальный округ", "Варнав", "Зайцева Галина Павловна"),
+    ("Ветлужский муниципальный округ", "Ветлуж", "Зайцева Галина Павловна"),
+    ("Уренский муниципальный округ", "Урен", "Зайцева Галина Павловна"),
+    ("Тонкинский муниципальный округ", "Тонкин", "Зайцева Галина Павловна"),
+    ("Шарангский муниципальный округ", "Шаранг", "Зайцева Галина Павловна"),
+    ("м.о.г.Шахунья", "Шахун", "Зайцева Галина Павловна"),
+    ("Тоншаевский муниципальный округ", "Тоншаев", "Зайцева Галина Павловна"),
+    ("г. Нижний Новгород", "Новгород", "Алюков Дмитрий Александрович"),
+    ("Володарский муниципальный округ", "Володарск", "Алюков Дмитрий Александрович"),
+    ("г.о.г.Дзержинск", "Дзержинск", "Алюков Дмитрий Александрович"),
+    ("Павловский муниципальный округ", "Павловск", "Кашин Юрий Александрович"),
+    ("Богородский муниципальный округ", "Богородск", "Кашин Юрий Александрович"),
+    ("г.о.г.Выкса", "Выкс", "Кашин Юрий Александрович"),
+    ("Сосновский муниципальный округ", "Сосновск", "Кашин Юрий Александрович"),
+    ("Вачский муниципальный округ", "Вачск", "Кашин Юрий Александрович"),
+    ("м.о.Навашинский", "Наваш", "Кашин Юрий Александрович"),
+    ("г.о.г.Кулебаки", "Кулебак", "Кашин Юрий Александрович"),
+    ("Большемурашкинский муниципальный округ", "Большемурашк", "Зимин Дмитрий Валерьевич"),
+    ("Бутурлинский муниципальный округ", "Бутурлинск", "Зимин Дмитрий Валерьевич"),
+    ("м.о.Воротынский", "Воротын", "Зимин Дмитрий Валерьевич"),
+    ("Княгининский муниципальный округ", "Княгин", "Зимин Дмитрий Валерьевич"),
+    ("Лысковский муниципальный округ", "Лысков", "Зимин Дмитрий Валерьевич"),
+    ("м.о.Перевозский", "Перевоз", "Зимин Дмитрий Валерьевич"),
+    ("Сергачский муниципальный округ", "Сергач", "Зимин Дмитрий Валерьевич"),
+    ("Спасский муниципальный округ", "Спасск", "Зимин Дмитрий Валерьевич"),
+    ("г.о.г.Нижний Новгород, Кстовский район", "Кстов", "Зимин Дмитрий Валерьевич"),
+    ("Дальнеконстантиновский муниципальный округ", "Дальнеконст", "Зимин Дмитрий Валерьевич"),
+    ("Большеболдинский муниципальный округ", "Большеболдин", "Марушкин Николай Васильевич"),
+    ("Гагинский муниципальный округ", "Гагинск", "Марушкин Николай Васильевич"),
+    ("Краснооктябрьский муниципальный округ", "Краснооктябрь", "Марушкин Николай Васильевич"),
+    ("Лукояновский муниципальный округ", "Лукоянов", "Марушкин Николай Васильевич"),
+    ("м.о.г.Первомайск", "Первомай", "Марушкин Николай Васильевич"),
+    ("Пильнинский муниципальный округ", "Пильн", "Марушкин Николай Васильевич"),
+    ("Починковский муниципальный округ", "Починк", "Марушкин Николай Васильевич"),
+    ("Сеченовский муниципальный округ", "Сеченов", "Марушкин Николай Васильевич"),
+    ("Шатковский муниципальный округ", "Шатковск", "Марушкин Николай Васильевич"),
+    ("Ардатовский муниципальный округ", "Ардатов", "Марушкин Николай Васильевич"),
+    ("г.о.г. Саров", "Саров", "Марушкин Николай Васильевич"),
+    ("г.о.г.Арзамас", "Арзамас", "Марушкин Николай Васильевич"),
+    ("Вадский муниципальный округ", "Вадск", "Марушкин Николай Васильевич"),
+    ("Вознесенский муниципальный округ", "Вознесенск", "Марушкин Николай Васильевич"),
+    ("Дивеевский муниципальный округ", "Дивеев", "Марушкин Николай Васильевич"),
+]
+
 def _migrate_investmap_rf_sync_plan_tables(conn):
     """Создаёт таблицы планов и истории пакетной синхронизации Инвесткарты РФ."""
     conn.executescript(
+            run_columns = {
+        row["name"]
+        for row in conn.execute(
+            "PRAGMA table_info(investmap_rf_sync_runs)"
+        ).fetchall()
+    }
+    if "global_ids_json" not in run_columns:
+        conn.execute(
+            """
+            ALTER TABLE investmap_rf_sync_runs
+            ADD COLUMN global_ids_json TEXT NOT NULL DEFAULT '[]'
+            """
+        )
+
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_investmap_rf_sync_runs_active
+        ON investmap_rf_sync_runs(status, plan_id, id DESC)
+        """
+    )
+
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS investmap_rf_daily_sync_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            scheduled_date_msk TEXT NOT NULL UNIQUE,
+            scheduled_at_utc TEXT NOT NULL,
+            status TEXT NOT NULL,
+            plan_id INTEGER,
+            run_id INTEGER,
+            reason TEXT,
+            created_at_utc TEXT NOT NULL,
+            FOREIGN KEY(plan_id) REFERENCES investmap_rf_sync_plans(id),
+            FOREIGN KEY(run_id) REFERENCES investmap_rf_sync_runs(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_investmap_rf_daily_sync_runs_status
+        ON investmap_rf_daily_sync_runs(status, scheduled_date_msk DESC);
+        """
+    )
         """
         CREATE TABLE IF NOT EXISTS investmap_rf_sync_plans (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -651,6 +744,90 @@ def _migrate_investmap_rf_sync_retry_tables(conn):
         CREATE INDEX IF NOT EXISTS idx_investmap_rf_sync_retry_jobs_status
             ON investmap_rf_sync_retry_jobs(status, id ASC);
         """
+    )
+
+def _migrate_investmap_rf_manager_assignment_tables(conn):
+    """Создаёт справочник муниципалитетов, назначения и проблемы сопоставления."""
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS investmap_rf_municipality_manager_rules (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            municipality_name TEXT NOT NULL,
+            municipality_normalized TEXT NOT NULL UNIQUE,
+            manager_name TEXT NOT NULL,
+            match_mode TEXT NOT NULL DEFAULT 'contains',
+            is_active INTEGER NOT NULL DEFAULT 1,
+            source TEXT NOT NULL DEFAULT 'imported',
+            created_by_user_id INTEGER,
+            created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(created_by_user_id) REFERENCES users(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_investmap_rf_manager_rules_active
+        ON investmap_rf_municipality_manager_rules(is_active, municipality_normalized);
+
+        CREATE TABLE IF NOT EXISTS investmap_rf_card_manager_assignments (
+            global_id INTEGER PRIMARY KEY,
+            municipality_raw TEXT,
+            municipality_normalized TEXT,
+            manager_name TEXT,
+            rule_id INTEGER,
+            assignment_source TEXT NOT NULL,
+            match_status TEXT NOT NULL,
+            assigned_by_user_id INTEGER,
+            updated_at_utc TEXT NOT NULL,
+            FOREIGN KEY(rule_id) REFERENCES investmap_rf_municipality_manager_rules(id),
+            FOREIGN KEY(assigned_by_user_id) REFERENCES users(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_investmap_rf_card_manager_assignments_manager
+        ON investmap_rf_card_manager_assignments(manager_name, global_id);
+
+        CREATE INDEX IF NOT EXISTS idx_investmap_rf_card_manager_assignments_status
+        ON investmap_rf_card_manager_assignments(match_status, global_id);
+
+        CREATE TABLE IF NOT EXISTS investmap_rf_manager_match_issues (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            global_id INTEGER NOT NULL,
+            municipality_raw TEXT,
+            municipality_normalized TEXT,
+            issue_type TEXT NOT NULL,
+            details TEXT,
+            is_resolved INTEGER NOT NULL DEFAULT 0,
+            resolved_by_user_id INTEGER,
+            resolved_at_utc TEXT,
+            created_at_utc TEXT NOT NULL,
+            updated_at_utc TEXT NOT NULL,
+            UNIQUE(global_id, municipality_normalized, issue_type, is_resolved),
+            FOREIGN KEY(resolved_by_user_id) REFERENCES users(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_investmap_rf_manager_match_issues_open
+        ON investmap_rf_manager_match_issues(is_resolved, issue_type, global_id);
+        """
+    )
+
+    conn.executemany(
+        """
+        INSERT INTO investmap_rf_municipality_manager_rules (
+            municipality_name,
+            municipality_normalized,
+            manager_name,
+            match_mode,
+            is_active,
+            source
+        )
+        VALUES (?, ?, ?, 'contains', 1, 'imported')
+        ON CONFLICT(municipality_normalized) DO UPDATE SET
+            municipality_name = excluded.municipality_name,
+            manager_name = excluded.manager_name,
+            match_mode = 'contains',
+            is_active = 1,
+            source = 'imported',
+            updated_at_utc = CURRENT_TIMESTAMP
+        """,
+        _INVESTMAP_RF_MUNICIPALITY_MANAGER_RULES,
     )
 
 def _migrate_form_sections(conn):
@@ -859,6 +1036,7 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         _migrate_investmap_rf_monitor_registry_tables(conn)
         _migrate_investmap_rf_sync_plan_tables(conn)
         _migrate_investmap_rf_sync_retry_tables(conn)
+        _migrate_investmap_rf_manager_assignment_tables(conn)
         _migrate_letters_tables(conn)
         _migrate_tasks_tables(conn)
         _migrate_task_comments_table(conn)
@@ -929,6 +1107,7 @@ def migrate_db():
         _migrate_investmap_rf_monitor_registry_tables(conn)
         _migrate_investmap_rf_sync_plan_tables(conn)
         _migrate_investmap_rf_sync_retry_tables(conn)
+        _migrate_investmap_rf_manager_assignment_tables(conn)
         _migrate_letters_tables(conn)
         _migrate_tasks_tables(conn)
         _migrate_task_comments_table(conn)
