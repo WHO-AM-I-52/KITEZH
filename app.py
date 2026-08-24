@@ -271,7 +271,6 @@ def _startup():
     run_migrations()
     backup_scheduler.start()
     investmap_rf_sync_background.start()
-    investmap_rf_sync_background.start()
 
 
 _startup()
