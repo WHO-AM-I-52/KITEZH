@@ -130,10 +130,14 @@ class InvestmapRfManagerAssignmentTest(unittest.TestCase):
             ),
         ).lastrowid
 
-    def _card(self, global_id, municipality):
+    def _card(self, global_id, municipality, **payload_fields):
+        payload = {
+            "municipality": municipality,
+            **payload_fields,
+        }
         return SimpleNamespace(
             global_id=global_id,
-            payload={"municipality": municipality},
+            payload=payload,
         )
 
     def _assignment(self, global_id):
@@ -298,6 +302,78 @@ class InvestmapRfManagerAssignmentTest(unittest.TestCase):
         self.assertEqual(notification_count, 1)
         self.assertEqual(activity_count, 1)
 
+    def test_kulibin_card_overrides_municipality_rule(self):
+        self._add_rule("город Дзержинск", "Алюков Алексей")
+        card = self._card(
+            1006,
+            "город Дзержинск",
+            preferentialBusinessLink={
+                "name": 'ОЭЗ ППТ "Кулибин"',
+            },
+        )
+
+        result = update_card_manager_assignment(self.conn, card=card)
+
+        self.assertEqual(result["status"], MATCH_STATUS_MATCHED)
+        self.assertFalse(result["notification_created"])
+        self.assertIsNone(result["issue"])
+
+        assignment = self._assignment(1006)
+        self.assertEqual(
+            assignment["manager_name"],
+            "Земсков Александр Николаевич",
+        )
+        self.assertIsNone(assignment["rule_id"])
+        self.assertEqual(assignment["assignment_source"], "auto")
+        self.assertEqual(assignment["match_status"], MATCH_STATUS_MATCHED)
+        self.assertEqual(self._open_issues(1006), [])
+
+    def test_manual_assignment_overrides_kulibin_rule(self):
+        self.conn.execute(
+            """
+            INSERT INTO investmap_rf_card_manager_assignments (
+                global_id,
+                municipality_raw,
+                municipality_normalized,
+                manager_name,
+                rule_id,
+                assignment_source,
+                match_status,
+                assigned_by_user_id,
+                updated_at_utc
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                1007,
+                "город Дзержинск",
+                "город дзержинск",
+                "Ручной управляющий",
+                None,
+                "manual",
+                MATCH_STATUS_MANUAL,
+                1,
+                "2026-08-25T00:00:00+00:00",
+            ),
+        )
+        card = self._card(
+            1007,
+            "город Дзержинск",
+            businessEnvironmentPreferentialLink={
+                "name": 'ОЭЗ ППТ "Кулибин"',
+            },
+        )
+
+        result = update_card_manager_assignment(self.conn, card=card)
+
+        self.assertEqual(result["status"], MATCH_STATUS_MANUAL)
+        self.assertFalse(result["notification_created"])
+        self.assertIsNone(result["issue"])
+
+        assignment = self._assignment(1007)
+        self.assertEqual(assignment["manager_name"], "Ручной управляющий")
+        self.assertEqual(assignment["assignment_source"], "manual")
+        self.assertEqual(assignment["match_status"], MATCH_STATUS_MANUAL)
 
 if __name__ == "__main__":
     unittest.main()
