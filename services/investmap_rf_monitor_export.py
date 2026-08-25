@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from html import unescape
 from io import BytesIO
 import json
+import re
 import sqlite3
 from typing import Any
 
@@ -272,10 +274,30 @@ _TOTAL_FILL = PatternFill("solid", fgColor="E2F0D9")
 _HEADER_FONT = Font(color="FFFFFF", bold=True)
 _BOLD_FONT = Font(bold=True)
 
+_HTML_BREAK_PATTERN = re.compile(r"<\s*br\s*/?\s*>", re.IGNORECASE)
+_HTML_BLOCK_PATTERN = re.compile(r"</?\s*(?:p|div|li|ul|ol|strong|em|b|i|u)[^>]*>", re.IGNORECASE)
+_HTML_TAG_PATTERN = re.compile(r"<[^>]+>")
+_S3_FILE_PATTERN = re.compile(
+    r"^S3:file_storage/[0-9a-fA-F-]{36}_(.*)$"
+)
+
+
+def _clean_text(value: str) -> str:
+    value = unescape(value)
+    value = _HTML_BREAK_PATTERN.sub("\n", value)
+    value = _HTML_BLOCK_PATTERN.sub("\n", value)
+    value = _HTML_TAG_PATTERN.sub("", value)
+    value = value.replace("\xa0", " ")
+    value = re.sub(r"[ \t]+\n", "\n", value)
+    value = re.sub(r"\n[ \t]+", "\n", value)
+    value = re.sub(r"\n{3,}", "\n\n", value)
+    value = re.sub(r"[ \t]{2,}", " ", value)
+    return value.strip()
+
 
 def _first_text(value: Any) -> str | None:
     if isinstance(value, str):
-        value = value.strip()
+        value = _clean_text(value)
         return value or None
     return None
 
@@ -318,13 +340,23 @@ def _format_list_item(value: Any) -> str:
             text = _first_text(value.get(key))
             if text:
                 return text
-        return json.dumps(value, ensure_ascii=False, separators=(",", ":"), default=str)
+        return _clean_text(
+            json.dumps(
+                value,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                default=str,
+            )
+        )
 
     if isinstance(value, bool):
         return "Да" if value else "Нет"
 
     if value is None:
         return ""
+
+    if isinstance(value, str):
+        return _clean_text(value)
 
     return str(value).strip()
 
@@ -342,12 +374,19 @@ def _payload_cell_value(value: Any) -> Any:
         return "; ".join(item for item in values if item) or None
 
     if isinstance(value, dict):
-        return json.dumps(
-            value,
-            ensure_ascii=False,
-            separators=(",", ":"),
-            default=str,
+        return _clean_text(
+            json.dumps(
+                value,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                default=str,
+            )
         )
+
+    if isinstance(value, str):
+        value = _clean_text(value)
+        s3_match = _S3_FILE_PATTERN.match(value)
+        return s3_match.group(1).strip() if s3_match else value or None
 
     return value
 
@@ -635,7 +674,7 @@ def _append_manager_summary_sheet(
         counts[manager] += 1
 
         if row["filling_level"] is not None:
-            grouped[manager].append(float(row["filling_level"]))
+            grouped[manager].append(float(row["filling_level"]) / 100)
 
     for manager in sorted(counts, key=lambda item: item.casefold()):
         values = grouped[manager]
@@ -697,7 +736,11 @@ def _append_rankings_sheet(workbook: Workbook, rows: list[dict[str, Any]]) -> No
         row_number = start_row + 2
         for item in items:
             sheet.cell(row=row_number, column=1, value=item["global_id"])
-            sheet.cell(row=row_number, column=2, value=item["filling_level"])
+            sheet.cell(
+                row=row_number,
+                column=2,
+                value=float(item["filling_level"]) / 100,
+            )
             sheet.cell(
                 row=row_number,
                 column=3,
