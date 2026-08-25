@@ -275,10 +275,13 @@ _HEADER_FONT = Font(color="FFFFFF", bold=True)
 _BOLD_FONT = Font(bold=True)
 
 _HTML_BREAK_PATTERN = re.compile(r"<\s*br\s*/?\s*>", re.IGNORECASE)
-_HTML_BLOCK_PATTERN = re.compile(r"</?\s*(?:p|div|li|ul|ol|strong|em|b|i|u)[^>]*>", re.IGNORECASE)
+_HTML_BLOCK_PATTERN = re.compile(
+    r"</?\s*(?:p|div|li|ul|ol|strong|em|b|i|u)[^>]*>",
+    re.IGNORECASE,
+)
 _HTML_TAG_PATTERN = re.compile(r"<[^>]+>")
 _S3_FILE_PATTERN = re.compile(
-    r"^S3:file_storage/[0-9a-fA-F-]{36}_(.*)$"
+    r"S3:file_storage/[0-9a-fA-F-]{36}_"
 )
 
 
@@ -293,6 +296,10 @@ def _clean_text(value: str) -> str:
     value = re.sub(r"\n{3,}", "\n\n", value)
     value = re.sub(r"[ \t]{2,}", " ", value)
     return value.strip()
+
+
+def _clean_s3_file_references(value: str) -> str:
+    return _S3_FILE_PATTERN.sub("", value)
 
 
 def _first_text(value: Any) -> str | None:
@@ -356,7 +363,7 @@ def _format_list_item(value: Any) -> str:
         return ""
 
     if isinstance(value, str):
-        return _clean_text(value)
+        return _clean_s3_file_references(_clean_text(value))
 
     return str(value).strip()
 
@@ -385,8 +392,8 @@ def _payload_cell_value(value: Any) -> Any:
 
     if isinstance(value, str):
         value = _clean_text(value)
-        s3_match = _S3_FILE_PATTERN.match(value)
-        return s3_match.group(1).strip() if s3_match else value or None
+        value = _clean_s3_file_references(value)
+        return value or None
 
     return value
 
