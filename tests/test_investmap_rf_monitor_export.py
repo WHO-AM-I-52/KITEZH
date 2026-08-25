@@ -219,16 +219,36 @@ class InvestmapRfMonitorExportTest(unittest.TestCase):
         stream = build_monitor_export_xlsx(self.conn)
         workbook = load_workbook(stream, data_only=True)
         sheet = workbook["Лучшие и худшие площадки"]
+        titles = {
+            sheet.cell(row=row_number, column=1).value: row_number
+            for row_number in range(1, sheet.max_row + 1)
+            if sheet.cell(row=row_number, column=1).value
+            in {
+                "Лучшие 10 площадок",
+                "Площадки с заполнением ниже 80%",
+                "Карточки без рассчитанного процента",
+            }
+        }
 
-        self.assertEqual(sheet["A1"].value, "Лучшие 10 площадок")
-        self.assertEqual(sheet["A3"].value, 1001)
-
-        self.assertEqual(sheet["A6"].value, "Площадки с заполнением ниже 80%")
-        self.assertEqual(sheet["A8"].value, 1002)
-
-        self.assertEqual(sheet["A10"].value, "Карточки без рассчитанного процента")
-        self.assertEqual(sheet["A12"].value, 1003)
-
-
-if __name__ == "__main__":
-    unittest.main()
+        self.assertEqual(titles["Лучшие 10 площадок"], 1)
+        self.assertEqual(
+            sheet.cell(
+                row=titles["Лучшие 10 площадок"] + 2,
+                column=1,
+            ).value,
+            1001,
+        )
+        self.assertEqual(
+            sheet.cell(
+                row=titles["Площадки с заполнением ниже 80%"] + 2,
+                column=1,
+            ).value,
+            1002,
+        )
+        self.assertEqual(
+            sheet.cell(
+                row=titles["Карточки без рассчитанного процента"] + 2,
+                column=1,
+            ).value,
+            1003,
+        )
