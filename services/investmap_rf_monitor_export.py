@@ -643,7 +643,7 @@ def _append_manager_summary_sheet(
         sheet.append([manager, counts[manager], average])
 
     all_values = [
-        float(row["filling_level"])
+        float(row["filling_level"]) / 100
         for row in rows
         if row["filling_level"] is not None
     ]
