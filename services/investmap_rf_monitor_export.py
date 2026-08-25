@@ -199,7 +199,7 @@ _API_FIELD_MASK = {
     "accessRoadsAvailability": "Наличие подъездных путей (Да/Нет)",
     "railwayAvailability": "Наличие ж/д (Да/Нет)",
     "truckParkingAvailability": "Наличие парковки грузового транспорта",
-    "otherInformationSite": "Иные характеристики",
+    "otherInformationSite": "Иные сведения",
     "descriptionApplicationProcedure": "Описание процедуры подачи заявки",
     "listOfDocumentsForApplication": "Перечень документов, необходимых для подачи заявки",
     "emailAddressForApplying": "Адрес эл. почты для подачи заявки",
@@ -210,7 +210,6 @@ _API_FIELD_MASK = {
     ),
     "urbanPlanCharacteristicsAndLimits": "Градостроительные характеристики и ограничения",
     "territorialPlanDocumentsFile": "Документы территориального планирования",
-    "otherInformationSite": "Иные сведения",
     "photos": "Фотографии объекта",
     "documents": "Документы по объекту",
     "isSupportMeasureSite": "Наличие МАИП",
@@ -575,7 +574,11 @@ def _append_technical_sheet(workbook: Workbook, rows: list[dict[str, Any]]) -> N
             row["match_status"] or "Нет данных",
             row["open_issue"] or "—",
             row["fetched_at_utc"] or "—",
-            row["filling_level"],
+            (
+                float(row["filling_level"]) / 100
+                if row["filling_level"] is not None
+                else None
+            ),
             row["v2_value"] or "—",
         ]
         api_values = [
@@ -603,7 +606,11 @@ def _append_overview_sheet(workbook: Workbook, rows: list[dict[str, Any]]) -> No
                 row["name"] or "—",
                 row["municipality"] or "—",
                 row["manager_name"] or "—",
-                row["filling_level"],
+                (
+                    float(row["filling_level"]) / 100
+                    if row["filling_level"] is not None
+                    else None
+                ),
             ]
         )
 
