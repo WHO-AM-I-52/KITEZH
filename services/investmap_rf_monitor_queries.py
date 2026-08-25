@@ -168,7 +168,7 @@ def get_monitor_cards(
             INNER JOIN portal_analysis_runs AS runs
                 ON runs.id = snapshots.run_id
         ),
-                manager_assignments AS (
+       manager_assignments AS (
             SELECT
                 global_id,
                 municipality_raw,
