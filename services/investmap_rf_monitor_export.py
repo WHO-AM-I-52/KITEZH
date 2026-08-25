@@ -9,6 +9,7 @@ from typing import Any
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.utils import get_column_letter
 
 
 _TECHNICAL_HEADERS = [
