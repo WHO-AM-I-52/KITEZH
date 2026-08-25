@@ -634,7 +634,7 @@ def _append_technical_sheet(workbook: Workbook, rows: list[dict[str, Any]]) -> N
         sheet.append([*technical_values, *api_values])
 
     for cell in sheet["I"][1:]:
-        cell.number_format = '0.0"%"'
+        cell.number_format = "0.0%"
 
     _apply_widths(sheet, [14, 36, 34, 32, 22, 24, 52, 25, 27, 30])
     _apply_api_widths(sheet, len(_TECHNICAL_HEADERS) + 1, api_headers)
@@ -661,7 +661,7 @@ def _append_overview_sheet(workbook: Workbook, rows: list[dict[str, Any]]) -> No
         )
 
     for cell in sheet["E"][1:]:
-        cell.number_format = '0.0"%"'
+        cell.number_format = "0.0%"
 
     _apply_widths(sheet, [14, 40, 36, 32, 27])
 
@@ -703,7 +703,7 @@ def _append_manager_summary_sheet(
         cell.font = _BOLD_FONT
 
     for cell in sheet["C"][1:]:
-        cell.number_format = '0.0"%"'
+        cell.number_format = "0.0%"
 
     _apply_widths(sheet, [36, 22, 30])
 
@@ -753,7 +753,7 @@ def _append_rankings_sheet(workbook: Workbook, rows: list[dict[str, Any]]) -> No
                 column=3,
                 value=item["manager_name"] or "Не назначен",
             )
-            sheet.cell(row=row_number, column=2).number_format = '0.0"%"'
+            sheet.cell(row=row_number, column=2).number_format = "0.0%"
             row_number += 1
 
         return row_number + 1
