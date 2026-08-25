@@ -76,7 +76,11 @@ def backfill_manager_assignments(
                 global_id=int(row["global_id"]),
                 payload=_parse_payload(row["payload_json"]),
             )
-            result = update_card_manager_assignment(conn, card=card)
+            result = update_card_manager_assignment(
+                conn,
+                card=card,
+                notify_admins=False,
+            )
             status = result["status"]
 
             counters["processed"] += 1
