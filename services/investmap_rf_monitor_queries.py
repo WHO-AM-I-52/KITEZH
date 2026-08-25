@@ -167,6 +167,36 @@ def get_monitor_cards(
                AND latest_v2_snapshot_ids.run_id = snapshots.run_id
             INNER JOIN portal_analysis_runs AS runs
                 ON runs.id = snapshots.run_id
+        ),
+                manager_assignments AS (
+            SELECT
+                global_id,
+                municipality_raw,
+                manager_name,
+                assignment_source,
+                match_status,
+                updated_at_utc
+            FROM investmap_rf_card_manager_assignments
+        ),
+        latest_open_issue_ids AS (
+            SELECT
+                global_id,
+                MAX(id) AS issue_id
+            FROM investmap_rf_manager_match_issues
+            WHERE is_resolved = 0
+            GROUP BY global_id
+        ),
+        open_issues AS (
+            SELECT
+                issues.id,
+                issues.global_id,
+                issues.issue_type,
+                issues.details,
+                issues.municipality_raw,
+                issues.updated_at_utc
+            FROM investmap_rf_manager_match_issues AS issues
+            INNER JOIN latest_open_issue_ids
+                ON latest_open_issue_ids.issue_id = issues.id
         )
         SELECT
             latest.snapshot_id,
@@ -178,7 +208,15 @@ def get_monitor_cards(
             latest_v2.score_percent AS v2_score,
             latest_v2.analysis_status AS v2_analysis_status,
             latest_v2.analyzed_at_utc AS v2_analyzed_at_utc,
-            latest_v2.formula_version AS v2_formula_version
+            latest_v2.formula_version AS v2_formula_version,
+            assignments.municipality_raw AS manager_municipality_raw,
+            assignments.manager_name,
+            assignments.assignment_source,
+            assignments.match_status,
+            assignments.updated_at_utc AS manager_assignment_updated_at_utc,
+            open_issues.issue_type AS open_issue_type,
+            open_issues.details AS open_issue_details,
+            open_issues.updated_at_utc AS open_issue_updated_at_utc
         FROM latest_snapshots AS latest
         LEFT JOIN previous_snapshots AS previous
             ON previous.global_id = latest.global_id
@@ -186,6 +224,10 @@ def get_monitor_cards(
             ON changes.global_id = latest.global_id
         LEFT JOIN latest_v2
             ON latest_v2.site_id = CAST(latest.global_id AS TEXT)
+        LEFT JOIN manager_assignments AS assignments
+            ON assignments.global_id = latest.global_id
+        LEFT JOIN open_issues
+            ON open_issues.global_id = latest.global_id
         {items_where_sql}
         ORDER BY latest.fetched_at_utc DESC, latest.snapshot_id DESC
         LIMIT ? OFFSET ?
@@ -216,6 +258,16 @@ def get_monitor_cards(
                 "v2_analysis_status": row["v2_analysis_status"],
                 "v2_analyzed_at_utc": row["v2_analyzed_at_utc"],
                 "v2_formula_version": row["v2_formula_version"],
+                "manager_municipality_raw": row["manager_municipality_raw"],
+                "manager_name": row["manager_name"],
+                "assignment_source": row["assignment_source"],
+                "match_status": row["match_status"],
+                "manager_assignment_updated_at_utc": (
+                    row["manager_assignment_updated_at_utc"]
+                ),
+                "open_issue_type": row["open_issue_type"],
+                "open_issue_details": row["open_issue_details"],
+                "open_issue_updated_at_utc": row["open_issue_updated_at_utc"],
             }
         )
 
@@ -288,6 +340,45 @@ def get_monitor_card_detail(
         """,
         (global_id,),
     ).fetchall()
+    assignment = conn.execute(
+        """
+        SELECT
+            assignments.global_id,
+            assignments.municipality_raw,
+            assignments.municipality_normalized,
+            assignments.manager_name,
+            assignments.rule_id,
+            assignments.assignment_source,
+            assignments.match_status,
+            assignments.assigned_by_user_id,
+            assignments.updated_at_utc,
+            rules.municipality_name AS rule_municipality_name,
+            rules.manager_name AS rule_manager_name
+        FROM investmap_rf_card_manager_assignments AS assignments
+        LEFT JOIN investmap_rf_municipality_manager_rules AS rules
+            ON rules.id = assignments.rule_id
+        WHERE assignments.global_id = ?
+        """,
+        (global_id,),
+    ).fetchone()
+
+    open_issues = conn.execute(
+        """
+        SELECT
+            id,
+            municipality_raw,
+            municipality_normalized,
+            issue_type,
+            details,
+            created_at_utc,
+            updated_at_utc
+        FROM investmap_rf_manager_match_issues
+        WHERE global_id = ?
+          AND is_resolved = 0
+        ORDER BY id DESC
+        """,
+        (global_id,),
+    ).fetchall()
 
     return {
         "latest": {
@@ -299,6 +390,41 @@ def get_monitor_card_detail(
             "filling_level": latest["filling_level"],
             "region_code": latest["region_code"],
         },
+        "assignment": (
+            {
+                "global_id": assignment["global_id"],
+                "municipality_raw": assignment["municipality_raw"],
+                "municipality_normalized": assignment[
+                    "municipality_normalized"
+                ],
+                "manager_name": assignment["manager_name"],
+                "rule_id": assignment["rule_id"],
+                "assignment_source": assignment["assignment_source"],
+                "match_status": assignment["match_status"],
+                "assigned_by_user_id": assignment["assigned_by_user_id"],
+                "updated_at_utc": assignment["updated_at_utc"],
+                "rule_municipality_name": assignment[
+                    "rule_municipality_name"
+                ],
+                "rule_manager_name": assignment["rule_manager_name"],
+            }
+            if assignment is not None
+            else None
+        ),
+        "open_issues": [
+            {
+                "issue_id": row["id"],
+                "municipality_raw": row["municipality_raw"],
+                "municipality_normalized": row[
+                    "municipality_normalized"
+                ],
+                "issue_type": row["issue_type"],
+                "details": row["details"],
+                "created_at_utc": row["created_at_utc"],
+                "updated_at_utc": row["updated_at_utc"],
+            }
+            for row in open_issues
+        ],
         "snapshots": [
             {
                 "snapshot_id": row["id"],
