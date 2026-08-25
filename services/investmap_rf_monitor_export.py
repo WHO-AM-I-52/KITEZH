@@ -26,6 +26,210 @@ _TECHNICAL_HEADERS = [
     "V2-оценка и дата анализа",
 ]
 
+_API_FIELD_MASK = {
+    "id": "ID площадки в API",
+    "siteStatus": "Статус площадки",
+    "siteName": "Название площадки",
+    "regions": "Регион",
+    "municipality": "Муниципальное образование",
+    "adressObject": "Адрес объекта",
+    "nearestCity": "Ближайший город",
+    "formatSites": "Формат площадки",
+    "typeSites": "Тип площадки",
+    "distanceFromRoad": "Удаленность от автомобильной дороги (метров)",
+    "presenceOfEncumbrancesDictTitles": "Наличие обременений",
+    "addInfoAboutEncumbrances": "Дополнительная информация об обременении",
+    "isPriority": "Приоритетная площадка",
+    "formOwnerships": "Форма собственности объекта",
+    "transactionForms": "Форма сделки",
+    "costObject": "Стоимость объекта, руб. (покупки или месячной аренды)",
+    "costPerHa": "Стоимость, руб./год за га",
+    "costPerSqM": "Стоимость, руб./год за кв.м.",
+    "maxMinRentalPeriod": "Min и max сроки аренды (если применимо), лет",
+    "maxMinRentalYear": "Min и max сроки аренды, лет",
+    "procedureDeterminingCostStr": "Порядок определения стоимости",
+    "hazardClassObjects": "Класс опасности объекта",
+    "characteristicsCapitalBuildings": (
+        "Характеристики расположенных объектов капитального строительства"
+    ),
+    "landArea": "Свободная площадь ЗУ, га",
+    "cadastralLandNumber": "Кадастровый номер ЗУ",
+    "typesAuthorizedUses": "Варианты разрешенного использования",
+    "landSurveying": "Межевание ЗУ",
+    "landCategory": "Категория земель",
+    "areaPropertyComplex": (
+        "Свободная площадь здания, сооружения, помещения, кв. м"
+    ),
+    "totalSiteArea": "Площадь объекта, кв. м",
+    "cadastralPropertyComplexNumber": (
+        "Кадастровый номер здания, сооружения, помещения"
+    ),
+    "buildingSpecifications": (
+        "Технические характеристики здания, сооружения, помещения"
+    ),
+    "nameOwner": "Наименование собственника / администратора объекта",
+    "inn": "ИНН собственника",
+    "contactPerson": "Контактное лицо",
+    "contactPhoneNumber": "Телефон контактного лица, e-mail",
+    "websiteContactPerson": "Сайт",
+    "notes": "Примечание",
+    "waterSupply.availability": "Водоснабжение Наличие (Да/Нет)",
+    "waterSupply.connectionFeeMin": (
+        "Водоснабжение Плата за подключение (минимальная), руб."
+    ),
+    "waterSupply.connectionFeeMax": (
+        "Водоснабжение Плата за подключение (максимальная), руб."
+    ),
+    "waterSupply.tariffDrinkingWater": (
+        "Водоснабжение Тариф на питьевую воду, руб./куб.м"
+    ),
+    "waterSupply.tariffProcessWater": (
+        "Водоснабжение Тариф на техническую воду, руб./куб.м"
+    ),
+    "waterSupply.tariffTransportation": (
+        "Водоснабжение Тариф на транспортировку воды, руб./куб.м"
+    ),
+    "waterSupply.availableCapacity": (
+        "Объекты водоснабжения Максимально допустимая мощность, куб. м/ч"
+    ),
+    "waterSupply.freePower": "Объекты водоснабжения Свободная мощность, куб.м/ч",
+    "waterSupply.bandwidth": "Сети водоснабжения Пропускная способность, куб. м/ч",
+    "waterSupply.otherFreePower": "Объекты водоснабжения Иные характеристики",
+    "waterDisposal.availability": "Водоотведение Наличие (Да/Нет)",
+    "waterDisposal.connectionFeeMin": (
+        "Водоотведение Плата за подключение (минимальная), руб."
+    ),
+    "waterDisposal.connectionFeeMax": (
+        "Водоотведение Плата за подключение (максимальная), руб."
+    ),
+    "waterDisposal.tariffWaterDisposal": (
+        "Водоотведение Тариф на водоотведение, руб./куб.м"
+    ),
+    "waterDisposal.bandwidth": (
+        "Сети водоотведения Пропускная способность, куб. м/ч"
+    ),
+    "waterDisposal.otherFreePower": "Объекты водоотведения Иные характеристики",
+    "gasSupply.availability": "Газоснабжение Наличие (Да/Нет)",
+    "gasSupply.connectionFeeMin": (
+        "Газоснабжение Плата за подключение (минимальная), руб."
+    ),
+    "gasSupply.connectionFeeMax": (
+        "Газоснабжение Плата за подключение (максимальная), руб."
+    ),
+    "gasSupply.basicWholesalePriceGas": (
+        "Газоснабжение Базовая оптовая цена на газ, руб./1000 куб. м"
+    ),
+    "gasSupply.tariffTransportation": (
+        "Газоснабжение Тариф на услуги по транспортировке газа, руб./1000 куб. м"
+    ),
+    "gasSupply.consumerGroupByVolumeDictTitles": (
+        "Газоснабжение Группа потребителей (по объему потребления)"
+    ),
+    "gasSupply.specialSurchargeToTransportationTariff": (
+        "Газоснабжение Спец. надбавка к тарифу на транспортировку газа, "
+        "руб./1000 куб. м"
+    ),
+    "gasSupply.feeSupplyAndDistributionServices": (
+        "Газоснабжение Плата за снабженческо-сбытовые услуги, руб./куб. м"
+    ),
+    "gasSupply.availableCapacity": (
+        "Объекты газоснабжения Величина максимального расхода газа "
+        "(мощности) газоиспользующего оборудования, куб. м./ч"
+    ),
+    "gasSupply.freePower": "Объекты газоснабжения Свободная мощность, куб. м/ч",
+    "gasSupply.tariffConsumption": (
+        "Газоснабжение Тариф на потребление, руб./куб. м"
+    ),
+    "gasSupply.otherFreePower": "Объекты газоснабжения Иные характеристики",
+    "powerSupply.availability": "Электроснабжение Наличие (Да/Нет)",
+    "powerSupply.connectionFeeMin": (
+        "Электроснабжение Плата за подключение (минимальная), руб."
+    ),
+    "powerSupply.connectionFeeMax": (
+        "Электроснабжение Плата за подключение (максимальная), руб."
+    ),
+    "powerSupply.priceCategoryDictTitles": "Электроснабжение Ценовая категория (ЦК)",
+    "powerSupply.tariffTransportation": (
+        "Объекты электроснабжения Тариф на услуги по передаче "
+        "электрической энергии, руб./МВт.ч"
+    ),
+    "powerSupply.salesSurchargeGuaranteedSupplier": (
+        "Электроснабжение Сбытовая надбавка гарантирующего поставщика, руб./кВт.ч"
+    ),
+    "powerSupply.tariffOperationalDispatchManagement": (
+        "Объекты электроснабжения Тариф на услуги по оперативно-диспетчерскому "
+        "управлению, руб./кВт.ч"
+    ),
+    "powerSupply.availableCapacity": (
+        "Объекты электроснабжения Максимальная мощность, МВт/ч"
+    ),
+    "powerSupply.freePower": "Объекты электроснабжения Свободная мощность, МВт/ч",
+    "powerSupply.powerCost": "Электроснабжение Стоимость мощности, руб./кВт.ч",
+    "powerSupply.tariffConsumption": (
+        "Электроснабжение Тариф на потребление, руб./МВт.ч"
+    ),
+    "powerSupply.otherFreePower": "Объекты электроснабжения Иные характеристики",
+    "heatSupply.availability": "Теплоснабжение Наличие (Да/Нет)",
+    "heatSupply.connectionFeeMin": (
+        "Теплоснабжение Плата за подключение (минимальная), руб."
+    ),
+    "heatSupply.connectionFeeMax": (
+        "Теплоснабжение Плата за подключение (максимальная), руб."
+    ),
+    "heatSupply.tariffThermalEnergyPower": (
+        "Теплоснабжение Тариф на тепловую энергию (мощность), руб./Гкал"
+    ),
+    "heatSupply.tariffHeatCarrier": (
+        "Теплоснабжение Тариф на теплоноситель, руб./Гкал"
+    ),
+    "heatSupply.tariffTransportation": (
+        "Теплоснабжение Тариф на услуги по передаче тепловой энергии, руб./Гкал"
+    ),
+    "heatSupply.feeHeatCapacityMaintenanceService": (
+        "Теплоснабжение Плата за услуги по поддержанию резервной тепловой "
+        "мощности, руб./Гкал"
+    ),
+    "heatSupply.tariffConsumption": "Теплоснабжение Тариф на потребление, руб./Гкал",
+    "heatSupply.otherFreePower": "Объекты теплоснабжения Иные характеристики",
+    "mswRemoval.availability": "Вывоз ТКО Наличие (Да/Нет)",
+    "mswRemoval.tariffMSWRemovalDictTitles": "Вид тарифа на вывоз ТКО",
+    "mswRemoval.tariffInCubicMetres": "Тариф на вывоз ТКО, руб./куб. м",
+    "mswRemoval.tariff": "Тариф на вывоз ТКО, руб./мес",
+    "mswRemoval.otherFree": "Объекты ТКО Иные характеристики",
+    "accessRoadsAvailability": "Наличие подъездных путей (Да/Нет)",
+    "railwayAvailability": "Наличие ж/д (Да/Нет)",
+    "truckParkingAvailability": "Наличие парковки грузового транспорта",
+    "otherInformationSite": "Иные характеристики",
+    "descriptionApplicationProcedure": "Описание процедуры подачи заявки",
+    "listOfDocumentsForApplication": "Перечень документов, необходимых для подачи заявки",
+    "emailAddressForApplying": "Адрес эл. почты для подачи заявки",
+    "linkToApplicationForm": "Ссылка на форму подачи заявки",
+    "economicActivitiesForImplementations": (
+        "Перечень видов экономической деятельности, возможных к реализации "
+        "на площадке"
+    ),
+    "urbanPlanCharacteristicsAndLimits": "Градостроительные характеристики и ограничения",
+    "territorialPlanDocumentsFile": "Документы территориального планирования",
+    "otherInformationSite": "Иные сведения",
+    "photos": "Фотографии объекта",
+    "documents": "Документы по объекту",
+    "isSupportMeasureSite": "Наличие МАИП",
+    "preferentialTreatmentSites": "Преференциальный режим",
+    "preferentialBusinessLink.name": "Наименование объекта преференциального режима",
+    "preferentialBusinessLink.incomeTax": "Описание льготы: налог на прибыль",
+    "preferentialBusinessLink.propertyTax": "Описание льготы: налог на имущество",
+    "preferentialBusinessLink.landTax": "Описание льготы: земельный налог",
+    "preferentialBusinessLink.transportTax": "Описание льготы: транспортный налог",
+    "preferentialBusinessLink.insurancePremiums": "Описание льготы: страховые взносы",
+    "preferentialBusinessLink.otherBenefits": "Описание льготы: прочее",
+    "businessEnvironmentPreferentialLink.name": "Наименование преференциальной среды",
+    "businessEnvironmentPrivilegedLink.name": "Наименование льготной среды",
+    "supportInfrastructureLink.name": "Наименование инфраструктуры поддержки",
+    "supportInfrastructureObjects": "Объект инфраструктуры поддержки",
+    "coordinate.latitude": "Широта объекта в координатах WGS-84",
+    "coordinate.longitude": "Долгота объекта в координатах WGS-84",
+}
+
 _OVERVIEW_HEADERS = [
     "Global ID",
     "Наименование",
@@ -104,32 +308,49 @@ def _flatten_payload(
         return flattened
 
     if isinstance(value, list):
-        return {
-            path: json.dumps(
-                value,
-                ensure_ascii=False,
-                separators=(",", ":"),
-                default=str,
-            )
-        }
+        return {path: value}
 
     return {path: value}
 
 
+def _format_list_item(value: Any) -> str:
+    if isinstance(value, dict):
+        for key in ("description", "name", "title", "value", "code", "key", "id"):
+            text = _first_text(value.get(key))
+            if text:
+                return text
+        return json.dumps(value, ensure_ascii=False, separators=(",", ":"), default=str)
+
+    if isinstance(value, bool):
+        return "Да" if value else "Нет"
+
+    if value is None:
+        return ""
+
+    return str(value).strip()
+
+
 def _payload_cell_value(value: Any) -> Any:
-    """Приводит API-значение к поддерживаемому Excel-значению."""
+    """Приводит API-значение к читаемому и поддерживаемому Excel-значению."""
     if value is None:
         return None
 
-    if isinstance(value, (str, int, float, bool)):
-        return value
+    if isinstance(value, bool):
+        return "Да" if value else "Нет"
 
-    return json.dumps(
-        value,
-        ensure_ascii=False,
-        separators=(",", ":"),
-        default=str,
-    )
+    if isinstance(value, list):
+        values = [_format_list_item(item) for item in value]
+        return "; ".join(item for item in values if item) or None
+
+    if isinstance(value, dict):
+        return json.dumps(
+            value,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            default=str,
+        )
+
+    return value
 
 
 def _read_export_rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
@@ -286,7 +507,11 @@ def _style_header(sheet, row_number: int, headers: list[str]) -> None:
         cell = sheet.cell(row=row_number, column=column_number, value=header)
         cell.fill = _HEADER_FILL
         cell.font = _HEADER_FONT
-        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        cell.alignment = Alignment(
+            horizontal="center",
+            vertical="center",
+            wrap_text=True,
+        )
 
     sheet.freeze_panes = f"A{row_number + 1}"
 
@@ -297,27 +522,43 @@ def _apply_widths(sheet, widths: list[int]) -> None:
 
 
 def _apply_api_widths(sheet, start_column: int, api_headers: list[str]) -> None:
-    for offset, header in enumerate(api_headers):
+    for offset, field_path in enumerate(api_headers):
+        header = _API_FIELD_MASK.get(field_path, field_path)
         width = min(max(len(header) + 2, 18), 42)
         sheet.column_dimensions[
             get_column_letter(start_column + offset)
         ].width = width
 
 
+def _technical_api_headers(rows: list[dict[str, Any]]) -> list[str]:
+    available_fields = {
+        field_path
+        for row in rows
+        for field_path in row["api_fields"]
+        if field_path
+    }
+    mapped_fields = [
+        field_path
+        for field_path in _API_FIELD_MASK
+        if field_path in available_fields
+    ]
+    unmapped_fields = sorted(
+        available_fields.difference(_API_FIELD_MASK),
+        key=str.casefold,
+    )
+    return [*mapped_fields, *unmapped_fields]
+
+
 def _append_technical_sheet(workbook: Workbook, rows: list[dict[str, Any]]) -> None:
     sheet = workbook.active
     sheet.title = "Техническая информация"
 
-    api_headers = sorted(
-        {
-            field_path
-            for row in rows
-            for field_path in row["api_fields"]
-            if field_path
-        },
-        key=str.casefold,
-    )
-    headers = [*_TECHNICAL_HEADERS, *api_headers]
+    api_headers = _technical_api_headers(rows)
+    visible_api_headers = [
+        _API_FIELD_MASK.get(field_path, field_path)
+        for field_path in api_headers
+    ]
+    headers = [*_TECHNICAL_HEADERS, *visible_api_headers]
 
     _style_header(sheet, 1, headers)
     sheet.auto_filter.ref = (
@@ -338,8 +579,8 @@ def _append_technical_sheet(workbook: Workbook, rows: list[dict[str, Any]]) -> N
             row["v2_value"] or "—",
         ]
         api_values = [
-            _payload_cell_value(row["api_fields"].get(header))
-            for header in api_headers
+            _payload_cell_value(row["api_fields"].get(field_path))
+            for field_path in api_headers
         ]
         sheet.append([*technical_values, *api_values])
 
