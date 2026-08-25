@@ -313,7 +313,12 @@ def _upsert_assignment(
     return dict(row)
 
 
-def update_card_manager_assignment(conn, *, card) -> dict[str, Any]:
+def update_card_manager_assignment(
+    conn,
+    *,
+    card,
+    notify_admins: bool = True,
+) -> dict[str, Any]:
     """
     Сопоставляет municipality API-карточки с управляющим.
 
@@ -353,7 +358,7 @@ def update_card_manager_assignment(conn, *, card) -> dict[str, Any]:
             match_status=MATCH_STATUS_UNMATCHED,
         )
 
-        if is_new_issue:
+        if is_new_issue and notify_admins:
             message = (
                 f"Инвесткарта РФ: не найдено муниципальное образование "
                 f"для карточки {global_id}."
@@ -432,7 +437,7 @@ def update_card_manager_assignment(conn, *, card) -> dict[str, Any]:
         match_status=match_status,
     )
 
-    if is_new_issue:
+    if is_new_issue and notify_admins:
         message = (
             f"Инвесткарта РФ: {issue_type} сопоставление управляющего "
             f"для карточки {global_id}; муниципалитет: {municipality_raw or 'не указан'}."
