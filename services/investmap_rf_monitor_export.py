@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from io import BytesIO
+import json
 import sqlite3
 from typing import Any
 
@@ -86,6 +87,49 @@ def _payload_value(payload: Any, *keys: str) -> str | None:
             return value
 
     return None
+
+
+def _flatten_payload(
+    value: Any,
+    path: str = "",
+) -> dict[str, Any]:
+    """Возвращает плоское представление JSON; списки остаются одной ячейкой."""
+    if isinstance(value, dict):
+        flattened: dict[str, Any] = {}
+
+        for key in sorted(value, key=str):
+            key_path = f"{path}.{key}" if path else str(key)
+            flattened.update(_flatten_payload(value[key], key_path))
+
+        return flattened
+
+    if isinstance(value, list):
+        return {
+            path: json.dumps(
+                value,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                default=str,
+            )
+        }
+
+    return {path: value}
+
+
+def _payload_cell_value(value: Any) -> Any:
+    """Приводит API-значение к поддерживаемому Excel-значению."""
+    if value is None:
+        return None
+
+    if isinstance(value, (str, int, float, bool)):
+        return value
+
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        default=str,
+    )
 
 
 def _read_export_rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
@@ -180,7 +224,6 @@ def _read_export_rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         payload: Any = None
 
         try:
-            import json
             payload = json.loads(row["payload_json"])
         except (TypeError, ValueError):
             payload = None
@@ -196,6 +239,7 @@ def _read_export_rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
             "title",
             "object_name",
             "site_name",
+            "siteName",
             "investment_site_name",
         )
 
@@ -230,6 +274,7 @@ def _read_export_rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
                 "fetched_at_utc": row["fetched_at_utc"],
                 "filling_level": row["filling_level"],
                 "v2_value": v2_value,
+                "api_fields": _flatten_payload(payload) if payload else {},
             }
         )
 
@@ -251,32 +296,58 @@ def _apply_widths(sheet, widths: list[int]) -> None:
         sheet.column_dimensions[get_column_letter(index)].width = width
 
 
+def _apply_api_widths(sheet, start_column: int, api_headers: list[str]) -> None:
+    for offset, header in enumerate(api_headers):
+        width = min(max(len(header) + 2, 18), 42)
+        sheet.column_dimensions[
+            get_column_letter(start_column + offset)
+        ].width = width
+
+
 def _append_technical_sheet(workbook: Workbook, rows: list[dict[str, Any]]) -> None:
     sheet = workbook.active
     sheet.title = "Техническая информация"
-    _style_header(sheet, 1, _TECHNICAL_HEADERS)
-    sheet.auto_filter.ref = f"A1:J{len(rows) + 1}"
+
+    api_headers = sorted(
+        {
+            field_path
+            for row in rows
+            for field_path in row["api_fields"]
+            if field_path
+        },
+        key=str.casefold,
+    )
+    headers = [*_TECHNICAL_HEADERS, *api_headers]
+
+    _style_header(sheet, 1, headers)
+    sheet.auto_filter.ref = (
+        f"A1:{get_column_letter(len(headers))}{len(rows) + 1}"
+    )
 
     for row in rows:
-        sheet.append(
-            [
-                row["global_id"],
-                row["name"] or "—",
-                row["municipality"] or "—",
-                row["manager_name"] or "—",
-                row["assignment_source"] or "—",
-                row["match_status"] or "Нет данных",
-                row["open_issue"] or "—",
-                row["fetched_at_utc"] or "—",
-                row["filling_level"],
-                row["v2_value"] or "—",
-            ]
-        )
+        technical_values = [
+            row["global_id"],
+            row["name"] or "—",
+            row["municipality"] or "—",
+            row["manager_name"] or "—",
+            row["assignment_source"] or "—",
+            row["match_status"] or "Нет данных",
+            row["open_issue"] or "—",
+            row["fetched_at_utc"] or "—",
+            row["filling_level"],
+            row["v2_value"] or "—",
+        ]
+        api_values = [
+            _payload_cell_value(row["api_fields"].get(header))
+            for header in api_headers
+        ]
+        sheet.append([*technical_values, *api_values])
 
     for cell in sheet["I"][1:]:
         cell.number_format = '0.0"%"'
 
     _apply_widths(sheet, [14, 36, 34, 32, 22, 24, 52, 25, 27, 30])
+    _apply_api_widths(sheet, len(_TECHNICAL_HEADERS) + 1, api_headers)
 
 
 def _append_overview_sheet(workbook: Workbook, rows: list[dict[str, Any]]) -> None:
@@ -353,7 +424,9 @@ def _append_rankings_sheet(workbook: Workbook, rows: list[dict[str, Any]]) -> No
     top_ten = calculated[:10]
 
     below_eighty = [
-        row for row in rows if row["filling_level"] is not None and row["filling_level"] < 80
+        row
+        for row in rows
+        if row["filling_level"] is not None and row["filling_level"] < 80
     ]
     below_eighty.sort(key=lambda row: (float(row["filling_level"]), row["global_id"]))
 
@@ -362,7 +435,11 @@ def _append_rankings_sheet(workbook: Workbook, rows: list[dict[str, Any]]) -> No
     ]
     without_filling.sort(key=lambda row: row["global_id"])
 
-    def append_section(title: str, items: list[dict[str, Any]], start_row: int) -> int:
+    def append_section(
+        title: str,
+        items: list[dict[str, Any]],
+        start_row: int,
+    ) -> int:
         title_cell = sheet.cell(row=start_row, column=1, value=title)
         title_cell.fill = _SECTION_FILL
         title_cell.font = _BOLD_FONT
