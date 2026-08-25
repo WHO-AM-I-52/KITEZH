@@ -9,6 +9,7 @@ from flask import (
     redirect,
     session,
     url_for,
+    send_file,
 )
 from core.activity_log import log_action
 from core.auth_utils import (
@@ -23,6 +24,9 @@ from services.investmap_rf_monitor_queries import (
     get_monitor_registry_cards,
     get_monitor_registry_events,
     get_monitor_summary,
+)
+from services.investmap_rf_monitor_export import (
+    build_monitor_export_xlsx,
 )
 from core.kitezh_logger import err_logger
 from services.investmap_rf_registry import (
@@ -180,6 +184,49 @@ def investmap_rf_monitor():
             except Exception:
                 err_logger.exception(
                     'investmap_rf_monitor close error | user=%s',
+                    user,
+                )
+
+@investmap_bp.route("/investmap/rf-monitor/export.xlsx")
+@login_required
+@permission_required("can_view_investmap")
+def export_investmap_rf_monitor():
+    """Скачивает read-only XLSX-выгрузку мониторинга Инвесткарты РФ."""
+    user = getattr(g, "user", {}).get("login", "unknown")
+    db = None
+
+    try:
+        db = get_db()
+        output = build_monitor_export_xlsx(db)
+
+        return send_file(
+            output,
+            as_attachment=True,
+            download_name="investmap_rf_monitor.xlsx",
+            mimetype=(
+                "application/vnd.openxmlformats-officedocument."
+                "spreadsheetml.sheet"
+            ),
+        )
+    except Exception as exc:
+        err_logger.exception(
+            "export_investmap_rf_monitor error | user=%s | %s",
+            user,
+            exc,
+        )
+        flash(
+            "Не удалось сформировать Excel-выгрузку мониторинга "
+            "Инвесткарты РФ.",
+            "error",
+        )
+        return redirect(url_for("investmap.investmap_rf_monitor"))
+    finally:
+        if db is not None:
+            try:
+                db.close()
+            except Exception:
+                err_logger.exception(
+                    "export_investmap_rf_monitor close error | user=%s",
                     user,
                 )
 
