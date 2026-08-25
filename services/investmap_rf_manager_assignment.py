@@ -14,6 +14,8 @@ MATCH_STATUS_MATCHED = "matched"
 MATCH_STATUS_UNMATCHED = "unmatched"
 MATCH_STATUS_AMBIGUOUS = "ambiguous"
 MATCH_STATUS_MANUAL = "manual"
+KULIBIN_MANAGER_NAME = "Земсков Александр Николаевич"
+KULIBIN_MARKER = "кулибин"
 
 
 def _utc_now() -> str:
@@ -36,7 +38,30 @@ def get_card_municipality(card) -> str:
 
     value = payload.get("municipality")
     return "" if value is None else str(value).strip()
+    
+def is_kulibin_special_economic_zone(card) -> bool:
+    """Проверяет, относится ли API-карточка к ОЭЗ ППТ «Кулибин»."""
+    payload = getattr(card, "payload", None)
 
+    if not isinstance(payload, dict):
+        return False
+
+    for key in (
+        "preferentialBusinessLink",
+        "businessEnvironmentPreferentialLink",
+        "businessEnvironmentPrivilegedLink",
+    ):
+        value = payload.get(key)
+
+        if isinstance(value, dict):
+            name = value.get("name")
+        else:
+            name = value
+
+        if KULIBIN_MARKER in normalize_municipality(name):
+            return True
+
+    return False
 
 def _get_existing_assignment(conn, global_id: int):
     return conn.execute(
@@ -334,6 +359,25 @@ def update_card_manager_assignment(
         return {
             "status": MATCH_STATUS_MANUAL,
             "assignment": dict(existing),
+            "issue": None,
+            "notification_created": False,
+        }
+
+    if is_kulibin_special_economic_zone(card):
+        _resolve_open_issues(conn, global_id=global_id)
+        assignment = _upsert_assignment(
+            conn,
+            global_id=global_id,
+            municipality_raw=municipality_raw,
+            municipality_normalized=municipality_normalized,
+            manager_name=KULIBIN_MANAGER_NAME,
+            rule_id=None,
+            assignment_source="auto",
+            match_status=MATCH_STATUS_MATCHED,
+        )
+        return {
+            "status": MATCH_STATUS_MATCHED,
+            "assignment": assignment,
             "issue": None,
             "notification_created": False,
         }
