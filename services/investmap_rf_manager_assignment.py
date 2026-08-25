@@ -38,7 +38,8 @@ def get_card_municipality(card) -> str:
 
     value = payload.get("municipality")
     return "" if value is None else str(value).strip()
-    
+
+
 def is_kulibin_special_economic_zone(card) -> bool:
     """Проверяет, относится ли API-карточка к ОЭЗ ППТ «Кулибин»."""
     payload = getattr(card, "payload", None)
@@ -62,6 +63,7 @@ def is_kulibin_special_economic_zone(card) -> bool:
             return True
 
     return False
+
 
 def _get_existing_assignment(conn, global_id: int):
     return conn.execute(
