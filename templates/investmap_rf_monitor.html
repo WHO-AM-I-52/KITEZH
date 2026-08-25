@@ -156,6 +156,8 @@
                                 <th>Предыдущее</th>
                                 <th>Динамика</th>
                                 <th>Оценка v2</th>
+                                <th>Территориальный управляющий</th>
+                                <th>Сопоставление</th>
                                 <th>Последний снимок API</th>
                                 <th>Изменения</th>
                             </tr>
@@ -207,6 +209,51 @@
                                         <span class="badge text-bg-danger">Ошибка</span>
                                     {% else %}
                                         —
+                                    {% endif %}
+                                </td>
+                                                                <td>
+                                    {% if card.manager_name %}
+                                        <div class="fw-semibold">
+                                            {{ card.manager_name }}
+                                        </div>
+                                        {% if card.manager_municipality_raw %}
+                                        <div class="small text-muted">
+                                            {{ card.manager_municipality_raw }}
+                                        </div>
+                                        {% endif %}
+                                    {% else %}
+                                        <span class="text-muted">—</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if card.match_status == 'matched' %}
+                                        <span class="badge text-bg-success">
+                                            Сопоставлено
+                                        </span>
+                                    {% elif card.match_status == 'manual' %}
+                                        <span class="badge text-bg-primary">
+                                            Назначено вручную
+                                        </span>
+                                    {% elif card.match_status == 'unmatched' %}
+                                        <span class="badge text-bg-warning">
+                                            Не найдено
+                                        </span>
+                                    {% elif card.match_status == 'ambiguous' %}
+                                        <span class="badge text-bg-danger">
+                                            Неоднозначно
+                                        </span>
+                                    {% else %}
+                                        <span class="text-muted">Нет данных</span>
+                                    {% endif %}
+
+                                    {% if card.open_issue_type == 'unmatched' %}
+                                    <div class="small text-warning mt-1">
+                                        Открыта проблема: не найдено правило
+                                    </div>
+                                    {% elif card.open_issue_type == 'ambiguous' %}
+                                    <div class="small text-danger mt-1">
+                                        Открыта проблема: несколько правил
+                                    </div>
                                     {% endif %}
                                 </td>
                                 <td>
