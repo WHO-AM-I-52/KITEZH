@@ -766,7 +766,10 @@ def _migrate_investmap_rf_manager_assignment_tables(conn):
         );
 
         CREATE INDEX IF NOT EXISTS idx_investmap_rf_manager_rules_active
-        ON investmap_rf_municipality_manager_rules(is_active, municipality_normalized);
+        ON investmap_rf_municipality_manager_rules(
+            is_active,
+            municipality_normalized
+        );
 
         CREATE TABLE IF NOT EXISTS investmap_rf_card_manager_assignments (
             global_id INTEGER PRIMARY KEY,
@@ -778,7 +781,8 @@ def _migrate_investmap_rf_manager_assignment_tables(conn):
             match_status TEXT NOT NULL,
             assigned_by_user_id INTEGER,
             updated_at_utc TEXT NOT NULL,
-            FOREIGN KEY(rule_id) REFERENCES investmap_rf_municipality_manager_rules(id),
+            FOREIGN KEY(rule_id)
+                REFERENCES investmap_rf_municipality_manager_rules(id),
             FOREIGN KEY(assigned_by_user_id) REFERENCES users(id)
         );
 
@@ -804,26 +808,27 @@ def _migrate_investmap_rf_manager_assignment_tables(conn):
         );
 
         CREATE INDEX IF NOT EXISTS idx_investmap_rf_manager_match_issues_open
-        ON investmap_rf_manager_match_issues(is_resolved, issue_type, global_id);
+        ON investmap_rf_manager_match_issues(
+            is_resolved,
+            issue_type,
+            global_id
+        );
         """
     )
-        issue_indexes = conn.execute(
-        """
-        SELECT name
-        FROM sqlite_master
-        WHERE type = 'index'
-          AND tbl_name = 'investmap_rf_manager_match_issues'
-          AND sql LIKE '%is_resolved%'
-          AND sql LIKE '%UNIQUE%'
-        """
-    ).fetchall()
 
-    has_open_issue_index = any(
-        row["name"] == "idx_investmap_rf_manager_match_issues_open_unique"
-        for row in issue_indexes
-    )
+    issue_index_names = {
+        row["name"]
+        for row in conn.execute(
+            """
+            SELECT name
+            FROM sqlite_master
+            WHERE type = 'index'
+              AND tbl_name = 'investmap_rf_manager_match_issues'
+            """
+        ).fetchall()
+    }
 
-    if not has_open_issue_index:
+    if "idx_investmap_rf_manager_match_issues_open_unique" not in issue_index_names:
         conn.executescript(
             """
             CREATE TABLE investmap_rf_manager_match_issues_new (
@@ -889,6 +894,7 @@ def _migrate_investmap_rf_manager_assignment_tables(conn):
             WHERE is_resolved = 0;
             """
         )
+
     conn.executemany(
         """
         INSERT INTO investmap_rf_municipality_manager_rules (
@@ -910,7 +916,7 @@ def _migrate_investmap_rf_manager_assignment_tables(conn):
         """,
         _INVESTMAP_RF_MUNICIPALITY_MANAGER_RULES,
     )
-
+    
 def _migrate_form_sections(conn):
     """feat #95 — системная таблица form_sections и расширение subject_types/requests."""
 
