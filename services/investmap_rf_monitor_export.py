@@ -244,9 +244,6 @@ def _style_header(sheet, row_number: int, headers: list[str]) -> None:
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
     sheet.freeze_panes = f"A{row_number + 1}"
-    sheet.auto_filter.ref = (
-        f"A{row_number}:{get_column_letter(len(headers))}{row_number}"
-    )
 
 
 def _apply_widths(sheet, widths: list[int]) -> None:
@@ -258,6 +255,7 @@ def _append_technical_sheet(workbook: Workbook, rows: list[dict[str, Any]]) -> N
     sheet = workbook.active
     sheet.title = "Техническая информация"
     _style_header(sheet, 1, _TECHNICAL_HEADERS)
+    sheet.auto_filter.ref = f"A1:J{len(rows) + 1}"
 
     for row in rows:
         sheet.append(
@@ -284,6 +282,7 @@ def _append_technical_sheet(workbook: Workbook, rows: list[dict[str, Any]]) -> N
 def _append_overview_sheet(workbook: Workbook, rows: list[dict[str, Any]]) -> None:
     sheet = workbook.create_sheet("Общая информация")
     _style_header(sheet, 1, _OVERVIEW_HEADERS)
+    sheet.auto_filter.ref = f"A1:E{len(rows) + 1}"
 
     for row in rows:
         sheet.append(
