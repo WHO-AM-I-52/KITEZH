@@ -72,11 +72,10 @@ def backfill_kulibin_assignments(
 ) -> dict[str, int]:
     """Назначает Земскова для последних сохранённых snapshot ОЭЗ «Кулибин»."""
     counters = Counter()
-    cards = list(_latest_kulibin_cards(conn))
-    counters["total"] = len(cards)
 
     try:
-        for card in cards:
+        for card in _latest_kulibin_cards(conn):
+            counters["total"] += 1
             result = update_card_manager_assignment(
                 conn,
                 card=card,
