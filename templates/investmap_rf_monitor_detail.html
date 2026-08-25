@@ -62,6 +62,121 @@
             </div>
         </div>
     </div>
+    <div class="row g-3 mb-4">
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">
+                    Назначение территориального управляющего
+                </div>
+                <div class="card-body">
+                    {% if monitor_card.assignment %}
+                        <dl class="row mb-0">
+                            <dt class="col-sm-5">Муниципалитет</dt>
+                            <dd class="col-sm-7">
+                                {{ monitor_card.assignment.municipality_raw or '—' }}
+                            </dd>
+
+                            <dt class="col-sm-5">Управляющий</dt>
+                            <dd class="col-sm-7">
+                                {{ monitor_card.assignment.manager_name or '—' }}
+                            </dd>
+
+                            <dt class="col-sm-5">Статус</dt>
+                            <dd class="col-sm-7">
+                                {% if monitor_card.assignment.match_status == 'matched' %}
+                                    <span class="badge text-bg-success">
+                                        Сопоставлено
+                                    </span>
+                                {% elif monitor_card.assignment.match_status == 'manual' %}
+                                    <span class="badge text-bg-primary">
+                                        Назначено вручную
+                                    </span>
+                                {% elif monitor_card.assignment.match_status == 'unmatched' %}
+                                    <span class="badge text-bg-warning">
+                                        Не найдено
+                                    </span>
+                                {% elif monitor_card.assignment.match_status == 'ambiguous' %}
+                                    <span class="badge text-bg-danger">
+                                        Неоднозначно
+                                    </span>
+                                {% else %}
+                                    <span class="text-muted">Нет данных</span>
+                                {% endif %}
+                            </dd>
+
+                            <dt class="col-sm-5">Источник</dt>
+                            <dd class="col-sm-7">
+                                {% if monitor_card.assignment.assignment_source == 'manual' %}
+                                    Назначено вручную
+                                {% else %}
+                                    Автоматическое сопоставление
+                                {% endif %}
+                            </dd>
+
+                            <dt class="col-sm-5">Обновлено</dt>
+                            <dd class="col-sm-7">
+                                <code>{{ monitor_card.assignment.updated_at_utc }}</code>
+                            </dd>
+                        </dl>
+                    {% else %}
+                        <p class="mb-0 text-muted">
+                            Для этой карточки пока нет результата сопоставления
+                            территориального управляющего.
+                        </p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">
+                    Открытые проблемы сопоставления
+                </div>
+                <div class="card-body">
+                    {% if monitor_card.open_issues %}
+                        {% for issue in monitor_card.open_issues %}
+                        <div class="{% if not loop.last %}mb-3 pb-3 border-bottom{% endif %}">
+                            <div class="mb-1">
+                                {% if issue.issue_type == 'unmatched' %}
+                                    <span class="badge text-bg-warning">
+                                        Не найдено правило
+                                    </span>
+                                {% elif issue.issue_type == 'ambiguous' %}
+                                    <span class="badge text-bg-danger">
+                                        Найдено несколько правил
+                                    </span>
+                                {% else %}
+                                    <span class="badge text-bg-secondary">
+                                        {{ issue.issue_type }}
+                                    </span>
+                                {% endif %}
+                            </div>
+
+                            <div class="small text-muted mb-1">
+                                Муниципалитет:
+                                {{ issue.municipality_raw or 'не указан' }}
+                            </div>
+
+                            <div class="text-break">
+                                {{ issue.details or 'Описание проблемы отсутствует.' }}
+                            </div>
+
+                            <div class="small text-muted mt-2">
+                                Обновлено:
+                                <code>{{ issue.updated_at_utc }}</code>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <p class="mb-0 text-muted">
+                            Открытых проблем сопоставления нет.
+                        </p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
 
     <div class="card mb-4">
         <div class="card-header">
