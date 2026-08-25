@@ -361,7 +361,7 @@ def update_card_manager_assignment(conn, *, card) -> dict[str, Any]:
             _notify_admins(
                 conn,
                 message=message,
-                link=f"/investmap-rf-monitor?global_id={global_id}",
+                
             )
             _log_system_action(
                 conn,
@@ -440,7 +440,7 @@ def update_card_manager_assignment(conn, *, card) -> dict[str, Any]:
         _notify_admins(
             conn,
             message=message,
-            link=f"/investmap-rf-monitor?global_id={global_id}",
+            link=f"/investmap/rf-monitor?global_id={global_id}",
         )
         _log_system_action(
             conn,
