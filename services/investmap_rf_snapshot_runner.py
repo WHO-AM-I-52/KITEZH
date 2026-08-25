@@ -9,6 +9,7 @@ from typing import Callable, Sequence
 
 from db import get_db
 from services.investmap_rf_client import InvestmapRfClientError, fetch_card
+from services.investmap_rf_manager_assignment import update_card_manager_assignment
 from services.investmap_rf_snapshot_store import (
     SnapshotSaveResult,
     save_card_snapshot,
@@ -31,6 +32,7 @@ def collect_card_snapshot(
     try:
         card = fetch_card_fn(global_id)
         result = save_card_snapshot(conn, card)
+        update_card_manager_assignment(conn, card=card)
         conn.commit()
         return result
     except Exception:
