@@ -800,7 +800,6 @@ def _migrate_investmap_rf_manager_assignment_tables(conn):
             resolved_at_utc TEXT,
             created_at_utc TEXT NOT NULL,
             updated_at_utc TEXT NOT NULL,
-            UNIQUE(global_id, municipality_normalized, issue_type, is_resolved),
             FOREIGN KEY(resolved_by_user_id) REFERENCES users(id)
         );
 
@@ -808,7 +807,88 @@ def _migrate_investmap_rf_manager_assignment_tables(conn):
         ON investmap_rf_manager_match_issues(is_resolved, issue_type, global_id);
         """
     )
+        issue_indexes = conn.execute(
+        """
+        SELECT name
+        FROM sqlite_master
+        WHERE type = 'index'
+          AND tbl_name = 'investmap_rf_manager_match_issues'
+          AND sql LIKE '%is_resolved%'
+          AND sql LIKE '%UNIQUE%'
+        """
+    ).fetchall()
 
+    has_open_issue_index = any(
+        row["name"] == "idx_investmap_rf_manager_match_issues_open_unique"
+        for row in issue_indexes
+    )
+
+    if not has_open_issue_index:
+        conn.executescript(
+            """
+            CREATE TABLE investmap_rf_manager_match_issues_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                global_id INTEGER NOT NULL,
+                municipality_raw TEXT,
+                municipality_normalized TEXT,
+                issue_type TEXT NOT NULL,
+                details TEXT,
+                is_resolved INTEGER NOT NULL DEFAULT 0,
+                resolved_by_user_id INTEGER,
+                resolved_at_utc TEXT,
+                created_at_utc TEXT NOT NULL,
+                updated_at_utc TEXT NOT NULL,
+                FOREIGN KEY(resolved_by_user_id) REFERENCES users(id)
+            );
+
+            INSERT INTO investmap_rf_manager_match_issues_new (
+                id,
+                global_id,
+                municipality_raw,
+                municipality_normalized,
+                issue_type,
+                details,
+                is_resolved,
+                resolved_by_user_id,
+                resolved_at_utc,
+                created_at_utc,
+                updated_at_utc
+            )
+            SELECT
+                id,
+                global_id,
+                municipality_raw,
+                municipality_normalized,
+                issue_type,
+                details,
+                is_resolved,
+                resolved_by_user_id,
+                resolved_at_utc,
+                created_at_utc,
+                updated_at_utc
+            FROM investmap_rf_manager_match_issues;
+
+            DROP TABLE investmap_rf_manager_match_issues;
+
+            ALTER TABLE investmap_rf_manager_match_issues_new
+            RENAME TO investmap_rf_manager_match_issues;
+
+            CREATE INDEX idx_investmap_rf_manager_match_issues_open
+            ON investmap_rf_manager_match_issues(
+                is_resolved,
+                issue_type,
+                global_id
+            );
+
+            CREATE UNIQUE INDEX idx_investmap_rf_manager_match_issues_open_unique
+            ON investmap_rf_manager_match_issues(
+                global_id,
+                municipality_normalized,
+                issue_type
+            )
+            WHERE is_resolved = 0;
+            """
+        )
     conn.executemany(
         """
         INSERT INTO investmap_rf_municipality_manager_rules (
