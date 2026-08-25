@@ -87,7 +87,7 @@ def backfill_manager_assignments(
             counters[_STATUS_LABELS.get(status, status)] += 1
 
             if result["notification_created"]:
-                counters["notifications_created"] += 1
+                counters["matching_issues_created"] += 1
 
         if dry_run:
             conn.rollback()
@@ -105,7 +105,7 @@ def backfill_manager_assignments(
         "unmatched": counters[MATCH_STATUS_UNMATCHED],
         "ambiguous": counters[MATCH_STATUS_AMBIGUOUS],
         "manual": counters[MATCH_STATUS_MANUAL],
-        "notifications_created": counters["notifications_created"],
+        "matching_issues_created": counters["matching_issues_created"],
         "dry_run": int(dry_run),
     }
 
@@ -148,7 +148,7 @@ def main() -> int:
     print(f"Не найдено: {result['unmatched']}")
     print(f"Неоднозначно: {result['ambiguous']}")
     print(f"Ручных назначений сохранено: {result['manual']}")
-    print(f"Новых уведомлений: {result['notifications_created']}")
+    print(f"Новых проблем сопоставления: {result['matching_issues_created']}")
     return 0
 
 
