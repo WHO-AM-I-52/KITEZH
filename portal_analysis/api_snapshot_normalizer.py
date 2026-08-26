@@ -90,24 +90,25 @@ def _append_contact_parts(payload: dict[str, Any]) -> str:
         text for text in (_as_text(value) for value in values) if text
     )
 
-
 def _add_resource_fields(
     result: dict[str, Any],
     resource: dict[str, Any],
     *,
     title: str,
-    unit: str,
     capacity_title: str,
+    tariff_unit: str,
+    capacity_unit: str,
 ) -> None:
+    """Добавляет canonical-поля одного ресурсного блока API."""
     _set_if_present(result, f"{title} — Наличие", resource.get("availability"))
     _set_if_present(
         result,
-        f"{title} — Тариф на потребление, руб./{unit}",
+        f"{title} — Тариф на потребление, руб./{tariff_unit}",
         resource.get("tariffConsumption"),
     )
     _set_if_present(
         result,
-        f"{title} — Тариф на транспортировку, руб./{unit}",
+        f"{title} — Тариф на транспортировку, руб./{tariff_unit}",
         resource.get("tariffTransportation"),
     )
     _set_if_present(
@@ -120,17 +121,23 @@ def _add_resource_fields(
     )
     _set_if_present(
         result,
-        f"Объекты {capacity_title} — Максимально допустимая мощность, {unit}/ч",
+        (
+            f"Объекты {capacity_title} — "
+            f"Максимально допустимая мощность, {capacity_unit}"
+        ),
         resource.get("availableCapacity"),
     )
     _set_if_present(
         result,
-        f"Объекты {capacity_title} — Свободная мощность, {unit}/ч",
+        (
+            f"Объекты {capacity_title} — "
+            f"Свободная мощность, {capacity_unit}"
+        ),
         resource.get("freePower"),
     )
     _set_if_present(
         result,
-        f"Сети {capacity_title} — Пропускная способность, {unit}/ч",
+        f"Сети {capacity_title} — Пропускная способность, {capacity_unit}",
         resource.get("bandwidth"),
     )
     _set_if_present(
@@ -138,8 +145,7 @@ def _add_resource_fields(
         f"Объекты {capacity_title} — Иные характеристики",
         resource.get("otherFreePower"),
     )
-
-
+    
 def api_snapshot_to_portal_row(
     payload_json: str | dict[str, Any] | None,
 ) -> dict[str, Any]:
@@ -215,21 +221,58 @@ def api_snapshot_to_portal_row(
         result["Геопривязка"] = "Заполнено по координатам API"
 
     resource_specs = (
-        ("waterSupply", "Водоснабжение", "куб. м", "водоснабжения"),
-        ("waterDisposal", "Водоотведение", "куб. м", "водоотведения"),
-        ("gasSupply", "Газоснабжение", "куб. м", "газоснабжения"),
-        ("powerSupply", "Электроснабжение", "МВт", "электроснабжения"),
-        ("heatSupply", "Теплоснабжение", "Гкал", "теплоснабжения"),
+        (
+            "waterSupply",
+            "Водоснабжение",
+            "водоснабжения",
+            "куб. м",
+            "куб. м/ч",
+        ),
+        (
+            "waterDisposal",
+            "Водоотведение",
+            "водоотведения",
+            "куб. м",
+            "куб. м/ч",
+        ),
+        (
+            "gasSupply",
+            "Газоснабжение",
+            "газоснабжения",
+            "куб. м",
+            "куб. м/ч",
+        ),
+        (
+            "powerSupply",
+            "Электроснабжение",
+            "электроснабжения",
+            "кВт·ч",
+            "МВт",
+        ),
+        (
+            "heatSupply",
+            "Теплоснабжение",
+            "теплоснабжения",
+            "Гкал",
+            "Гкал/ч",
+        ),
     )
-    for source_field, title, unit, capacity_title in resource_specs:
+    for (
+        source_field,
+        title,
+        capacity_title,
+        tariff_unit,
+        capacity_unit,
+    ) in resource_specs:
         resource = payload.get(source_field)
         if isinstance(resource, dict):
             _add_resource_fields(
                 result,
                 resource,
                 title=title,
-                unit=unit,
                 capacity_title=capacity_title,
+                tariff_unit=tariff_unit,
+                capacity_unit=capacity_unit,
             )
 
     return result
