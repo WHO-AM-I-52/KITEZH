@@ -674,6 +674,30 @@
     }
 
     lines.push('Score: ' + score + '%' + (cat ? ' (' + cat + ')' : ''));
+        if (typeof d.api_filling_level === 'number') {
+      lines.push(
+        'Заполняемость на Инвесткарте: ' +
+        d.api_filling_level + '%'
+      );
+
+      if (d.api_fetched_at_utc) {
+        lines.push('Дата API-снимка: ' + d.api_fetched_at_utc);
+      }
+
+      if (typeof d.api_score_delta === 'number') {
+        var deltaPrefix = d.api_score_delta > 0 ? '+' : '';
+        lines.push(
+          'Расхождение V2 и карты: ' +
+          deltaPrefix + d.api_score_delta + ' п.п.'
+        );
+      }
+
+      lines.push(
+        'Цель рекомендаций: определить поля для повышения ' +
+        'показателя Инвесткарты с ' +
+        d.api_filling_level + '% до 100%.'
+      );
+    }
     lines.push('Заполнено полей: ' + filled + ' из ' + total);
     lines.push('Незаполненных (учитывается в счёте): ' + missing.length);
 
