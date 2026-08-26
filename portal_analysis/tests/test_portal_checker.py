@@ -12,7 +12,30 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from portal_analysis.portal_checker import _is_empty, _strip_html, calc_portal_score
+from portal_analysis.portal_checker import (
+    _classify_value,
+    _is_empty,
+    _strip_html,
+    calc_portal_score,
+)
 
+def test_classify_value_missing():
+    assert _classify_value('Не применимо.') == 'missing'
+
+
+def test_classify_value_placeholder():
+    assert _classify_value('Требуется получение ТУ') == 'placeholder'
+
+
+def test_classify_value_simple_connection_is_placeholder():
+    assert _classify_value('Возможно подключение') == 'placeholder'
+
+
+def test_classify_value_detailed_connection_is_declared():
+    assert _classify_value(
+        'Возможно подключение от ТП 1212 6 кВ '
+        'на расстоянии 600 метров от площадки.'
+    ) == 'declared'
 
 # ── _strip_html ──────────────────────────────────────────────────────────────
 
