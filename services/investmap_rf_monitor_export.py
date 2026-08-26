@@ -418,9 +418,12 @@ def _read_export_rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
                 ON latest_snapshot_ids.snapshot_id = snapshots.id
         ),
         latest_v2_snapshot_ids AS (
-            SELECT site_id, MAX(run_id) AS run_id
-            FROM portal_analysis_site_snapshots
-            GROUP BY site_id
+            SELECT snapshots.site_id, MAX(snapshots.run_id) AS run_id
+            FROM portal_analysis_site_snapshots AS snapshots
+            INNER JOIN portal_analysis_runs AS runs
+                ON runs.id = snapshots.run_id
+            WHERE COALESCE(runs.source_label, '') != 'manual_reanalyze_latest_snapshots'
+            GROUP BY snapshots.site_id
         ),
         latest_v2 AS (
             SELECT
