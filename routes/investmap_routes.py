@@ -75,6 +75,25 @@ def _history_item_to_api_result(item: dict) -> dict:
         api_result = dict(canonical_result)
         api_result["is_included"] = item.get("included") is True
         api_result["analysis_status"] = analysis_status
+
+        source_row = item.get("source_row")
+        if isinstance(source_row, dict):
+            api_snapshot_id = source_row.get("_v2_api_snapshot_id")
+            api_fetched_at_utc = source_row.get("_v2_api_fetched_at_utc")
+            api_filling_level = source_row.get("_v2_api_filling_level")
+
+            if api_snapshot_id is not None:
+                api_result["api_snapshot_id"] = api_snapshot_id
+            if api_fetched_at_utc is not None:
+                api_result["api_fetched_at_utc"] = api_fetched_at_utc
+            if api_filling_level is not None:
+                api_result["api_filling_level"] = api_filling_level
+                api_result["api_score_delta"] = (
+                    api_result.get("score") - api_filling_level
+                    if api_result.get("score") is not None
+                    else None
+                )
+
         return api_result
 
     return {
