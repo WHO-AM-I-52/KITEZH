@@ -18,15 +18,21 @@
     from portal_analysis.portal_checker import calc_portal_score_v2
     result = calc_portal_score_v2(row_dict, db)
     # result == {
-    #   'score': 85,
+    #   'score': 81,
     #   'filled': 17,
+    #   'effective_filled': 16.25,
     #   'total': 20,
     #   'missing': [{'field': 'Геопривязка', 'hint': 'Укажите координаты...'}, ...],
-    #   'partial': [{'field': 'Водоснабжение — Наличие', 'reason': '...'}, ...],
-    #   'skipped': ['Поле Z']
+    #   'partial': [{
+    #       'field': 'Водоснабжение — Наличие',
+    #       'weight': 0.25,
+    #       'reason': '...',
+    #   }, ...],
+    #   'skipped': ['Поле Z'],
     # }
     # Та же логика что calc_portal_score (PORTAL_FIELDS + CONDITIONAL_SKIP),
-    # но missing[] обогащён подсказками hint из таблицы investmap_rules.
+    # missing[] обогащён подсказками hint из investmap_rules, а partial[]
+    # содержит шаблонные значения с частичным весом 0.25.
 """
 
 import re
@@ -558,17 +564,19 @@ def calc_portal_score_v2(row: dict, db) -> dict:
 
     Returns:
         {
-            'score':   int 0..100,
-            'filled':  int,
-            'total':   int,          # total = filled + missing (skipped не считаются)
+            'score':             int 0..100,
+            'filled':            int,
+            'effective_filled':  float,  # взвешенная сумма: declared=1, placeholder=0.25
+            'total':             int,
             'missing': list[dict],   # [{'field': str, 'hint': str|None}, ...]
             'partial': list[dict],   # шаблонные значения с причиной уточнения
             'skipped': list[str],    # поля, пропущенные по CONDITIONAL_SKIP
         }
 
     Примечание:
-        partial пока не влияет на score. Это диагностический слой для
-        следующего этапа калибровки без изменения действующей формулы.
+    Примечание:
+        partial учитывается в score с весом 0,25. Поля со статусом
+        declared учитываются с весом 1, а missing — с весом 0.
     """
     # ── Запрос к investmap_fields: только для резолюции tech_name → display_name
     # (нужно потому что source_field в investmap_rules хранится как tech_name)
@@ -618,6 +626,7 @@ def calc_portal_score_v2(row: dict, db) -> dict:
     missing = []
     partial = []
     skipped = []
+    effective_filled = 0.0
 
     for field in PORTAL_FIELDS:
         field_lower = field.strip().lower()
@@ -634,6 +643,7 @@ def calc_portal_score_v2(row: dict, db) -> dict:
         filled.append(field)
 
         if quality == 'placeholder':
+            effective_filled += 0.25
             partial.append({
                 'field': field,
                 'hint': _resolve_hint(
@@ -642,19 +652,24 @@ def calc_portal_score_v2(row: dict, db) -> dict:
                     normalized,
                     tech_to_display,
                 ),
+                'weight': 0.25,
                 'reason': (
                     'Указано шаблонное или предварительное значение; '
-                    'для полной детализации нужны конкретные параметры.'
+                    'в расчёте заполняемости учитывается с весом 0,25. '
+                    'Для полного балла нужны конкретные параметры.'
                 ),
             })
+        else:
+            effective_filled += 1.0
 
     total = len(filled) + len(missing)
-    score = round(100 * len(filled) / total) if total > 0 else 0
+    score = round(100 * effective_filled / total) if total > 0 else 0
 
     return {
-        'score':   score,
-        'filled':  len(filled),
-        'total':   total,
+        'score': score,
+        'filled': len(filled),
+        'effective_filled': effective_filled,
+        'total': total,
         'missing': missing,
         'partial': partial,
         'skipped': skipped,
