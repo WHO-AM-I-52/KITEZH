@@ -143,6 +143,7 @@ def run_batch_history(
                 {
                     "row_index": row_index,
                     "site_id": "",
+                    "source_row": row,
                     "included": None,
                     "snapshot_saved": False,
                     "is_new": False,
@@ -171,6 +172,7 @@ def run_batch_history(
                 {
                     "row_index": row_index,
                     "site_id": site_id,
+                    "source_row": row,
                     "included": None,
                     "snapshot_saved": False,
                     "is_new": False,
@@ -229,6 +231,7 @@ def run_batch_history(
                 {
                     "row_index": row_index,
                     "site_id": site_id,
+                    "source_row": row,
                     "included": included,
                     "snapshot_saved": True,
                     "is_new": previous is None,
@@ -285,6 +288,7 @@ def run_batch_history(
                 {
                     "row_index": row_index,
                     "site_id": site_id,
+                    "source_row": row,
                     "included": included,
                     "snapshot_saved": _snapshot_exists(conn, run_id, site_id),
                     "is_new": False,
