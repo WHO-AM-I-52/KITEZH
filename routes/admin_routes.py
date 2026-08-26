@@ -42,6 +42,7 @@ import atexit
 import os
 import tempfile
 import zipfile
+import json
 from datetime import datetime
 
 from flask import (
@@ -618,6 +619,120 @@ def investmap_rf_sync_create():
 
     return redirect(url_for("admin.investmap_rf_sync"))
 
+@admin_bp.route(
+    "/admin/investmap-rf-sync/reanalyze-v2",
+    methods=["POST"],
+)
+@login_required
+@admin_required
+def investmap_rf_sync_reanalyze_v2():
+    """
+    Повторно рассчитывает V2 для последних сохранённых snapshots.
+
+    API Инвесткарты РФ не вызывается, новые snapshots не создаются.
+    """
+    from portal_analysis.batch_analysis import run_batch_history
+    from portal_analysis.export_normalizer import normalize_export_row
+    from portal_analysis.portal_checker import (
+        V2_FORMULA_VERSION,
+        calc_portal_score_v2,
+    )
+
+    conn = get_db()
+
+    try:
+        rows = conn.execute(
+            """
+            WITH latest_snapshot_ids AS (
+                SELECT
+                    global_id,
+                    MAX(id) AS snapshot_id
+                FROM investmap_rf_card_snapshots
+                GROUP BY global_id
+            )
+            SELECT
+                snapshots.global_id,
+                snapshots.payload_json
+            FROM investmap_rf_card_snapshots AS snapshots
+            INNER JOIN latest_snapshot_ids
+                ON latest_snapshot_ids.snapshot_id = snapshots.id
+            INNER JOIN investmap_rf_monitored_cards AS cards
+                ON cards.global_id = snapshots.global_id
+            WHERE cards.is_active = 1
+            ORDER BY snapshots.global_id
+            """
+        ).fetchall()
+
+        source_rows = []
+
+        for row in rows:
+            try:
+                payload = json.loads(row["payload_json"])
+            except (TypeError, json.JSONDecodeError) as exc:
+                raise ValueError(
+                    f"Некорректный payload snapshot площадки {row['global_id']}."
+                ) from exc
+
+            if not isinstance(payload, dict):
+                raise ValueError(
+                    f"Payload snapshot площадки {row['global_id']} "
+                    "должен быть объектом."
+                )
+
+            payload["global_id"] = row["global_id"]
+            source_rows.append(normalize_export_row(payload))
+
+        if not source_rows:
+            raise ValueError(
+                "Нет активных карточек со snapshot для повторного анализа V2."
+            )
+
+        batch_result = run_batch_history(
+            conn=conn,
+            source_rows=source_rows,
+            score_fn=lambda row: calc_portal_score_v2(row, conn),
+            formula_version=V2_FORMULA_VERSION,
+            initiated_by=session.get("user_id"),
+            source_label="manual_reanalyze_latest_snapshots",
+        )
+
+        log_action(
+            conn,
+            session.get("user_id"),
+            "investmap_rf_v2_reanalyze",
+            detail=(
+                f"run_id={batch_result['run_id']}; "
+                f"total={batch_result['total_sites']}; "
+                f"active={batch_result['active_sites']}; "
+                f"excluded={batch_result['excluded_sites']}; "
+                f"errors={batch_result['error_sites']}; "
+                f"formula={V2_FORMULA_VERSION}"
+            ),
+        )
+
+        conn.commit()
+
+        flash(
+            "V2 пересчитан по последним snapshot: "
+            f"всего — {batch_result['total_sites']}, "
+            f"учтено — {batch_result['active_sites']}, "
+            f"исключено — {batch_result['excluded_sites']}, "
+            f"ошибок — {batch_result['error_sites']}.",
+            "success",
+        )
+    except ValueError as exc:
+        conn.rollback()
+        flash(str(exc), "error")
+    except Exception:
+        conn.rollback()
+        current_app.logger.exception(
+            "Ошибка ручного пересчёта V2 для мониторинга Инвесткарты РФ."
+        )
+        flash("Не удалось выполнить повторный анализ V2.", "error")
+    finally:
+        conn.close()
+
+    return redirect(url_for("admin.investmap_rf_sync"))
 
 @admin_bp.route(
     "/admin/investmap-rf-sync/<int:plan_id>/action",
