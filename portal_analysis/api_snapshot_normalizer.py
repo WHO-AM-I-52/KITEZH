@@ -172,6 +172,15 @@ def api_snapshot_to_portal_row(
         "nameOwner": "Наименование собственника / администратора объекта",
         "costObject": "Стоимость объекта, руб. (покупки или месячной аренды)",
         "costPerSqM": "Стоимость, руб./год за кв. м",
+        "areaPropertyComplex": (
+            "Свободная площадь здания, сооружения, помещения, кв. м"
+        ),
+        "cadastralPropertyComplexNumber": (
+            "Кадастровый номер здания, сооружения, помещения"
+        ),
+        "characteristicsCapitalBuildings": (
+            "Технические характеристики здания, сооружения, помещения"
+        ),
         "procedureDeterminingCostStr": (
             "Порядок определения стоимости (для всех форм сделки)"
         ),
@@ -183,6 +192,12 @@ def api_snapshot_to_portal_row(
     }
     for source_field, target_field in direct_fields.items():
         _set_if_present(result, target_field, payload.get(source_field))
+
+    _set_if_present(
+        result,
+        "Регион",
+        _list_to_text(payload.get("regions")),
+    )
 
     _set_if_present(
         result,
@@ -230,6 +245,14 @@ def api_snapshot_to_portal_row(
     ):
         result["Геопривязка"] = "Заполнено по координатам API"
 
+    msw_removal = payload.get("mswRemoval")
+    if isinstance(msw_removal, dict):
+        _set_if_present(
+            result,
+            "Вывоз ТКО — Наличие",
+            msw_removal.get("availability"),
+        )
+    
     resource_specs = (
         (
             "waterSupply",
@@ -285,8 +308,18 @@ def api_snapshot_to_portal_row(
                 capacity_unit=capacity_unit,
             )
 
-    return result
+    if _is_blank(
+        result.get(
+            "Технические характеристики здания, сооружения, помещения"
+        )
+    ):
+        _set_if_present(
+            result,
+            "Технические характеристики здания, сооружения, помещения",
+            payload.get("buildingSpecifications"),
+        )
 
+    return result
 
 def merge_missing_portal_values(
     base_row: dict[str, Any],
