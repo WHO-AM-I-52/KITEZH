@@ -1,3 +1,4 @@
+import json
 from flask import (
     Blueprint,
     current_app,
@@ -46,6 +47,10 @@ from portal_analysis.portal_checker import (
 )
 from tools.investmap_export import convert_excel_to_text
 from portal_analysis.export_normalizer import normalize_export_row
+from portal_analysis.api_snapshot_normalizer import (
+    api_snapshot_to_portal_row,
+    merge_missing_portal_values,
+)
 from tools.investmap_analyzer import (
     analyze,
     build_summary_sms,
@@ -94,6 +99,48 @@ def _active_sms_pairs(results: list[dict], source_rows: list[dict]):
         and result.get("is_included") is True
     ]
 
+def _get_latest_api_snapshot_row(db, global_id):
+    """Возвращает последний API-снимок Инвесткарты по global_id."""
+    try:
+        site_id = int(str(global_id).strip())
+    except (TypeError, ValueError):
+        return None
+
+    if site_id <= 0:
+        return None
+
+    return db.execute(
+        """
+        SELECT
+            id,
+            global_id,
+            payload_json,
+            fetched_at_utc,
+            filling_level
+        FROM investmap_rf_card_snapshots
+        WHERE global_id = ?
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        (site_id,),
+    ).fetchone()
+
+
+def _build_v2_source_row(row, db):
+    """Дополняет строку XLSX актуальными API-данными перед V2-анализом."""
+    base_row = normalize_export_row(row)
+    snapshot = _get_latest_api_snapshot_row(db, base_row.get("global_id"))
+
+    if snapshot is None:
+        return base_row
+
+    api_row = api_snapshot_to_portal_row(snapshot["payload_json"])
+    merged = merge_missing_portal_values(base_row, api_row)
+
+    merged["_v2_api_snapshot_id"] = snapshot["id"]
+    merged["_v2_api_fetched_at_utc"] = snapshot["fetched_at_utc"]
+    merged["_v2_api_filling_level"] = snapshot["filling_level"]
+    return merged
 
 @investmap_bp.route('/investmap')
 @login_required
@@ -630,7 +677,7 @@ def investmap_v2_post():
             batch_result = run_batch_history(
                 conn=db,
                 source_rows=data,
-                score_fn=lambda row: calc_portal_score_v2(normalize_export_row(row), db),
+                score_fn=lambda row: calc_portal_score_v2(_build_v2_source_row(row, db), db),
                 formula_version=V2_FORMULA_VERSION,
                 initiated_by=user_id,
                 source_label=f.filename,
@@ -658,7 +705,7 @@ def investmap_v2_post():
                 else None
             )
         else:
-            results = [calc_portal_score_v2(normalize_export_row(data), db)]
+            results = [calc_portal_score_v2(_build_v2_source_row(data, db), db)]
             summary_sms = None
 
         export_payload = {
