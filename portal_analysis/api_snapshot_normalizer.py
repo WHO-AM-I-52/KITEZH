@@ -35,7 +35,13 @@ def _as_text(value: Any) -> str:
     if isinstance(value, str):
         return value.strip()
     return str(value).strip()
-
+    
+def _normalize_resource_availability(value: Any) -> str:
+    """Приводит статусы доступности ресурсов API к canonical-значениям V2."""
+    text = _as_text(value)
+    if text.casefold() == "возможно подключение":
+        return "Возможно создание"
+    return text
 
 def _first_non_blank(*values: Any) -> Any:
     for value in values:
@@ -110,7 +116,11 @@ def _add_resource_fields(
     capacity_unit: str,
 ) -> None:
     """Добавляет canonical-поля одного ресурсного блока API."""
-    _set_if_present(result, f"{title} — Наличие", resource.get("availability"))
+    _set_if_present(
+        result,
+        f"{title} — Наличие",
+        _normalize_resource_availability(resource.get("availability")),
+    )
     _set_if_present(
         result,
         f"{title} — Тариф на потребление, руб./{tariff_unit}",
