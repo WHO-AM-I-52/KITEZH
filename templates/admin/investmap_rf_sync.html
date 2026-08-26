@@ -23,6 +23,35 @@
   </a>
 </div>
 
+<div class="card border-warning mb-4">
+  <div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-3">
+    <div>
+      <div class="fw-semibold" style="color:#1B5E7B">
+        <i class="bi bi-calculator me-1"></i>
+        Повторный анализ заполняемости V2
+      </div>
+      <div class="small text-muted mt-1">
+        Пересчитывает V2 по последнему сохранённому snapshot каждой активной площадки.
+        Внешний API не вызывается, новые snapshots не создаются.
+      </div>
+    </div>
+
+    <form
+      method="post"
+      action="{{ url_for('admin.investmap_rf_sync_reanalyze_v2') }}"
+      onsubmit="return confirm(
+        'Пересчитать V2 для всех активных площадок по последним сохранённым snapshots? '
+        + 'Внешний API не будет вызван.'
+      );"
+    >
+      <button class="btn btn-warning" type="submit">
+        <i class="bi bi-arrow-clockwise me-1"></i>
+        Пересчитать V2
+      </button>
+    </form>
+  </div>
+</div>
+
 <div class="alert alert-info d-flex flex-wrap gap-2 align-items-start justify-content-between" role="alert">
   <div class="d-flex gap-2 align-items-start">
     <i class="bi bi-info-circle-fill mt-1"></i>
