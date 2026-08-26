@@ -10,7 +10,9 @@
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+import sqlite3
 
+from portal_analysis.portal_checker import calc_portal_score_v2
 from portal_analysis.portal_checker import _is_empty, _strip_html, calc_portal_score
 from portal_analysis.portal_checker import (
     _classify_value,
@@ -18,6 +20,31 @@ from portal_analysis.portal_checker import (
     _strip_html,
     calc_portal_score,
 )
+
+def _create_v2_db() -> sqlite3.Connection:
+    conn = sqlite3.connect(':memory:')
+    conn.row_factory = sqlite3.Row
+
+    conn.execute(
+        '''
+        CREATE TABLE investmap_fields (
+            tech_name TEXT,
+            display_name TEXT
+        )
+        '''
+    )
+    conn.execute(
+        '''
+        CREATE TABLE investmap_rules (
+            source_field TEXT,
+            source_value TEXT,
+            target_field TEXT,
+            recommended_text TEXT
+        )
+        '''
+    )
+
+    return conn
 
 def test_classify_value_missing():
     assert _classify_value('Не применимо.') == 'missing'
@@ -36,6 +63,50 @@ def test_classify_value_detailed_connection_is_declared():
         'Возможно подключение от ТП 1212 6 кВ '
         'на расстоянии 600 метров от площадки.'
     ) == 'declared'
+
+def test_v2_placeholder_has_quarter_weight():
+    conn = _create_v2_db()
+
+    result = calc_portal_score_v2({
+        'Название площадки': 'Тестовая площадка',
+        'Водоснабжение — Наличие': 'Возможно подключение',
+    }, conn)
+
+    partial = next(
+        item
+        for item in result['partial']
+        if item['field'] == 'Водоснабжение — Наличие'
+    )
+
+    assert partial['weight'] == 0.25
+    assert result['effective_filled'] == result['filled'] - 0.75
+    assert result['score'] < round(
+        100 * result['filled'] / result['total']
+    )
+
+    conn.close()
+
+def test_v2_placeholder_has_quarter_weight():
+    conn = _create_v2_db()
+
+    result = calc_portal_score_v2({
+        'Название площадки': 'Тестовая площадка',
+        'Водоснабжение — Наличие': 'Возможно подключение',
+    }, conn)
+
+    partial = next(
+        item
+        for item in result['partial']
+        if item['field'] == 'Водоснабжение — Наличие'
+    )
+
+    assert partial['weight'] == 0.25
+    assert result['effective_filled'] == result['filled'] - 0.75
+    assert result['score'] < round(
+        100 * result['filled'] / result['total']
+    )
+
+    conn.close()
 
 # ── _strip_html ──────────────────────────────────────────────────────────────
 
