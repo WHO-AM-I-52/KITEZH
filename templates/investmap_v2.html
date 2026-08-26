@@ -838,7 +838,11 @@
       total,
       missing.length,
       skipped.length,
-      col
+      col,
+      null,
+      d.api_filling_level,
+      d.api_fetched_at_utc,
+      d.api_score_delta
     );
 
     missingCard.style.display = '';
@@ -879,7 +883,10 @@
     missingCnt,
     skippedCnt,
     col,
-    errorText
+    errorText,
+    apiFillingLevel,
+    apiFetchedAtUtc,
+    apiScoreDelta
   ){
     var tbody = document.getElementById('summaryTableBody');
     tbody.innerHTML = '';
@@ -896,7 +903,35 @@
       return;
     }
 
-    var rows = [
+    var apiRows = [];
+
+    if (typeof apiFillingLevel === 'number') {
+      apiRows.push([
+        'Заполняемость на Инвесткарте',
+        apiFillingLevel + '%'
+      ]);
+
+      if (apiFetchedAtUtc) {
+        apiRows.push([
+          'API-снимок',
+          apiFetchedAtUtc
+        ]);
+      }
+
+      if (typeof apiScoreDelta === 'number') {
+        var deltaPrefix = apiScoreDelta > 0 ? '+' : '';
+        var deltaClass = apiScoreDelta === 0
+          ? 'text-success'
+          : 'text-danger';
+
+        apiRows.push([
+          'Расхождение V2 и карты',
+          '<span class="' + deltaClass + '">' +
+            deltaPrefix + apiScoreDelta + ' п.п.</span>'
+        ]);
+      }
+    }
+    var rows = apiRows.concat([
       ['Score (заполняемость)',
        '<span class="fw-semibold" style="color:' + col + '">' + score + '%</span>'],
       ['Заполнено полей',
@@ -909,7 +944,7 @@
        skippedCnt > 0
          ? '<span class="badge bg-secondary">' + skippedCnt + '</span>'
          : '<span class="text-muted">нет</span>']
-    ];
+    ]);
 
     rows.forEach(function(r){
       var tr = document.createElement('tr');
