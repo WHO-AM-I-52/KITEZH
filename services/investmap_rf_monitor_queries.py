@@ -5,7 +5,8 @@ from __future__ import annotations
 import json
 import sqlite3
 from typing import Any
-
+from portal_analysis.api_snapshot_normalizer import api_snapshot_to_portal_row
+from portal_analysis.portal_checker import V2_FORMULA_VERSION, calc_portal_score_v2
 
 def _json_or_none(value: str | None) -> Any:
     if value is None:
@@ -122,7 +123,8 @@ def get_monitor_cards(
                 snapshots.id AS snapshot_id,
                 snapshots.global_id,
                 snapshots.fetched_at_utc,
-                snapshots.filling_level
+                snapshots.filling_level,
+                snapshots.payload_json
             FROM investmap_rf_card_snapshots AS snapshots
             INNER JOIN latest_snapshot_ids
                 ON latest_snapshot_ids.snapshot_id = snapshots.id
@@ -146,27 +148,6 @@ def get_monitor_cards(
                 COUNT(*) AS changes_count
             FROM investmap_rf_card_changes
             GROUP BY global_id
-        ),
-        latest_v2_snapshot_ids AS (
-            SELECT
-                site_id,
-                MAX(run_id) AS run_id
-            FROM portal_analysis_site_snapshots
-            GROUP BY site_id
-        ),
-        latest_v2 AS (
-            SELECT
-                snapshots.site_id,
-                snapshots.score_percent,
-                snapshots.analysis_status,
-                runs.created_at AS analyzed_at_utc,
-                runs.formula_version
-            FROM portal_analysis_site_snapshots AS snapshots
-            INNER JOIN latest_v2_snapshot_ids
-                ON latest_v2_snapshot_ids.site_id = snapshots.site_id
-               AND latest_v2_snapshot_ids.run_id = snapshots.run_id
-            INNER JOIN portal_analysis_runs AS runs
-                ON runs.id = snapshots.run_id
         ),
        manager_assignments AS (
             SELECT
@@ -205,10 +186,7 @@ def get_monitor_cards(
             latest.filling_level,
             previous.previous_filling_level,
             COALESCE(changes.changes_count, 0) AS changes_count,
-            latest_v2.score_percent AS v2_score,
-            latest_v2.analysis_status AS v2_analysis_status,
-            latest_v2.analyzed_at_utc AS v2_analyzed_at_utc,
-            latest_v2.formula_version AS v2_formula_version,
+            latest.payload_json,
             assignments.municipality_raw AS manager_municipality_raw,
             assignments.manager_name,
             assignments.assignment_source,
@@ -222,8 +200,6 @@ def get_monitor_cards(
             ON previous.global_id = latest.global_id
         LEFT JOIN changes
             ON changes.global_id = latest.global_id
-        LEFT JOIN latest_v2
-            ON latest_v2.site_id = CAST(latest.global_id AS TEXT)
         LEFT JOIN manager_assignments AS assignments
             ON assignments.global_id = latest.global_id
         LEFT JOIN open_issues
@@ -238,6 +214,11 @@ def get_monitor_cards(
     items: list[dict[str, Any]] = []
 
     for row in rows:
+        v2_result = calc_portal_score_v2(
+            api_snapshot_to_portal_row(row["payload_json"]),
+            conn,
+        )
+
         filling_level = row["filling_level"]
         previous_filling_level = row["previous_filling_level"]
         filling_level_delta = None
@@ -254,10 +235,20 @@ def get_monitor_cards(
                 "previous_filling_level": previous_filling_level,
                 "filling_level_delta": filling_level_delta,
                 "changes_count": row["changes_count"],
-                "v2_score": row["v2_score"],
-                "v2_analysis_status": row["v2_analysis_status"],
-                "v2_analyzed_at_utc": row["v2_analyzed_at_utc"],
-                "v2_formula_version": row["v2_formula_version"],
+                "v2_score": v2_result["score"],
+                "v2_analysis_status": "ok",
+                "v2_analyzed_at_utc": row["fetched_at_utc"],
+                "v2_formula_version": V2_FORMULA_VERSION,
+                "v2_missing": v2_result["missing"],
+                "v2_partial": v2_result["partial"],
+                "v2_skipped": v2_result["skipped"],
+                "v2_filled": v2_result["filled"],
+                "v2_total": v2_result["total"],
+                "v2_api_score_delta": (
+                    v2_result["score"] - filling_level
+                    if filling_level is not None
+                    else None
+                ),
                 "manager_municipality_raw": row["manager_municipality_raw"],
                 "manager_name": row["manager_name"],
                 "assignment_source": row["assignment_source"],
