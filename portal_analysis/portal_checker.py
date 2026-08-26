@@ -22,6 +22,7 @@
     #   'filled': 17,
     #   'total': 20,
     #   'missing': [{'field': 'Геопривязка', 'hint': 'Укажите координаты...'}, ...],
+    #   'partial': [{'field': 'Водоснабжение — Наличие', 'reason': '...'}, ...],
     #   'skipped': ['Поле Z']
     # }
     # Та же логика что calc_portal_score (PORTAL_FIELDS + CONDITIONAL_SKIP),
@@ -66,6 +67,64 @@ def _is_empty(value) -> bool:
     v = _strip_html(str(value)).strip().lower()
     return v in IRRELEVANT_VALUES
 
+# ──────────────────────────────────────────────────────────────────────────────
+# БЛОК 1а: Качество заполнения значения для диагностики V2
+# ──────────────────────────────────────────────────────────────────────────────
+
+QUALITY_PLACEHOLDERS = (
+    'в соответствии с ту',
+    'требуется получение ту',
+    'требуется проектирование',
+    'возможно подключение',
+    'при необходимости может быть представлена дополнительная информация',
+)
+
+
+def _classify_value(value) -> str:
+    """
+    Возвращает тип значения для диагностики V2:
+
+    - missing: пустое значение по правилам портала;
+    - placeholder: шаблонный/предварительный ответ без конкретных параметров;
+    - declared: содержательное значение.
+
+    Важно: placeholder на первом этапе не меняет score V2.
+    """
+    if _is_empty(value):
+        return 'missing'
+
+    normalized = _strip_html(str(value)).strip().lower()
+    if not any(marker in normalized for marker in QUALITY_PLACEHOLDERS):
+        return 'declared'
+
+    has_numeric_detail = bool(re.search(r'\d', normalized))
+    has_detail_marker = any(marker in normalized for marker in (
+        'мвт',
+        'мвт/квт',
+        'квт',
+        'гкал',
+        'куб. м',
+        'куб.м',
+        'руб.',
+        'руб/',
+        'метр',
+        ' м.',
+        ' км',
+        'точка подключения',
+        'пс ',
+        'тп ',
+        'грп',
+        'кадастров',
+        'тариф',
+        'пропускная способность',
+        'свободная мощность',
+        'мощность',
+    ))
+
+    if has_numeric_detail and has_detail_marker:
+        return 'declared'
+
+    return 'placeholder'
 
 # ──────────────────────────────────────────────────────────────────────────────
 # БЛОК 2: Условные зависимости полей
@@ -503,8 +562,13 @@ def calc_portal_score_v2(row: dict, db) -> dict:
             'filled':  int,
             'total':   int,          # total = filled + missing (skipped не считаются)
             'missing': list[dict],   # [{'field': str, 'hint': str|None}, ...]
+            'partial': list[dict],   # шаблонные значения с причиной уточнения
             'skipped': list[str],    # поля, пропущенные по CONDITIONAL_SKIP
         }
+
+    Примечание:
+        partial пока не влияет на score. Это диагностический слой для
+        следующего этапа калибровки без изменения действующей формулы.
     """
     # ── Запрос к investmap_fields: только для резолюции tech_name → display_name
     # (нужно потому что source_field в investmap_rules хранится как tech_name)
@@ -550,8 +614,9 @@ def calc_portal_score_v2(row: dict, db) -> dict:
             skip_fields.update(f.lower() for f in child_fields)
 
     # ── Логика V1: итерация по PORTAL_FIELDS ─────────────────────────────
-    filled  = []
+    filled = []
     missing = []
+    partial = []
     skipped = []
 
     for field in PORTAL_FIELDS:
@@ -559,13 +624,29 @@ def calc_portal_score_v2(row: dict, db) -> dict:
         if field_lower in skip_fields:
             skipped.append(field)
             continue
-        value = normalized.get(field_lower)
-        if _is_empty(value):
-            # V2: обогащаем hint из investmap_rules
+
+        quality = _classify_value(normalized.get(field_lower))
+        if quality == 'missing':
             hint = _resolve_hint(field_lower, rules_map, normalized, tech_to_display)
             missing.append({'field': field, 'hint': hint})
-        else:
-            filled.append(field)
+            continue
+
+        filled.append(field)
+
+        if quality == 'placeholder':
+            partial.append({
+                'field': field,
+                'hint': _resolve_hint(
+                    field_lower,
+                    rules_map,
+                    normalized,
+                    tech_to_display,
+                ),
+                'reason': (
+                    'Указано шаблонное или предварительное значение; '
+                    'для полной детализации нужны конкретные параметры.'
+                ),
+            })
 
     total = len(filled) + len(missing)
     score = round(100 * len(filled) / total) if total > 0 else 0
@@ -575,5 +656,6 @@ def calc_portal_score_v2(row: dict, db) -> dict:
         'filled':  len(filled),
         'total':   total,
         'missing': missing,
+        'partial': partial,
         'skipped': skipped,
     }
