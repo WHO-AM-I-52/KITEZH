@@ -6,7 +6,17 @@ import json
 from typing import Any
 
 
-_EMPTY_TEXT_VALUES = frozenset({"", "none", "null", "nan"})
+_EMPTY_TEXT_VALUES = frozenset({
+    "",
+    "none",
+    "null",
+    "nan",
+    "пусто",
+    "не указано",
+    "не заполнено",
+    "не применимо",
+    "не применимо.",
+})
 
 
 def _is_blank(value: Any) -> bool:
@@ -282,7 +292,7 @@ def merge_missing_portal_values(
     base_row: dict[str, Any],
     api_row: dict[str, Any],
 ) -> dict[str, Any]:
-    """Дополняет пустые V2-поля API-данными, не затирая значения XLSX."""
+    """Заменяет пустые и псевдопустые XLSX-значения данными API."""
     merged = dict(base_row)
     for field, value in api_row.items():
         if _is_blank(merged.get(field)) and not _is_blank(value):
