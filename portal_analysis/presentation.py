@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from .analysis_history import get_exclusion_reason, is_site_included
-from .portal_checker import calc_portal_score
+from .portal_checker import calc_portal_score_v2
 
 
 def _text(value: Any, fallback: str = '') -> str:
@@ -14,53 +14,141 @@ def _text(value: Any, fallback: str = '') -> str:
 
 
 def build_ai_text(site: dict[str, Any]) -> str:
-    lines = [f"Площадка: {site['name']}", f"ID: {site['id'] or 'не указан'}", f"Статус площадки: {site['status'] or 'не указан'}"]
+    lines = [
+        f"Площадка: {site['name']}",
+        f"ID: {site['id'] or 'не указан'}",
+        f"Статус площадки: {site['status'] or 'не указан'}",
+    ]
+
     if not site['included']:
-        lines.append(f"Учитывается в оценке: нет ({site['exclusion_reason']}).")
+        lines.append(
+            f"Учитывается в оценке: нет ({site['exclusion_reason']})."
+        )
         return '\n'.join(lines)
-    lines.extend(['Учитывается в оценке: да.', f"Заполняемость V2: {site['score']}%.", f"Заполнено: {site['filled']} из {site['total']} обязательных полей.", f"Условно не учитывается: {len(site['skipped'])} полей."])
+
+    lines.extend([
+        'Учитывается в оценке: да.',
+        f"Заполняемость V2: {site['score']}%.",
+        f"Заполнено: {site['filled']} из {site['total']} обязательных полей.",
+        f"Условно не учитывается: {len(site['skipped'])} полей.",
+    ])
+
+    if site['partial']:
+        lines.append(
+            f"Требуют уточнения: {len(site['partial'])} полей "
+            'с шаблонными или предварительными значениями.'
+        )
+
     if site['missing']:
         lines.append('Требуется заполнить:')
-        lines.extend(f"{index}. {field}" for index, field in enumerate(site['missing'], 1))
+        lines.extend(
+            f"{index}. {item['field']}"
+            for index, item in enumerate(site['missing'], 1)
+        )
     else:
         lines.append('Все учитываемые поля заполнены.')
+
+    if site['partial']:
+        lines.append('Частично заполнено:')
+        lines.extend(
+            f"{index}. {item['field']}: {item['reason']}"
+            for index, item in enumerate(site['partial'], 1)
+        )
+
     return '\n'.join(lines)
 
 
-def build_site_result(row: dict[str, Any]) -> dict[str, Any]:
-    site = {'id': _text(row.get('global_id')), 'name': _text(row.get('Название площадки'), 'Без названия'), 'status': _text(row.get('Статус площадки')), 'contact': _text(row.get('Контактное лицо'))}
+def build_site_result(row: dict[str, Any], db) -> dict[str, Any]:
+    site = {
+        'id': _text(row.get('global_id')),
+        'name': _text(row.get('Название площадки'), 'Без названия'),
+        'status': _text(row.get('Статус площадки')),
+        'contact': _text(row.get('Контактное лицо')),
+    }
     site['included'] = is_site_included(site['status'])
     site['exclusion_reason'] = get_exclusion_reason(site['status'])
+
     if site['included']:
-        site.update(calc_portal_score(row))
+        site.update(calc_portal_score_v2(row, db))
     else:
-        site.update({'score': None, 'filled': 0, 'total': 0, 'missing': [], 'skipped': []})
+        site.update({
+            'score': None,
+            'filled': 0,
+            'total': 0,
+            'missing': [],
+            'partial': [],
+            'skipped': [],
+        })
+
     site['ai_text'] = build_ai_text(site)
     return site
 
 
-def build_site_results(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return [build_site_result(row) for row in rows]
+def build_site_results(
+    rows: list[dict[str, Any]],
+    db,
+) -> list[dict[str, Any]]:
+    return [build_site_result(row, db) for row in rows]
 
 
 def build_contact_messages(sites: list[dict[str, Any]]) -> list[dict[str, Any]]:
     groups: dict[str, list[dict[str, Any]]] = {}
+
     for site in sites:
         if site['included']:
-            groups.setdefault(site['contact'] or '__no_contact__', []).append(site)
+            groups.setdefault(
+                site['contact'] or '__no_contact__',
+                [],
+            ).append(site)
+
     messages = []
+
     for contact, contact_sites in sorted(groups.items()):
         blocks = []
+
         for site in contact_sites:
-            lines = [f"📍 «{site['name']}» (ID: {site['id'] or 'не указан'}) — заполняемость {site['score']}%."]
+            lines = [
+                f"📍 «{site['name']}» "
+                f"(ID: {site['id'] or 'не указан'}) — "
+                f"заполняемость {site['score']}%.",
+            ]
+
             if site['missing']:
-                lines.append('Просим заполнить: ' + '; '.join(site['missing']) + '.')
+                missing_fields = '; '.join(
+                    item['field'] for item in site['missing']
+                )
+                lines.append('Просим заполнить: ' + missing_fields + '.')
             else:
                 lines.append('Все учитываемые поля заполнены.')
+
+            if site['partial']:
+                partial_fields = '; '.join(
+                    item['field'] for item in site['partial']
+                )
+                lines.append(
+                    'Просим уточнить сведения: ' + partial_fields + '.'
+                )
+
             blocks.append('\n'.join(lines))
+
         if contact == '__no_contact__':
-            text = 'ПЛОЩАДКИ БЕЗ КОНТАКТНОГО ЛИЦА\n\n' + '\n\n'.join(blocks)
+            text = (
+                'ПЛОЩАДКИ БЕЗ КОНТАКТНОГО ЛИЦА\n\n'
+                + '\n\n'.join(blocks)
+            )
         else:
-            text = f"Добрый день, {contact}!\n\nПо результатам проверки карточек на Инвестиционной карте:\n\n" + '\n\n'.join(blocks) + '\n\nПосле внесения изменений просим сообщить — проведём повторную проверку.'
-        messages.append({'contact': contact, 'sites': [site['name'] for site in contact_sites], 'text': text})
+            text = (
+                f"Добрый день, {contact}!\n\n"
+                'По результатам проверки карточек на Инвестиционной карте:\n\n'
+                + '\n\n'.join(blocks)
+                + '\n\nПосле внесения изменений просим сообщить — '
+                  'проведём повторную проверку.'
+            )
+
+        messages.append({
+            'contact': contact,
+            'sites': [site['name'] for site in contact_sites],
+            'text': text,
+        })
+
     return messages
