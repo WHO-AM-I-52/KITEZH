@@ -632,7 +632,6 @@ def investmap_rf_sync_reanalyze_v2():
     API Инвесткарты РФ не вызывается, новые snapshots не создаются.
     """
     from portal_analysis.batch_analysis import run_batch_history
-    from portal_analysis.export_normalizer import normalize_export_row
     from portal_analysis.portal_checker import (
         V2_FORMULA_VERSION,
         calc_portal_score_v2,
@@ -680,7 +679,7 @@ def investmap_rf_sync_reanalyze_v2():
                 )
 
             payload["global_id"] = row["global_id"]
-            source_rows.append(normalize_export_row(payload))
+            source_rows.append(payload)
 
         if not source_rows:
             raise ValueError(
