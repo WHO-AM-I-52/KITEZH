@@ -70,15 +70,23 @@ def api_analyze():
         return jsonify({'error': 'Файл пустой или не содержит строк'}), 400
     conn = _db.get_db()
     try:
-        history = analyze_and_save_rows(conn, rows, initiated_by=session.get('user_id'), source_label=upload.filename)
+        history = analyze_and_save_rows(
+            conn,
+            rows,
+            initiated_by=session.get('user_id'),
+            source_label=upload.filename,
+        )
         conn.commit()
         history_overview = get_history_summary(conn)
+        site_results = build_site_results(rows, conn)
     except Exception as exc:
         conn.rollback()
-        return jsonify({'error': 'Ошибка сохранения истории анализа: ' + str(exc)}), 500
+        return jsonify({
+            'error': 'Ошибка сохранения истории анализа: ' + str(exc),
+        }), 500
     finally:
         conn.close()
-    site_results = build_site_results(rows)
+
     messages = build_contact_messages(site_results)
     all_scores = [site['score'] for site in site_results if site['included']]
     return jsonify({'messages': messages, 'site_results': site_results, 'total_sites': history['total_sites'], 'active_sites': history['active_sites'], 'excluded_sites': history['excluded_sites'], 'total_contacts': sum(1 for message in messages if message['contact'] != '__no_contact__'), 'avg_score': round(sum(all_scores) / len(all_scores)) if all_scores else 0, 'low_score_count': sum(1 for score in all_scores if score < 60), 'history': history, 'history_overview': history_overview})
