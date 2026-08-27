@@ -444,14 +444,14 @@
                                     </div>
                                     {% if card.api_not_found_detected_at_utc %}
                                     <div class="small text-muted mt-1">
-                                        <code>{{ card.api_not_found_detected_at_utc }}</code>
+                                        <code>{{ card.api_not_found_detected_at_utc | msk_datetime }}</code>
                                     </div>
                                     {% endif %}
                                     {% elif card.last_api_check_status == 'success' %}
                                     <span class="badge text-bg-success">Проверена</span>
                                     {% if card.last_api_check_at_utc %}
                                     <div class="small text-muted mt-1">
-                                        <code>{{ card.last_api_check_at_utc }}</code>
+                                        <code>{{ card.last_api_check_at_utc | msk_datetime }}</code>
                                     </div>
                                     {% endif %}
                                     {% elif card.last_api_check_status == 'error' %}
@@ -463,7 +463,7 @@
                                     {% endif %}
                                     {% elif card.last_api_check_at_utc %}
                                     <div class="small text-muted">
-                                        <code>{{ card.last_api_check_at_utc }}</code>
+                                        <code>{{ card.last_api_check_at_utc | msk_datetime }}</code>
                                     </div>
                                     {% else %}
                                     <span class="text-muted">Не проверялась</span>
