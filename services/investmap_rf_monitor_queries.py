@@ -450,10 +450,17 @@ def get_monitor_registry_cards(conn, limit: int = 1000):
             source_filename,
             imported_at_utc,
             last_seen_import_at_utc,
-            last_source_status
+            last_source_status,
+            last_api_check_at_utc,
+            last_api_check_status,
+            last_api_check_error,
+            api_not_found_pending_decision,
+            api_not_found_detected_at_utc
         FROM investmap_rf_monitored_cards
         WHERE is_active = 1
-        ORDER BY global_id
+        ORDER BY
+            api_not_found_pending_decision DESC,
+            global_id
         LIMIT ?
         """,
         (limit,),
