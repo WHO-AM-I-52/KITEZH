@@ -440,10 +440,33 @@ def get_monitor_card_detail(
         ],
     }
     
-def get_monitor_registry_cards(conn, limit: int = 1000):
-    """Возвращает активные площадки из реестра мониторинга."""
+def get_monitor_registry_cards(
+    conn,
+    limit: int = 1000,
+    global_id: int | None = None,
+):
+    """Возвращает активные площадки реестра, при необходимости по ID."""
+    if global_id is not None:
+        if (
+            isinstance(global_id, bool)
+            or not isinstance(global_id, int)
+            or global_id <= 0
+        ):
+            raise ValueError(
+                "global_id должен быть положительным целым числом."
+            )
+
+    where_sql = "WHERE is_active = 1"
+    params: list[Any] = []
+
+    if global_id is not None:
+        where_sql += " AND global_id = ?"
+        params.append(global_id)
+
+    params.append(limit)
+
     return conn.execute(
-        """
+        f"""
         SELECT
             global_id,
             is_active,
@@ -457,13 +480,13 @@ def get_monitor_registry_cards(conn, limit: int = 1000):
             api_not_found_pending_decision,
             api_not_found_detected_at_utc
         FROM investmap_rf_monitored_cards
-        WHERE is_active = 1
+        {where_sql}
         ORDER BY
             api_not_found_pending_decision DESC,
             global_id
         LIMIT ?
         """,
-        (limit,),
+        params,
     ).fetchall()
 
 
