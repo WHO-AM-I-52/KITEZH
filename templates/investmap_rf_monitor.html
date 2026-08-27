@@ -207,7 +207,7 @@
                                         <span class="fw-semibold">{{ card.v2_score }}%</span>
                                         {% if card.v2_analyzed_at_utc %}
                                         <div class="small text-muted">
-                                            <code>{{ card.v2_analyzed_at_utc }}</code>
+                                            <code>{{ card.v2_analyzed_at_utc | msk_datetime }}</code>
                                         </div>
                                         {% endif %}
                                     {% elif card.v2_analysis_status == 'excluded' %}
@@ -264,7 +264,7 @@
                                     {% endif %}
                                 </td>
                                 <td>
-                                    <code>{{ card.fetched_at_utc }}</code>
+                                    <code>{{ card.fetched_at_utc | msk_datetime }}</code>
                                 </td>
                                 <td>
                                     {{ card.changes_count or 0 }}
