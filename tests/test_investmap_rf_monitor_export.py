@@ -26,7 +26,8 @@ class InvestmapRfMonitorExportTest(unittest.TestCase):
 
             CREATE TABLE portal_analysis_runs (
                 id INTEGER PRIMARY KEY,
-                created_at TEXT
+                created_at TEXT,
+                source_label TEXT
             );
 
             CREATE TABLE portal_analysis_site_snapshots (
