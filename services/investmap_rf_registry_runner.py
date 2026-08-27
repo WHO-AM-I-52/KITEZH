@@ -57,3 +57,44 @@ def run_active_registry_batch(
         "global_ids": global_ids,
         "batch": batch_result,
     }
+
+def run_registry_card_refresh(
+    conn,
+    *,
+    global_id: int,
+    **batch_kwargs: Any,
+) -> dict[str, Any]:
+    """Запускает сбор API-снимка для одной активной площадки реестра."""
+    try:
+        normalized_global_id = int(global_id)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("global_id должен быть целым числом.") from exc
+
+    if normalized_global_id <= 0:
+        raise ValueError("global_id должен быть положительным числом.")
+
+    row = conn.execute(
+        """
+        SELECT global_id
+        FROM investmap_rf_monitored_cards
+        WHERE global_id = ?
+          AND is_active = 1
+        """,
+        (normalized_global_id,),
+    ).fetchone()
+
+    if row is None:
+        raise ValueError(
+            "Активная площадка с таким ID не найдена в реестре мониторинга."
+        )
+
+    batch = run_batch(
+        global_ids=[normalized_global_id],
+        **batch_kwargs,
+    )
+
+    return {
+        "global_id": normalized_global_id,
+        "batch": batch,
+        "item": batch.items[0] if batch.items else None,
+    }
