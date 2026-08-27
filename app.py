@@ -25,7 +25,7 @@ import sys
 import logging
 import traceback
 import warnings
-from datetime import timedelta, datetime, date
+from datetime import timedelta, timezone, datetime, date
 
 warnings.filterwarnings(
     'ignore',
@@ -95,7 +95,28 @@ def todatetime_filter(value):
     except (ValueError, TypeError):
         return date.today()
 
+@app.template_filter('msk_datetime')
+def msk_datetime_filter(value):
+    """Преобразует ISO 8601 UTC в формат DD.MM.YYYY HH:MM MSK."""
+    if value is None:
+        return "—"
 
+    try:
+        if isinstance(value, datetime):
+            parsed = value
+        else:
+            parsed = datetime.fromisoformat(str(value).strip())
+
+        if parsed.tzinfo is None:
+            return parsed.strftime("%d.%m.%Y %H:%M")
+
+        msk_time = parsed.astimezone(
+            timezone(timedelta(hours=3))
+        )
+        return f"{msk_time:%d.%m.%Y %H:%M} MSK"
+    except (TypeError, ValueError):
+        return str(value)
+        
 # ─── CONTEXT PROCESSOR ─────────────────────────────────────────────────────────────────────────────
 app.context_processor(inject_globals)
 
