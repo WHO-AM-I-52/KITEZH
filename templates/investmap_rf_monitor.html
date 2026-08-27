@@ -88,7 +88,7 @@
         </div>
     </section>
 
-       <section class="card shadow-sm">
+    <section class="card shadow-sm">
         <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
             <button
                 class="btn btn-link p-0 text-decoration-none text-reset fw-semibold"
@@ -107,9 +107,9 @@
         </div>
 
         <div
-    id="monitor-cards-collapse"
-    class="collapse{% if cards_page.search_global_id or cards_page.page > 1 %} show{% endif %}"
->
+            id="monitor-cards-collapse"
+            class="collapse{% if cards_page.search_global_id or cards_page.page > 1 %} show{% endif %}"
+        >
             <div class="card-body border-bottom">
                 <form method="get" class="row g-2 align-items-end">
                     <div class="col-sm-6 col-md-4">
@@ -218,7 +218,7 @@
                                         —
                                     {% endif %}
                                 </td>
-                                                                <td>
+                                <td>
                                     {% if card.manager_name %}
                                         <div class="fw-semibold">
                                             {{ card.manager_name }}
@@ -334,6 +334,7 @@
             </div>
         </div>
     </section>
+
     <section class="card shadow-sm mt-4">
         <div class="card-header d-flex justify-content-between align-items-center">
             <button
@@ -341,7 +342,7 @@
                 type="button"
                 data-bs-toggle="collapse"
                 data-bs-target="#registry-cards-collapse"
-                aria-expanded="false"
+                aria-expanded="{{ 'true' if request.args.get('registry') == '1' or registry_search_global_id else 'false' }}"
                 aria-controls="registry-cards-collapse"
             >
                 Реестр активных площадок
@@ -352,13 +353,58 @@
             </span>
         </div>
 
-        <div id="registry-cards-collapse" class="collapse">
+        <div
+            id="registry-cards-collapse"
+            class="collapse{% if request.args.get('registry') == '1' or registry_search_global_id %} show{% endif %}"
+        >
+            <div class="card-body border-bottom">
+                <form method="get" class="row g-2 align-items-end">
+                    <input type="hidden" name="registry" value="1">
+
+                    <div class="col-sm-6 col-md-4">
+                        <label for="registry-global-id" class="form-label mb-1">
+                            Поиск по ID площадки
+                        </label>
+                        <input
+                            id="registry-global-id"
+                            name="registry_global_id"
+                            type="number"
+                            min="1"
+                            step="1"
+                            class="form-control"
+                            value="{{ registry_search_global_id or '' }}"
+                            placeholder="Например, 1530832"
+                        >
+                    </div>
+
+                    <div class="col-sm-auto">
+                        <button type="submit" class="btn btn-primary">
+                            Найти
+                        </button>
+                    </div>
+
+                    {% if registry_search_global_id %}
+                    <div class="col-sm-auto">
+                        <a
+                            class="btn btn-outline-secondary"
+                            href="{{ url_for(
+                                'investmap.investmap_rf_monitor',
+                                registry=1
+                            ) }}"
+                        >
+                            Сбросить
+                        </a>
+                    </div>
+                    {% endif %}
+                </form>
+            </div>
+
             <div class="card-body p-0">
                 {% if registry_cards %}
                 <div class="table-responsive" style="max-height: 520px;">
                     <table class="table table-hover align-middle mb-0">
-                        <thead class="sticky-top">
-                            <tr>
+                        <thead class="sticky-top bg-body">
+                            <tr class="bg-body">
                                 <th>ID площадки</th>
                                 <th>Статус в выгрузке</th>
                                 <th>Первый импорт</th>
@@ -441,7 +487,7 @@
                                                 Обновить сейчас
                                             </button>
                                         </form>
-                                
+
                                         {% if card.api_not_found_pending_decision %}
                                         <form
                                             method="post"
@@ -471,7 +517,7 @@
                                             </button>
                                         </form>
                                         {% endif %}
-                                
+
                                         <form
                                             method="post"
                                             action="{{ url_for(
@@ -497,7 +543,12 @@
                 </div>
                 {% else %}
                 <div class="p-4 text-muted">
-                    Активных площадок в реестре пока нет.
+                    {% if registry_search_global_id %}
+                        Активная площадка с ID {{ registry_search_global_id }}
+                        в реестре не найдена.
+                    {% else %}
+                        Активных площадок в реестре пока нет.
+                    {% endif %}
                 </div>
                 {% endif %}
             </div>
@@ -578,7 +629,8 @@
                                     {% endif %}
                                 </td>
                                 <td>{{ event.previous_status or '—' }}</td>
-                                <td>{{ event.current_status }}</td>                                <td class="text-break">
+                                <td>{{ event.current_status }}</td>
+                                <td class="text-break">
                                     {{ event.source_filename }}
                                 </td>
                                 <td class="text-break">
