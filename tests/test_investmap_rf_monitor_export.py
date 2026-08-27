@@ -52,6 +52,18 @@ class InvestmapRfMonitorExportTest(unittest.TestCase):
                 details TEXT,
                 is_resolved INTEGER
             );
+
+                        CREATE TABLE investmap_fields (
+                tech_name TEXT,
+                display_name TEXT
+            );
+
+            CREATE TABLE investmap_rules (
+                source_field TEXT,
+                source_value TEXT,
+                target_field TEXT,
+                recommended_text TEXT
+            );
             """
         )
 
@@ -172,6 +184,39 @@ class InvestmapRfMonitorExportTest(unittest.TestCase):
                 (global_id, global_id, issue_type),
             )
 
+    def test_adds_traffic_light_columns_to_low_score_section(self):
+        stream = build_monitor_export_xlsx(self.conn)
+        workbook = load_workbook(stream, data_only=True)
+        sheet = workbook["Лучшие и худшие площадки"]
+
+        low_score_title_row = next(
+            row_number
+            for row_number in range(1, sheet.max_row + 1)
+            if sheet.cell(row=row_number, column=1).value
+            == "Площадки с заполнением ниже 80%"
+        )
+        header_row = low_score_title_row + 1
+        card_row = low_score_title_row + 2
+
+        self.assertEqual(
+            [
+                sheet.cell(header_row, column).value
+                for column in range(1, 7)
+            ],
+            [
+                "Global ID",
+                "Средний процент заполнения",
+                "Территориальный управляющий",
+                "🟢 Повысит % заполняемости",
+                "🟡 Может повлиять на % заполняемости",
+                "🔴 Влияние на % не подтверждено",
+            ],
+        )
+        self.assertEqual(sheet.cell(card_row, column=1).value, 1002)
+        self.assertEqual(sheet.cell(card_row, column=4).value, "—")
+        self.assertEqual(sheet.cell(card_row, column=5).value, "—")
+        self.assertEqual(sheet.cell(card_row, column=6).value, "—")
+        
     def test_builds_expected_sheets_and_summary(self):
         stream = build_monitor_export_xlsx(self.conn)
         workbook = load_workbook(stream, data_only=True)
