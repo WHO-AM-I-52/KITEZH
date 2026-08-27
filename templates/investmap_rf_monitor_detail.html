@@ -53,7 +53,7 @@
                 <div class="card-body">
                     <div class="text-muted small">Последний снимок</div>
                     <div class="small mt-2">
-                        <code>{{ monitor_card.latest.fetched_at_utc }}</code>
+                        <code>{{ monitor_card.latest.fetched_at_utc | msk_datetime }}</code>
                     </div>
                     <div class="text-muted small mt-2">
                         Снимок № {{ monitor_card.latest.snapshot_id }}
@@ -115,7 +115,7 @@
 
                             <dt class="col-sm-5">Обновлено</dt>
                             <dd class="col-sm-7">
-                                <code>{{ monitor_card.assignment.updated_at_utc }}</code>
+                                <code>{{ monitor_card.assignment.updated_at_utc | msk_datetime }}</code>
                             </dd>
                         </dl>
                     {% else %}
@@ -164,7 +164,7 @@
 
                             <div class="small text-muted mt-2">
                                 Обновлено:
-                                <code>{{ issue.updated_at_utc }}</code>
+                                <code>{{ issue.updated_at_utc | msk_datetime }}</code>
                             </div>
                         </div>
                         {% endfor %}
@@ -198,7 +198,7 @@
                         {% for snapshot in monitor_card.snapshots %}
                         <tr>
                             <td>{{ snapshot.snapshot_id }}</td>
-                            <td><code>{{ snapshot.fetched_at_utc }}</code></td>
+                            <td><code>{{ snapshot.fetched_at_utc | msk_datetime }}</code></td>
                             <td>
                                 {% if snapshot.filling_level is not none %}
                                 {{ snapshot.filling_level }}%
@@ -243,7 +243,7 @@
                     <tbody>
                         {% for change in monitor_card.changes %}
                         <tr>
-                            <td><code>{{ change.detected_at_utc }}</code></td>
+                            <td><code>{{ change.detected_at_utc | msk_datetime }}</code></td>
                             <td><code>{{ change.field_path }}</code></td>
                             <td>
                                 <pre class="mb-0 small">{{ change.old_value | tojson(indent=2) }}</pre>
