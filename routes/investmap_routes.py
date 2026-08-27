@@ -31,8 +31,18 @@ from services.investmap_rf_monitor_export import (
 )
 from core.kitezh_logger import err_logger
 from services.investmap_rf_registry import (
+    deactivate_card_not_found_by_operator,
     deactivate_card_not_found_in_api,
     import_monitored_cards_xlsx,
+    keep_card_not_found_by_operator,
+    record_card_api_check_error,
+    record_card_api_check_success,
+    record_card_api_not_found,
+)
+from services.investmap_rf_registry_runner import run_registry_card_refresh
+from services.investmap_rf_client import (
+    InvestmapRfClientError,
+    InvestmapRfNotFoundError,
 )
 from portal_analysis.batch_analysis import run_batch_history
 from portal_analysis.history_summary import (
@@ -403,6 +413,223 @@ def deactivate_investmap_rf_monitor_registry_card(global_id):
         flash(
             f"Площадка {result['global_id']} снята с мониторинга: "
             "внешний API подтвердил отсутствие карточки (HTTP 404).",
+            "success",
+        )
+
+    finally:
+        conn.close()
+
+    return redirect(url_for("investmap.investmap_rf_monitor"))
+
+@investmap_bp.route(
+    "/investmap-rf/monitor/registry/<int:global_id>/refresh",
+    methods=["POST"],
+)
+@login_required
+@admin_required
+def refresh_investmap_rf_monitor_registry_card(global_id):
+    """Точечно обновляет одну активную площадку реестра."""
+    user_id = getattr(g, "user", {}).get("id")
+    conn = get_db()
+
+    try:
+        refresh_result = run_registry_card_refresh(
+            conn,
+            global_id=global_id,
+        )
+        item = refresh_result["item"]
+
+        if item is None:
+            raise RuntimeError("Точечное обновление не вернуло результат.")
+
+        if item.status in {"new", "unchanged"}:
+            result = record_card_api_check_success(
+                conn,
+                global_id=global_id,
+            )
+            if not log_action(
+                conn,
+                user_id,
+                "investmap_rf_registry_refresh",
+                detail=(
+                    f"global_id={global_id}; "
+                    f"status={item.status}; "
+                    f"snapshot_id={item.snapshot_id}"
+                ),
+            ):
+                raise RuntimeError(
+                    "Не удалось записать действие точечного обновления."
+                )
+            conn.commit()
+
+            message = (
+                f"Площадка {result['global_id']} обновлена: "
+                f"{'создан новый снимок' if item.status == 'new' else 'изменений нет'}."
+            )
+            flash(message, "success")
+            return redirect(url_for("investmap.investmap_rf_monitor"))
+
+        error = item.error or "Неизвестная ошибка обновления."
+        if "Внешний API не нашёл карточку." in error:
+            result = record_card_api_not_found(
+                conn,
+                global_id=global_id,
+                changed_by_user_id=user_id,
+            )
+            if not log_action(
+                conn,
+                user_id,
+                "investmap_rf_registry_api_not_found_detected",
+                detail=f"global_id={global_id}",
+            ):
+                raise RuntimeError(
+                    "Не удалось записать результат проверки карточки."
+                )
+            conn.commit()
+            flash(
+                f"Площадка {result['global_id']} не найдена на Инвесткарте РФ. "
+                "Проверьте статус подписания на ГИС «Экономика» и примите "
+                "решение в реестре активных площадок.",
+                "warning",
+            )
+            return redirect(url_for("investmap.investmap_rf_monitor"))
+
+        result = record_card_api_check_error(
+            conn,
+            global_id=global_id,
+            error=error,
+        )
+        if not log_action(
+            conn,
+            user_id,
+            "investmap_rf_registry_refresh_error",
+            detail=f"global_id={global_id}; error={result['error']}",
+        ):
+            raise RuntimeError(
+                "Не удалось записать ошибку точечного обновления."
+            )
+        conn.commit()
+        flash(
+            f"Площадка {result['global_id']}: обновление не выполнено. "
+            "Ошибка сохранена в реестре.",
+            "danger",
+        )
+
+    except ValueError as exc:
+        conn.rollback()
+        flash(str(exc), "danger")
+
+    except Exception:
+        conn.rollback()
+        current_app.logger.exception(
+            "Ошибка точечного обновления Инвесткарты РФ: global_id=%s",
+            global_id,
+        )
+        flash(
+            "Не удалось обновить площадку из-за внутренней ошибки.",
+            "danger",
+        )
+
+    finally:
+        conn.close()
+
+    return redirect(url_for("investmap.investmap_rf_monitor"))
+
+
+@investmap_bp.route(
+    "/investmap-rf/monitor/registry/<int:global_id>/keep-not-found",
+    methods=["POST"],
+)
+@login_required
+@admin_required
+def keep_investmap_rf_monitor_registry_card(global_id):
+    """Оставляет площадку в мониторинге после решения оператора."""
+    user_id = getattr(g, "user", {}).get("id")
+    conn = get_db()
+
+    try:
+        result = keep_card_not_found_by_operator(
+            conn,
+            global_id=global_id,
+            changed_by_user_id=user_id,
+        )
+        if not log_action(
+            conn,
+            user_id,
+            "investmap_rf_registry_keep_not_found",
+            detail=f"global_id={global_id}",
+        ):
+            raise RuntimeError("Не удалось записать решение оператора.")
+        conn.commit()
+
+    except ValueError as exc:
+        conn.rollback()
+        flash(str(exc), "danger")
+
+    except Exception:
+        conn.rollback()
+        current_app.logger.exception(
+            "Ошибка решения оставить площадку в мониторинге: global_id=%s",
+            global_id,
+        )
+        flash("Не удалось сохранить решение оператора.", "danger")
+
+    else:
+        flash(
+            f"Площадка {result['global_id']} оставлена в отслеживании.",
+            "success",
+        )
+
+    finally:
+        conn.close()
+
+    return redirect(url_for("investmap.investmap_rf_monitor"))
+
+
+@investmap_bp.route(
+    "/investmap-rf/monitor/registry/<int:global_id>/"
+    "deactivate-operator-not-found",
+    methods=["POST"],
+)
+@login_required
+@admin_required
+def deactivate_investmap_rf_monitor_registry_card_by_operator(global_id):
+    """Снимает площадку после решения оператора о её отсутствии на карте."""
+    user_id = getattr(g, "user", {}).get("id")
+    conn = get_db()
+
+    try:
+        result = deactivate_card_not_found_by_operator(
+            conn,
+            global_id=global_id,
+            changed_by_user_id=user_id,
+        )
+        if not log_action(
+            conn,
+            user_id,
+            "investmap_rf_registry_deactivate_operator_not_found",
+            detail=f"global_id={global_id}",
+        ):
+            raise RuntimeError("Не удалось записать решение оператора.")
+        conn.commit()
+
+    except ValueError as exc:
+        conn.rollback()
+        flash(str(exc), "danger")
+
+    except Exception:
+        conn.rollback()
+        current_app.logger.exception(
+            "Ошибка ручного снятия площадки после проверки карты: "
+            "global_id=%s",
+            global_id,
+        )
+        flash("Не удалось снять площадку с мониторинга.", "danger")
+
+    else:
+        flash(
+            f"Площадка {result['global_id']} снята с отслеживания "
+            "по решению оператора.",
             "success",
         )
 
