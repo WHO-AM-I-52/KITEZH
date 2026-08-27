@@ -298,3 +298,10 @@ class InvestmapRfMonitorExportTest(unittest.TestCase):
             ).value,
             1003,
         )
+        self.assertEqual(
+            sheet.cell(
+                row=titles["Карточки без рассчитанного процента"] + 2,
+                column=2,
+            ).value,
+            "—",
+        )
