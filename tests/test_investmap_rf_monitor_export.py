@@ -218,7 +218,15 @@ class InvestmapRfMonitorExportTest(unittest.TestCase):
             "Заполните поле",
             sheet.cell(card_row, column=4).value,
         )
-        self.assertEqual(sheet.cell(card_row, column=5).value, "—")
+        yellow_recommendations = sheet.cell(card_row, column=5).value
+        self.assertIn(
+            "Стоимость, руб./год за кв. м",
+            yellow_recommendations,
+        )
+        self.assertIn(
+            "Укажите минимальный и максимальный срок аренды",
+            yellow_recommendations,
+        )
         self.assertIn(
             "Преференциальный режим",
             sheet.cell(card_row, column=6).value,
@@ -262,11 +270,13 @@ class InvestmapRfMonitorExportTest(unittest.TestCase):
         summary = workbook["Итог по управляющим"]
         self.assertEqual(summary["A2"].value, "Иванов И.И.")
         self.assertEqual(summary["B2"].value, 2)
-        self.assertEqual(summary["C2"].value, 82.5)
+        self.assertEqual(summary["C2"].value, 0.825)
+        self.assertEqual(summary["C2"].number_format, "0.0%")
 
         self.assertEqual(summary["A4"].value, "Итого")
         self.assertEqual(summary["B4"].value, 3)
-        self.assertEqual(summary["C4"].value, 82.5)
+        self.assertEqual(summary["C4"].value, 0.825)
+        self.assertEqual(summary["C4"].number_format, "0.0%")
 
     def test_places_low_and_missing_cards_in_rankings(self):
         stream = build_monitor_export_xlsx(self.conn)
