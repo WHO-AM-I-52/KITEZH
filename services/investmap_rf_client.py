@@ -172,7 +172,8 @@ def fetch_card(
             status_code, raw_body = _make_request(
                 request,
                 timeout_seconds=timeout_seconds,
-            )        except urllib.error.HTTPError as exc:
+            )
+        except urllib.error.HTTPError as exc:
             error_body = exc.read()[:2000]
             error_text = error_body.decode(
                 'utf-8',
