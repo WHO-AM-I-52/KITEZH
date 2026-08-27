@@ -214,9 +214,15 @@ class InvestmapRfMonitorExportTest(unittest.TestCase):
             ],
         )
         self.assertEqual(sheet.cell(card_row, column=1).value, 1002)
-        self.assertEqual(sheet.cell(card_row, column=4).value, "—")
+        self.assertIn(
+            "Заполните поле",
+            sheet.cell(card_row, column=4).value,
+        )
         self.assertEqual(sheet.cell(card_row, column=5).value, "—")
-        self.assertEqual(sheet.cell(card_row, column=6).value, "—")
+        self.assertIn(
+            "Преференциальный режим",
+            sheet.cell(card_row, column=6).value,
+        )
         
     def test_builds_expected_sheets_and_summary(self):
         stream = build_monitor_export_xlsx(self.conn)
