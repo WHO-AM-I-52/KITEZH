@@ -13,6 +13,8 @@ from typing import Any
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
+from portal_analysis.api_snapshot_normalizer import api_snapshot_to_portal_row
+from portal_analysis.portal_checker import calc_portal_score_v2
 
 
 _TECHNICAL_HEADERS = [
@@ -249,6 +251,9 @@ _RANKING_HEADERS = [
     "Global ID",
     "Средний процент заполнения",
     "Территориальный управляющий",
+    "🟢 Повысит % заполняемости",
+    "🟡 Может повлиять на % заполняемости",
+    "🔴 Влияние на % не подтверждено",
 ]
 
 _STATUS_LABELS = {
@@ -397,6 +402,60 @@ def _payload_cell_value(value: Any) -> Any:
 
     return value
 
+_RED_RECOMMENDATION_FIELDS = {
+    "Преференциальный режим",
+    "Наименование объекта преференциального режима",
+    "Наименование объекта инфраструктуры поддержки",
+}
+
+_YELLOW_RECOMMENDATION_FIELDS = {
+    "Стоимость, руб./год за кв. м",
+    "min и max сроки аренды (если применимо), лет",
+}
+
+_RENTAL_PERIOD_RECOMMENDATION = (
+    "Укажите минимальный и максимальный срок аренды в годах, например: 1–49."
+)
+
+
+def _format_recommendation(field: str, hint: str | None) -> str:
+    if field == "min и max сроки аренды (если применимо), лет":
+        return _RENTAL_PERIOD_RECOMMENDATION
+    if hint:
+        return hint
+    return f'Заполните поле «{field}».'
+
+
+def _traffic_light_recommendations(
+    diagnostics: dict[str, Any] | None,
+    v2_score: Any,
+) -> tuple[str, str, str]:
+    """Распределяет missing-поля V2 по колонкам светофора."""
+    if diagnostics is None or v2_score is None or float(v2_score) >= 80:
+        return "—", "—", "—"
+
+    green: list[str] = []
+    yellow: list[str] = []
+    red: list[str] = []
+
+    for entry in diagnostics.get("missing", []):
+        field = entry.get("field")
+        if not field:
+            continue
+
+        recommendation = _format_recommendation(field, entry.get("hint"))
+        if field in _RED_RECOMMENDATION_FIELDS:
+            red.append(recommendation)
+        elif field in _YELLOW_RECOMMENDATION_FIELDS:
+            yellow.append(recommendation)
+        else:
+            green.append(recommendation)
+
+    return (
+        "\n".join(green) or "—",
+        "\n".join(yellow) or "—",
+        "\n".join(red) or "—",
+    )
 
 def _read_export_rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     rows = conn.execute(
@@ -524,7 +583,19 @@ def _read_export_rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
             issue = f"{issue}: {details}"
         elif details:
             issue = details
+        diagnostics = None
+        if payload and row["v2_analysis_status"] == "ok":
+            diagnostics = calc_portal_score_v2(
+                api_snapshot_to_portal_row(payload),
+                conn,
+            )
 
+        green_recommendations, yellow_recommendations, red_recommendations = (
+            _traffic_light_recommendations(
+                diagnostics,
+                row["v2_score"],
+            )
+        )
         export_rows.append(
             {
                 "global_id": row["global_id"],
@@ -543,6 +614,9 @@ def _read_export_rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
                 "fetched_at_utc": row["fetched_at_utc"],
                 "filling_level": row["filling_level"],
                 "v2_value": v2_value,
+                "green_recommendations": green_recommendations,
+                "yellow_recommendations": yellow_recommendations,
+                "red_recommendations": red_recommendations,
                 "api_fields": _flatten_payload(payload) if payload else {},
             }
         )
@@ -736,12 +810,15 @@ def _append_rankings_sheet(workbook: Workbook, rows: list[dict[str, Any]]) -> No
         title: str,
         items: list[dict[str, Any]],
         start_row: int,
+        *,
+        include_recommendations: bool = False,
     ) -> int:
         title_cell = sheet.cell(row=start_row, column=1, value=title)
         title_cell.fill = _SECTION_FILL
         title_cell.font = _BOLD_FONT
 
-        _style_header(sheet, start_row + 1, _RANKING_HEADERS)
+        headers = _RANKING_HEADERS if include_recommendations else _RANKING_HEADERS[:3]
+        _style_header(sheet, start_row + 1, headers)
 
         row_number = start_row + 2
         for item in items:
@@ -756,6 +833,24 @@ def _append_rankings_sheet(workbook: Workbook, rows: list[dict[str, Any]]) -> No
                 column=3,
                 value=item["manager_name"] or "Не назначен",
             )
+                        if include_recommendations:
+                for column, key in enumerate(
+                    (
+                        "green_recommendations",
+                        "yellow_recommendations",
+                        "red_recommendations",
+                    ),
+                    start=4,
+                ):
+                    cell = sheet.cell(
+                        row=row_number,
+                        column=column,
+                        value=item[key],
+                    )
+                    cell.alignment = Alignment(
+                        vertical="top",
+                        wrap_text=True,
+                    )
             sheet.cell(row=row_number, column=2).number_format = "0.0%"
             row_number += 1
 
@@ -766,6 +861,7 @@ def _append_rankings_sheet(workbook: Workbook, rows: list[dict[str, Any]]) -> No
         "Площадки с заполнением ниже 80%",
         below_eighty,
         next_row,
+        include_recommendations=True,
     )
     append_section(
         "Карточки без рассчитанного процента",
@@ -774,7 +870,7 @@ def _append_rankings_sheet(workbook: Workbook, rows: list[dict[str, Any]]) -> No
     )
 
     sheet.freeze_panes = "A3"
-    _apply_widths(sheet, [16, 30, 36])
+    _apply_widths(sheet, [16, 30, 36, 48, 48, 48])
 
 
 def build_monitor_export_xlsx(conn: sqlite3.Connection) -> BytesIO:
