@@ -431,7 +431,7 @@ def _traffic_light_recommendations(
     v2_score: Any,
 ) -> tuple[str, str, str]:
     """Распределяет missing-поля V2 по колонкам светофора."""
-    if diagnostics is None or v2_score is None or float(v2_score) >= 80:
+    if diagnostics is None:
         return "—", "—", "—"
 
     green: list[str] = []
@@ -833,7 +833,8 @@ def _append_rankings_sheet(workbook: Workbook, rows: list[dict[str, Any]]) -> No
                 column=3,
                 value=item["manager_name"] or "Не назначен",
             )
-                        if include_recommendations:
+
+            if include_recommendations:
                 for column, key in enumerate(
                     (
                         "green_recommendations",
