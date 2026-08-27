@@ -54,7 +54,7 @@ class InvestmapRfMonitorExportTest(unittest.TestCase):
                 is_resolved INTEGER
             );
 
-                        CREATE TABLE investmap_fields (
+            CREATE TABLE investmap_fields (
                 tech_name TEXT,
                 display_name TEXT
             );
