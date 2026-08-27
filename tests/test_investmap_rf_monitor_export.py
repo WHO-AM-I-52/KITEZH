@@ -256,7 +256,8 @@ class InvestmapRfMonitorExportTest(unittest.TestCase):
         )
         self.assertEqual(technical["A2"].value, 1001)
         self.assertEqual(technical["B2"].value, "Площадка 1001")
-        self.assertEqual(technical["I2"].value, 95)
+        self.assertEqual(technical["I2"].value, 0.95)
+        self.assertEqual(technical["I2"].number_format, "0.0%")
 
         summary = workbook["Итог по управляющим"]
         self.assertEqual(summary["A2"].value, "Иванов И.И.")
