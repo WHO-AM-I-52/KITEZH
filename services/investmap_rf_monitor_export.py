@@ -428,7 +428,6 @@ def _format_recommendation(field: str, hint: str | None) -> str:
 
 def _traffic_light_recommendations(
     diagnostics: dict[str, Any] | None,
-    v2_score: Any,
 ) -> tuple[str, str, str]:
     """Распределяет missing-поля V2 по колонкам светофора."""
     if diagnostics is None:
@@ -456,6 +455,7 @@ def _traffic_light_recommendations(
         "\n".join(yellow) or "—",
         "\n".join(red) or "—",
     )
+
 
 def _read_export_rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     rows = conn.execute(
@@ -591,10 +591,7 @@ def _read_export_rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
             )
 
         green_recommendations, yellow_recommendations, red_recommendations = (
-            _traffic_light_recommendations(
-                diagnostics,
-                row["v2_score"],
-            )
+            _traffic_light_recommendations(diagnostics)
         )
         export_rows.append(
             {
