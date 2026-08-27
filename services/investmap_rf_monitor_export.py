@@ -823,10 +823,15 @@ def _append_rankings_sheet(workbook: Workbook, rows: list[dict[str, Any]]) -> No
         row_number = start_row + 2
         for item in items:
             sheet.cell(row=row_number, column=1, value=item["global_id"])
+            filling_level = item["filling_level"]
             sheet.cell(
                 row=row_number,
                 column=2,
-                value=float(item["filling_level"]) / 100,
+                value=(
+                    float(filling_level) / 100
+                    if filling_level is not None
+                    else "—"
+                ),
             )
             sheet.cell(
                 row=row_number,
@@ -852,7 +857,8 @@ def _append_rankings_sheet(workbook: Workbook, rows: list[dict[str, Any]]) -> No
                         vertical="top",
                         wrap_text=True,
                     )
-            sheet.cell(row=row_number, column=2).number_format = "0.0%"
+            if filling_level is not None:
+                sheet.cell(row=row_number, column=2).number_format = "0.0%"
             row_number += 1
 
         return row_number + 1
