@@ -197,6 +197,15 @@ def _monitor_query_positive_int(name: str) -> int | None:
 
     return parsed
 
+def _registry_monitor_url(global_id: int | None = None) -> str:
+    """Возвращает URL мониторинга с раскрытым реестром."""
+    query: dict[str, int] = {"registry": 1}
+
+    if global_id is not None:
+        query["registry_global_id"] = global_id
+
+    return url_for("investmap.investmap_rf_monitor", **query)
+
 @investmap_bp.route('/investmap/rf-monitor')
 @login_required
 @permission_required('can_view_investmap')
@@ -208,6 +217,9 @@ def investmap_rf_monitor():
     try:
         page = _monitor_query_positive_int("page") or 1
         search_global_id = _monitor_query_positive_int("global_id")
+        registry_search_global_id = _monitor_query_positive_int(
+            "registry_global_id"
+        )
 
         db = get_db()
         cards_page = get_monitor_cards(
@@ -221,7 +233,11 @@ def investmap_rf_monitor():
             'investmap_rf_monitor.html',
             summary=get_monitor_summary(db),
             cards_page=cards_page,
-            registry_cards=get_monitor_registry_cards(db),
+            registry_cards=get_monitor_registry_cards(
+                db,
+                global_id=registry_search_global_id,
+            ),
+            registry_search_global_id=registry_search_global_id,
             registry_events=get_monitor_registry_events(db),
             is_admin=session.get('role') == 'admin',
         )
@@ -251,6 +267,7 @@ def investmap_rf_monitor():
             },
             registry_cards=[],
             registry_events=[],
+            registry_search_global_id=None,
             is_admin=session.get('role') == 'admin',
         ), 500
     finally:
@@ -419,7 +436,7 @@ def deactivate_investmap_rf_monitor_registry_card(global_id):
     finally:
         conn.close()
 
-    return redirect(url_for("investmap.investmap_rf_monitor"))
+    return redirect(_registry_monitor_url(global_id))
 
 @investmap_bp.route(
     "/investmap-rf/monitor/registry/<int:global_id>/refresh",
@@ -467,7 +484,7 @@ def refresh_investmap_rf_monitor_registry_card(global_id):
                 f"{'создан новый снимок' if item.status == 'new' else 'изменений нет'}."
             )
             flash(message, "success")
-            return redirect(url_for("investmap.investmap_rf_monitor"))
+            return redirect(_registry_monitor_url(global_id))
 
         error = item.error or "Неизвестная ошибка обновления."
         if "Внешний API не нашёл карточку." in error:
@@ -492,7 +509,7 @@ def refresh_investmap_rf_monitor_registry_card(global_id):
                 "решение в реестре активных площадок.",
                 "warning",
             )
-            return redirect(url_for("investmap.investmap_rf_monitor"))
+            return redirect(_registry_monitor_url(global_id))
 
         result = record_card_api_check_error(
             conn,
@@ -533,7 +550,7 @@ def refresh_investmap_rf_monitor_registry_card(global_id):
     finally:
         conn.close()
 
-    return redirect(url_for("investmap.investmap_rf_monitor"))
+    return redirect(_registry_monitor_url(global_id))
 
 
 @investmap_bp.route(
@@ -583,7 +600,7 @@ def keep_investmap_rf_monitor_registry_card(global_id):
     finally:
         conn.close()
 
-    return redirect(url_for("investmap.investmap_rf_monitor"))
+    return redirect(_registry_monitor_url(global_id))
 
 
 @investmap_bp.route(
@@ -636,7 +653,7 @@ def deactivate_investmap_rf_monitor_registry_card_by_operator(global_id):
     finally:
         conn.close()
 
-    return redirect(url_for("investmap.investmap_rf_monitor"))
+    return redirect(_registry_monitor_url(global_id))
 
 @investmap_bp.route('/investmap/rf-monitor/<int:global_id>')
 @login_required
