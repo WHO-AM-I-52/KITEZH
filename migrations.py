@@ -548,6 +548,42 @@ def _migrate_investmap_rf_monitor_registry_tables(conn):
             ADD COLUMN changed_by_user_id INTEGER
             """
         )
+    card_columns = {
+        row["name"]
+        for row in conn.execute(
+            "PRAGMA table_info(investmap_rf_monitored_cards)"
+        ).fetchall()
+    }
+
+    card_columns_to_add = (
+        ("last_api_check_at_utc", "TEXT"),
+        ("last_api_check_status", "TEXT"),
+        ("last_api_check_error", "TEXT"),
+        (
+            "api_not_found_pending_decision",
+            "INTEGER NOT NULL DEFAULT 0",
+        ),
+        ("api_not_found_detected_at_utc", "TEXT"),
+    )
+
+    for column_name, column_type in card_columns_to_add:
+        if column_name not in card_columns:
+            conn.execute(
+                "ALTER TABLE investmap_rf_monitored_cards "
+                f"ADD COLUMN {column_name} {column_type}"
+            )
+
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS
+            idx_investmap_rf_monitored_cards_pending_decision
+        ON investmap_rf_monitored_cards(
+            api_not_found_pending_decision,
+            is_active,
+            global_id
+        )
+        """
+    )
 
 _INVESTMAP_RF_MUNICIPALITY_MANAGER_RULES = [
     ("Балахнинской муниципальный округ", "Балахн", "Гусев Олег Викторович"),
