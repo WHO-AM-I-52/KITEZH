@@ -15,6 +15,17 @@ EVENT_ACTIVATED = "activated"
 EVENT_REACTIVATED = "reactivated"
 EVENT_DEACTIVATED_STATUS_CHANGED = "deactivated_status_changed"
 EVENT_DEACTIVATED_API_NOT_FOUND = "deactivated_api_not_found"
+EVENT_API_NOT_FOUND_DETECTED = "api_not_found_detected"
+EVENT_API_NOT_FOUND_KEPT_BY_OPERATOR = (
+    "api_not_found_kept_by_operator"
+)
+EVENT_DEACTIVATED_OPERATOR_NOT_FOUND = (
+    "deactivated_operator_not_found"
+)
+
+API_CHECK_STATUS_SUCCESS = "success"
+API_CHECK_STATUS_ERROR = "error"
+API_CHECK_STATUS_NOT_FOUND_PENDING = "not_found_pending"
 
 
 def _utc_now() -> str:
@@ -150,6 +161,263 @@ def deactivate_card_not_found_in_api(
         conn,
         global_id=normalized_global_id,
         event_type=EVENT_DEACTIVATED_API_NOT_FOUND,
+        previous_status=row["last_source_status"],
+        current_status=row["last_source_status"],
+        source_filename=row["source_filename"],
+        occurred_at_utc=occurred_at_utc,
+        reason=reason,
+        changed_by_user_id=changed_by_user_id,
+    )
+
+    return {
+        "global_id": normalized_global_id,
+        "is_active": 0,
+        "reason": reason,
+        "occurred_at_utc": occurred_at_utc,
+    }
+
+def _get_active_monitored_card(conn, global_id: int):
+    try:
+        normalized_global_id = int(global_id)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("global_id должен быть целым числом.") from exc
+
+    if normalized_global_id <= 0:
+        raise ValueError("global_id должен быть положительным числом.")
+
+    row = conn.execute(
+        """
+        SELECT
+            global_id,
+            is_active,
+            source_filename,
+            last_source_status,
+            api_not_found_pending_decision
+        FROM investmap_rf_monitored_cards
+        WHERE global_id = ?
+        """,
+        (normalized_global_id,),
+    ).fetchone()
+
+    if row is None:
+        raise ValueError("Площадка не найдена в реестре мониторинга.")
+
+    if int(row["is_active"]) != 1:
+        raise ValueError("Площадка уже снята с мониторинга.")
+
+    return normalized_global_id, row
+
+
+def record_card_api_check_success(
+    conn,
+    *,
+    global_id: int,
+) -> dict[str, Any]:
+    """Фиксирует успешную проверку карточки API."""
+    normalized_global_id, _ = _get_active_monitored_card(conn, global_id)
+    occurred_at_utc = _utc_now()
+
+    conn.execute(
+        """
+        UPDATE investmap_rf_monitored_cards
+        SET
+            last_api_check_at_utc = ?,
+            last_api_check_status = ?,
+            last_api_check_error = NULL,
+            api_not_found_pending_decision = 0,
+            api_not_found_detected_at_utc = NULL
+        WHERE global_id = ?
+        """,
+        (
+            occurred_at_utc,
+            API_CHECK_STATUS_SUCCESS,
+            normalized_global_id,
+        ),
+    )
+
+    return {
+        "global_id": normalized_global_id,
+        "status": API_CHECK_STATUS_SUCCESS,
+        "occurred_at_utc": occurred_at_utc,
+    }
+
+
+def record_card_api_check_error(
+    conn,
+    *,
+    global_id: int,
+    error: str,
+) -> dict[str, Any]:
+    """Фиксирует окончательную ошибку API, не подтверждающую отсутствие."""
+    normalized_global_id, _ = _get_active_monitored_card(conn, global_id)
+    occurred_at_utc = _utc_now()
+    normalized_error = str(error or "").strip()[:2000]
+
+    conn.execute(
+        """
+        UPDATE investmap_rf_monitored_cards
+        SET
+            last_api_check_at_utc = ?,
+            last_api_check_status = ?,
+            last_api_check_error = ?,
+            api_not_found_pending_decision = 0,
+            api_not_found_detected_at_utc = NULL
+        WHERE global_id = ?
+        """,
+        (
+            occurred_at_utc,
+            API_CHECK_STATUS_ERROR,
+            normalized_error,
+            normalized_global_id,
+        ),
+    )
+
+    return {
+        "global_id": normalized_global_id,
+        "status": API_CHECK_STATUS_ERROR,
+        "error": normalized_error,
+        "occurred_at_utc": occurred_at_utc,
+    }
+
+
+def record_card_api_not_found(
+    conn,
+    *,
+    global_id: int,
+    changed_by_user_id: int | None = None,
+) -> dict[str, Any]:
+    """Фиксирует отсутствие карточки API и ожидает решения оператора."""
+    normalized_global_id, row = _get_active_monitored_card(conn, global_id)
+    occurred_at_utc = _utc_now()
+    reason = (
+        "Площадка не найдена на Инвесткарте РФ. "
+        "Требуется проверка статуса подписания на ГИС «Экономика»."
+    )
+
+    conn.execute(
+        """
+        UPDATE investmap_rf_monitored_cards
+        SET
+            last_api_check_at_utc = ?,
+            last_api_check_status = ?,
+            last_api_check_error = ?,
+            api_not_found_pending_decision = 1,
+            api_not_found_detected_at_utc = ?
+        WHERE global_id = ?
+        """,
+        (
+            occurred_at_utc,
+            API_CHECK_STATUS_NOT_FOUND_PENDING,
+            reason,
+            occurred_at_utc,
+            normalized_global_id,
+        ),
+    )
+
+    _append_event(
+        conn,
+        global_id=normalized_global_id,
+        event_type=EVENT_API_NOT_FOUND_DETECTED,
+        previous_status=row["last_source_status"],
+        current_status=row["last_source_status"],
+        source_filename=row["source_filename"],
+        occurred_at_utc=occurred_at_utc,
+        reason=reason,
+        changed_by_user_id=changed_by_user_id,
+    )
+
+    return {
+        "global_id": normalized_global_id,
+        "status": API_CHECK_STATUS_NOT_FOUND_PENDING,
+        "reason": reason,
+        "occurred_at_utc": occurred_at_utc,
+    }
+
+
+def keep_card_not_found_by_operator(
+    conn,
+    *,
+    global_id: int,
+    changed_by_user_id: int | None = None,
+) -> dict[str, Any]:
+    """Оставляет активную карточку в мониторинге после решения оператора."""
+    normalized_global_id, row = _get_active_monitored_card(conn, global_id)
+
+    if int(row["api_not_found_pending_decision"]) != 1:
+        raise ValueError(
+            "Для площадки нет ожидающего решения о её отсутствии на карте."
+        )
+
+    occurred_at_utc = _utc_now()
+    reason = (
+        "Оператор оставил площадку в мониторинге после сообщения "
+        "об отсутствии на Инвесткарте РФ."
+    )
+
+    conn.execute(
+        """
+        UPDATE investmap_rf_monitored_cards
+        SET api_not_found_pending_decision = 0
+        WHERE global_id = ?
+        """,
+        (normalized_global_id,),
+    )
+
+    _append_event(
+        conn,
+        global_id=normalized_global_id,
+        event_type=EVENT_API_NOT_FOUND_KEPT_BY_OPERATOR,
+        previous_status=row["last_source_status"],
+        current_status=row["last_source_status"],
+        source_filename=row["source_filename"],
+        occurred_at_utc=occurred_at_utc,
+        reason=reason,
+        changed_by_user_id=changed_by_user_id,
+    )
+
+    return {
+        "global_id": normalized_global_id,
+        "is_active": 1,
+        "reason": reason,
+        "occurred_at_utc": occurred_at_utc,
+    }
+
+
+def deactivate_card_not_found_by_operator(
+    conn,
+    *,
+    global_id: int,
+    changed_by_user_id: int | None = None,
+) -> dict[str, Any]:
+    """Снимает карточку после явного решения оператора."""
+    normalized_global_id, row = _get_active_monitored_card(conn, global_id)
+
+    if int(row["api_not_found_pending_decision"]) != 1:
+        raise ValueError(
+            "Для площадки нет ожидающего решения о её отсутствии на карте."
+        )
+
+    occurred_at_utc = _utc_now()
+    reason = (
+        "Снято оператором: площадка не найдена на Инвесткарте РФ. "
+        "Требуется проверка статуса подписания на ГИС «Экономика»."
+    )
+
+    conn.execute(
+        """
+        UPDATE investmap_rf_monitored_cards
+        SET
+            is_active = 0,
+            api_not_found_pending_decision = 0
+        WHERE global_id = ?
+        """,
+        (normalized_global_id,),
+    )
+
+    _append_event(
+        conn,
+        global_id=normalized_global_id,
+        event_type=EVENT_DEACTIVATED_OPERATOR_NOT_FOUND,
         previous_status=row["last_source_status"],
         current_status=row["last_source_status"],
         source_filename=row["source_filename"],
