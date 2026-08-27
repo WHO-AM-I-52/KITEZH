@@ -116,8 +116,10 @@ def _parse_payload(raw_body: bytes, global_id: int) -> InvestmapRfCard:
     )
 
 
-def _error_details(exc: urllib.error.HTTPError) -> str:
-    raw_body = exc.read()[:2000]
+def _error_details(
+    exc: urllib.error.HTTPError,
+    raw_body: bytes,
+) -> str:
     body = raw_body.decode('utf-8', errors='replace').strip()
     request_id = (
         exc.headers.get('X-Request-ID')
@@ -132,7 +134,6 @@ def _error_details(exc: urllib.error.HTTPError) -> str:
         details.append(f'ответ={body!r}')
 
     return f' ({", ".join(details)})' if details else ''
-
 
 def _make_request(
     request: urllib.request.Request,
@@ -171,16 +172,23 @@ def fetch_card(
             status_code, raw_body = _make_request(
                 request,
                 timeout_seconds=timeout_seconds,
-            )
-        except urllib.error.HTTPError as exc:
-            if exc.code == 404:
+            )        except urllib.error.HTTPError as exc:
+            error_body = exc.read()[:2000]
+            error_text = error_body.decode(
+                'utf-8',
+                errors='replace',
+            ).strip().lower()
+
+            if exc.code == 404 or error_text == 'default backend - 404':
                 raise InvestmapRfNotFoundError(
                     'Внешний API не нашёл карточку.'
                 ) from exc
+
             if exc.code == 429:
                 raise InvestmapRfRateLimitedError(
                     'Инвестиционная карта РФ ограничила частоту запросов.'
                 ) from exc
+
             if exc.code in {401, 403}:
                 raise InvestmapRfAccessError(
                     'Внешний API запретил доступ к карточке.'
@@ -197,7 +205,7 @@ def fetch_card(
             raise InvestmapRfClientError(
                 f'Внешний API вернул HTTP {exc.code} '
                 f'после {attempt_number + 1} попыток.'
-                f'{_error_details(exc)}'
+                f'{_error_details(exc, error_body)}'
             ) from exc
         except (urllib.error.URLError, TimeoutError, socket.timeout) as exc:
             if attempt_number < len(retry_delays_seconds):
