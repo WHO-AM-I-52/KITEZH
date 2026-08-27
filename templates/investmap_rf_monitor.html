@@ -364,8 +364,9 @@
                                 <th>Первый импорт</th>
                                 <th>Последнее появление</th>
                                 <th>Исходный файл</th>
+                                <th>Проверка Инвесткарты</th>
                                 {% if is_admin %}
-                                <th>Действие</th>
+                                <th>Действия</th>
                                 {% endif %}
                             </tr>
                         </thead>
@@ -387,24 +388,106 @@
                                 <td class="text-break">
                                     {{ card.source_filename }}
                                 </td>
+                                <td>
+                                    {% if card.last_api_check_status == 'not_found_pending' %}
+                                    <div class="text-danger fw-semibold">
+                                        ⚠ Не найдена на карте
+                                    </div>
+                                    <div class="small text-muted mt-1">
+                                        Проверьте подписку в ГИС «Экономика».
+                                    </div>
+                                    {% if card.api_not_found_detected_at_utc %}
+                                    <div class="small text-muted mt-1">
+                                        <code>{{ card.api_not_found_detected_at_utc }}</code>
+                                    </div>
+                                    {% endif %}
+                                    {% elif card.last_api_check_status == 'success' %}
+                                    <span class="badge text-bg-success">Проверена</span>
+                                    {% if card.last_api_check_at_utc %}
+                                    <div class="small text-muted mt-1">
+                                        <code>{{ card.last_api_check_at_utc }}</code>
+                                    </div>
+                                    {% endif %}
+                                    {% elif card.last_api_check_status == 'error' %}
+                                    <span class="badge text-bg-danger">Ошибка API</span>
+                                    {% if card.last_api_check_error %}
+                                    <div class="small text-danger text-break mt-1">
+                                        {{ card.last_api_check_error }}
+                                    </div>
+                                    {% endif %}
+                                    {% elif card.last_api_check_at_utc %}
+                                    <div class="small text-muted">
+                                        <code>{{ card.last_api_check_at_utc }}</code>
+                                    </div>
+                                    {% else %}
+                                    <span class="text-muted">Не проверялась</span>
+                                    {% endif %}
+                                </td>
                                 {% if is_admin %}
                                 <td>
-                                    <form
-                                        method="post"
-                                        action="{{ url_for(
-                                            'investmap.deactivate_investmap_rf_monitor_registry_card',
-                                            global_id=card.global_id
-                                        ) }}"
-                                        onsubmit="return confirm(
-                                            'Снять площадку {{ card.global_id }} с мониторинга? ' +
-                                            'Подтверждайте действие только если внешний API вернул HTTP 404. ' +
-                                            'Операция будет записана в журнал.'
-                                        );"
-                                    >
-                                        <button type="submit" class="btn btn-sm btn-outline-danger">
-                                            Снять по 404
-                                        </button>
-                                    </form>
+                                    <div class="d-flex flex-wrap gap-1">
+                                        <form
+                                            method="post"
+                                            action="{{ url_for(
+                                                'investmap.refresh_investmap_rf_monitor_registry_card',
+                                                global_id=card.global_id
+                                            ) }}"
+                                            onsubmit="return confirm(
+                                                'Обновить площадку {{ card.global_id }} через API Инвесткарты РФ? ' +
+                                                'Проверка может занять до двух минут при повторных попытках.'
+                                            );"
+                                        >
+                                            <button type="submit" class="btn btn-sm btn-outline-primary">
+                                                Обновить сейчас
+                                            </button>
+                                        </form>
+                                
+                                        {% if card.api_not_found_pending_decision %}
+                                        <form
+                                            method="post"
+                                            action="{{ url_for(
+                                                'investmap.keep_investmap_rf_monitor_registry_card',
+                                                global_id=card.global_id
+                                            ) }}"
+                                        >
+                                            <button type="submit" class="btn btn-sm btn-outline-secondary">
+                                                Оставить
+                                            </button>
+                                        </form>
+
+                                        <form
+                                            method="post"
+                                            action="{{ url_for(
+                                                'investmap.deactivate_investmap_rf_monitor_registry_card_by_operator',
+                                                global_id=card.global_id
+                                            ) }}"
+                                            onsubmit="return confirm(
+                                                'Снять площадку {{ card.global_id }} с отслеживания? ' +
+                                                'Будет записано решение оператора о том, что площадка не найдена на Инвесткарте РФ.'
+                                            );"
+                                        >
+                                            <button type="submit" class="btn btn-sm btn-danger">
+                                                Снять
+                                            </button>
+                                        </form>
+                                        {% endif %}
+                                
+                                        <form
+                                            method="post"
+                                            action="{{ url_for(
+                                                'investmap.deactivate_investmap_rf_monitor_registry_card',
+                                                global_id=card.global_id
+                                            ) }}"
+                                            onsubmit="return confirm(
+                                                'Снять площадку {{ card.global_id }} по подтверждённому HTTP 404? ' +
+                                                'Операция будет записана в журнал.'
+                                            );"
+                                        >
+                                            <button type="submit" class="btn btn-sm btn-outline-danger">
+                                                Снять по 404
+                                            </button>
+                                        </form>
+                                    </div>
                                 </td>
                                 {% endif %}
                             </tr>
@@ -474,7 +557,19 @@
                                     </span>
                                     {% elif event.event_type == 'deactivated_api_not_found' %}
                                     <span class="badge text-bg-danger">
-                                         Снята по HTTP 404
+                                        Снята по HTTP 404
+                                    </span>
+                                    {% elif event.event_type == 'api_not_found_detected' %}
+                                    <span class="badge text-bg-warning">
+                                        Не найдена на карте
+                                    </span>
+                                    {% elif event.event_type == 'api_not_found_kept_by_operator' %}
+                                    <span class="badge text-bg-secondary">
+                                        Оставлена оператором
+                                    </span>
+                                    {% elif event.event_type == 'deactivated_operator_not_found' %}
+                                    <span class="badge text-bg-danger">
+                                        Снята оператором
                                     </span>
                                     {% else %}
                                     <span class="badge text-bg-secondary">
