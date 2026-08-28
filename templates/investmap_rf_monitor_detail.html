@@ -73,6 +73,351 @@
             </div>
         </div>
     </div>
+        {% set overview = monitor_card.site_overview %}
+
+    <div class="card mb-4">
+        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <div>
+                <div class="fw-semibold">
+                    {{ overview.title or 'Наименование площадки не указано' }}
+                </div>
+                {% if overview.status %}
+                <div class="small text-muted mt-1">
+                    Статус на Инвестиционной карте РФ:
+                    <span class="badge text-bg-success">
+                        {{ overview.status }}
+                    </span>
+                </div>
+                {% endif %}
+            </div>
+
+            {% if overview.coordinates %}
+            <a
+                class="btn btn-outline-primary btn-sm"
+                href="{{ overview.coordinates.map_url }}"
+                target="_blank"
+                rel="noopener noreferrer"
+            >
+                Открыть на карте
+            </a>
+            {% endif %}
+        </div>
+
+        <div class="card-body">
+            <div class="row g-4">
+                <div class="col-lg-6">
+                    <h2 class="h6 mb-3">Основные характеристики</h2>
+
+                    <dl class="row mb-0">
+                        <dt class="col-sm-5">Тип площадки</dt>
+                        <dd class="col-sm-7">
+                            {{ overview.types|join(', ') or '—' }}
+                        </dd>
+
+                        <dt class="col-sm-5">Формат</dt>
+                        <dd class="col-sm-7">
+                            {{ overview.formats|join(', ') or '—' }}
+                        </dd>
+
+                        <dt class="col-sm-5">Форма сделки</dt>
+                        <dd class="col-sm-7">
+                            {{ overview.transaction_forms|join(', ') or '—' }}
+                        </dd>
+
+                        <dt class="col-sm-5">Форма собственности</dt>
+                        <dd class="col-sm-7">
+                            {{ overview.ownership_forms|join(', ') or '—' }}
+                        </dd>
+
+                        <dt class="col-sm-5">Стоимость</dt>
+                        <dd class="col-sm-7">
+                            {{ overview.cost or '—' }}
+                        </dd>
+
+                        <dt class="col-sm-5">Площадь</dt>
+                        <dd class="col-sm-7">
+                            {{ overview.total_area or '—' }}
+                        </dd>
+
+                        {% if overview.property_complex_area %}
+                        <dt class="col-sm-5">Площадь объекта</dt>
+                        <dd class="col-sm-7">
+                            {{ overview.property_complex_area }}
+                        </dd>
+                        {% endif %}
+
+                        {% if overview.cadastral_number %}
+                        <dt class="col-sm-5">Кадастровый номер</dt>
+                        <dd class="col-sm-7">
+                            {{ overview.cadastral_number }}
+                        </dd>
+                        {% endif %}
+                    </dl>
+                </div>
+
+                <div class="col-lg-6">
+                    <h2 class="h6 mb-3">Расположение</h2>
+
+                    <dl class="row mb-0">
+                        <dt class="col-sm-4">Регион</dt>
+                        <dd class="col-sm-8">
+                            {{ overview.regions|join(', ') or '—' }}
+                        </dd>
+
+                        <dt class="col-sm-4">Муниципалитет</dt>
+                        <dd class="col-sm-8">
+                            {{ overview.municipality or '—' }}
+                        </dd>
+
+                        <dt class="col-sm-4">Адрес</dt>
+                        <dd class="col-sm-8">
+                            {{ overview.address or '—' }}
+                        </dd>
+
+                        {% if overview.nearest_city %}
+                        <dt class="col-sm-4">Ближайший город</dt>
+                        <dd class="col-sm-8">
+                            {{ overview.nearest_city }}
+                        </dd>
+                        {% endif %}
+
+                        {% if overview.coordinates %}
+                        <dt class="col-sm-4">Координаты</dt>
+                        <dd class="col-sm-8">
+                            {{ overview.coordinates.latitude }},
+                            {{ overview.coordinates.longitude }}
+                        </dd>
+                        {% endif %}
+                    </dl>
+                </div>
+            </div>
+
+            {% if overview.capital_buildings or overview.building_specifications %}
+            <hr>
+
+            <h2 class="h6 mb-3">Характеристики объекта</h2>
+
+            {% if overview.capital_buildings %}
+            <div class="mb-3">
+                <div class="small text-muted mb-1">
+                    Объекты капитального строительства
+                </div>
+                <div>{{ overview.capital_buildings }}</div>
+            </div>
+            {% endif %}
+
+            {% if overview.building_specifications %}
+            <div>
+                <div class="small text-muted mb-1">
+                    Характеристики здания
+                </div>
+                <div class="text-break">
+                    {{ overview.building_specifications }}
+                </div>
+            </div>
+            {% endif %}
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">
+                    Транспортная доступность
+                </div>
+
+                <div class="card-body">
+                    <dl class="row mb-0">
+                        <dt class="col-sm-6">Подъездные дороги</dt>
+                        <dd class="col-sm-6">
+                            {{ overview.access_roads or '—' }}
+                        </dd>
+
+                        {% if overview.access_roads_other %}
+                        <dt class="col-sm-6">Описание подъезда</dt>
+                        <dd class="col-sm-6">
+                            {{ overview.access_roads_other }}
+                        </dd>
+                        {% endif %}
+
+                        {% if overview.distance_from_road %}
+                        <dt class="col-sm-6">До автодороги</dt>
+                        <dd class="col-sm-6">
+                            {{ overview.distance_from_road }}
+                        </dd>
+                        {% endif %}
+
+                        <dt class="col-sm-6">Железнодорожный доступ</dt>
+                        <dd class="col-sm-6">
+                            {{ overview.railway_availability or '—' }}
+                        </dd>
+
+                        <dt class="col-sm-6">Стоянка грузового транспорта</dt>
+                        <dd class="col-sm-6">
+                            {{ overview.truck_parking_availability or '—' }}
+                        </dd>
+                    </dl>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">
+                    Контакты и подача заявки
+                </div>
+
+                <div class="card-body">
+                    <dl class="row mb-0">
+                        <dt class="col-sm-4">Контакт</dt>
+                        <dd class="col-sm-8 text-break">
+                            {{ overview.contact_person or '—' }}
+                        </dd>
+
+                        <dt class="col-sm-4">Телефон</dt>
+                        <dd class="col-sm-8 text-break" style="white-space: pre-line;">
+                            {{ overview.contact_phone or '—' }}
+                        </dd>
+
+                        <dt class="col-sm-4">E-mail</dt>
+                        <dd class="col-sm-8 text-break">
+                            {% if overview.contact_email %}
+                            <a href="mailto:{{ overview.contact_email }}">
+                                {{ overview.contact_email }}
+                            </a>
+                            {% else %}
+                            —
+                            {% endif %}
+                        </dd>
+
+                        <dt class="col-sm-4">Сайт</dt>
+                        <dd class="col-sm-8 text-break">
+                            {% if overview.contact_website %}
+                            <a
+                                href="https://{{ overview.contact_website | replace('https://', '') | replace('http://', '') }}"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                            >
+                                {{ overview.contact_website }}
+                            </a>
+                            {% else %}
+                            —
+                            {% endif %}
+                        </dd>
+                    </dl>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">
+            Инженерная инфраструктура
+        </div>
+
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th scope="col">Ресурс</th>
+                            <th scope="col">Доступность</th>
+                            <th scope="col">Мощность</th>
+                            <th scope="col">Подключение от</th>
+                            <th scope="col">Тариф</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for utility in overview.utilities %}
+                        <tr>
+                            <th scope="row">{{ utility.name }}</th>
+                            <td>{{ utility.availability or '—' }}</td>
+                            <td>{{ utility.capacity or '—' }}</td>
+                            <td>{{ utility.connection_fee or '—' }}</td>
+                            <td>
+                                {% if utility.tariff_consumption %}
+                                {{ utility.tariff_consumption }}
+                                {% endif %}
+
+                                {% if utility.tariff_transportation %}
+                                <div class="small text-muted mt-1">
+                                    Транспортировка:
+                                    {{ utility.tariff_transportation }}
+                                </div>
+                                {% endif %}
+
+                                {% if not utility.tariff_consumption
+                                      and not utility.tariff_transportation %}
+                                —
+                                {% endif %}
+                            </td>
+                        </tr>
+
+                        {% if utility.details %}
+                        <tr class="table-light">
+                            <td colspan="5" class="small text-muted">
+                                <strong>{{ utility.name }}:</strong>
+                                {{ utility.details }}
+                            </td>
+                        </tr>
+                        {% endif %}
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    {% if overview.economic_activities %}
+    <div class="card mb-4">
+        <div class="card-header">
+            Рекомендуемые виды деятельности
+        </div>
+
+        <div class="card-body">
+            <ul class="mb-0">
+                {% for activity in overview.economic_activities %}
+                <li>
+                    {% if activity.code %}
+                    <span class="badge text-bg-light border text-dark me-1">
+                        ОКВЭД {{ activity.code }}
+                    </span>
+                    {% endif %}
+                    {{ activity.description or 'Описание не указано' }}
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if overview.application_procedure or overview.application_documents %}
+    <div class="card mb-4">
+        <div class="card-header">
+            Порядок подачи заявки
+        </div>
+
+        <div class="card-body">
+            {% if overview.application_procedure %}
+            <div class="mb-3" style="white-space: pre-line;">
+                {{ overview.application_procedure }}
+            </div>
+            {% endif %}
+
+            {% if overview.application_documents %}
+            <div>
+                <div class="fw-semibold mb-1">
+                    Документы для подачи заявки
+                </div>
+                <div style="white-space: pre-line;">
+                    {{ overview.application_documents }}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
 
     <div class="row g-3 mb-4">
         <div class="col-lg-6">
