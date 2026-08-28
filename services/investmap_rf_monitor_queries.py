@@ -607,9 +607,6 @@ def get_monitor_card_detail(
         },
         "site_overview": _build_site_overview(latest_payload),
         "assignment": (
-            # существующий код без изменений
-        ),
-        "assignment": (
             {
                 "global_id": assignment["global_id"],
                 "municipality_raw": assignment["municipality_raw"],
