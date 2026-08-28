@@ -17,6 +17,229 @@ def _json_or_none(value: str | None) -> Any:
     except (TypeError, json.JSONDecodeError):
         return value
 
+def _display_text(value: Any) -> str | None:
+    """Возвращает очищенный текст для пользовательского представления."""
+    if value is None:
+        return None
+
+    if isinstance(value, str):
+        normalized = value.strip()
+        return normalized or None
+
+    if isinstance(value, (int, float)):
+        return str(value)
+
+    return None
+
+
+def _display_number(value: Any, suffix: str = "") -> str | None:
+    """Форматирует число для карточки без технических представлений."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+
+    if isinstance(value, float) and value.is_integer():
+        value = int(value)
+
+    text = f"{value:,}".replace(",", " ")
+    return f"{text}{suffix}"
+
+
+def _display_list(value: Any) -> list[str]:
+    """Нормализует массив строк API для вывода в карточке."""
+    if not isinstance(value, list):
+        return []
+
+    result: list[str] = []
+
+    for item in value:
+        text = _display_text(item)
+
+        if text is not None:
+            result.append(text)
+
+    return result
+
+
+def _display_coordinates(value: Any) -> dict[str, Any] | None:
+    """Возвращает координаты только при наличии обеих числовых компонент."""
+    if not isinstance(value, dict):
+        return None
+
+    latitude = value.get("latitude")
+    longitude = value.get("longitude")
+
+    if (
+        isinstance(latitude, bool)
+        or isinstance(longitude, bool)
+        or not isinstance(latitude, (int, float))
+        or not isinstance(longitude, (int, float))
+    ):
+        return None
+
+    return {
+        "latitude": latitude,
+        "longitude": longitude,
+        "map_url": (
+            "https://yandex.ru/maps/?pt="
+            f"{longitude},{latitude}&z=15&l=map"
+        ),
+    }
+
+
+def _display_utility(
+    payload: dict[str, Any],
+    field_name: str,
+) -> dict[str, str | None]:
+    """Готовит сведения об одном виде инженерной инфраструктуры."""
+    source = payload.get(field_name)
+
+    if not isinstance(source, dict):
+        source = {}
+
+    availability = _display_text(source.get("availability"))
+    capacity = _display_number(source.get("availableCapacity"))
+    connection_fee = _display_number(
+        source.get("connectionFeeMin"),
+        " руб.",
+    )
+    tariff_consumption = _display_text(source.get("tariffConsumption"))
+    tariff_transportation = _display_text(
+        source.get("tariffTransportation")
+    )
+    details = _display_text(
+        source.get("otherFreePower") or source.get("otherFree")
+    )
+
+    return {
+        "availability": availability,
+        "capacity": capacity,
+        "connection_fee": connection_fee,
+        "tariff_consumption": tariff_consumption,
+        "tariff_transportation": tariff_transportation,
+        "details": details,
+    }
+
+
+def _build_site_overview(payload: Any) -> dict[str, Any]:
+    """
+    Подготавливает устойчивую пользовательскую сводку API-снимка площадки.
+
+    Не изменяет исходный JSON и не предполагает, что все поля внешнего API
+    обязательны. Пустые и некорректные значения безопасно превращаются
+    в None или пустые списки.
+    """
+    if not isinstance(payload, dict):
+        payload = {}
+
+    economic_activities: list[dict[str, str | None]] = []
+
+    for item in payload.get("economicActivitiesForImplementations", []):
+        if not isinstance(item, dict):
+            continue
+
+        code = _display_text(item.get("code"))
+        description = _display_text(item.get("description"))
+
+        if code is not None or description is not None:
+            economic_activities.append(
+                {
+                    "code": code,
+                    "description": description,
+                }
+            )
+
+    utilities = [
+        {
+            "name": "Электроснабжение",
+            **_display_utility(payload, "powerSupply"),
+        },
+        {
+            "name": "Газоснабжение",
+            **_display_utility(payload, "gasSupply"),
+        },
+        {
+            "name": "Теплоснабжение",
+            **_display_utility(payload, "heatSupply"),
+        },
+        {
+            "name": "Водоснабжение",
+            **_display_utility(payload, "waterSupply"),
+        },
+        {
+            "name": "Водоотведение",
+            **_display_utility(payload, "waterDisposal"),
+        },
+        {
+            "name": "Вывоз ТКО",
+            **_display_utility(payload, "mswRemoval"),
+        },
+    ]
+
+    return {
+        "title": _display_text(payload.get("siteName")),
+        "status": _display_text(payload.get("siteStatus")),
+        "types": _display_list(payload.get("typeSites")),
+        "formats": _display_list(payload.get("formatSites")),
+        "transaction_forms": _display_list(
+            payload.get("transactionForms")
+        ),
+        "ownership_forms": _display_list(payload.get("formOwnerships")),
+        "regions": _display_list(payload.get("regions")),
+        "municipality": _display_text(payload.get("municipality")),
+        "address": _display_text(payload.get("adressObject")),
+        "nearest_city": _display_text(payload.get("nearestCity")),
+        "coordinates": _display_coordinates(payload.get("coordinate")),
+        "total_area": _display_number(
+            payload.get("totalSiteArea"),
+            " м²",
+        ),
+        "property_complex_area": _display_number(
+            payload.get("areaPropertyComplex"),
+            " м²",
+        ),
+        "building_specifications": _display_text(
+            payload.get("buildingSpecifications")
+        ),
+        "capital_buildings": _display_text(
+            payload.get("characteristicsCapitalBuildings")
+        ),
+        "cadastral_number": _display_text(
+            payload.get("cadastralPropertyComplexNumber")
+        ),
+        "cost": _display_number(payload.get("costObject"), " руб."),
+        "access_roads": _display_text(
+            payload.get("accessRoadsAvailability")
+        ),
+        "access_roads_other": _display_text(
+            payload.get("accessRoadsOther")
+        ),
+        "distance_from_road": _display_number(
+            payload.get("distanceFromRoad"),
+            " км",
+        ),
+        "railway_availability": _display_text(
+            payload.get("railwayAvailability")
+        ),
+        "truck_parking_availability": _display_text(
+            payload.get("truckParkingAvailability")
+        ),
+        "utilities": utilities,
+        "economic_activities": economic_activities,
+        "contact_person": _display_text(payload.get("contactPerson")),
+        "contact_phone": _display_text(payload.get("contactPhoneNumber")),
+        "contact_email": _display_text(
+            payload.get("emailAddressForApplying")
+        ),
+        "contact_website": _display_text(
+            payload.get("websiteContactPerson")
+        ),
+        "application_procedure": _display_text(
+            payload.get("descriptionApplicationProcedure")
+        ),
+        "application_documents": _display_text(
+            payload.get("listOfDocumentsForApplication")
+        ),
+    }
 
 def get_monitor_summary(conn: sqlite3.Connection) -> dict[str, int]:
     """Возвращает сводные счётчики сохранённых API-снимков."""
@@ -370,17 +593,22 @@ def get_monitor_card_detail(
         """,
         (global_id,),
     ).fetchall()
+    latest_payload = _json_or_none(latest["payload_json"])
 
     return {
         "latest": {
             "snapshot_id": latest["id"],
             "global_id": latest["global_id"],
-            "payload": _json_or_none(latest["payload_json"]),
+            "payload": latest_payload,
             "payload_sha256": latest["payload_sha256"],
             "fetched_at_utc": latest["fetched_at_utc"],
             "filling_level": latest["filling_level"],
             "region_code": latest["region_code"],
         },
+        "site_overview": _build_site_overview(latest_payload),
+        "assignment": (
+            # существующий код без изменений
+        ),
         "assignment": (
             {
                 "global_id": assignment["global_id"],
