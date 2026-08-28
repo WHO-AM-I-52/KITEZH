@@ -618,8 +618,11 @@
                     <thead>
                         <tr>
                             <th scope="col">Дата</th>
-                            <th scope="col">Поле</th>
-                            <th scope="col">Значения</th>
+                            <th scope="col">Раздел</th>
+                            <th scope="col">Что изменилось</th>
+                            <th scope="col">Было</th>
+                            <th scope="col">Стало</th>
+                            <th scope="col">Подробности</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -628,17 +631,41 @@
                             <td class="text-nowrap">
                                 {{ change.detected_at_utc | msk_datetime }}
                             </td>
+
                             <td>
-                                <code class="small text-break">
-                                    {{ change.field_path }}
-                                </code>
+                                <span class="badge text-bg-light border text-dark">
+                                    {{ change.section }}
+                                </span>
                             </td>
+
+                            <td class="text-break">
+                                {{ change.label }}
+                            </td>
+
+                            <td class="text-break">
+                                {{ change.old_display }}
+                            </td>
+
+                            <td class="text-break">
+                                {{ change.new_display }}
+                            </td>
+
                             <td>
                                 <details>
-                                    <summary>
-                                        Показать прежнее и новое значение
+                                    <summary class="small">
+                                        Показать детали
                                     </summary>
 
+                                    <div class="mt-2">
+                                        <div class="small text-muted mb-1">
+                                            Технический путь
+                                        </div>
+                                        <code class="small text-break d-block">
+                                            {{ change.field_path }}
+                                        </code>
+                                    </div>
+
+                                    {% if change.has_complex_value %}
                                     <div class="row g-3 mt-1">
                                         <div class="col-lg-6">
                                             <div class="small text-muted mb-1">
@@ -654,6 +681,12 @@
                                             <pre class="bg-light border rounded p-2 mb-0 small text-break"><code>{{ change.new_value | tojson(indent=2) }}</code></pre>
                                         </div>
                                     </div>
+                                    {% else %}
+                                    <div class="small text-muted mt-2">
+                                        Полные значения совпадают с теми,
+                                        которые показаны в таблице.
+                                    </div>
+                                    {% endif %}
                                 </details>
                             </td>
                         </tr>
@@ -668,7 +701,7 @@
             {% endif %}
         </div>
     </div>
-
+    
     <div class="card">
         <div class="card-header">
             Технические данные последнего API-снимка
