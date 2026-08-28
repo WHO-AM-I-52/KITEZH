@@ -443,7 +443,7 @@ def deactivate_investmap_rf_monitor_registry_card(global_id):
     methods=["POST"],
 )
 @login_required
-@admin_required
+@permission_required("can_refresh_investmap_rf_cards")
 def refresh_investmap_rf_monitor_registry_card(global_id):
     """Точечно обновляет одну активную площадку реестра."""
     user_id = getattr(g, "user", {}).get("id")
