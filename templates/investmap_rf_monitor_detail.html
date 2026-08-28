@@ -621,3 +621,73 @@
                             <th scope="col">Поле</th>
                             <th scope="col">Значения</th>
                         </tr>
+                    </thead>
+                    <tbody>
+                        {% for change in monitor_card.changes %}
+                        <tr>
+                            <td class="text-nowrap">
+                                {{ change.detected_at_utc | msk_datetime }}
+                            </td>
+                            <td>
+                                <code class="small text-break">
+                                    {{ change.field_path }}
+                                </code>
+                            </td>
+                            <td>
+                                <details>
+                                    <summary>
+                                        Показать прежнее и новое значение
+                                    </summary>
+
+                                    <div class="row g-3 mt-1">
+                                        <div class="col-lg-6">
+                                            <div class="small text-muted mb-1">
+                                                Было
+                                            </div>
+                                            <pre class="bg-light border rounded p-2 mb-0 small text-break"><code>{{ change.old_value | tojson(indent=2) }}</code></pre>
+                                        </div>
+
+                                        <div class="col-lg-6">
+                                            <div class="small text-muted mb-1">
+                                                Стало
+                                            </div>
+                                            <pre class="bg-light border rounded p-2 mb-0 small text-break"><code>{{ change.new_value | tojson(indent=2) }}</code></pre>
+                                        </div>
+                                    </div>
+                                </details>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="p-3 text-muted">
+                Изменений между сохранёнными снимками пока нет.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            Технические данные последнего API-снимка
+        </div>
+
+        <div class="card-body">
+            <p class="text-muted small">
+                JSON сохранён для диагностики и проверки данных. Он не является
+                пользовательским представлением карточки площадки.
+            </p>
+
+            <details>
+                <summary class="btn btn-outline-secondary btn-sm">
+                    Показать полный JSON
+                </summary>
+
+                <pre class="bg-light border rounded p-3 mt-3 mb-0 overflow-auto"><code>{{ monitor_card.latest.payload | tojson(indent=2) }}</code></pre>
+            </details>
+        </div>
+    </div>
+</div>
+{% endblock %}
