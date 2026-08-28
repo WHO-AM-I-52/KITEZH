@@ -820,6 +820,72 @@ def investmap_rf_sync_settings(plan_id: int):
         conn.close()
 
     return redirect(url_for("admin.investmap_rf_sync"))
+
+@admin_bp.route(
+    "/admin/investmap-rf-sync/<int:plan_id>/delete",
+    methods=["POST"],
+)
+@login_required
+@admin_required
+def investmap_rf_sync_delete(plan_id: int):
+    """Удаляет неактивный план синхронизации и его техническую историю."""
+    from services.investmap_rf_sync_plans import delete_sync_plan
+
+    conn = get_db()
+
+    try:
+        result = delete_sync_plan(
+            conn,
+            plan_id=plan_id,
+        )
+
+        detail = (
+            f"plan_id={result['plan_id']}; "
+            f"name={result['plan_name']}; "
+            f"status={result['plan_status']}; "
+            f"runs={result['deleted_runs_count']}; "
+            f"batches={result['deleted_batches_count']}; "
+            f"retry_jobs={result['deleted_retry_jobs_count']}; "
+            f"daily_runs={result['deleted_daily_runs_count']}"
+        )
+
+        if not log_action(
+            conn,
+            session.get("user_id"),
+            "investmap_rf_sync_delete",
+            detail=detail,
+        ):
+            raise RuntimeError(
+                "Не удалось записать действие удаления плана."
+            )
+
+        conn.commit()
+
+        flash(
+            f"План «{result['plan_name']}» удалён. "
+            f"Удалено циклов: {result['deleted_runs_count']}, "
+            f"пакетов: {result['deleted_batches_count']}, "
+            f"задач повтора: {result['deleted_retry_jobs_count']}.",
+            "success",
+        )
+
+    except ValueError as exc:
+        conn.rollback()
+        flash(str(exc), "error")
+
+    except Exception:
+        conn.rollback()
+        current_app.logger.exception(
+            "Ошибка удаления плана синхронизации Инвесткарты РФ. "
+            "plan_id=%s",
+            plan_id,
+        )
+        flash("Не удалось удалить план синхронизации.", "error")
+
+    finally:
+        conn.close()
+
+    return redirect(url_for("admin.investmap_rf_sync"))
     
 @admin_bp.route("/admin/investmap-rf-sync/status")
 @login_required
