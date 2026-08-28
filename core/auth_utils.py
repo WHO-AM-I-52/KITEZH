@@ -54,6 +54,9 @@ ALL_PERMISSIONS = {
     'can_view_investmap':   'Просмотр инвест. карты',
     'can_view_phonebook':   'Просмотр телефонного справочника',
     'can_investmap_rules':  'Инвест. карта — правила размещения',
+    'can_refresh_investmap_rf_cards': (
+        'Инвест. карта — обновлять отдельные площадки'
+    ),
 }
 
 # Все права включены — для роли admin
@@ -78,6 +81,7 @@ ROLE_PERMISSION_PRESETS = {
         'can_view_investmap': 1,
         'can_view_phonebook': 1,
         'can_investmap_rules': 0,
+        'can_refresh_investmap_rf_cards': 0,
     },
     # Руководитель: все обращения, управление ими, полный экспорт
     'manager': {
@@ -95,6 +99,7 @@ ROLE_PERMISSION_PRESETS = {
         'can_view_investmap': 1,
         'can_view_phonebook': 1,
         'can_investmap_rules': 1,
+        'can_refresh_investmap_rf_cards': 0,
     },
     # Администратор: все права
     'admin': ADMIN_PERMISSIONS,
