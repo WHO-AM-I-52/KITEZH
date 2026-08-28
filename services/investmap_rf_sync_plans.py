@@ -355,6 +355,119 @@ def create_sync_plan(
 
     return get_sync_plan(conn, cursor.lastrowid)
 
+def delete_sync_plan(
+    conn,
+    *,
+    plan_id: int,
+) -> dict[str, Any]:
+    """
+    Удаляет неактивный план вместе с его технической историей.
+
+    Активные, приостановленные и останавливаемые планы не удаляются,
+    чтобы не оборвать выполняющийся или доступный к возобновлению цикл.
+    Вызывающая сторона управляет транзакцией и commit() не выполняется.
+    """
+    plan = get_sync_plan(conn, plan_id)
+    if plan is None:
+        raise ValueError("План синхронизации не найден.")
+
+    allowed_statuses = {
+        PLAN_STATUS_IDLE,
+        PLAN_STATUS_COMPLETED,
+        PLAN_STATUS_FAILED,
+    }
+
+    if plan["status"] not in allowed_statuses:
+        raise ValueError(
+            "Удалить можно только неактивный, завершённый "
+            "или завершившийся с ошибкой план."
+        )
+
+    retry_jobs_count = conn.execute(
+        """
+        SELECT COUNT(*)
+        FROM investmap_rf_sync_retry_jobs
+        WHERE plan_id = ?
+        """,
+        (plan_id,),
+    ).fetchone()[0]
+
+    daily_runs_count = conn.execute(
+        """
+        SELECT COUNT(*)
+        FROM investmap_rf_daily_sync_runs
+        WHERE plan_id = ?
+        """,
+        (plan_id,),
+    ).fetchone()[0]
+
+    batches_count = conn.execute(
+        """
+        SELECT COUNT(*)
+        FROM investmap_rf_sync_batches
+        WHERE plan_id = ?
+        """,
+        (plan_id,),
+    ).fetchone()[0]
+
+    runs_count = conn.execute(
+        """
+        SELECT COUNT(*)
+        FROM investmap_rf_sync_runs
+        WHERE plan_id = ?
+        """,
+        (plan_id,),
+    ).fetchone()[0]
+
+    conn.execute(
+        """
+        DELETE FROM investmap_rf_sync_retry_jobs
+        WHERE plan_id = ?
+        """,
+        (plan_id,),
+    )
+
+    conn.execute(
+        """
+        DELETE FROM investmap_rf_daily_sync_runs
+        WHERE plan_id = ?
+        """,
+        (plan_id,),
+    )
+
+    conn.execute(
+        """
+        DELETE FROM investmap_rf_sync_batches
+        WHERE plan_id = ?
+        """,
+        (plan_id,),
+    )
+
+    conn.execute(
+        """
+        DELETE FROM investmap_rf_sync_runs
+        WHERE plan_id = ?
+        """,
+        (plan_id,),
+    )
+
+    conn.execute(
+        """
+        DELETE FROM investmap_rf_sync_plans
+        WHERE id = ?
+        """,
+        (plan_id,),
+    )
+
+    return {
+        "plan_id": plan_id,
+        "plan_name": plan["name"],
+        "plan_status": plan["status"],
+        "deleted_retry_jobs_count": int(retry_jobs_count),
+        "deleted_daily_runs_count": int(daily_runs_count),
+        "deleted_batches_count": int(batches_count),
+        "deleted_runs_count": int(runs_count),
+    }
 
 def update_sync_plan_settings(
     conn,
