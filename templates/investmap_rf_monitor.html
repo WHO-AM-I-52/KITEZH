@@ -419,7 +419,14 @@
                         <tbody>
                             {% for card in registry_cards %}
                             <tr>
-                                <td>{{ card.global_id }}</td>
+                                <td>
+                                    <a href="{{ url_for(
+                                        'investmap.investmap_rf_monitor_detail',
+                                        global_id=card.global_id
+                                    ) }}">
+                                        {{ card.global_id }}
+                                    </a>
+                                </td>
                                 <td>
                                     <span class="badge text-bg-success">
                                         {{ card.last_source_status }}
