@@ -21,10 +21,12 @@
 
     <div class="row g-3 mb-4">
         <div class="col-md-4">
-            <div class="card h-100">
+            <div class="card h-100 shadow-sm">
                 <div class="card-body">
-                    <div class="text-muted small">Текущая заполненность</div>
-                    <div class="display-6">
+                    <div class="text-muted small text-uppercase">
+                        Текущая заполненность
+                    </div>
+                    <div class="display-6 fw-semibold">
                         {% if monitor_card.latest.filling_level is not none %}
                         {{ monitor_card.latest.filling_level }}%
                         {% else %}
@@ -34,34 +36,44 @@
                 </div>
             </div>
         </div>
+
         <div class="col-md-4">
-            <div class="card h-100">
+            <div class="card h-100 shadow-sm">
                 <div class="card-body">
-                    <div class="text-muted small">Регион</div>
-                    <div class="display-6">
+                    <div class="text-muted small text-uppercase">
+                        Регион
+                    </div>
+                    <div class="display-6 fw-semibold">
                         {% if monitor_card.latest.region_code is not none %}
                         {{ monitor_card.latest.region_code }}
                         {% else %}
                         —
                         {% endif %}
                     </div>
+                    <div class="small text-muted mt-2">
+                        Код региона из API Инвесткарты РФ
+                    </div>
                 </div>
             </div>
         </div>
+
         <div class="col-md-4">
-            <div class="card h-100">
+            <div class="card h-100 shadow-sm">
                 <div class="card-body">
-                    <div class="text-muted small">Последний снимок</div>
-                    <div class="small mt-2">
-                        <code>{{ monitor_card.latest.fetched_at_utc | msk_datetime }}</code>
+                    <div class="text-muted small text-uppercase">
+                        Последнее обновление
                     </div>
-                    <div class="text-muted small mt-2">
+                    <div class="fs-5 fw-semibold mt-1">
+                        {{ monitor_card.latest.fetched_at_utc | msk_datetime }}
+                    </div>
+                    <div class="small text-muted mt-2">
                         Снимок № {{ monitor_card.latest.snapshot_id }}
                     </div>
                 </div>
             </div>
         </div>
     </div>
+
     <div class="row g-3 mb-4">
         <div class="col-lg-6">
             <div class="card h-100">
@@ -70,59 +82,51 @@
                 </div>
                 <div class="card-body">
                     {% if monitor_card.assignment %}
-                        <dl class="row mb-0">
-                            <dt class="col-sm-5">Муниципалитет</dt>
-                            <dd class="col-sm-7">
-                                {{ monitor_card.assignment.municipality_raw or '—' }}
-                            </dd>
+                    <dl class="row mb-0">
+                        <dt class="col-sm-5">Муниципалитет</dt>
+                        <dd class="col-sm-7">
+                            {{ monitor_card.assignment.municipality_raw or '—' }}
+                        </dd>
 
-                            <dt class="col-sm-5">Управляющий</dt>
-                            <dd class="col-sm-7">
-                                {{ monitor_card.assignment.manager_name or '—' }}
-                            </dd>
+                        <dt class="col-sm-5">Управляющий</dt>
+                        <dd class="col-sm-7">
+                            {{ monitor_card.assignment.manager_name or '—' }}
+                        </dd>
 
-                            <dt class="col-sm-5">Статус</dt>
-                            <dd class="col-sm-7">
-                                {% if monitor_card.assignment.match_status == 'matched' %}
-                                    <span class="badge text-bg-success">
-                                        Сопоставлено
-                                    </span>
-                                {% elif monitor_card.assignment.match_status == 'manual' %}
-                                    <span class="badge text-bg-primary">
-                                        Назначено вручную
-                                    </span>
-                                {% elif monitor_card.assignment.match_status == 'unmatched' %}
-                                    <span class="badge text-bg-warning">
-                                        Не найдено
-                                    </span>
-                                {% elif monitor_card.assignment.match_status == 'ambiguous' %}
-                                    <span class="badge text-bg-danger">
-                                        Неоднозначно
-                                    </span>
-                                {% else %}
-                                    <span class="text-muted">Нет данных</span>
-                                {% endif %}
-                            </dd>
+                        <dt class="col-sm-5">Статус</dt>
+                        <dd class="col-sm-7">
+                            {% if monitor_card.assignment.match_status == 'matched' %}
+                            <span class="badge text-bg-success">Сопоставлено</span>
+                            {% elif monitor_card.assignment.match_status == 'manual' %}
+                            <span class="badge text-bg-primary">Назначено вручную</span>
+                            {% elif monitor_card.assignment.match_status == 'unmatched' %}
+                            <span class="badge text-bg-warning">Не найдено</span>
+                            {% elif monitor_card.assignment.match_status == 'ambiguous' %}
+                            <span class="badge text-bg-danger">Неоднозначно</span>
+                            {% else %}
+                            <span class="text-muted">Нет данных</span>
+                            {% endif %}
+                        </dd>
 
-                            <dt class="col-sm-5">Источник</dt>
-                            <dd class="col-sm-7">
-                                {% if monitor_card.assignment.assignment_source == 'manual' %}
-                                    Назначено вручную
-                                {% else %}
-                                    Автоматическое сопоставление
-                                {% endif %}
-                            </dd>
+                        <dt class="col-sm-5">Источник</dt>
+                        <dd class="col-sm-7">
+                            {% if monitor_card.assignment.assignment_source == 'manual' %}
+                            Назначено вручную
+                            {% else %}
+                            Автоматическое сопоставление
+                            {% endif %}
+                        </dd>
 
-                            <dt class="col-sm-5">Обновлено</dt>
-                            <dd class="col-sm-7">
-                                <code>{{ monitor_card.assignment.updated_at_utc | msk_datetime }}</code>
-                            </dd>
-                        </dl>
+                        <dt class="col-sm-5">Обновлено</dt>
+                        <dd class="col-sm-7">
+                            {{ monitor_card.assignment.updated_at_utc | msk_datetime }}
+                        </dd>
+                    </dl>
                     {% else %}
-                        <p class="mb-0 text-muted">
-                            Для этой карточки пока нет результата сопоставления
-                            территориального управляющего.
-                        </p>
+                    <p class="mb-0 text-muted">
+                        Для этой карточки пока нет результата сопоставления
+                        территориального управляющего.
+                    </p>
                     {% endif %}
                 </div>
             </div>
@@ -132,46 +136,51 @@
             <div class="card h-100">
                 <div class="card-header">
                     Открытые проблемы сопоставления
+                    {% if monitor_card.open_issues %}
+                    <span class="badge text-bg-warning ms-1">
+                        {{ monitor_card.open_issues|length }}
+                    </span>
+                    {% endif %}
                 </div>
                 <div class="card-body">
                     {% if monitor_card.open_issues %}
-                        {% for issue in monitor_card.open_issues %}
-                        <div class="{% if not loop.last %}mb-3 pb-3 border-bottom{% endif %}">
-                            <div class="mb-1">
-                                {% if issue.issue_type == 'unmatched' %}
-                                    <span class="badge text-bg-warning">
-                                        Не найдено правило
-                                    </span>
-                                {% elif issue.issue_type == 'ambiguous' %}
-                                    <span class="badge text-bg-danger">
-                                        Найдено несколько правил
-                                    </span>
-                                {% else %}
-                                    <span class="badge text-bg-secondary">
-                                        {{ issue.issue_type }}
-                                    </span>
-                                {% endif %}
-                            </div>
-
-                            <div class="small text-muted mb-1">
-                                Муниципалитет:
-                                {{ issue.municipality_raw or 'не указан' }}
-                            </div>
-
-                            <div class="text-break">
-                                {{ issue.details or 'Описание проблемы отсутствует.' }}
-                            </div>
-
-                            <div class="small text-muted mt-2">
-                                Обновлено:
-                                <code>{{ issue.updated_at_utc | msk_datetime }}</code>
-                            </div>
+                    {% for issue in monitor_card.open_issues %}
+                    <div class="{% if not loop.last %}mb-3 pb-3 border-bottom{% endif %}">
+                        <div class="mb-2">
+                            {% if issue.issue_type == 'unmatched' %}
+                            <span class="badge text-bg-warning">
+                                Не найдено правило
+                            </span>
+                            {% elif issue.issue_type == 'ambiguous' %}
+                            <span class="badge text-bg-danger">
+                                Найдено несколько правил
+                            </span>
+                            {% else %}
+                            <span class="badge text-bg-secondary">
+                                {{ issue.issue_type }}
+                            </span>
+                            {% endif %}
                         </div>
-                        {% endfor %}
+
+                        <div class="small text-muted mb-1">
+                            Муниципалитет:
+                            {{ issue.municipality_raw or 'не указан' }}
+                        </div>
+
+                        <div class="text-break">
+                            {{ issue.details or 'Описание проблемы отсутствует.' }}
+                        </div>
+
+                        <div class="small text-muted mt-2">
+                            Обновлено:
+                            {{ issue.updated_at_utc | msk_datetime }}
+                        </div>
+                    </div>
+                    {% endfor %}
                     {% else %}
-                        <p class="mb-0 text-muted">
-                            Открытых проблем сопоставления нет.
-                        </p>
+                    <p class="mb-0 text-muted">
+                        Открытых проблем сопоставления нет.
+                    </p>
                     {% endif %}
                 </div>
             </div>
@@ -179,9 +188,18 @@
     </div>
 
     <div class="card mb-4">
-        <div class="card-header">
-            История снимков ({{ monitor_card.snapshots|length }})
+        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <span>
+                История снимков
+                <span class="badge text-bg-secondary">
+                    {{ monitor_card.snapshots|length }}
+                </span>
+            </span>
+            <span class="small text-muted">
+                Последний снимок отображён первым
+            </span>
         </div>
+
         <div class="card-body p-0">
             <div class="table-responsive">
                 <table class="table table-hover align-middle mb-0">
@@ -191,17 +209,21 @@
                             <th scope="col">Получен</th>
                             <th scope="col">Заполнение</th>
                             <th scope="col">Регион</th>
-                            <th scope="col">SHA-256</th>
+                            <th scope="col">Контрольная сумма</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for snapshot in monitor_card.snapshots %}
                         <tr>
-                            <td>{{ snapshot.snapshot_id }}</td>
-                            <td><code>{{ snapshot.fetched_at_utc | msk_datetime }}</code></td>
+                            <td class="fw-semibold">{{ snapshot.snapshot_id }}</td>
+                            <td>
+                                {{ snapshot.fetched_at_utc | msk_datetime }}
+                            </td>
                             <td>
                                 {% if snapshot.filling_level is not none %}
-                                {{ snapshot.filling_level }}%
+                                <span class="badge text-bg-light border text-dark">
+                                    {{ snapshot.filling_level }}%
+                                </span>
                                 {% else %}
                                 <span class="text-muted">—</span>
                                 {% endif %}
@@ -214,7 +236,14 @@
                                 {% endif %}
                             </td>
                             <td>
-                                <code class="small">{{ snapshot.payload_sha256 }}</code>
+                                <details>
+                                    <summary class="small text-muted">
+                                        Показать SHA-256
+                                    </summary>
+                                    <code class="small text-break d-block mt-2">
+                                        {{ snapshot.payload_sha256 }}
+                                    </code>
+                                </details>
                             </td>
                         </tr>
                         {% endfor %}
@@ -225,9 +254,18 @@
     </div>
 
     <div class="card mb-4">
-        <div class="card-header">
-            История изменений ({{ monitor_card.changes|length }})
+        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <span>
+                История изменений
+                <span class="badge text-bg-secondary">
+                    {{ monitor_card.changes|length }}
+                </span>
+            </span>
+            <span class="small text-muted">
+                Изменения между последовательными снимками
+            </span>
         </div>
+
         <div class="card-body p-0">
             {% if monitor_card.changes %}
             <div class="table-responsive">
@@ -236,41 +274,5 @@
                         <tr>
                             <th scope="col">Дата</th>
                             <th scope="col">Поле</th>
-                            <th scope="col">Было</th>
-                            <th scope="col">Стало</th>
+                            <th scope="col">Значения</th>
                         </tr>
-                    </thead>
-                    <tbody>
-                        {% for change in monitor_card.changes %}
-                        <tr>
-                            <td><code>{{ change.detected_at_utc | msk_datetime }}</code></td>
-                            <td><code>{{ change.field_path }}</code></td>
-                            <td>
-                                <pre class="mb-0 small">{{ change.old_value | tojson(indent=2) }}</pre>
-                            </td>
-                            <td>
-                                <pre class="mb-0 small">{{ change.new_value | tojson(indent=2) }}</pre>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            {% else %}
-            <div class="p-3 text-muted">
-                Изменений между сохранёнными снимками пока нет.
-            </div>
-            {% endif %}
-        </div>
-    </div>
-
-    <div class="card">
-        <div class="card-header">
-            Полный JSON последнего API-снимка
-        </div>
-        <div class="card-body">
-            <pre class="mb-0"><code>{{ monitor_card.latest.payload | tojson(indent=2) }}</code></pre>
-        </div>
-    </div>
-</div>
-{% endblock %}
