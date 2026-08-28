@@ -277,6 +277,23 @@
           </button>
         </form>
       {% endif %}
+            {% if plan.status in ['idle', 'completed', 'failed'] %}
+        <form
+          method="post"
+          action="{{ url_for('admin.investmap_rf_sync_delete', plan_id=plan.id) }}"
+          class="mt-2"
+          onsubmit="return confirm(
+            'Удалить план «{{ plan.name|e }}» (ID {{ plan.id }})?\n\n'
+            + 'Будут безвозвратно удалены техническая история запусков, '
+            + 'пакеты и задачи повторной синхронизации.'
+          );"
+        >
+          <button class="btn btn-sm btn-outline-danger" type="submit">
+            <i class="bi bi-trash me-1"></i>
+            Удалить план
+          </button>
+        </form>
+      {% endif %}
     </div>
   </div>
 {% endmacro %}
