@@ -118,7 +118,231 @@ def _display_utility(
         "tariff_transportation": tariff_transportation,
         "details": details,
     }
+    
+_HISTORY_FIELD_META: dict[str, tuple[str, str]] = {
+    "/municipality": (
+        "Расположение",
+        "Муниципальное образование",
+    ),
+    "/siteName": (
+        "Основные сведения",
+        "Название площадки",
+    ),
+    "/adressObject": (
+        "Расположение",
+        "Адрес объекта",
+    ),
+    "/fillingLevel": (
+        "Основные сведения",
+        "Заполненность карточки",
+    ),
+    "/maxMinRentalPeriod": (
+        "Условия сделки",
+        "Срок аренды",
+    ),
+    "/maxMinRentalYear": (
+        "Условия сделки",
+        "Срок аренды",
+    ),
+    "/buildingSpecifications": (
+        "Характеристики объекта",
+        "Характеристики здания",
+    ),
+    "/characteristicsCapitalBuildings": (
+        "Характеристики объекта",
+        "Объекты капитального строительства",
+    ),
+    "/descriptionApplicationProcedure": (
+        "Подача заявки",
+        "Порядок подачи заявки",
+    ),
+    "/linkToApplicationForm": (
+        "Подача заявки",
+        "Ссылка на форму заявки",
+    ),
+    "/listOfDocumentsForApplication": (
+        "Подача заявки",
+        "Документы для подачи заявки",
+    ),
+    "/nearestCity": (
+        "Расположение",
+        "Ближайший город",
+    ),
+    "/notes": (
+        "Дополнительные сведения",
+        "Примечание",
+    ),
+    "/otherInformationSite": (
+        "Дополнительные сведения",
+        "Иная информация о площадке",
+    ),
+    "/urbanPlanCharacteristicsAndLimits": (
+        "Градостроительные условия",
+        "Характеристики и ограничения",
+    ),
+}
 
+
+def _history_path_parts(field_path: Any) -> list[str]:
+    """Разбирает JSON Pointer пути изменения на непустые компоненты."""
+    if not isinstance(field_path, str):
+        return []
+
+    return [
+        part.replace("~1", "/").replace("~0", "~")
+        for part in field_path.split("/")
+        if part
+    ]
+
+
+def _history_field_presentation(field_path: Any) -> dict[str, str]:
+    """Возвращает раздел и понятное название изменённого поля."""
+    if not isinstance(field_path, str):
+        return {
+            "section": "Прочее",
+            "label": "Неизвестное поле",
+        }
+
+    known = _HISTORY_FIELD_META.get(field_path)
+    if known is not None:
+        return {
+            "section": known[0],
+            "label": known[1],
+        }
+
+    parts = _history_path_parts(field_path)
+
+    if not parts:
+        return {
+            "section": "Прочее",
+            "label": "Неизвестное поле",
+        }
+
+    root = parts[0]
+
+    if root == "photos":
+        number = parts[1] if len(parts) > 1 else None
+        position = (
+            str(int(number) + 1)
+            if number is not None and number.isdigit()
+            else None
+        )
+        return {
+            "section": "Материалы",
+            "label": (
+                f"Фотография № {position}"
+                if position is not None
+                else "Фотографии"
+            ),
+        }
+
+    if root == "economicActivitiesForImplementations":
+        number = parts[1] if len(parts) > 1 else None
+        position = (
+            str(int(number) + 1)
+            if number is not None and number.isdigit()
+            else None
+        )
+        field_name = {
+            "code": "код ОКВЭД",
+            "description": "описание ОКВЭД",
+            "key": "технический идентификатор",
+        }.get(parts[2] if len(parts) > 2 else None)
+
+        if field_name is not None and position is not None:
+            label = f"ОКВЭД: {field_name}, позиция № {position}"
+        elif position is not None:
+            label = f"ОКВЭД: позиция № {position}"
+        else:
+            label = "Рекомендуемые виды деятельности"
+
+        return {
+            "section": "Рекомендуемые виды деятельности",
+            "label": label,
+        }
+
+    if root == "transactionForms":
+        number = parts[1] if len(parts) > 1 else None
+        position = (
+            str(int(number) + 1)
+            if number is not None and number.isdigit()
+            else None
+        )
+        return {
+            "section": "Условия сделки",
+            "label": (
+                f"Форма сделки: позиция № {position}"
+                if position is not None
+                else "Формы сделки"
+            ),
+        }
+
+    return {
+        "section": "Прочее",
+        "label": field_path,
+    }
+
+
+def _history_value_display(value: Any) -> str:
+    """Возвращает краткое безопасное представление значения изменения."""
+    if value is None:
+        return "Не указано"
+
+    if isinstance(value, bool):
+        return "Да" if value else "Нет"
+
+    if isinstance(value, str):
+        normalized = value.strip()
+        return normalized or "Не указано"
+
+    if isinstance(value, (int, float)):
+        if isinstance(value, float) and value.is_integer():
+            value = int(value)
+        return str(value)
+
+    if isinstance(value, list):
+        if not value:
+            return "Список пуст"
+        return f"Список: {len(value)} эл."
+
+    if isinstance(value, dict):
+        if not value:
+            return "Объект пуст"
+        return f"Набор данных: {len(value)} полей"
+
+    return str(value)
+
+
+def _history_value_is_complex(value: Any) -> bool:
+    """Определяет, нужны ли для значения раскрываемые технические детали."""
+    return isinstance(value, (dict, list))
+
+
+def _build_history_change(
+    row: sqlite3.Row,
+) -> dict[str, Any]:
+    """Подготавливает изменение API-снимка для пользовательской истории."""
+    old_value = _json_or_none(row["old_value_json"])
+    new_value = _json_or_none(row["new_value_json"])
+    presentation = _history_field_presentation(row["field_path"])
+
+    return {
+        "change_id": row["id"],
+        "previous_snapshot_id": row["previous_snapshot_id"],
+        "current_snapshot_id": row["current_snapshot_id"],
+        "field_path": row["field_path"],
+        "section": presentation["section"],
+        "label": presentation["label"],
+        "old_value": old_value,
+        "new_value": new_value,
+        "old_display": _history_value_display(old_value),
+        "new_display": _history_value_display(new_value),
+        "has_complex_value": (
+            _history_value_is_complex(old_value)
+            or _history_value_is_complex(new_value)
+        ),
+        "detected_at_utc": row["detected_at_utc"],
+    }
 
 def _build_site_overview(payload: Any) -> dict[str, Any]:
     """
@@ -652,15 +876,7 @@ def get_monitor_card_detail(
             for row in snapshots
         ],
         "changes": [
-            {
-                "change_id": row["id"],
-                "previous_snapshot_id": row["previous_snapshot_id"],
-                "current_snapshot_id": row["current_snapshot_id"],
-                "field_path": row["field_path"],
-                "old_value": _json_or_none(row["old_value_json"]),
-                "new_value": _json_or_none(row["new_value_json"]),
-                "detected_at_utc": row["detected_at_utc"],
-            }
+            _build_history_change(row)
             for row in changes
         ],
     }
