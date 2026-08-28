@@ -94,6 +94,12 @@
   ('can_view_all',         'Видит все обращения (вкл. поиск)',      'bi-eye',                  'text-secondary'),
   ('can_view_investmap',   'Инвест. карта',                        'bi-map',                  'text-info'),
   ('can_investmap_rules',  'Инвест. карта — правила размещения',   'bi-map-fill',             'text-info'),
+  (
+    'can_refresh_investmap_rf_cards',
+    'Инвест. карта — обновлять отдельные площадки',
+    'bi-arrow-repeat',
+    'text-primary'
+  ),
   ('can_view_phonebook',   'Телефонный справочник',              'bi-telephone-fill',       'text-success'),
 ] %}
 
@@ -618,15 +624,15 @@ function genPasswordFor(fid) { document.getElementById(fid).value = genPw(); }
 var PRESETS = {
   employee: { can_create:1, can_edit_others:0, can_confirm:0, can_delete:0,
               can_rollback:0, can_export:1, can_classifiers:0, can_users:0,
-              can_view_all:0, can_view_investmap:1, can_investmap_rules:0,
+              can_view_all:0, can_view_investmap:1, can_investmap_rules:0, can_refresh_investmap_rf_cards:0,
               can_view_phonebook:1 },
   manager:  { can_create:1, can_edit_others:1, can_confirm:1, can_delete:0,
               can_rollback:0, can_export:1, can_classifiers:0, can_users:0,
-              can_view_all:1, can_view_investmap:1, can_investmap_rules:1,
+              can_view_all:1, can_view_investmap:1, can_investmap_rules:1, can_refresh_investmap_rf_cards:0,
               can_view_phonebook:1 },
   admin:    { can_create:1, can_edit_others:1, can_confirm:1, can_delete:1,
               can_rollback:1, can_export:1, can_classifiers:1, can_users:1,
-              can_view_all:1, can_view_investmap:1, can_investmap_rules:1,
+              can_view_all:1, can_view_investmap:1, can_investmap_rules:1, can_refresh_investmap_rf_cards:1,
               can_view_phonebook:1 }
 };
 function applyRolePreset(role) {
