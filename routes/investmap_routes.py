@@ -15,6 +15,7 @@ from flask import (
 from core.activity_log import log_action
 from core.auth_utils import (
     admin_required,
+    get_user_perm,
     login_required,
     permission_required,
 )
@@ -240,6 +241,9 @@ def investmap_rf_monitor():
             registry_search_global_id=registry_search_global_id,
             registry_events=get_monitor_registry_events(db),
             is_admin=session.get('role') == 'admin',
+            can_refresh_investmap_rf_cards=get_user_perm(
+                'can_refresh_investmap_rf_cards'
+            ),
         )
     except Exception as exc:
         err_logger.exception(
@@ -269,6 +273,9 @@ def investmap_rf_monitor():
             registry_events=[],
             registry_search_global_id=None,
             is_admin=session.get('role') == 'admin',
+            can_refresh_investmap_rf_cards=get_user_perm(
+                'can_refresh_investmap_rf_cards'
+            ),
         ), 500
     finally:
         if db is not None:
