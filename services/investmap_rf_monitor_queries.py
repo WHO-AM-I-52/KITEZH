@@ -1123,7 +1123,7 @@ def get_monitor_card_detail(
         (global_id,),
     ).fetchall()
     latest_payload = _json_or_none(latest["payload_json"])
-        comparison = _build_snapshot_comparison(
+    comparison = _build_snapshot_comparison(
         snapshots,
         from_snapshot_id=from_snapshot_id,
         to_snapshot_id=to_snapshot_id,
@@ -1138,8 +1138,8 @@ def get_monitor_card_detail(
             "fetched_at_utc": latest["fetched_at_utc"],
             "filling_level": latest["filling_level"],
             "region_code": latest["region_code"],
-            "comparison": comparison,
         },
+        "comparison": comparison,
         "site_overview": _build_site_overview(latest_payload),
         "assignment": (
             {
