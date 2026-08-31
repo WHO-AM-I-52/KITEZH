@@ -432,10 +432,29 @@ def _format_recommendation(field: str, hint: str | None) -> str:
     return f'Заполните поле «{field}».'
 
 
+def _partial_recommendation(field: str, hint: str | None) -> str:
+    """Формирует рекомендацию для частично заполненного поля V2."""
+    if hint:
+        return hint
+
+    if field.endswith("— Наличие"):
+        return (
+            f"Уточните значение «{field}». Если коммуникация фактически "
+            "доступна, укажите «Да» и внесите подтверждённые параметры "
+            "подключения: мощность, тариф, расстояние до точки подключения "
+            "или иные сведения."
+        )
+
+    return (
+        f"Уточните значение «{field}» и добавьте конкретные подтверждённые "
+        "параметры вместо предварительной формулировки."
+    )
+
+
 def _traffic_light_recommendations(
     diagnostics: dict[str, Any] | None,
 ) -> tuple[str, str, str]:
-    """Распределяет missing-поля V2 по колонкам светофора."""
+    """Распределяет missing- и partial-поля V2 по колонкам светофора."""
     if diagnostics is None:
         return "—", "—", "—"
 
@@ -455,6 +474,15 @@ def _traffic_light_recommendations(
             yellow.append(recommendation)
         else:
             green.append(recommendation)
+
+    for entry in diagnostics.get("partial", []):
+        field = entry.get("field")
+        if not field:
+            continue
+
+        yellow.append(
+            _partial_recommendation(field, entry.get("hint"))
+        )
 
     return (
         "\n".join(green) or "—",
