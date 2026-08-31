@@ -194,6 +194,66 @@ def _history_path_parts(field_path: Any) -> list[str]:
         if part
     ]
 
+_HISTORY_ROOT_FIELD_META: dict[str, tuple[str, str]] = {
+    "siteStatus": ("Основные сведения", "Статус площадки"),
+    "typeSites": ("Основные сведения", "Тип площадки"),
+    "formatSites": ("Основные сведения", "Формат площадки"),
+    "formOwnerships": ("Основные сведения", "Форма собственности"),
+    "regions": ("Расположение", "Регион"),
+    "totalSiteArea": ("Основные сведения", "Площадь площадки"),
+    "areaPropertyComplex": ("Характеристики объекта", "Площадь объекта"),
+    "cadastralPropertyComplexNumber": (
+        "Характеристики объекта",
+        "Кадастровый номер",
+    ),
+    "costObject": ("Условия сделки", "Стоимость объекта"),
+    "accessRoadsAvailability": (
+        "Транспортная доступность",
+        "Подъездные дороги",
+    ),
+    "accessRoadsOther": (
+        "Транспортная доступность",
+        "Описание подъезда",
+    ),
+    "distanceFromRoad": (
+        "Транспортная доступность",
+        "Расстояние до автодороги",
+    ),
+    "railwayAvailability": (
+        "Транспортная доступность",
+        "Железнодорожный доступ",
+    ),
+    "truckParkingAvailability": (
+        "Транспортная доступность",
+        "Стоянка грузового транспорта",
+    ),
+    "contactPerson": ("Контакты", "Контактное лицо"),
+    "contactPhoneNumber": ("Контакты", "Телефон"),
+    "emailAddressForApplying": ("Контакты", "E-mail для подачи заявки"),
+    "websiteContactPerson": ("Контакты", "Сайт контактного лица"),
+    "coordinate": ("Расположение", "Координаты"),
+    "powerSupply": ("Инженерная инфраструктура", "Электроснабжение"),
+    "gasSupply": ("Инженерная инфраструктура", "Газоснабжение"),
+    "heatSupply": ("Инженерная инфраструктура", "Теплоснабжение"),
+    "waterSupply": ("Инженерная инфраструктура", "Водоснабжение"),
+    "waterDisposal": ("Инженерная инфраструктура", "Водоотведение"),
+    "mswRemoval": ("Инженерная инфраструктура", "Вывоз ТКО"),
+}
+
+_HISTORY_UTILITY_FIELD_META: dict[str, str] = {
+    "availability": "доступность",
+    "availableCapacity": "доступная мощность",
+    "connectionFeeMin": "стоимость подключения от",
+    "tariffConsumption": "тариф потребления",
+    "tariffTransportation": "тариф транспортировки",
+    "otherFreePower": "дополнительные сведения о мощности",
+    "otherFree": "дополнительные сведения",
+}
+
+_HISTORY_COORDINATE_FIELD_META: dict[str, str] = {
+    "latitude": "широта",
+    "longitude": "долгота",
+}
 
 def _history_field_presentation(field_path: Any) -> dict[str, str]:
     """Возвращает раздел и понятное название изменённого поля."""
@@ -276,10 +336,45 @@ def _history_field_presentation(field_path: Any) -> dict[str, str]:
                 else "Формы сделки"
             ),
         }
+    root_meta = _HISTORY_ROOT_FIELD_META.get(root)
+
+    if root_meta is not None:
+        section, root_label = root_meta
+
+        if root in {
+            "powerSupply",
+            "gasSupply",
+            "heatSupply",
+            "waterSupply",
+            "waterDisposal",
+            "mswRemoval",
+        } and len(parts) > 1:
+            property_label = _HISTORY_UTILITY_FIELD_META.get(parts[1])
+
+            if property_label is not None:
+                return {
+                    "section": section,
+                    "label": f"{root_label}: {property_label}",
+                }
+
+        if root == "coordinate" and len(parts) > 1:
+            property_label = _HISTORY_COORDINATE_FIELD_META.get(parts[1])
+
+            if property_label is not None:
+                return {
+                    "section": section,
+                    "label": f"{root_label}: {property_label}",
+                }
+
+        if len(parts) == 1:
+            return {
+                "section": section,
+                "label": root_label,
+            }
 
     return {
-        "section": "Прочее",
-        "label": field_path,
+        "section": "Дополнительные сведения",
+        "label": "Дополнительное поле API",
     }
 
 
@@ -342,6 +437,211 @@ def _build_history_change(
             or _history_value_is_complex(new_value)
         ),
         "detected_at_utc": row["detected_at_utc"],
+    }
+_COMPARISON_MAX_CHANGES = 500
+_MISSING = object()
+
+
+def _json_pointer_escape(part: str) -> str:
+    return part.replace("~", "~0").replace("/", "~1")
+
+
+def _comparison_change_type(old_value: Any, new_value: Any) -> str:
+    if old_value is _MISSING:
+        return "added"
+
+    if new_value is _MISSING:
+        return "removed"
+
+    return "changed"
+
+
+def _comparison_change_type_display(change_type: str) -> str:
+    return {
+        "added": "Добавлено",
+        "removed": "Удалено",
+        "changed": "Изменено",
+    }.get(change_type, "Изменено")
+
+
+def _build_comparison_change(
+    field_path: str,
+    old_value: Any,
+    new_value: Any,
+) -> dict[str, Any]:
+    presentation = _history_field_presentation(field_path)
+    old_display_value = None if old_value is _MISSING else old_value
+    new_display_value = None if new_value is _MISSING else new_value
+    change_type = _comparison_change_type(old_value, new_value)
+
+    return {
+        "field_path": field_path,
+        "section": presentation["section"],
+        "label": presentation["label"],
+        "change_type": change_type,
+        "change_type_display": _comparison_change_type_display(change_type),
+        "old_value": old_display_value,
+        "new_value": new_display_value,
+        "old_display": _history_value_display(old_display_value),
+        "new_display": _history_value_display(new_display_value),
+        "has_complex_value": (
+            _history_value_is_complex(old_display_value)
+            or _history_value_is_complex(new_display_value)
+        ),
+    }
+
+
+def _collect_payload_changes(
+    old_value: Any,
+    new_value: Any,
+    field_path: str = "",
+    changes: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    if changes is None:
+        changes = []
+
+    if len(changes) >= _COMPARISON_MAX_CHANGES:
+        return changes
+
+    if old_value is _MISSING or new_value is _MISSING:
+        changes.append(
+            _build_comparison_change(
+                field_path or "/",
+                old_value,
+                new_value,
+            )
+        )
+        return changes
+
+    if isinstance(old_value, dict) and isinstance(new_value, dict):
+        keys = sorted(
+            set(old_value) | set(new_value),
+            key=str,
+        )
+
+        for key in keys:
+            path = f"{field_path}/{_json_pointer_escape(str(key))}"
+            _collect_payload_changes(
+                old_value.get(key, _MISSING),
+                new_value.get(key, _MISSING),
+                path,
+                changes,
+            )
+
+            if len(changes) >= _COMPARISON_MAX_CHANGES:
+                break
+
+        return changes
+
+    if isinstance(old_value, list) and isinstance(new_value, list):
+        items_count = max(len(old_value), len(new_value))
+
+        for index in range(items_count):
+            path = f"{field_path}/{index}"
+            _collect_payload_changes(
+                old_value[index] if index < len(old_value) else _MISSING,
+                new_value[index] if index < len(new_value) else _MISSING,
+                path,
+                changes,
+            )
+
+            if len(changes) >= _COMPARISON_MAX_CHANGES:
+                break
+
+        return changes
+
+    if old_value != new_value:
+        changes.append(
+            _build_comparison_change(
+                field_path or "/",
+                old_value,
+                new_value,
+            )
+        )
+
+    return changes
+
+
+def _comparison_snapshot_summary(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "snapshot_id": row["id"],
+        "fetched_at_utc": row["fetched_at_utc"],
+        "filling_level": row["filling_level"],
+    }
+
+
+def _build_snapshot_comparison(
+    snapshots: list[sqlite3.Row],
+    from_snapshot_id: int | None = None,
+    to_snapshot_id: int | None = None,
+) -> dict[str, Any]:
+    if len(snapshots) < 2:
+        return {
+            "status": "not_enough_snapshots",
+            "message": (
+                "Для сравнения требуется не менее двух "
+                "сохранённых снимков."
+            ),
+            "previous": None,
+            "current": None,
+            "filling_level_delta": None,
+            "changes": [],
+            "is_truncated": False,
+        }
+
+    snapshot_by_id = {row["id"]: row for row in snapshots}
+    default_previous = snapshots[1]
+    default_current = snapshots[0]
+    selected_previous = snapshot_by_id.get(
+        from_snapshot_id,
+        default_previous,
+    )
+    selected_current = snapshot_by_id.get(
+        to_snapshot_id,
+        default_current,
+    )
+
+    invalid_selection = (
+        (from_snapshot_id is not None and from_snapshot_id not in snapshot_by_id)
+        or (to_snapshot_id is not None and to_snapshot_id not in snapshot_by_id)
+    )
+
+    if selected_previous["id"] == selected_current["id"]:
+        return {
+            "status": "same_snapshot",
+            "message": (
+                "Выберите два разных сохранённых снимка для сравнения."
+            ),
+            "previous": _comparison_snapshot_summary(selected_previous),
+            "current": _comparison_snapshot_summary(selected_current),
+            "filling_level_delta": None,
+            "changes": [],
+            "is_truncated": False,
+        }
+
+    old_payload = _json_or_none(selected_previous["payload_json"])
+    new_payload = _json_or_none(selected_current["payload_json"])
+    changes = _collect_payload_changes(old_payload, new_payload)
+    old_filling_level = selected_previous["filling_level"]
+    new_filling_level = selected_current["filling_level"]
+    filling_level_delta = None
+
+    if old_filling_level is not None and new_filling_level is not None:
+        filling_level_delta = new_filling_level - old_filling_level
+
+    return {
+        "status": "ok",
+        "message": (
+            "Один или оба выбранных снимка не относятся к этой карточке. "
+            "Показана последняя безопасная пара снимков."
+            if invalid_selection
+            else None
+        ),
+        "previous": _comparison_snapshot_summary(selected_previous),
+        "current": _comparison_snapshot_summary(selected_current),
+        "filling_level_delta": filling_level_delta,
+        "changes": changes,
+        "is_truncated": len(changes) >= _COMPARISON_MAX_CHANGES,
     }
 
 def _build_site_overview(payload: Any) -> dict[str, Any]:
@@ -724,6 +1024,9 @@ def get_monitor_cards(
 def get_monitor_card_detail(
     conn: sqlite3.Connection,
     global_id: int,
+    *,
+    from_snapshot_id: int | None = None,
+    to_snapshot_id: int | None = None,
 ) -> dict[str, Any] | None:
     """Возвращает последнюю карточку, её снимки и историю изменений."""
     latest = conn.execute(
@@ -754,13 +1057,15 @@ def get_monitor_card_detail(
             fetched_at_utc,
             filling_level,
             region_code,
-            payload_sha256
+            payload_sha256,
+            payload_json
         FROM investmap_rf_card_snapshots
         WHERE global_id = ?
         ORDER BY id DESC
         """,
         (global_id,),
     ).fetchall()
+    
 
     changes = conn.execute(
         """
@@ -818,6 +1123,11 @@ def get_monitor_card_detail(
         (global_id,),
     ).fetchall()
     latest_payload = _json_or_none(latest["payload_json"])
+        comparison = _build_snapshot_comparison(
+        snapshots,
+        from_snapshot_id=from_snapshot_id,
+        to_snapshot_id=to_snapshot_id,
+    )
 
     return {
         "latest": {
@@ -828,6 +1138,7 @@ def get_monitor_card_detail(
             "fetched_at_utc": latest["fetched_at_utc"],
             "filling_level": latest["filling_level"],
             "region_code": latest["region_code"],
+            "comparison": comparison,
         },
         "site_overview": _build_site_overview(latest_payload),
         "assignment": (
