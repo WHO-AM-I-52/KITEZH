@@ -690,7 +690,7 @@ def investmap_rf_monitor_detail(global_id):
             global_id,
             from_snapshot_id=from_snapshot_id,
             to_snapshot_id=to_snapshot_id,
-        ))
+        )
 
         if monitor_card is None:
             flash(
