@@ -264,7 +264,9 @@ _STATUS_LABELS = {
 }
 
 _SOURCE_LABELS = {
+    "auto": "Автоматическое",
     "automatic": "Автоматическое",
+    "api_contact_person": "Контактное лицо API",
     "manual": "Ручное",
 }
 
