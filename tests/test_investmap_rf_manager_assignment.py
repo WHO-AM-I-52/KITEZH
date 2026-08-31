@@ -330,7 +330,7 @@ class InvestmapRfManagerAssignmentTest(unittest.TestCase):
         self.assertEqual(assignment["match_status"], MATCH_STATUS_MATCHED)
         self.assertEqual(self._open_issues(1006), [])
 
-        def test_zimin_contact_overrides_municipality_rule(self):
+    def test_zimin_contact_overrides_municipality_rule(self):
         self._add_rule("город Дзержинск", "Алюков Алексей")
         card = self._card(
             1008,
