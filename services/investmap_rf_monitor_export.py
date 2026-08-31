@@ -427,6 +427,11 @@ _RENTAL_PERIOD_RECOMMENDATION = (
 def _format_recommendation(field: str, hint: str | None) -> str:
     if field == "min и max сроки аренды (если применимо), лет":
         return _RENTAL_PERIOD_RECOMMENDATION
+    if field == "Описание процедуры подачи заявки":
+        return (
+            "Опишите процедуру подачи заявки: порядок обращения, "
+            "способ подачи заявки и порядок её рассмотрения."
+        )
     if hint:
         return hint
     return f'Заполните поле «{field}».'
