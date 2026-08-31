@@ -98,7 +98,7 @@ def is_zimin_contact_person(card) -> bool:
         return False
 
     contact_person = payload.get("contactPerson")
-    return normalize_municipality(contact_person) == ZIMIN_CONTACT_PERSON
+    return ZIMIN_CONTACT_PERSON in normalize_municipality(contact_person)
 
 def _get_existing_assignment(conn, global_id: int):
     return conn.execute(
