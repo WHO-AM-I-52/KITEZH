@@ -3,10 +3,12 @@ import unittest
 from types import SimpleNamespace
 
 from services.investmap_rf_manager_assignment import (
+    KULIBIN_MANAGER_NAME,
     MATCH_STATUS_AMBIGUOUS,
     MATCH_STATUS_MANUAL,
     MATCH_STATUS_MATCHED,
     MATCH_STATUS_UNMATCHED,
+    ZIMIN_MANAGER_NAME,
     normalize_municipality,
     update_card_manager_assignment,
 )
@@ -328,6 +330,70 @@ class InvestmapRfManagerAssignmentTest(unittest.TestCase):
         self.assertEqual(assignment["match_status"], MATCH_STATUS_MATCHED)
         self.assertEqual(self._open_issues(1006), [])
 
+        def test_zimin_contact_overrides_municipality_rule(self):
+        self._add_rule("город Дзержинск", "Алюков Алексей")
+        card = self._card(
+            1008,
+            "город Дзержинск",
+            contactPerson="Зимин Дмитрий Валерьевич",
+        )
+
+        result = update_card_manager_assignment(self.conn, card=card)
+
+        self.assertEqual(result["status"], MATCH_STATUS_MATCHED)
+        self.assertFalse(result["notification_created"])
+        self.assertIsNone(result["issue"])
+
+        assignment = self._assignment(1008)
+        self.assertEqual(assignment["manager_name"], ZIMIN_MANAGER_NAME)
+        self.assertIsNone(assignment["rule_id"])
+        self.assertEqual(
+            assignment["assignment_source"],
+            "api_contact_person",
+        )
+        self.assertEqual(assignment["match_status"], MATCH_STATUS_MATCHED)
+        self.assertEqual(self._open_issues(1008), [])
+
+    def test_zimin_contact_is_normalized(self):
+        self._add_rule("город Дзержинск", "Алюков Алексей")
+        card = self._card(
+            1009,
+            "город Дзержинск",
+            contactPerson="  ЗИМИН   Дмитрий Валерьевич  ",
+        )
+
+        result = update_card_manager_assignment(self.conn, card=card)
+
+        self.assertEqual(result["status"], MATCH_STATUS_MATCHED)
+
+        assignment = self._assignment(1009)
+        self.assertEqual(assignment["manager_name"], ZIMIN_MANAGER_NAME)
+        self.assertEqual(
+            assignment["assignment_source"],
+            "api_contact_person",
+        )
+
+    def test_kulibin_card_has_priority_over_zimin_contact(self):
+        self._add_rule("город Дзержинск", "Алюков Алексей")
+        card = self._card(
+            1010,
+            "город Дзержинск",
+            contactPerson="Зимин Дмитрий Валерьевич",
+            preferentialBusinessLink={
+                "name": 'ОЭЗ ППТ "Кулибин"',
+            },
+        )
+
+        result = update_card_manager_assignment(self.conn, card=card)
+
+        self.assertEqual(result["status"], MATCH_STATUS_MATCHED)
+
+        assignment = self._assignment(1010)
+        self.assertEqual(assignment["manager_name"], KULIBIN_MANAGER_NAME)
+        self.assertEqual(assignment["assignment_source"], "auto")
+        self.assertIsNone(assignment["rule_id"])
+        self.assertEqual(assignment["match_status"], MATCH_STATUS_MATCHED)
+    
     def test_manual_assignment_overrides_kulibin_rule(self):
         self.conn.execute(
             """
