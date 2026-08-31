@@ -373,6 +373,39 @@ class InvestmapRfManagerAssignmentTest(unittest.TestCase):
             "api_contact_person",
         )
 
+    def test_zimin_contact_is_found_in_extended_contact_details(self):
+        self._add_rule(
+            "городской округ город Нижний Новгород",
+            "Алюков Дмитрий Валерьевич",
+        )
+        card = self._card(
+            2493862,
+            "городской округ город Нижний Новгород",
+            contactPerson=(
+                "Территориальный управляющий инвестиционных проектов "
+                "АО Корпорация развития Нижегородской области "
+                "Зимин Дмитрий Валерьевич\n\n"
+                "Контактные лица собственника:\n"
+                "Люлин Александр Евгеньевич\n"
+                "Румянцев Евгений Александрович"
+            ),
+        )
+
+        result = update_card_manager_assignment(self.conn, card=card)
+
+        self.assertEqual(result["status"], MATCH_STATUS_MATCHED)
+        self.assertFalse(result["notification_created"])
+        self.assertIsNone(result["issue"])
+
+        assignment = self._assignment(2493862)
+        self.assertEqual(assignment["manager_name"], ZIMIN_MANAGER_NAME)
+        self.assertIsNone(assignment["rule_id"])
+        self.assertEqual(
+            assignment["assignment_source"],
+            "api_contact_person",
+        )
+        self.assertEqual(assignment["match_status"], MATCH_STATUS_MATCHED)
+    
     def test_kulibin_card_has_priority_over_zimin_contact(self):
         self._add_rule("город Дзержинск", "Алюков Алексей")
         card = self._card(
