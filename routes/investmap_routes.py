@@ -672,7 +672,25 @@ def investmap_rf_monitor_detail(global_id):
 
     try:
         db = get_db()
-        monitor_card = get_monitor_card_detail(db, global_id)
+
+        try:
+            from_snapshot_id = _monitor_query_positive_int(
+                "from_snapshot_id"
+            )
+            to_snapshot_id = _monitor_query_positive_int(
+                "to_snapshot_id"
+            )
+        except ValueError as exc:
+            flash(str(exc), "warning")
+            from_snapshot_id = None
+            to_snapshot_id = None
+
+        monitor_card = get_monitor_card_detail(
+            db,
+            global_id,
+            from_snapshot_id=from_snapshot_id,
+            to_snapshot_id=to_snapshot_id,
+        ))
 
         if monitor_card is None:
             flash(
