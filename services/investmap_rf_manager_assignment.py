@@ -16,6 +16,8 @@ MATCH_STATUS_AMBIGUOUS = "ambiguous"
 MATCH_STATUS_MANUAL = "manual"
 KULIBIN_MANAGER_NAME = "Земсков Александр Николаевич"
 KULIBIN_MARKER = "кулибин"
+ZIMIN_MANAGER_NAME = "Зимин Дмитрий Валерьевич"
+ZIMIN_CONTACT_PERSON = "зимин дмитрий валерьевич"
 
 
 def _utc_now() -> str:
@@ -88,6 +90,15 @@ def is_kulibin_special_economic_zone(card) -> bool:
 
     return False
 
+def is_zimin_contact_person(card) -> bool:
+    """Проверяет, указан ли Зимин в contactPerson API-карточки."""
+    payload = getattr(card, "payload", None)
+
+    if not isinstance(payload, dict):
+        return False
+
+    contact_person = payload.get("contactPerson")
+    return normalize_municipality(contact_person) == ZIMIN_CONTACT_PERSON
 
 def _get_existing_assignment(conn, global_id: int):
     return conn.execute(
@@ -407,7 +418,25 @@ def update_card_manager_assignment(
             "issue": None,
             "notification_created": False,
         }
-
+        
+    if is_zimin_contact_person(card):
+        _resolve_open_issues(conn, global_id=global_id)
+        assignment = _upsert_assignment(
+            conn,
+            global_id=global_id,
+            municipality_raw=municipality_raw,
+            municipality_normalized=municipality_normalized,
+            manager_name=ZIMIN_MANAGER_NAME,
+            rule_id=None,
+            assignment_source="api_contact_person",
+            match_status=MATCH_STATUS_MATCHED,
+        )
+        return {
+            "status": MATCH_STATUS_MATCHED,
+            "assignment": assignment,
+            "issue": None,
+            "notification_created": False,
+        }
     if not municipality_normalized:
         issue, is_new_issue = _upsert_issue(
             conn,
