@@ -25,6 +25,20 @@ CONSOLE_STATUS = os.path.join(BASE_DIR, '_console.status')
 SW_HIDE = 0
 SW_SHOWNORMAL = 1
 SW_RESTORE = 9
+GWL_EXSTYLE = -20
+
+WS_EX_APPWINDOW = 0x00040000
+WS_EX_TOOLWINDOW = 0x00000080
+
+SWP_NOSIZE = 0x0001
+SWP_NOMOVE = 0x0002
+SWP_NOZORDER = 0x0004
+SWP_NOACTIVATE = 0x0010
+SWP_FRAMECHANGED = 0x0020
+SWP_SHOWWINDOW = 0x0040
+SWP_HIDEWINDOW = 0x0080
+
+_original_exstyle = None
 
 _console_visible = True
 _tray_icon = None
@@ -95,6 +109,89 @@ def _window_is_visible(hwnd: int) -> bool:
     except Exception:
         return False
 
+def _hide_from_taskbar(hwnd: int) -> bool:
+    """
+    Убирает окно из taskbar и скрывает его.
+
+    Исходный extended style сохраняется, чтобы при показе вернуть
+    окно в исходное нормальное состояние.
+    """
+    global _original_exstyle
+
+    if not hwnd:
+        return False
+
+    try:
+        user32 = ctypes.windll.user32
+
+        current_style = user32.GetWindowLongPtrW(hwnd, GWL_EXSTYLE)
+        if _original_exstyle is None:
+            _original_exstyle = current_style
+
+        hidden_style = (
+            (current_style & ~WS_EX_APPWINDOW)
+            | WS_EX_TOOLWINDOW
+        )
+
+        user32.SetWindowLongPtrW(hwnd, GWL_EXSTYLE, hidden_style)
+        user32.SetWindowPos(
+            hwnd,
+            0,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE
+            | SWP_NOSIZE
+            | SWP_NOZORDER
+            | SWP_NOACTIVATE
+            | SWP_FRAMECHANGED
+            | SWP_HIDEWINDOW,
+        )
+        user32.ShowWindow(hwnd, SW_HIDE)
+
+        return not _window_is_visible(hwnd)
+    except Exception:
+        return False
+
+
+def _restore_to_taskbar(hwnd: int) -> bool:
+    """Возвращает исходный стиль окна и показывает его."""
+    global _original_exstyle
+
+    if not hwnd:
+        return False
+
+    try:
+        user32 = ctypes.windll.user32
+
+        if _original_exstyle is not None:
+            user32.SetWindowLongPtrW(
+                hwnd,
+                GWL_EXSTYLE,
+                _original_exstyle,
+            )
+            _original_exstyle = None
+
+        user32.SetWindowPos(
+            hwnd,
+            0,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE
+            | SWP_NOSIZE
+            | SWP_NOZORDER
+            | SWP_FRAMECHANGED
+            | SWP_SHOWWINDOW,
+        )
+        user32.ShowWindow(hwnd, SW_RESTORE)
+        user32.SetForegroundWindow(hwnd)
+
+        return _window_is_visible(hwnd)
+    except Exception:
+        return False
 
 def _write_console_status(visible: bool, error: str = '') -> None:
     """Публикует фактический статус для Flask-процесса."""
@@ -221,9 +318,7 @@ def show_console() -> bool:
         return _send_console_command('show')
 
     try:
-        ctypes.windll.user32.ShowWindow(hwnd, SW_RESTORE)
-        ctypes.windll.user32.ShowWindow(hwnd, SW_SHOWNORMAL)
-        _console_visible = _window_is_visible(hwnd)
+        _console_visible = _restore_to_taskbar(hwnd)
         _write_console_status(_console_visible)
 
         if _tray_icon is not None:
@@ -268,8 +363,7 @@ def hide_console() -> bool:
         return _send_console_command('hide')
 
     try:
-        ctypes.windll.user32.ShowWindow(hwnd, SW_HIDE)
-        _console_visible = _window_is_visible(hwnd)
+        _console_visible = not _hide_from_taskbar(hwnd)
         _write_console_status(_console_visible)
 
         if _tray_icon is not None:
