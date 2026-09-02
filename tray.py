@@ -30,6 +30,7 @@ _console_visible = True
 _tray_icon = None
 _tray_ready = threading.Event()
 _pystray_available = None
+_tray_process_pid = None
 
 
 def _check_pystray() -> bool:
@@ -189,18 +190,20 @@ def notify_error(title: str, message: str) -> None:
 
 def get_console_visible() -> bool:
     """
-    Возвращает фактическую видимость консоли.
+    Возвращает статус консоли.
 
-    В run_server.py проверяет HWND через WinAPI.
-    В app.py читает статус, опубликованный процессом трея.
+    Только процесс трея обращается к HWND через WinAPI. Flask app.py
+    читает последнее состояние из IPC-файла, чтобы не выдавать статус
+    чужого окна как свой.
     """
     global _console_visible
 
-    hwnd = _get_console_hwnd()
-    if hwnd:
-        _console_visible = _window_is_visible(hwnd)
-        _write_console_status(_console_visible)
-        return _console_visible
+    if _tray_process_pid == os.getpid():
+        hwnd = _get_console_hwnd()
+        if hwnd:
+            _console_visible = _window_is_visible(hwnd)
+            _write_console_status(_console_visible)
+            return _console_visible
 
     _console_visible, _ = _read_console_status()
     return _console_visible
@@ -396,7 +399,8 @@ def _make_menu():
 
 def run_tray(hide_on_start: bool = True):
     """Запускает иконку трея и обработчик команд консоли."""
-    global _tray_icon
+    global _tray_icon, _tray_process_pid
+_tray_process_pid = os.getpid()
 
     if not _check_pystray():
         print(
