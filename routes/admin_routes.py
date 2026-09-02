@@ -293,9 +293,9 @@ def api_console_status():
     except Exception as e:
         return jsonify({
             'ok': False,
-            'error': str(e),
+            'visible': False,
+            'error': f'{type(e).__name__}: {e}',
         })
-
 
 def _console_command_response(command: str):
     """
