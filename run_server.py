@@ -33,17 +33,6 @@ TRAY_LOCK     = os.path.join(BASE_DIR, '_tray_running.lock')
 PYTHON = sys.executable
 app_py = os.path.join(BASE_DIR, 'app.py')
 
-# HWND консольного окна, унаследованного от start KITEZH.bat.
-# Передаётся в tray.py, чтобы скрывать/показывать именно то же окно cmd.exe.
-CONSOLE_HWND = 0
-if sys.platform == 'win32':
-    try:
-        import ctypes
-        CONSOLE_HWND = int(ctypes.windll.kernel32.GetConsoleWindow() or 0)
-        os.environ['KITEZH_CONSOLE_HWND'] = str(CONSOLE_HWND)
-    except Exception:
-        os.environ.pop('KITEZH_CONSOLE_HWND', None)
-
 # ─── TRAY ──────────────────────────────────────────────────────────────────────────────────────
 # KITEZH_TRAY=1 во всех режимах (батник выставляет всегда).
 # KITEZH_HIDE_CONSOLE=1 — только в режиме 3 (полный трей).
