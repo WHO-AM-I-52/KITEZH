@@ -63,17 +63,24 @@ def _atomic_write(path: str, text: str) -> bool:
 
 def _get_console_hwnd() -> int:
     """
-    Возвращает HWND консоли текущего процесса.
+    Возвращает HWND стартового консольного окна KITEZH.
 
-    В run_server.py процесс наследует консоль стартового cmd.exe.
-    В app.py, запущенном с CREATE_NO_WINDOW, HWND отсутствует.
+    run_server.py сохраняет HWND унаследованной от start KITEZH.bat
+    консоли в KITEZH_CONSOLE_HWND. Fallback нужен для прямого запуска
+    tray.py/run_server.py без батника.
     """
     if sys.platform != 'win32':
         return 0
 
     try:
-        hwnd = ctypes.windll.kernel32.GetConsoleWindow()
-        return int(hwnd or 0)
+        hwnd = int(os.environ.get('KITEZH_CONSOLE_HWND', '0') or 0)
+        if hwnd and ctypes.windll.user32.IsWindow(hwnd):
+            return hwnd
+    except Exception:
+        pass
+
+    try:
+        return int(ctypes.windll.kernel32.GetConsoleWindow() or 0)
     except Exception:
         return 0
 
