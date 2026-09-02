@@ -400,7 +400,8 @@ def _make_menu():
 def run_tray(hide_on_start: bool = True):
     """Запускает иконку трея и обработчик команд консоли."""
     global _tray_icon, _tray_process_pid
-_tray_process_pid = os.getpid()
+
+    _tray_process_pid = os.getpid()
 
     if not _check_pystray():
         print(
