@@ -43,6 +43,7 @@ import os
 import tempfile
 import zipfile
 import json
+import time
 from datetime import datetime
 
 from flask import (
@@ -285,9 +286,60 @@ def api_console_status():
     try:
         from tray import get_console_visible
         visible = get_console_visible()
-        return jsonify({'ok': True, 'visible': visible})
+        return jsonify({
+            'ok': True,
+            'visible': visible,
+        })
     except Exception as e:
-        return jsonify({'ok': False, 'error': str(e)})
+        return jsonify({
+            'ok': False,
+            'error': str(e),
+        })
+
+
+def _console_command_response(command: str):
+    """
+    Ставит команду в очередь и ждёт короткое время, пока процесс
+    run_server.py применит её к реальному окну cmd.exe.
+    """
+    from tray import get_console_visible, hide_console, show_console
+
+    previous_visible = get_console_visible()
+
+    if command == 'show':
+        queued = show_console()
+        expected_visible = True
+    else:
+        queued = hide_console()
+        expected_visible = False
+
+    if not queued:
+        return jsonify({
+            'ok': False,
+            'visible': get_console_visible(),
+            'error': 'Не удалось передать команду процессу трея.',
+        })
+
+    deadline = time.monotonic() + 2.0
+    visible = get_console_visible()
+
+    while time.monotonic() < deadline:
+        visible = get_console_visible()
+        if visible == expected_visible:
+            return jsonify({
+                'ok': True,
+                'visible': visible,
+            })
+        time.sleep(0.1)
+
+    return jsonify({
+        'ok': False,
+        'visible': visible,
+        'error': (
+            'Команда передана, но состояние окна консоли '
+            'не изменилось за 2 секунды.'
+        ),
+    })
 
 
 @admin_bp.route('/api/console/show', methods=['POST'])
@@ -295,11 +347,13 @@ def api_console_status():
 @admin_required
 def api_console_show():
     try:
-        from tray import show_console
-        ok = show_console()
-        return jsonify({'ok': ok, 'visible': True})
+        return _console_command_response('show')
     except Exception as e:
-        return jsonify({'ok': False, 'error': str(e)})
+        return jsonify({
+            'ok': False,
+            'visible': False,
+            'error': str(e),
+        })
 
 
 @admin_bp.route('/api/console/hide', methods=['POST'])
@@ -307,12 +361,13 @@ def api_console_show():
 @admin_required
 def api_console_hide():
     try:
-        from tray import hide_console
-        ok = hide_console()
-        return jsonify({'ok': ok, 'visible': False})
+        return _console_command_response('hide')
     except Exception as e:
-        return jsonify({'ok': False, 'error': str(e)})
-
+        return jsonify({
+            'ok': False,
+            'visible': False,
+            'error': str(e),
+        })
 
 # ─── Бэкап ────────────────────────────────────────────────────────────────────
 @admin_bp.route('/admin/backup/download')
