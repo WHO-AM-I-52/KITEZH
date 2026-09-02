@@ -190,14 +190,16 @@ def notify_error(title: str, message: str) -> None:
 
 def get_console_visible() -> bool:
     """
-    Возвращает статус консоли.
+    Возвращает фактический статус консоли.
 
-    Только процесс трея обращается к HWND через WinAPI. Flask app.py
-    читает последнее состояние из IPC-файла, чтобы не выдавать статус
-    чужого окна как свой.
+    app.py — дочерний Flask-процесс. В режиме tray он не управляет
+    стартовым окном cmd.exe и всегда читает статус, который записывает
+    процесс run_server.py с треем.
     """
     global _console_visible
 
+    # Только процесс, где реально создан значок трея, имеет право
+    # опрашивать HWND и публиковать состояние.
     if _tray_process_pid == os.getpid():
         hwnd = _get_console_hwnd()
         if hwnd:
@@ -205,6 +207,7 @@ def get_console_visible() -> bool:
             _write_console_status(_console_visible)
             return _console_visible
 
+    # app.py и все остальные процессы используют только IPC-статус.
     _console_visible, _ = _read_console_status()
     return _console_visible
 
