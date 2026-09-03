@@ -12,6 +12,7 @@
 # ║   (только в режиме 3 — полный трей).                         ║
 # ╚═══════════════════════════════════════════════════════════════╝
 
+import atexit
 import os
 import sys
 import subprocess
@@ -408,16 +409,78 @@ try:
 except OSError as exc:
     print(f'[WARN] Не удалось записать PID-файл: {exc}', flush=True)
 
+# ─── ШТАТНАЯ ОСТАНОВКА ДОЧЕРНЕГО APP.PY ─────────────────────────────────────
+_cleanup_lock = threading.Lock()
+_cleanup_started = False
 
-def _relay_signal(signum, frame):
-    """Передаёт Ctrl+C/SIGTERM в Flask-процесс."""
+
+def _stop_child_server(reason='завершение launcher-а'):
+    """
+    Останавливает только app.py, запущенный этим экземпляром run_server.py.
+
+    Функция вызывается из Ctrl+C и atexit. Повторный вызов безопасен:
+    одновременная остановка процесса несколькими путями не допускается.
+    """
+    global _cleanup_started
+
+    with _cleanup_lock:
+        if _cleanup_started:
+            return
+        _cleanup_started = True
+
+    if proc.poll() is not None:
+        _remove_pid_file()
+        return
+
+    print(
+        f'[INFO] Останавливаю дочерний KITEZH app.py (PID {proc.pid}): {reason}.',
+        flush=True,
+    )
+
     try:
         if sys.platform == 'win32':
             proc.send_signal(signal.CTRL_BREAK_EVENT)
         else:
             proc.send_signal(signal.SIGTERM)
-    except Exception:
-        pass
+    except Exception as exc:
+        print(f'[WARN] Не удалось передать сигнал PID {proc.pid}: {exc}', flush=True)
+
+    if _wait_for_exit(proc.pid, timeout_seconds=5):
+        print(f'[INFO] Дочерний KITEZH app.py (PID {proc.pid}) завершён.', flush=True)
+        _remove_pid_file()
+        return
+
+    if sys.platform == 'win32':
+        print(
+            f'[WARN] PID {proc.pid} не завершился за 5 секунд. '
+            'Применяю taskkill /F /T.',
+            flush=True,
+        )
+        _taskkill(proc.pid, force=True)
+
+        if _wait_for_exit(proc.pid, timeout_seconds=5):
+            print(
+                f'[INFO] Дочерний KITEZH app.py (PID {proc.pid}) '
+                'завершён принудительно.',
+                flush=True,
+            )
+            _remove_pid_file()
+            return
+
+    try:
+        proc.kill()
+        proc.wait(timeout=5)
+    except Exception as exc:
+        print(f'[ERROR] Не удалось завершить PID {proc.pid}: {exc}', flush=True)
+        return
+
+    if not _pid_is_alive(proc.pid):
+        _remove_pid_file()
+atexit.register(_stop_child_server)
+
+def _relay_signal(signum, frame):
+    """Передаёт Ctrl+C/SIGTERM в app.py и очищает дочерний процесс."""
+    _stop_child_server(reason=f'сигнал {signum}')
 
 
 signal.signal(signal.SIGINT, _relay_signal)
@@ -426,13 +489,11 @@ signal.signal(signal.SIGTERM, _relay_signal)
 try:
     proc.wait()
 except KeyboardInterrupt:
-    try:
-        proc.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        proc.kill()
+    _stop_child_server(reason='Ctrl+C')
 finally:
-    # PID-файл принадлежит только этому launcher-у: удаляем его,
-    # если соответствующий дочерний процесс уже остановлен.
+    # Если app.py завершился самостоятельно, удаляем его PID-файл.
+    # Если launcher выходит по другой штатной причине, atexit также
+    # вызовет _stop_child_server().
     if not _pid_is_alive(proc.pid):
         _remove_pid_file()
 
