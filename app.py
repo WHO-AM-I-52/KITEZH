@@ -249,7 +249,14 @@ def handle_500(exc):
 # реализован через @after_request — работает и с waitress, и с dev-сервером.
 # Фильтруем /ping, /health, /maintenance-status — хеартбит/polling
 # не засоряют консоль. /static/ тоже пропускаем.
-_ACCESS_SKIP = frozenset(('/ping', '/health', '/maintenance-status'))
+_ACCESS_SKIP = frozenset((
+    '/ping',
+    '/health',
+    '/maintenance-status',
+    '/api/online-users',
+    '/api/update/pre-status',
+    '/api/update/result',
+))
 
 @app.after_request
 def _access_log(response):
