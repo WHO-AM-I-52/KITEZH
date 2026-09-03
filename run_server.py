@@ -299,3 +299,164 @@ HIDE_CONSOLE = os.environ.get('KITEZH_HIDE_CONSOLE', '0') == '1'
 
 # Чистим лок при каждом старте — защита от зависшего лока
 # после нештатного завершения предыдущего сеанса.
+if TRAY_MODE:
+    try:
+        os.remove(TRAY_LOCK)
+    except FileNotFoundError:
+        pass
+
+# Запускаем трей если:
+#   1. KITEZH_TRAY=1 (tray-режим)
+#   2. Трей ещё не запущен в этом процессе (нет _tray_running.lock)
+# HIDE_CONSOLE передаётся в hide_on_start — иконка есть всегда,
+# а скрытие консоли — только в режиме 3.
+
+_tray_started = False
+
+if TRAY_MODE and not os.path.exists(TRAY_LOCK):
+    try:
+        from tray import start_tray_thread
+        start_tray_thread(hide_on_start=HIDE_CONSOLE)
+        _tray_started = True
+        try:
+            with open(TRAY_LOCK, 'w') as file:
+                file.write(str(os.getpid()))
+        except Exception:
+            pass
+        if HIDE_CONSOLE:
+            print('  Tray-режим: консоль свернётся, иконка KITEZH появится в трее')
+        else:
+            print('  Иконка KITEZH появилась в системном трее')
+    except ImportError as exc:
+        print(f'  [ПРЕДУПРЕЖДЕНИЕ] Трей недоступен: {exc}')
+        print('  Запуск без иконки трея...')
+elif TRAY_MODE and os.path.exists(TRAY_LOCK):
+    print('  Трей-режим: иконка уже запущена (авторестарт), повторный запуск пропущен.')
+
+# ─── ЗАПУСК Flask ─────────────────────────────────────────────────────────────
+creation_flags = 0
+if sys.platform == 'win32':
+    creation_flags = subprocess.CREATE_NEW_PROCESS_GROUP
+    if HIDE_CONSOLE:
+        # В tray-режиме (консоль скрыта) — дочерний app.py
+        # не должен открывать новое окно консоли.
+        creation_flags |= subprocess.CREATE_NO_WINDOW
+
+print(
+    f'[LAUNCH] APP_DEBUG={os.environ.get("APP_DEBUG")!r}; '
+    f'FLASK_ENV={os.environ.get("FLASK_ENV")!r}; '
+    f'KITEZH_HIDE_CONSOLE={os.environ.get("KITEZH_HIDE_CONSOLE")!r}',
+    flush=True,
+)
+
+popen_kwargs = {
+    'cwd': BASE_DIR,
+    'creationflags': creation_flags,
+}
+
+if HIDE_CONSOLE:
+    popen_kwargs.update(
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding='utf-8',
+        errors='replace',
+        bufsize=1,
+    )
+else:
+    popen_kwargs.update(
+        stdin=sys.stdin,
+        stdout=sys.stdout,
+        stderr=sys.stderr,
+    )
+
+proc = subprocess.Popen(
+    [PYTHON, app_py],
+    **popen_kwargs,
+)
+
+
+def _relay_stream(stream, target):
+    """Передаёт построчный вывод дочернего app.py в консоль launcher-а."""
+    try:
+        for line in iter(stream.readline, ''):
+            target.write(line)
+            target.flush()
+    except Exception:
+        pass
+    finally:
+        try:
+            stream.close()
+        except Exception:
+            pass
+
+
+if HIDE_CONSOLE:
+    threading.Thread(
+        target=_relay_stream,
+        args=(proc.stdout, sys.stdout),
+        daemon=True,
+    ).start()
+
+    threading.Thread(
+        target=_relay_stream,
+        args=(proc.stderr, sys.stderr),
+        daemon=True,
+    ).start()
+
+try:
+    with open(PID_FILE, 'w', encoding='utf-8') as file:
+        file.write(str(proc.pid))
+except OSError as exc:
+    print(f'[WARN] Не удалось записать PID-файл: {exc}', flush=True)
+
+
+def _relay_signal(signum, frame):
+    """Передаёт Ctrl+C/SIGTERM в Flask-процесс."""
+    try:
+        if sys.platform == 'win32':
+            proc.send_signal(signal.CTRL_BREAK_EVENT)
+        else:
+            proc.send_signal(signal.SIGTERM)
+    except Exception:
+        pass
+
+
+signal.signal(signal.SIGINT, _relay_signal)
+signal.signal(signal.SIGTERM, _relay_signal)
+
+try:
+    proc.wait()
+except KeyboardInterrupt:
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+finally:
+    # PID-файл принадлежит только этому launcher-у: удаляем его,
+    # если соответствующий дочерний процесс уже остановлен.
+    if not _pid_is_alive(proc.pid):
+        _remove_pid_file()
+
+# Даём серверу время закрыть сокет и дописать последние access-логи.
+time.sleep(1.5)
+
+# При завершении сессии (не рестарт) — чистим лок трея,
+# чтобы следующий ручной запуск батника снова показал иконку.
+if not os.path.exists(RESTART_FLAG):
+    try:
+        os.remove(TRAY_LOCK)
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        print(f'[WARN] Не удалось удалить tray-lock: {exc}', flush=True)
+
+if os.path.exists(RESTART_FLAG):
+    try:
+        os.remove(RESTART_FLAG)
+    except OSError as exc:
+        print(f'[WARN] Не удалось удалить restart-флаг: {exc}', flush=True)
+    sys.exit(42)
+
+sys.exit(0)
