@@ -253,8 +253,9 @@ def api_update_stream():
                     open(RESTART_FLAG, 'w').close()
                 except Exception:
                     pass
-                # FIX v2.3.2: снимаем .maintenance ПЕРЕД выходом
-                clear_maintenance()
+                # .maintenance сохраняем до старта нового app.py.
+                # Новый app.py снимет флаг в _startup(), а до этого пользователи
+                # остаются на maintenance.html с игровым экраном.
                 if rc == 2:
                     run_bat_restart()
                 else:
