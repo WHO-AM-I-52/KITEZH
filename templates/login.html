@@ -212,21 +212,37 @@
     align-items: center;
   }
 
-  .lf-pw-toggle {
-    position: absolute;
-    left: 12px;
-    z-index: 1;
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: 0;
-    color: rgba(255,255,255,0.35);
-    font-size: 16px;
-    line-height: 1;
-    transition: color 200ms;
-    display: flex;
-    align-items: center;
-  }
+.lf-pw-toggle {
+  position: absolute;
+  left: 12px;
+  z-index: 1;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 3px;
+  color: #7dd3fc;
+  font-size: 18px;
+  line-height: 1;
+  transition: color 200ms ease, background-color 200ms ease, transform 120ms ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+}
+
+.lf-pw-toggle:hover {
+  color: #ffffff;
+  background-color: rgba(125, 211, 252, 0.18);
+}
+
+.lf-pw-toggle:active {
+  transform: scale(0.92);
+}
+
+.lf-pw-toggle:focus-visible {
+  outline: 2px solid #7dd3fc;
+  outline-offset: 2px;
+}
   .lf-pw-toggle:hover { color: rgba(255,255,255,0.75); }
 
   .lf-pw-wrap input {
