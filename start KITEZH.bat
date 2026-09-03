@@ -168,8 +168,8 @@ if exist "%APP_DIR%updater\_updater.py" (
   ) else if "!CHECK_RESULT!"=="2" (
     :: Код 2 = нет сети / ошибка проверки.
     echo  [!] Не удалось проверить обновления.
-    echo  Автовыбор через 5 секунд: скачать обновление.
-    choice /C 10 /N /T 5 /D 1 /M "  Скачать архив обновления с GitHub? [1=да / 0=нет]"
+    echo  Автовыбор через 3 сек.: скачать обновление.
+    choice /C 10 /N /T 3 /D 1 /M "  Обновление: [1] скачать [0] пропустить"
     set "UPD_CHOICE=!ERRORLEVEL!"
     if "!UPD_CHOICE!"=="1" (
       echo.
@@ -179,8 +179,8 @@ if exist "%APP_DIR%updater\_updater.py" (
     )
   ) else (
     :: Код 1 = есть обновления.
-    echo  Автовыбор через 5 секунд: скачать обновление.
-    choice /C 10 /N /T 5 /D 1 /M "  Скачать архив обновления с GitHub? [1=да / 0=нет]"
+    echo  Автовыбор через 3 сек.: скачать обновление.
+    choice /C 10 /N /T 3 /D 1 /M "  Обновление: [1] скачать [0] пропустить"
     set "UPD_CHOICE=!ERRORLEVEL!"
     if "!UPD_CHOICE!"=="1" (
       echo.
@@ -198,8 +198,8 @@ echo    [1] Production          (иконка в трее, консоль вид
 echo    [2] Debug               (иконка в трее, консоль видна)
 echo    [3] Tray                (иконка в трее, консоль скрыта)
 echo.
-echo  Автовыбор через 15 секунд: Production.
-choice /C 123 /N /T 15 /D 1 /M "  Режим (1/2/3)"
+echo  Автовыбор через 5 сек.: Production.
+choice /C 123 /N /T 5 /D 1 /M "  Режим: [1] Production [2] Debug [3] Tray"
 set "MODE_CHOICE=!ERRORLEVEL!"
 
 if "!MODE_CHOICE!"=="1" (
@@ -222,8 +222,8 @@ echo.
 
 :: Открыть браузер
 :ask_open
-echo  Автовыбор через 10 секунд: не открывать браузер.
-choice /C 10 /N /T 10 /D 0 /M "  Открыть браузер? [1=да / 0=нет]"
+echo  Автовыбор через 3 сек.: не открывать браузер.
+choice /C 10 /N /T 3 /D 0 /M "  Браузер: [1] открыть [0] не открывать"
 set "OPEN_CHOICE=!ERRORLEVEL!"
 
 if "!OPEN_CHOICE!"=="1" (
