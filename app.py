@@ -256,6 +256,7 @@ _ACCESS_SKIP = frozenset((
     '/api/online-users',
     '/api/update/pre-status',
     '/api/update/result',
+    '/api/console/status',
 ))
 
 @app.after_request
