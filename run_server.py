@@ -24,6 +24,7 @@ import sys
 import subprocess
 import signal
 import time
+import threading
 
 BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
 PID_FILE      = os.path.join(BASE_DIR, '_server.pid')
@@ -91,21 +92,66 @@ print(
     flush=True,
 )
 
+popen_kwargs = {
+    'cwd': BASE_DIR,
+    'creationflags': creation_flags,
+}
+
+if HIDE_CONSOLE:
+    popen_kwargs.update(
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding='utf-8',
+        errors='replace',
+        bufsize=1,
+    )
+else:
+    popen_kwargs.update(
+        stdin=sys.stdin,
+        stdout=sys.stdout,
+        stderr=sys.stderr,
+    )
+
 proc = subprocess.Popen(
     [PYTHON, app_py],
-    cwd=BASE_DIR,
-    creationflags=creation_flags,
-    stdin=sys.stdin,
-    stdout=sys.stdout,
-    stderr=sys.stderr,
+    **popen_kwargs,
 )
+
+def _relay_stream(stream, target):
+    """Передаёт построчный вывод дочернего app.py в консоль launcher-а."""
+    try:
+        for line in iter(stream.readline, ''):
+            target.write(line)
+            target.flush()
+    except Exception:
+        pass
+    finally:
+        try:
+            stream.close()
+        except Exception:
+            pass
+
+
+if HIDE_CONSOLE:
+    threading.Thread(
+        target=_relay_stream,
+        args=(proc.stdout, sys.stdout),
+        daemon=True,
+    ).start()
+
+    threading.Thread(
+        target=_relay_stream,
+        args=(proc.stderr, sys.stderr),
+        daemon=True,
+    ).start()
 
 try:
     with open(PID_FILE, 'w') as f:
         f.write(str(proc.pid))
 except Exception:
     pass
-
 
 def _relay_signal(signum, frame):
     """Передаём Ctrl+C/SIGTERM в Flask-процесс."""
