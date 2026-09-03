@@ -33,7 +33,7 @@ echo    [2] Указать путь к python.exe вручную
 echo    [0] Выйти
 echo.
 set "PY_CHOICE="
-set /p PY_CHOICE=  Выбор (1/2/0): 
+set /p PY_CHOICE=  Выбор (1/2/0):
 
 if "%PY_CHOICE%"=="1" goto :run_install
 if "%PY_CHOICE%"=="2" goto :manual_path
@@ -59,7 +59,7 @@ echo  Укажи полный путь к python.exe
 echo  Пример: C:\Python313\python.exe
 echo.
 set "MANUAL_PY="
-set /p MANUAL_PY=  Путь: 
+set /p MANUAL_PY=  Путь:
 if exist "!MANUAL_PY!" (
   set "PYTHON=!MANUAL_PY!"
   set "SITEPKG="
@@ -167,8 +167,9 @@ if exist "%APP_DIR%updater\_updater.py" (
     echo.
   ) else if "!CHECK_RESULT!"=="2" (
     :: Код 2 = нет сети / ошибка проверки.
-    :: 5 секунд; по умолчанию 1 = скачать.
-    choice /C 10 /N /T 5 /D 1 /M "Скачать архив обновления с GitHub"
+    echo  [!] Не удалось проверить обновления.
+    echo  Автовыбор через 5 секунд: скачать обновление.
+    choice /C 10 /N /T 5 /D 1 /M "  Скачать архив обновления с GitHub? [1=да / 0=нет]"
     set "UPD_CHOICE=!ERRORLEVEL!"
     if "!UPD_CHOICE!"=="1" (
       echo.
@@ -178,8 +179,8 @@ if exist "%APP_DIR%updater\_updater.py" (
     )
   ) else (
     :: Код 1 = есть обновления.
-    :: 5 секунд; по умолчанию 1 = скачать.
-    choice /C 10 /N /T 5 /D 1 /M "Скачать архив обновления с GitHub"
+    echo  Автовыбор через 5 секунд: скачать обновление.
+    choice /C 10 /N /T 5 /D 1 /M "  Скачать архив обновления с GitHub? [1=да / 0=нет]"
     set "UPD_CHOICE=!ERRORLEVEL!"
     if "!UPD_CHOICE!"=="1" (
       echo.
@@ -197,9 +198,8 @@ echo    [1] Production          (иконка в трее, консоль вид
 echo    [2] Debug               (иконка в трее, консоль видна)
 echo    [3] Tray                (иконка в трее, консоль скрыта)
 echo.
-
-:: 15 секунд; по умолчанию 1 = Production.
-choice /C 123 /N /T 15 /D 1 /M "Режим запуска: [1] Production [2] Debug [3] Tray"
+echo  Автовыбор через 15 секунд: Production.
+choice /C 123 /N /T 15 /D 1 /M "  Режим (1/2/3)"
 set "MODE_CHOICE=!ERRORLEVEL!"
 
 if "!MODE_CHOICE!"=="1" (
@@ -222,8 +222,8 @@ echo.
 
 :: Открыть браузер
 :ask_open
-:: 10 секунд; по умолчанию 0 = не открывать.
-choice /C 10 /N /T 10 /D 0 /M "Открыть браузер"
+echo  Автовыбор через 10 секунд: не открывать браузер.
+choice /C 10 /N /T 10 /D 0 /M "  Открыть браузер? [1=да / 0=нет]"
 set "OPEN_CHOICE=!ERRORLEVEL!"
 
 if "!OPEN_CHOICE!"=="1" (
@@ -297,7 +297,7 @@ echo   [1] Повторный запуск
 echo   [2] Выйти
 echo.
 set "CHOICE="
-set /p CHOICE=  Выбор (1/2): 
+set /p CHOICE=  Выбор (1/2):
 if "%CHOICE%"=="1" goto :start_server
 
 :quit
