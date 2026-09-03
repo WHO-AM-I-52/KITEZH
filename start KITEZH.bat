@@ -109,8 +109,6 @@ if exist "%APP_DIR%db\database.db" (
   echo  [ПРЕДУПРЕЖДЕНИЕ] db\database.db не найден
 )
 
-
-
 "%PYTHON%" -c "import os,glob;files=sorted(glob.glob('db/backups/database_*.db'));[os.remove(f) for f in files[:-5]]"
 echo.
 
@@ -168,21 +166,22 @@ if exist "%APP_DIR%updater\_updater.py" (
     echo  [OK] Установлена актуальная версия. Обновление пропущено.
     echo.
   ) else if "!CHECK_RESULT!"=="2" (
-    :: Код 2 = нет сети / ошибка проверки
-    echo  [!] Не удалось проверить обновления. Запустить всё равно?
-    set "UPD="
-    set /p UPD=  Скачать архив обновления с GitHub? [Ввод=да / 0=нет]: 
-    if not "!UPD!"=="0" (
+    :: Код 2 = нет сети / ошибка проверки.
+    :: 5 секунд; по умолчанию 1 = скачать.
+    choice /C 10 /N /T 5 /D 1 /M "Скачать архив обновления с GitHub"
+    set "UPD_CHOICE=!ERRORLEVEL!"
+    if "!UPD_CHOICE!"=="1" (
       echo.
       "%PYTHON%" "%APP_DIR%updater\_updater.py"
       cd /d "%APP_DIR%"
       echo.
     )
   ) else (
-    :: Код 1 = есть обновления
-    set "UPD="
-    set /p UPD=  Скачать архив обновления с GitHub? [Ввод=да / 0=нет]: 
-    if not "!UPD!"=="0" (
+    :: Код 1 = есть обновления.
+    :: 5 секунд; по умолчанию 1 = скачать.
+    choice /C 10 /N /T 5 /D 1 /M "Скачать архив обновления с GitHub"
+    set "UPD_CHOICE=!ERRORLEVEL!"
+    if "!UPD_CHOICE!"=="1" (
       echo.
       "%PYTHON%" "%APP_DIR%updater\_updater.py"
       cd /d "%APP_DIR%"
@@ -198,40 +197,37 @@ echo    [1] Production          (иконка в трее, консоль вид
 echo    [2] Debug               (иконка в трее, консоль видна)
 echo    [3] Tray                (иконка в трее, консоль скрыта)
 echo.
-set "MODE_CHOICE="
-set /p MODE_CHOICE=  Режим (1/2/3): 
-if "%MODE_CHOICE%"=="1" (
+
+:: 15 секунд; по умолчанию 1 = Production.
+choice /C 123 /N /T 15 /D 1 /M "Режим запуска: [1] Production [2] Debug [3] Tray"
+set "MODE_CHOICE=!ERRORLEVEL!"
+
+if "!MODE_CHOICE!"=="1" (
   set "FLASK_ENV=production"
   set "APP_DEBUG=0"
   set "KITEZH_TRAY=1"
   set "KITEZH_HIDE_CONSOLE=0"
-) else if "%MODE_CHOICE%"=="2" (
+) else if "!MODE_CHOICE!"=="2" (
   set "FLASK_ENV=development"
   set "APP_DEBUG=1"
   set "KITEZH_TRAY=1"
   set "KITEZH_HIDE_CONSOLE=0"
-) else if "%MODE_CHOICE%"=="3" (
+) else if "!MODE_CHOICE!"=="3" (
   set "FLASK_ENV=production"
   set "APP_DEBUG=0"
   set "KITEZH_TRAY=1"
   set "KITEZH_HIDE_CONSOLE=1"
-) else (
-  echo  Неверный выбор.
-  goto :ask_mode
 )
 echo.
 
 :: Открыть браузер
 :ask_open
-set "OPEN_CHOICE="
-set /p OPEN_CHOICE=  Открыть браузер? [1=да / 0=нет]: 
-if "%OPEN_CHOICE%"=="1" (
+:: 10 секунд; по умолчанию 0 = не открывать.
+choice /C 10 /N /T 10 /D 0 /M "Открыть браузер"
+set "OPEN_CHOICE=!ERRORLEVEL!"
+
+if "!OPEN_CHOICE!"=="1" (
   start "" http://127.0.0.1:5000
-) else if "%OPEN_CHOICE%"=="0" (
-  rem skip
-) else (
-  echo  Введи 1 или 0.
-  goto :ask_open
 )
 
 :: Определяем IP
@@ -264,8 +260,6 @@ set KITEZH_HIDE_CONSOLE=%KITEZH_HIDE_CONSOLE%
 set PYTHONUTF8=1
 set PYTHONPATH=%APP_DIR%
 cd /d "%APP_DIR%"
-
-
 
 "%PYTHON%" run_server.py
 set "EXIT_CODE=!ERRORLEVEL!"
