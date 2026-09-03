@@ -84,10 +84,20 @@ if sys.platform == 'win32':
         # не должен открывать новое окно консоли.
         creation_flags |= subprocess.CREATE_NO_WINDOW
 
+print(
+    f'[LAUNCH] APP_DEBUG={os.environ.get("APP_DEBUG")!r}; '
+    f'FLASK_ENV={os.environ.get("FLASK_ENV")!r}; '
+    f'KITEZH_HIDE_CONSOLE={os.environ.get("KITEZH_HIDE_CONSOLE")!r}',
+    flush=True,
+)
+
 proc = subprocess.Popen(
     [PYTHON, app_py],
     cwd=BASE_DIR,
     creationflags=creation_flags,
+    stdin=sys.stdin,
+    stdout=sys.stdout,
+    stderr=sys.stderr,
 )
 
 try:
