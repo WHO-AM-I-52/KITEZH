@@ -354,22 +354,18 @@ popen_kwargs = {
     'creationflags': creation_flags,
 }
 
-if HIDE_CONSOLE:
-    popen_kwargs.update(
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        encoding='utf-8',
-        errors='replace',
-        bufsize=1,
-    )
-else:
-    popen_kwargs.update(
-        stdin=sys.stdin,
-        stdout=sys.stdout,
-        stderr=sys.stderr,
-    )
+# Захватываем вывод app.py во всех режимах и передаём его
+# в stdout/stderr launcher-а. Так access-log waitress виден
+# и в обычной консоли, и после показа скрытой tray-консоли.
+popen_kwargs.update(
+    stdin=subprocess.DEVNULL,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE,
+    text=True,
+    encoding='utf-8',
+    errors='replace',
+    bufsize=1,
+)
 
 proc = subprocess.Popen(
     [PYTHON, app_py],
@@ -392,18 +388,19 @@ def _relay_stream(stream, target):
             pass
 
 
-if HIDE_CONSOLE:
-    threading.Thread(
-        target=_relay_stream,
-        args=(proc.stdout, sys.stdout),
-        daemon=True,
-    ).start()
+# Relay нужен во всех режимах. В режимах 1/2 он выводит строки
+# app.py в видимую консоль; в режиме 3 — в скрытый cmd-буфер.
+threading.Thread(
+    target=_relay_stream,
+    args=(proc.stdout, sys.stdout),
+    daemon=True,
+).start()
 
-    threading.Thread(
-        target=_relay_stream,
-        args=(proc.stderr, sys.stderr),
-        daemon=True,
-    ).start()
+threading.Thread(
+    target=_relay_stream,
+    args=(proc.stderr, sys.stderr),
+    daemon=True,
+).start()
 
 try:
     with open(PID_FILE, 'w', encoding='utf-8') as file:
