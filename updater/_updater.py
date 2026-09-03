@@ -2,13 +2,13 @@
 # ║                         _updater.py                                     ║
 # ║  Скачивает обновления KITEZH с GitHub одним zip-архивом (1 API-запрос)   ║
 # ║  Режим --check:         сравнивает SHA и выходит без скачивания          ║
-# ║  Режим --force:         перезаписывает ВСЕ файлы, игнорируя сравнение байт    ║
+# ║  Режим --force:         перезаписывает ВСЕ файлы, игнорируя сравнение байт ║
 # ║  Режим --download-only: только скачать zip в _kitezh_update.zip        ║
-# ║  Режим --apply-only:    применить уже скачанный _kitezh_update.zip       ║
+# ║  Режим --apply-only:    применить уже скачанный _kitezh_update.zip     ║
 # ║  Режим --stream-json:   JSON-строки прогресса в stdout для SSE-стрима   ║
-# ║  Не трогает БД и файлы пользователя.                               ║
-# ║  get_commits_between: список коммитов для панели обновлений          ║
-# ║  fix: _log() больше не дублирует вывод в stderr+stdout одновременно  ║
+# ║  Не трогает БД и файлы пользователя.                                    ║
+# ║  get_commits_between: список коммитов для панели обновлений              ║
+# ║  fix: _log() не дублирует вывод в stderr+stdout одновременно             ║
 # ╚════════════════════════════════════════════════════════════════════════╝
 from __future__ import annotations
 
@@ -23,54 +23,59 @@ import shutil
 import tempfile
 from datetime import datetime
 
-REPO_OWNER    = "WHO-AM-I-52"
-REPO_NAME     = "KITEZH"
+REPO_OWNER = "WHO-AM-I-52"
+REPO_NAME = "KITEZH"
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 for _p in (_THIS_DIR, os.path.dirname(_THIS_DIR)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
-from paths import PROJECT_ROOT as BASE_DIR
-API_BASE      = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}"
-COMMIT_FILE   = os.path.join(BASE_DIR, "_last_commit.txt")
-BRANCH_FILE   = os.path.join(BASE_DIR, "_branch.txt")
-ZIP_PATH      = os.path.join(BASE_DIR, "_kitezh_update.zip")
-LOGS_DIR      = os.path.join(BASE_DIR, "logs")
-LOG_FILE      = os.path.join(LOGS_DIR, "_updater_log.txt")
-PUBLIC_LOG_FILE = os.path.join(LOGS_DIR, "_update_public_log.json")
-FALLBACK_KB   = 600
 
-# ── Флаг --stream-json: JSON-строки прогресса в stdout для SSE-стрима ────────
+from paths import PROJECT_ROOT as BASE_DIR
+
+API_BASE = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}"
+COMMIT_FILE = os.path.join(BASE_DIR, "_last_commit.txt")
+BRANCH_FILE = os.path.join(BASE_DIR, "_branch.txt")
+ZIP_PATH = os.path.join(BASE_DIR, "_kitezh_update.zip")
+LOGS_DIR = os.path.join(BASE_DIR, "logs")
+LOG_FILE = os.path.join(LOGS_DIR, "_updater_log.txt")
+PUBLIC_LOG_FILE = os.path.join(LOGS_DIR, "_update_public_log.json")
+FALLBACK_KB = 600
+
 STREAM_JSON = "--stream-json" in sys.argv
+
 
 def _log_to_file(msg: str):
     """Пишет строку с меткой времени в logs/_updater_log.txt."""
     try:
         os.makedirs(LOGS_DIR, exist_ok=True)
-        ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        with open(LOG_FILE, 'a', encoding='utf-8') as f:
-            f.write(f"[{ts}] {msg}\n")
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with open(LOG_FILE, "a", encoding="utf-8") as file:
+            file.write(f"[{ts}] {msg}\n")
     except Exception:
         pass
 
 
 def _log_public(phase: str, detail: str):
-    """Пишет JSONL-строку в публичный лог-файл (для UI-прогресса)."""
+    """Пишет JSONL-строку в публичный лог-файл для UI-прогресса."""
     try:
         os.makedirs(LOGS_DIR, exist_ok=True)
-        ts = datetime.now().strftime('%H:%M:%S')
-        line = json.dumps({"ts": ts, "phase": phase, "detail": detail}, ensure_ascii=False)
-        with open(PUBLIC_LOG_FILE, 'a', encoding='utf-8') as f:
-            f.write(line + "\n")
+        ts = datetime.now().strftime("%H:%M:%S")
+        line = json.dumps(
+            {"ts": ts, "phase": phase, "detail": detail},
+            ensure_ascii=False,
+        )
+        with open(PUBLIC_LOG_FILE, "a", encoding="utf-8") as file:
+            file.write(line + "\n")
     except Exception:
         pass
 
 
 def _log(msg: str):
-    """Пишет строку в лог-файл и в консоль.
-    STREAM_JSON=True  → только stderr (stdout занят JSON-строками для SSE).
-    STREAM_JSON=False → только stdout (запуск вручную через update.bat).
-    Запись в оба потока одновременно приводила к дублированию строк в консоли,
-    т.к. cmd.exe отображает stdout и stderr в одном окне.
+    """
+    Пишет строку в файл и в консоль.
+
+    STREAM_JSON=True: stdout занят JSON для SSE, текст идёт только в stderr.
+    STREAM_JSON=False: текст идёт только в stdout.
     """
     _log_to_file(msg)
     if STREAM_JSON:
@@ -78,8 +83,9 @@ def _log(msg: str):
     else:
         print(msg, flush=True)
 
+
 def _sjson(obj: dict):
-    """Выводит JSON-строку в stdout если включён --stream-json."""
+    """Выводит JSON-строку в stdout, только если включён --stream-json."""
     if STREAM_JSON:
         try:
             print(json.dumps(obj, ensure_ascii=False), flush=True)
@@ -87,22 +93,22 @@ def _sjson(obj: dict):
             pass
 
 
-# ── Читаем активную ветку из _branch.txt (по умолчанию main) ───────────────
 def load_branch() -> str:
+    """Читает активную ветку из _branch.txt; по умолчанию main."""
     if os.path.exists(BRANCH_FILE):
         try:
-            val = open(BRANCH_FILE, encoding="utf-8").read().strip()
-            if val in ("main", "dev"):
-                return val
+            value = open(BRANCH_FILE, encoding="utf-8").read().strip()
+            if value in ("main", "dev"):
+                return value
         except Exception:
             pass
     return "main"
 
-BRANCH = load_branch()
 
+BRANCH = load_branch()
 BAT_NAME = "start KITEZH.bat"
 
-PROTECTED_DIRS  = {"uploads", "reports", "WPy", "Bacup", "db"}
+PROTECTED_DIRS = {"uploads", "reports", "WPy", "Bacup", "db"}
 PROTECTED_FILES = {"_updater.py", ".env"}
 PROTECTED_BASENAMES = {"_updater.py"}
 
@@ -110,9 +116,10 @@ SPINNER = ["||", "|/", "--", "\\/"]
 
 
 def should_skip(rel_path: str) -> bool:
-    p    = rel_path.replace("\\", "/").strip("/")
-    top  = p.split("/")[0]
+    p = rel_path.replace("\\", "/").strip("/")
+    top = p.split("/")[0]
     base = os.path.basename(p)
+
     if top in PROTECTED_DIRS or top in PROTECTED_FILES:
         return True
     if base in PROTECTED_BASENAMES:
@@ -127,72 +134,88 @@ def should_skip(rel_path: str) -> bool:
 def load_token():
     env_path = os.path.join(BASE_DIR, ".env")
     if os.path.exists(env_path):
-        with open(env_path, encoding="utf-8") as f:
-            for line in f:
+        with open(env_path, encoding="utf-8") as file:
+            for line in file:
                 line = line.strip()
                 if line.startswith("GITHUB_TOKEN="):
                     return line.split("=", 1)[1].strip()
     return None
 
+
 TOKEN = load_token()
 
+
 def _headers():
-    h = {"User-Agent": "KITEZH-Updater", "Accept": "application/vnd.github+json"}
+    headers = {
+        "User-Agent": "KITEZH-Updater",
+        "Accept": "application/vnd.github+json",
+    }
     if TOKEN:
-        h["Authorization"] = f"Bearer {TOKEN}"
-    return h
+        headers["Authorization"] = f"Bearer {TOKEN}"
+    return headers
+
 
 def get_json(url):
-    req = urllib.request.Request(url, headers=_headers())
-    with urllib.request.urlopen(req, timeout=30) as r:
-        data = json.loads(r.read().decode())
-        show_rate_limit(r.headers)
+    request = urllib.request.Request(url, headers=_headers())
+    with urllib.request.urlopen(request, timeout=30) as response:
+        data = json.loads(response.read().decode())
+        show_rate_limit(response.headers)
         return data
+
 
 def post_json(url, payload):
     body = json.dumps(payload).encode("utf-8")
-    req  = urllib.request.Request(
-        url, data=body,
+    request = urllib.request.Request(
+        url,
+        data=body,
         headers={**_headers(), "Content-Type": "application/json"},
-        method="POST"
+        method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=15) as r:
-            return r.status, json.loads(r.read().decode())
-    except urllib.error.HTTPError as e:
-        return e.code, json.loads(e.read().decode())
+        with urllib.request.urlopen(request, timeout=15) as response:
+            return response.status, json.loads(response.read().decode())
+    except urllib.error.HTTPError as exc:
+        return exc.code, json.loads(exc.read().decode())
+
 
 def show_rate_limit(headers):
     remaining = headers.get("X-RateLimit-Remaining")
-    limit     = headers.get("X-RateLimit-Limit")
-    reset_ts  = headers.get("X-RateLimit-Reset")
+    limit = headers.get("X-RateLimit-Limit")
+    reset_ts = headers.get("X-RateLimit-Reset")
+
     if remaining is None:
         return
+
     reset_str = ""
     if reset_ts:
         try:
             reset_str = datetime.fromtimestamp(int(reset_ts)).strftime("%H:%M")
         except Exception:
             pass
-    _log(f"  Лимит API: {remaining}/{limit} осталось" +
-          (f" (сброс в {reset_str})" if reset_str else ""))
+
+    _log(
+        f"  Лимит API: {remaining}/{limit} осталось"
+        + (f" (сброс в {reset_str})" if reset_str else "")
+    )
 
 
 def get_commits_between(local_sha: str, remote_sha: str) -> list:
-    """Возвращает список коммитов между local_sha и remote_sha (до 20 шт.)."""
+    """Возвращает до 20 коммитов между local_sha и remote_sha."""
     try:
         data = get_json(f"{API_BASE}/compare/{local_sha}...{remote_sha}")
         commits = []
-        for c in data.get("commits", [])[:20]:
-            msg      = c.get("commit", {}).get("message", "").split("\n")[0]
-            sha      = c.get("sha", "")[:7]
-            date_raw = c.get("commit", {}).get("author", {}).get("date", "")
+
+        for commit_data in data.get("commits", [])[:20]:
+            message = commit_data.get("commit", {}).get("message", "").split("\n")[0]
+            sha = commit_data.get("sha", "")[:7]
+            date_raw = commit_data.get("commit", {}).get("author", {}).get("date", "")
             date_str = date_raw[:10] if date_raw else ""
-            commits.append({"sha": sha, "message": msg, "date": date_str})
+            commits.append({"sha": sha, "message": message, "date": date_str})
+
         commits.reverse()
         return commits
-    except Exception as e:
-        _log(f"  [Внимание] Не удалось получить список коммитов: {e}")
+    except Exception as exc:
+        _log(f"  [Внимание] Не удалось получить список коммитов: {exc}")
         return []
 
 
@@ -200,9 +223,10 @@ def get_remote_sha() -> str | None:
     try:
         data = get_json(f"{API_BASE}/commits/{BRANCH}")
         return data.get("sha", "")
-    except Exception as e:
-        _log(f"  [ОШИБКА] Не удалось получить SHA с GitHub: {e}")
+    except Exception as exc:
+        _log(f"  [ОШИБКА] Не удалось получить SHA с GitHub: {exc}")
         return None
+
 
 def load_local_sha() -> str:
     if os.path.exists(COMMIT_FILE):
@@ -212,12 +236,13 @@ def load_local_sha() -> str:
             pass
     return ""
 
+
 def save_local_sha(sha: str):
     try:
-        with open(COMMIT_FILE, "w", encoding="utf-8") as f:
-            f.write(sha)
-    except Exception as e:
-        _log(f"  [Внимание] Не удалось сохранить SHA: {e}")
+        with open(COMMIT_FILE, "w", encoding="utf-8") as file:
+            file.write(sha)
+    except Exception as exc:
+        _log(f"  [Внимание] Не удалось сохранить SHA: {exc}")
 
 
 def check_for_updates() -> int:
@@ -227,10 +252,12 @@ def check_for_updates() -> int:
     _log("  ================================================")
     _log("")
     _log("  Подключаемся к GitHub...")
+
     if TOKEN:
         _log("  Токен найден — лимит 5000 запросов/час")
     else:
         _log("  Токен не найден — лимит 60 запросов/час")
+
     _log("")
 
     remote_sha = get_remote_sha()
@@ -248,62 +275,84 @@ def check_for_updates() -> int:
         _log(f"  Актуальная версия: {remote_sha[:12]}...")
         _log("  Обновлений нет.")
         return 0
-    else:
-        _log(f"  Локальная версия : {local_sha[:12]}...")
-        _log(f"  GitHub версия    : {remote_sha[:12]}...")
-        _log("  Доступны обновления!")
-        return 1
+
+    _log(f"  Локальная версия : {local_sha[:12]}...")
+    _log(f"  GitHub версия    : {remote_sha[:12]}...")
+    _log("  Доступны обновления!")
+    return 1
 
 
 def get_zip_size_kb() -> int:
     url = f"{API_BASE}/zipball/{BRANCH}"
+
     try:
         opener = urllib.request.build_opener(urllib.request.HTTPRedirectHandler())
-        req = urllib.request.Request(url, headers=_headers())
-        with opener.open(req, timeout=15) as r:
-            cl = r.headers.get("Content-Length")
-            if cl and int(cl) > 0:
-                return int(cl) // 1024
+        request = urllib.request.Request(url, headers=_headers())
+        with opener.open(request, timeout=15) as response:
+            content_length = response.headers.get("Content-Length")
+            if content_length and int(content_length) > 0:
+                return int(content_length) // 1024
     except Exception:
         pass
+
     try:
-        req = urllib.request.Request(API_BASE, headers=_headers())
-        with urllib.request.urlopen(req, timeout=15) as r:
-            data = json.loads(r.read().decode())
+        request = urllib.request.Request(API_BASE, headers=_headers())
+        with urllib.request.urlopen(request, timeout=15) as response:
+            data = json.loads(response.read().decode())
             size_kb = data.get("size", 0)
             if size_kb > 0:
                 return max(int(size_kb * 1.15), 50)
     except Exception:
         pass
+
     return FALLBACK_KB
 
 
 def _print_progress(downloaded: int, estimated_kb: int, spinner_idx: int):
     size_kb = downloaded // 1024
+
     if estimated_kb > 0 and downloaded <= estimated_kb * 1024:
-        pct    = downloaded / (estimated_kb * 1024) * 100
-        filled = int(pct / 5)
-        bar    = "█" * filled + "░" * (20 - filled)
-        print(f"  [{bar}] {pct:4.0f}%  {size_kb} / ~{estimated_kb} КБ", end="\r", flush=True, file=sys.stderr)
-        _sjson({
-            "type":          "download_pct",
-            "pct":           round(min(pct, 100), 1),
-            "downloaded_mb": round(downloaded / 1048576, 2),
-            "total_mb":      round(estimated_kb / 1024, 2),
-        })
+        percent = downloaded / (estimated_kb * 1024) * 100
+        filled = int(percent / 5)
+        bar = "█" * filled + "░" * (20 - filled)
+
+        print(
+            f"  [{bar}] {percent:4.0f}%  {size_kb} / ~{estimated_kb} КБ",
+            end="\r",
+            flush=True,
+            file=sys.stderr,
+        )
+        _sjson(
+            {
+                "type": "download_pct",
+                "pct": round(min(percent, 100), 1),
+                "downloaded_mb": round(downloaded / 1048576, 2),
+                "total_mb": round(estimated_kb / 1024, 2),
+            }
+        )
         _log_public(
             "download",
-            f"{pct:.0f}% · {round(downloaded / 1048576, 2)} МБ / {round(estimated_kb / 1024, 2)} МБ",
+            (
+                f"{percent:.0f}% · {round(downloaded / 1048576, 2)} МБ / "
+                f"{round(estimated_kb / 1024, 2)} МБ"
+            ),
         )
     else:
         spin = SPINNER[spinner_idx % len(SPINNER)]
-        print(f"  [{spin}] Скачано: {size_kb} КБ...", end="\r", flush=True, file=sys.stderr)
-        _sjson({
-            "type":          "download_pct",
-            "pct":           -1,
-            "downloaded_mb": round(downloaded / 1048576, 2),
-            "total_mb":      0,
-        })
+        print(
+            f"  [{spin}] Скачано: {size_kb} КБ...",
+            end="\r",
+            flush=True,
+            file=sys.stderr,
+        )
+        _sjson(
+            {
+                "type": "download_pct",
+                "pct": -1,
+                "downloaded_mb": round(downloaded / 1048576, 2),
+                "total_mb": 0,
+            }
+        )
 
 
 def download_zip(zip_path: str):
@@ -312,44 +361,50 @@ def download_zip(zip_path: str):
     _log(f"  Ожидаемый размер архива: ~{estimated_kb} КБ")
 
     url = f"{API_BASE}/zipball/{BRANCH}"
-    req = urllib.request.Request(url, headers=_headers())
+    request = urllib.request.Request(url, headers=_headers())
     _log("  Скачиваем архив обновления...")
+
     opener = urllib.request.build_opener(urllib.request.HTTPRedirectHandler())
-    with opener.open(req, timeout=60) as r:
-        # show_rate_limit убран — лимит уже показан через get_json() → get_remote_sha()
-        cl = r.headers.get("Content-Length")
-        if cl and int(cl) > 0:
-            estimated_kb = int(cl) // 1024
+    with opener.open(request, timeout=60) as response:
+        content_length = response.headers.get("Content-Length")
+        if content_length and int(content_length) > 0:
+            estimated_kb = int(content_length) // 1024
             _log(f"  Точный размер архива: {estimated_kb} КБ")
-        downloaded  = 0
+
+        downloaded = 0
         spinner_idx = 0
-        chunk_size  = 8192
-        with open(zip_path, "wb") as f:
+        chunk_size = 8192
+
+        with open(zip_path, "wb") as file:
             while True:
-                chunk = r.read(chunk_size)
+                chunk = response.read(chunk_size)
                 if not chunk:
                     break
-                f.write(chunk)
-                downloaded  += len(chunk)
+
+                file.write(chunk)
+                downloaded += len(chunk)
                 spinner_idx += 1
                 _print_progress(downloaded, estimated_kb, spinner_idx)
+
     print(file=sys.stderr)
     size_kb = os.path.getsize(zip_path) // 1024
     _log(f"  Архив обновления скачан: {size_kb} КБ")
-    _sjson({
-        "type":          "download_pct",
-        "pct":           100,
-        "downloaded_mb": round(size_kb / 1024, 2),
-        "total_mb":      round(size_kb / 1024, 2),
-    })
+    _sjson(
+        {
+            "type": "download_pct",
+            "pct": 100,
+            "downloaded_mb": round(size_kb / 1024, 2),
+            "total_mb": round(size_kb / 1024, 2),
+        }
+    )
 
 
 def extract_and_apply(zip_path: str, force: bool = False):
-    """Распаковывает архив, копирует только изменившиеся файлы."""
-    updated     = 0
-    unchanged   = 0
-    skipped     = 0
-    errors      = 0
+    """Распаковывает архив и копирует только изменившиеся файлы."""
+    updated = 0
+    unchanged = 0
+    skipped = 0
+    errors = 0
     bat_updated = False
 
     if force:
@@ -357,41 +412,45 @@ def extract_and_apply(zip_path: str, force: bool = False):
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         _log("  Распаковываем архив обновления...")
-        with zipfile.ZipFile(zip_path, "r") as zf:
-            zf.extractall(tmp_dir)
+        with zipfile.ZipFile(zip_path, "r") as archive:
+            archive.extractall(tmp_dir)
 
         entries = os.listdir(tmp_dir)
         if not entries:
             _log("  [ОШИБКА] Архив пустой.")
             return 0, 0, 0, 0, False
+
         repo_root = os.path.join(tmp_dir, entries[0])
-
         all_files = []
-        for dirpath, dirnames, filenames in os.walk(repo_root):
-            for fname in filenames:
-                rel_dir  = os.path.relpath(dirpath, repo_root)
-                rel_path = fname if rel_dir == "." else os.path.join(rel_dir, fname)
-                all_files.append((dirpath, fname, rel_path))
-        total_files = max(len(all_files), 1)
 
+        for dirpath, _, filenames in os.walk(repo_root):
+            for filename in filenames:
+                rel_dir = os.path.relpath(dirpath, repo_root)
+                rel_path = filename if rel_dir == "." else os.path.join(rel_dir, filename)
+                all_files.append((dirpath, filename, rel_path))
+
+        total_files = max(len(all_files), 1)
         _log("  Применяем обновления...")
         processed = 0
-        for dirpath, fname, rel_path in all_files:
+
+        for dirpath, filename, rel_path in all_files:
             processed += 1
             rel_path_fwd = rel_path.replace("\\", "/")
 
             if should_skip(rel_path_fwd):
                 skipped += 1
                 _sjson({"type": "apply_file", "status": "skipped", "path": rel_path_fwd})
-                _sjson({
-                    "type":    "apply_pct",
-                    "pct":     round(processed / total_files * 100, 1),
-                    "current": processed,
-                    "total":   total_files,
-                })
+                _sjson(
+                    {
+                        "type": "apply_pct",
+                        "pct": round(processed / total_files * 100, 1),
+                        "current": processed,
+                        "total": total_files,
+                    }
+                )
                 continue
 
-            src  = os.path.join(dirpath, fname)
+            src = os.path.join(dirpath, filename)
             dest = os.path.join(BASE_DIR, rel_path)
 
             try:
@@ -405,29 +464,51 @@ def extract_and_apply(zip_path: str, force: bool = False):
                 if not force and new_content == old_content:
                     _log(f"  [--] {rel_path_fwd}")
                     unchanged += 1
-                    _sjson({"type": "apply_file", "status": "unchanged", "path": rel_path_fwd})
+                    _sjson(
+                        {
+                            "type": "apply_file",
+                            "status": "unchanged",
+                            "path": rel_path_fwd,
+                        }
+                    )
                 else:
                     shutil.copy2(src, dest)
                     updated += 1
+
                     if rel_path_fwd == BAT_NAME:
                         bat_updated = True
                         _log(f"  [OK] {rel_path_fwd} (ОБНОВЛЕН)")
                     else:
                         label = "(FORCE)" if force and new_content == old_content else ""
                         _log(f"  [OK] {rel_path_fwd} {label}".rstrip())
-                    _sjson({"type": "apply_file", "status": "updated", "path": rel_path_fwd})
 
-            except Exception as e:
+                    _sjson(
+                        {
+                            "type": "apply_file",
+                            "status": "updated",
+                            "path": rel_path_fwd,
+                        }
+                    )
+
+            except Exception as exc:
                 errors += 1
-                _log(f"  [!!] {rel_path_fwd} — ошибка: {e}")
-                _sjson({"type": "apply_file", "status": "error", "path": rel_path_fwd})
+                _log(f"  [!!] {rel_path_fwd} — ошибка: {exc}")
+                _sjson(
+                    {
+                        "type": "apply_file",
+                        "status": "error",
+                        "path": rel_path_fwd,
+                    }
+                )
 
-            _sjson({
-                "type":    "apply_pct",
-                "pct":     round(processed / total_files * 100, 1),
-                "current": processed,
-                "total":   total_files,
-            })
+            _sjson(
+                {
+                    "type": "apply_pct",
+                    "pct": round(processed / total_files * 100, 1),
+                    "current": processed,
+                    "total": total_files,
+                }
+            )
 
             if processed % 10 == 0:
                 _log_public("apply", f"{processed} / {total_files} файлов")
@@ -436,40 +517,43 @@ def extract_and_apply(zip_path: str, force: bool = False):
 
 
 def get_current_version() -> str | None:
-    path = os.path.join(BASE_DIR, 'changelog.py')
+    path = os.path.join(BASE_DIR, "changelog.py")
+
     try:
-        spec   = importlib.util.spec_from_file_location('_kitezh_changelog', path)
+        spec = importlib.util.spec_from_file_location("_kitezh_changelog", path)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-        changelog = getattr(module, 'CHANGELOG', [])
+        changelog = getattr(module, "CHANGELOG", [])
+
         if changelog:
-            return changelog[0].get('version')
+            return changelog[0].get("version")
         return None
-    except Exception as e:
-        print(f'[Внимание] Не удалось прочитать changelog.py: {e}')
+    except Exception as exc:
+        print(f"[Внимание] Не удалось прочитать changelog.py: {exc}")
         return None
 
 
 def load_changelog():
-    path = os.path.join(BASE_DIR, 'changelog.py')
+    path = os.path.join(BASE_DIR, "changelog.py")
     if not os.path.exists(path):
         return None, None
+
     try:
-        spec   = importlib.util.spec_from_file_location('_kitezh_changelog', path)
+        spec = importlib.util.spec_from_file_location("_kitezh_changelog", path)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
 
-        cl = getattr(module, 'CHANGELOG', [])
-        if not cl:
+        changelog = getattr(module, "CHANGELOG", [])
+        if not changelog:
             return None, None
 
-        latest  = cl[0]
-        version = latest.get('version', '')
-        body    = "\n".join(f"- {c}" for c in latest.get('changes', []))
+        latest = changelog[0]
+        version = latest.get("version", "")
+        body = "\n".join(f"- {change}" for change in latest.get("changes", []))
         return version, body
 
-    except Exception as e:
-        _log(f'  [Внимание] Не удалось прочитать changelog.py: {e}')
+    except Exception as exc:
+        _log(f"  [Внимание] Не удалось прочитать changelog.py: {exc}")
         return None, None
 
 
@@ -488,35 +572,38 @@ def ensure_github_release():
         return
 
     tag = f"v{version}"
+
     try:
-        req = urllib.request.Request(
-            f"{API_BASE}/releases/tags/{tag}", headers=_headers()
+        request = urllib.request.Request(
+            f"{API_BASE}/releases/tags/{tag}",
+            headers=_headers(),
         )
-        with urllib.request.urlopen(req, timeout=15):
+        with urllib.request.urlopen(request, timeout=15):
             _log(f"  [Релиз] {tag} уже существует — пропуск.")
             return
-    except urllib.error.HTTPError as e:
-        if e.code != 404:
-            _log(f"  [Релиз] Ошибка проверки: {e.code}")
+    except urllib.error.HTTPError as exc:
+        if exc.code != 404:
+            _log(f"  [Релиз] Ошибка проверки: {exc.code}")
             return
 
     _log(f"  [Релиз] Создаю {tag} на GitHub...")
-    status, resp = post_json(
+    status, response = post_json(
         f"{API_BASE}/releases",
         {
-            "tag_name":         tag,
+            "tag_name": tag,
             "target_commitish": BRANCH,
-            "name":             tag,
-            "body":             body,
-            "draft":            False,
-            "prerelease":       False,
-        }
+            "name": tag,
+            "body": body,
+            "draft": False,
+            "prerelease": False,
+        },
     )
+
     if status == 201:
-        _log(f"  [Релиз] {tag} успешно создан: {resp.get('html_url', '')}")
+        _log(f"  [Релиз] {tag} успешно создан: {response.get('html_url', '')}")
     else:
-        msg = resp.get("message", "неизвестная ошибка")
-        _log(f"  [Релиз] Не удалось создать {tag}: {msg}")
+        message = response.get("message", "неизвестная ошибка")
+        _log(f"  [Релиз] Не удалось создать {tag}: {message}")
 
 
 def run_sync_changelog():
@@ -525,14 +612,30 @@ def run_sync_changelog():
     if not os.path.exists(sync_path):
         _log("  [Changelog] sync_changelog.py не найден — пропуск.")
         return
-    _log("  Синхронизация changelog с GitHub...")  # единственный вывод заголовка
+
+    _log("  Синхронизация changelog с GitHub...")
+
     try:
-        spec   = importlib.util.spec_from_file_location("sync_changelog", sync_path)
+        spec = importlib.util.spec_from_file_location("sync_changelog", sync_path)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-        module.main(log_fn=_log)  # sync_changelog использует _log вместо print()
-    except Exception as e:
-        _log(f"  [Changelog] Ошибка синхронизации: {e}")
+        module.main(log_fn=_log)
+    except Exception as exc:
+        _log(f"  [Changelog] Ошибка синхронизации: {exc}")
+
+
+def _announce_bat_update():
+    """
+    Сообщает, что launcher обновлён.
+
+    Код 2 — специальный результат для вызывающего start KITEZH.bat:
+    текущая сессия launcher-а продолжит штатный AUTO-RESTART, поэтому
+    текст не просит закрывать окно и не противоречит фактическому запуску.
+    """
+    _log("")
+    _log("  [OK] start KITEZH.bat был обновлён.")
+    _log("  [INFO] Сервер будет автоматически перезапущен с новой версией launcher-а.")
+    _log("")
 
 
 def _cmd_download_only():
@@ -543,35 +646,44 @@ def _cmd_download_only():
         f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
     )
     _log_to_file("=" * 56)
-    open(PUBLIC_LOG_FILE, 'w').close()
+
+    open(PUBLIC_LOG_FILE, "w").close()
     _log("  Подключаемся к GitHub...")
+
     if TOKEN:
         _log("  Токен найден — лимит 5000 запросов/час")
     else:
         _log("  Токен не найден — лимит 60 запросов/час")
+
     _log(f"  Активная ветка: {BRANCH}")
+
     try:
         download_zip(ZIP_PATH)
         _log("  Архив готов к установке.")
         sys.exit(0)
-    except urllib.error.HTTPError as e:
-        if e.code == 403:
-            reset_ts  = e.headers.get("X-RateLimit-Reset")
+    except urllib.error.HTTPError as exc:
+        if exc.code == 403:
+            reset_ts = exc.headers.get("X-RateLimit-Reset")
             reset_str = ""
+
             if reset_ts:
                 try:
                     reset_str = datetime.fromtimestamp(int(reset_ts)).strftime("%H:%M")
                 except Exception:
                     pass
-            _log(f"  [ОШИБКА] Rate limit исчерпан." +
-                  (f" Сброс в {reset_str}." if reset_str else " Подожди и повтори."))
+
+            _log(
+                "  [ОШИБКА] Rate limit исчерпан."
+                + (f" Сброс в {reset_str}." if reset_str else " Подожди и повтори.")
+            )
         else:
-            _log(f"  [ОШИБКА] HTTP {e.code}: {e}")
-        _log_public("error", f"HTTP {e.code}: {e}")
+            _log(f"  [ОШИБКА] HTTP {exc.code}: {exc}")
+
+        _log_public("error", f"HTTP {exc.code}: {exc}")
         sys.exit(1)
-    except Exception as e:
-        _log(f"  [ОШИБКА] Не удалось скачать архив: {e}")
-        _log_public("error", str(e))
+    except Exception as exc:
+        _log(f"  [ОШИБКА] Не удалось скачать архив: {exc}")
+        _log_public("error", str(exc))
         sys.exit(1)
 
 
@@ -583,21 +695,26 @@ def _cmd_apply_only(force: bool = False):
         f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
     )
     _log_to_file("=" * 56)
-    open(PUBLIC_LOG_FILE, 'w').close()
+
+    open(PUBLIC_LOG_FILE, "w").close()
+
     if not os.path.exists(ZIP_PATH):
         _log(f"  [ОШИБКА] Архив {ZIP_PATH} не найден. Сначала выполни --download-only.")
         sys.exit(1)
 
     remote_sha = get_remote_sha()
-
     apply_ok = False
-    errors   = 0
+    errors = 0
+
     try:
-        updated, unchanged, skipped, errors, bat_updated = extract_and_apply(ZIP_PATH, force=force)
+        updated, unchanged, skipped, errors, bat_updated = extract_and_apply(
+            ZIP_PATH,
+            force=force,
+        )
         apply_ok = True
-    except Exception as e:
-        _log(f"  [ОШИБКА] Не удалось применить обновление: {e}")
-        _log_public("error", str(e))
+    except Exception as exc:
+        _log(f"  [ОШИБКА] Не удалось применить обновление: {exc}")
+        _log_public("error", str(exc))
         sys.exit(1)
     finally:
         if os.path.exists(ZIP_PATH):
@@ -616,31 +733,33 @@ def _cmd_apply_only(force: bool = False):
         _log(f"  Ошибок при записи    : {errors}")
     _log("")
 
-    _sjson({
-        "type":      "done",
-        "updated":   updated,
-        "unchanged": unchanged,
-        "skipped":   skipped,
-        "errors":    errors,
-        "message":   (
-            f"Обновлено: {updated} | Без изменений: {unchanged} | "
-            f"Пропущено: {skipped}" +
-            (f" | Ошибок: {errors}" if errors else "")
-        ),
-    })
+    _sjson(
+        {
+            "type": "done",
+            "updated": updated,
+            "unchanged": unchanged,
+            "skipped": skipped,
+            "errors": errors,
+            "message": (
+                f"Обновлено: {updated} | Без изменений: {unchanged} | "
+                f"Пропущено: {skipped}"
+                + (f" | Ошибок: {errors}" if errors else "")
+            ),
+        }
+    )
     _log_public("done", f"обновлено {updated}, пропущено {skipped}")
 
     ensure_github_release()
     run_sync_changelog()
 
     mode_label = " [FORCE]" if force else ""
-    _log(f"  Обновление завершено{mode_label} (ветка: {BRANCH}). База данных и файлы пользователей не тронуты.")
+    _log(
+        f"  Обновление завершено{mode_label} (ветка: {BRANCH}). "
+        "База данных и файлы пользователей не тронуты."
+    )
 
     if bat_updated:
-        _log("")
-        _log("  [!] start KITEZH.bat был обновлён.")
-        _log("  [!] Требуется перезапуск через start KITEZH.bat.")
-        _log("")
+        _announce_bat_update()
         sys.exit(2)
 
     sys.exit(0)
@@ -654,13 +773,12 @@ def main():
         f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
     )
     _log_to_file("=" * 56)
-    open(PUBLIC_LOG_FILE, 'w').close()
 
+    open(PUBLIC_LOG_FILE, "w").close()
     force_mode = "--force" in sys.argv
 
     if "--check" in sys.argv:
-        code = check_for_updates()
-        sys.exit(code)
+        sys.exit(check_for_updates())
 
     if "--download-only" in sys.argv:
         _cmd_download_only()
@@ -670,13 +788,15 @@ def main():
         _cmd_apply_only(force=force_mode)
         return
 
-    # ── Обычный режим: скачать + применить за один запуск ──
     _log("  Подключаемся к GitHub...")
+
     if TOKEN:
         _log("  Токен найден — лимит 5000 запросов/час")
     else:
         _log("  Токен не найден — лимит 60 запросов/час")
+
     _log(f"  Активная ветка: {BRANCH}")
+
     if force_mode:
         _log("  [FORCE] Принудительное обновление: все файлы будут перезаписаны.")
 
@@ -684,34 +804,43 @@ def main():
 
     try:
         download_zip(ZIP_PATH)
-    except urllib.error.HTTPError as e:
-        if e.code == 403:
-            reset_ts  = e.headers.get("X-RateLimit-Reset")
+    except urllib.error.HTTPError as exc:
+        if exc.code == 403:
+            reset_ts = exc.headers.get("X-RateLimit-Reset")
             reset_str = ""
+
             if reset_ts:
                 try:
                     reset_str = datetime.fromtimestamp(int(reset_ts)).strftime("%H:%M")
                 except Exception:
                     pass
-            _log(f"  [ОШИБКА] Rate limit исчерпан." +
-                  (f" Сброс в {reset_str}." if reset_str else " Подожди и повтори."))
+
+            _log(
+                "  [ОШИБКА] Rate limit исчерпан."
+                + (f" Сброс в {reset_str}." if reset_str else " Подожди и повтори.")
+            )
         else:
-            _log(f"  [ОШИБКА] {e}")
-        _log_public("error", f"HTTP {e.code}: {e}")
+            _log(f"  [ОШИБКА] {exc}")
+
+        _log_public("error", f"HTTP {exc.code}: {exc}")
         sys.exit(1)
-    except Exception as e:
-        _log(f"  [ОШИБКА] Не удалось скачать архив обновления: {e}")
-        _log_public("error", str(e))
+    except Exception as exc:
+        _log(f"  [ОШИБКА] Не удалось скачать архив обновления: {exc}")
+        _log_public("error", str(exc))
         sys.exit(1)
 
     apply_ok = False
-    errors   = 0
+    errors = 0
+
     try:
-        updated, unchanged, skipped, errors, bat_updated = extract_and_apply(ZIP_PATH, force=force_mode)
+        updated, unchanged, skipped, errors, bat_updated = extract_and_apply(
+            ZIP_PATH,
+            force=force_mode,
+        )
         apply_ok = True
-    except Exception as e:
-        _log(f"  [ОШИБКА] Не удалось применить обновление: {e}")
-        _log_public("error", str(e))
+    except Exception as exc:
+        _log(f"  [ОШИБКА] Не удалось применить обновление: {exc}")
+        _log_public("error", str(exc))
         sys.exit(1)
     finally:
         if os.path.exists(ZIP_PATH):
@@ -737,14 +866,16 @@ def main():
 
     _log("")
     mode_label = " [FORCE]" if force_mode else ""
-    _log(f"  Обновление завершено{mode_label} (ветка: {BRANCH}). База данных и файлы пользователей не тронуты.")
+    _log(
+        f"  Обновление завершено{mode_label} (ветка: {BRANCH}). "
+        "База данных и файлы пользователей не тронуты."
+    )
 
     if bat_updated:
-        _log("")
-        _log("  [!] start KITEZH.bat был обновлён.")
-        _log("  [!] Закрой это окно и запусти start KITEZH.bat заново вручную.")
-        _log("")
+        _announce_bat_update()
         sys.exit(2)
+
+    sys.exit(0)
 
 
 if __name__ == "__main__":
