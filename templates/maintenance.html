@@ -433,7 +433,7 @@
 </div>
 
 <!-- ОБЛАКО-ТОСТ -->
-<div id="toast">☁️ Сервер снова доступен!</div>
+<div id="toast">✅ KITEZH снова доступен — возвращаемся к работе…</div>
 
 <!-- МОДАЛКА -->
 <div id="modal-backdrop">
@@ -463,8 +463,8 @@
 <!-- ЛОГ ОБНОВЛЕНИЯ -->
 <div id="update-log" class="d-none">
   <div id="update-log-title">
-    <span class="spin" id="update-log-spin">🔄</span>
-    Идёт обновление системы
+    <span class="spin" id="update-log-spin">⚙️</span>
+    <span>Обновление KITEZH</span>
   </div>
   <div id="update-log-entries"></div>
 </div>
@@ -1004,24 +1004,35 @@ window.addEventListener('load', function() { initSwitcher(); });
     modalBackdrop.classList.add('show');
     modalCountdown=setInterval(function(){sec--;if(sec<=0){clearInterval(modalCountdown);goBack();}else modalTimer.textContent='Автопереход через '+sec+' сек…';},1000);
   }
-  function onServerOnline(){
-    if(serverOnline)return;serverOnline=true;
-    dot.className='dot online';txt.textContent='Сервер онлайн';counter.textContent='';
-    returnBtn.style.display='flex';showToast();returnTimer=setTimeout(showModal,0);
-  }
-  function onServerOffline(){
-    if(!serverOnline)return;serverOnline=false;
-    clearInterval(modalCountdown);clearTimeout(returnTimer);
-    modalBackdrop.classList.remove('show');
-    returnBtn.style.display='none';
-    dot.className='dot offline';txt.textContent='Сервер недоступен…';
-  }
+function onServerOnline() {
+  if (serverOnline) return;
+  serverOnline = true;
+  dot.className = 'dot online';
+  txt.textContent = 'KITEZH снова доступен';
+  counter.textContent = '';
+  returnBtn.style.display = 'flex';
+  showToast();
+  returnTimer = setTimeout(showModal, 1500);
+}
+
+function onServerOffline() {
+  if (!serverOnline) return;
+  serverOnline = false;
+  clearInterval(modalCountdown);
+  clearTimeout(returnTimer);
+  modalBackdrop.classList.remove('show');
+  returnBtn.style.display = 'none';
+  dot.className = 'dot offline';
+  txt.textContent = 'Идёт обновление KITEZH';
+  counter.textContent = 'Данные сохранены';
+}
   function poll(){
     attempts++;if(!serverOnline)counter.textContent='Попытка '+attempts;
     fetch('/maintenance-status',{cache:'no-store'})
       .then(function(r){
         if(r.ok)onServerOnline();
-        else{onServerOffline();dot.className='dot offline';txt.textContent='Сервер недоступен…';setTimeout(poll,POLL_MS);}
+        else{onServerOffline();dot.className='dot offline';txt.textContent = 'Идёт обновление KITEZH';
+counter.textContent = 'Данные сохранены';setTimeout(poll,POLL_MS);}
       })
       .catch(function(){
         onServerOffline();dot.className='dot offline';txt.textContent='Нет соединения…';setTimeout(poll,POLL_MS);
