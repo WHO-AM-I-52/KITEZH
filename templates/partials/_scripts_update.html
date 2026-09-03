@@ -2,28 +2,30 @@
    _scripts_update.html
    Баннер запланированного обновления, тост успеха, модалки админа/юзера.
    Эндпойнты: /api/update/pre-status, /api/update/result,
-                /api/update/schedule, /api/update/schedule/cancel
+                /api/update/schedule, /api/update/schedule/cancel,
+                /maintenance-status
    Подключается в base.html только для авторизованных (если 'user_id' in session).
-   v1.0.0: выделено из base.html v2.27.4 (единственный источник, заменяет base_tail.html + update_banner.js)
+   v1.1.0: не-админы автоматически переходят на maintenance.html при включении ТО.
    ═══════════════════════════════════════════════════════════════ #}
 <script>
 (function(){
-  var banner      = document.getElementById('updBanner');
-  var bannerText  = document.getElementById('updBannerText');
-  var bannerBy    = document.getElementById('updBannerBy');
-  var btnCancel   = document.getElementById('updBannerCancel');
-  var btnNow      = document.getElementById('updBannerNow');
-  var isAdmin     = document.body.getAttribute('data-is-admin') === '1';
-  var visible     = false;
+  var banner = document.getElementById('updBanner');
+  var bannerText = document.getElementById('updBannerText');
+  var bannerBy = document.getElementById('updBannerBy');
+  var btnCancel = document.getElementById('updBannerCancel');
+  var btnNow = document.getElementById('updBannerNow');
+  var isAdmin = document.body.getAttribute('data-is-admin') === '1';
+  var visible = false;
   var countdownId = null;
   var serverWasDown = false;
+  var maintenanceRedirecting = false;
 
   if (!banner) return;
 
   function setAdminBtns(show) {
     if (!isAdmin) return;
     if (btnCancel) btnCancel.style.display = show ? '' : 'none';
-    if (btnNow)    btnNow.style.display    = show ? '' : 'none';
+    if (btnNow) btnNow.style.display = show ? '' : 'none';
   }
 
   function showBanner() {
@@ -38,18 +40,26 @@
     banner.style.display = 'none';
     document.body.classList.remove('upd-banner-visible');
     visible = false;
-    if (countdownId) { clearInterval(countdownId); countdownId = null; }
+    if (countdownId) {
+      clearInterval(countdownId);
+      countdownId = null;
+    }
     setAdminBtns(false);
   }
 
   function renderBanner(data) {
-    var phase  = data.phase || 'scheduled';
-    var by     = data.scheduled_by ? ('Инициировал: ' + data.scheduled_by) : '';
+    var phase = data.phase || 'scheduled';
+    var by = data.scheduled_by ? ('Инициировал: ' + data.scheduled_by) : '';
     var fireTs = data.fire_at_ts || 0;
-    if (countdownId) { clearInterval(countdownId); countdownId = null; }
+
+    if (countdownId) {
+      clearInterval(countdownId);
+      countdownId = null;
+    }
+
     if (phase === 'downloading') {
       bannerText.textContent = '⬇️ Скачивается обновление…';
-      bannerBy.textContent   = by;
+      bannerBy.textContent = by;
       setAdminBtns(false);
       showBanner();
     } else if (phase === 'scheduled') {
@@ -59,6 +69,7 @@
           ? ('⏱ Перезагрузка через ' + left + ' с…')
           : '⏱ Перезагрузка через 0 с…';
       }
+
       tick();
       countdownId = setInterval(tick, 1000);
       bannerBy.textContent = by;
@@ -66,7 +77,7 @@
       showBanner();
     } else if (phase === 'applying') {
       bannerText.textContent = '⚙️ Устанавливается обновление…';
-      bannerBy.textContent   = by;
+      bannerBy.textContent = by;
       setAdminBtns(false);
       showBanner();
     } else {
@@ -74,79 +85,161 @@
     }
   }
 
-  function poll() {
-    fetch('/api/update/pre-status', { credentials:'same-origin', cache:'no-store' })
-    .then(function(r){ return r.ok ? r.json() : null; })
-    .then(function(d){
-      if (!d || !d.scheduled) {
-        hideBanner();
-        if (!isAdmin && serverWasDown) {
-          serverWasDown = false;
-          var m = document.getElementById('updDoneModalUser');
-          if (m) { new bootstrap.Modal(m).show(); }
-        }
-        return;
-      }
-      if (d.download_error) { hideBanner(); return; }
-      renderBanner(d);
+  function pollUpdateStatus() {
+    fetch('/api/update/pre-status', {
+      credentials: 'same-origin',
+      cache: 'no-store'
     })
-    .catch(function(){ serverWasDown = true; });
+      .then(function(response) {
+        return response.ok ? response.json() : null;
+      })
+      .then(function(data) {
+        if (!data || !data.scheduled) {
+          hideBanner();
+
+          if (!isAdmin && serverWasDown) {
+            serverWasDown = false;
+            var modal = document.getElementById('updDoneModalUser');
+            if (modal) {
+              new bootstrap.Modal(modal).show();
+            }
+          }
+          return;
+        }
+
+        if (data.download_error) {
+          hideBanner();
+          return;
+        }
+
+        renderBanner(data);
+      })
+      .catch(function() {
+        serverWasDown = true;
+      });
   }
 
-  poll();
-  setInterval(poll, 10000);
+  function pollMaintenanceStatus() {
+    if (isAdmin || maintenanceRedirecting) return;
 
-  {# ── Кнопки отмены / запуска (only admin) ── #}
+    fetch('/maintenance-status', {
+      credentials: 'same-origin',
+      cache: 'no-store'
+    })
+      .then(function(response) {
+        if (response.status === 503) {
+          maintenanceRedirecting = true;
+          window.location.replace('/maintenance');
+        }
+      })
+      .catch(function() {
+        /*
+         * Сетевую ошибку не интерпретируем как режим ТО:
+         * сервер может быть в кратком перезапуске, либо сеть пользователя
+         * временно недоступна. Страница maintenance.html сама продолжит
+         * polling и дождётся возвращения KITEZH после успешного перехода.
+         */
+      });
+  }
+
+  pollUpdateStatus();
+  setInterval(pollUpdateStatus, 10000);
+
+  if (!isAdmin) {
+    pollMaintenanceStatus();
+    setInterval(pollMaintenanceStatus, 2000);
+  }
+
+  {# ── Кнопки отмены / запуска: только admin ── #}
   if (isAdmin) {
     if (btnCancel) {
-      btnCancel.addEventListener('click', function(){
+      btnCancel.addEventListener('click', function() {
         fetch('/api/update/schedule/cancel', {
-          method: 'POST', credentials: 'same-origin',
+          method: 'POST',
+          credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' }
-        }).then(function(){ hideBanner(); }).catch(function(){});
+        })
+          .then(function() {
+            hideBanner();
+          })
+          .catch(function() {});
       });
     }
+
     if (btnNow) {
-      btnNow.addEventListener('click', function(){
+      btnNow.addEventListener('click', function() {
         fetch('/api/update/schedule/now', {
-          method: 'POST', credentials: 'same-origin',
+          method: 'POST',
+          credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' }
-        }).catch(function(){});
+        }).catch(function() {});
       });
     }
 
-    {# ── Тост + модалка после перезапуска (only admin) ── #}
-    document.addEventListener('DOMContentLoaded', function(){
-      var toast     = document.getElementById('updResultToast');
-      var closeBtn  = document.getElementById('updResultClose');
+    {# ── Тост + модалка после перезапуска: только admin ── #}
+    document.addEventListener('DOMContentLoaded', function() {
+      var toast = document.getElementById('updResultToast');
+      var closeBtn = document.getElementById('updResultClose');
       var reloadBtn = document.getElementById('updDoneReload');
-      fetch('/api/update/result', { credentials:'same-origin', cache:'no-store' })
-      .then(function(r){ return r.ok ? r.json() : null; })
-      .then(function(d){
-        if (!d || !d.success) return;
-        var dot = document.getElementById('sbUpdateDot');
-        if (dot) dot.classList.remove('d-none');
-        if (toast) {
-          document.getElementById('updResultTitle').textContent =
-            '✅ ' + (d.version ? 'Обновлено до v' + d.version : 'Обновление применено');
-          document.getElementById('updResultText').textContent = d.message || '';
-          toast.classList.add('show');
-          setTimeout(function(){ toast.classList.remove('show'); }, 8000);
-        }
-        var modal = document.getElementById('updDoneModal');
-        if (modal) { new bootstrap.Modal(modal).show(); }
-      }).catch(function(){});
-      if (closeBtn)  closeBtn.addEventListener('click',  function(){ if (toast) toast.classList.remove('show'); });
-      if (reloadBtn) reloadBtn.addEventListener('click', function(){ location.reload(); });
-    });
 
+      fetch('/api/update/result', {
+        credentials: 'same-origin',
+        cache: 'no-store'
+      })
+        .then(function(response) {
+          return response.ok ? response.json() : null;
+        })
+        .then(function(data) {
+          if (!data || !data.success) return;
+
+          var dot = document.getElementById('sbUpdateDot');
+          if (dot) dot.classList.remove('d-none');
+
+          if (toast) {
+            document.getElementById('updResultTitle').textContent =
+              '✅ ' + (
+                data.version
+                  ? 'Обновлено до v' + data.version
+                  : 'Обновление применено'
+              );
+            document.getElementById('updResultText').textContent =
+              data.message || '';
+            toast.classList.add('show');
+            setTimeout(function() {
+              toast.classList.remove('show');
+            }, 8000);
+          }
+
+          var modal = document.getElementById('updDoneModal');
+          if (modal) {
+            new bootstrap.Modal(modal).show();
+          }
+        })
+        .catch(function() {});
+
+      if (closeBtn) {
+        closeBtn.addEventListener('click', function() {
+          if (toast) toast.classList.remove('show');
+        });
+      }
+
+      if (reloadBtn) {
+        reloadBtn.addEventListener('click', function() {
+          location.reload();
+        });
+      }
+    });
   } else {
-    {# ── Модалка «Сервер снова онлайн» (only юзер) ── #}
-    document.addEventListener('DOMContentLoaded', function(){
+    {# ── Модалка «Сервер снова онлайн»: только пользователь ── #}
+    document.addEventListener('DOMContentLoaded', function() {
       var reloadBtn = document.getElementById('updDoneUserReload');
-      if (reloadBtn) reloadBtn.addEventListener('click', function(){ location.reload(); });
+
+      if (reloadBtn) {
+        reloadBtn.addEventListener('click', function() {
+          location.reload();
+        });
+      }
     });
   }
-
 })();
 </script>
