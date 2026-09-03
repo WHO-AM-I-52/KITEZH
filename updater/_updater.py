@@ -308,16 +308,29 @@ def get_zip_size_kb() -> int:
     return FALLBACK_KB
 
 
-def _print_progress(downloaded: int, estimated_kb: int, spinner_idx: int):
-    size_kb = downloaded // 1024
+def _format_size(num_bytes: int) -> str:
+    """Возвращает размер в КБ или МБ для консольного прогресса."""
+    if num_bytes >= 1024 * 1024:
+        return f"{num_bytes / (1024 * 1024):.2f} МБ"
+    return f"{num_bytes / 1024:.0f} КБ"
 
-    if estimated_kb > 0 and downloaded <= estimated_kb * 1024:
-        percent = downloaded / (estimated_kb * 1024) * 100
-        filled = int(percent / 5)
+
+def _print_progress(downloaded: int, total_bytes: int, spinner_idx: int):
+    """
+    Показывает процент только при точном Content-Length текущего ZIP.
+
+    Если GitHub не передал Content-Length, используем spinner и фактический
+    объём уже скачанных данных. Предварительная оценка репозитория не должна
+    изображаться как точный размер файла.
+    """
+    if total_bytes > 0:
+        percent = min(downloaded / total_bytes * 100, 100)
+        filled = min(int(percent / 5), 20)
         bar = "█" * filled + "░" * (20 - filled)
 
         print(
-            f"  [{bar}] {percent:4.0f}%  {size_kb} / ~{estimated_kb} КБ",
+            f"  [{bar}] {percent:3.0f}%  "
+            f"{_format_size(downloaded)} / {_format_size(total_bytes)}",
             end="\r",
             flush=True,
             file=sys.stderr,
@@ -325,51 +338,72 @@ def _print_progress(downloaded: int, estimated_kb: int, spinner_idx: int):
         _sjson(
             {
                 "type": "download_pct",
-                "pct": round(min(percent, 100), 1),
+                "pct": round(percent, 1),
                 "downloaded_mb": round(downloaded / 1048576, 2),
-                "total_mb": round(estimated_kb / 1024, 2),
+                "total_mb": round(total_bytes / 1048576, 2),
             }
         )
         _log_public(
             "download",
             (
-                f"{percent:.0f}% · {round(downloaded / 1048576, 2)} МБ / "
-                f"{round(estimated_kb / 1024, 2)} МБ"
+                f"{percent:.0f}% · {_format_size(downloaded)} / "
+                f"{_format_size(total_bytes)}"
             ),
         )
-    else:
-        spin = SPINNER[spinner_idx % len(SPINNER)]
-        print(
-            f"  [{spin}] Скачано: {size_kb} КБ...",
-            end="\r",
-            flush=True,
-            file=sys.stderr,
-        )
-        _sjson(
-            {
-                "type": "download_pct",
-                "pct": -1,
-                "downloaded_mb": round(downloaded / 1048576, 2),
-                "total_mb": 0,
-            }
-        )
+        return
+
+    spin = SPINNER[spinner_idx % len(SPINNER)]
+    _log_public("download", f"скачано {_format_size(downloaded)}")
+    _sjson(
+        {
+            "type": "download_pct",
+            "pct": -1,
+            "downloaded_mb": round(downloaded / 1048576, 2),
+            "total_mb": 0,
+        }
+    )
+    print(
+        f"  [{spin}] Скачано: {_format_size(downloaded)}...",
+        end="\r",
+        flush=True,
+        file=sys.stderr,
+    )
 
 
 def download_zip(zip_path: str):
+    """
+    Скачивает ZIP текущей ветки.
+
+    Предварительный размер используется только как справочная оценка.
+    Процент отображается исключительно если фактический HTTP-ответ содержит
+    Content-Length, то есть известен размер именно скачиваемого архива.
+    """
     _log(f"  Определяем размер архива обновления (ветка: {BRANCH})...")
     estimated_kb = get_zip_size_kb()
-    _log(f"  Ожидаемый размер архива: ~{estimated_kb} КБ")
+
+    if estimated_kb > 0:
+        _log(f"  Оценка размера архива: около {estimated_kb} КБ")
 
     url = f"{API_BASE}/zipball/{BRANCH}"
     request = urllib.request.Request(url, headers=_headers())
     _log("  Скачиваем архив обновления...")
 
     opener = urllib.request.build_opener(urllib.request.HTTPRedirectHandler())
+
     with opener.open(request, timeout=60) as response:
         content_length = response.headers.get("Content-Length")
-        if content_length and int(content_length) > 0:
-            estimated_kb = int(content_length) // 1024
-            _log(f"  Точный размер архива: {estimated_kb} КБ")
+        total_bytes = 0
+
+        try:
+            if content_length and int(content_length) > 0:
+                total_bytes = int(content_length)
+        except ValueError:
+            total_bytes = 0
+
+        if total_bytes > 0:
+            _log(f"  Точный размер архива: {_format_size(total_bytes)}")
+        else:
+            _log("  Точный размер архива не передан GitHub — показываем скачанный объём.")
 
         downloaded = 0
         spinner_idx = 0
@@ -384,17 +418,18 @@ def download_zip(zip_path: str):
                 file.write(chunk)
                 downloaded += len(chunk)
                 spinner_idx += 1
-                _print_progress(downloaded, estimated_kb, spinner_idx)
+                _print_progress(downloaded, total_bytes, spinner_idx)
 
     print(file=sys.stderr)
-    size_kb = os.path.getsize(zip_path) // 1024
-    _log(f"  Архив обновления скачан: {size_kb} КБ")
+
+    size_bytes = os.path.getsize(zip_path)
+    _log(f"  Архив обновления скачан: {_format_size(size_bytes)}")
     _sjson(
         {
             "type": "download_pct",
             "pct": 100,
-            "downloaded_mb": round(size_kb / 1024, 2),
-            "total_mb": round(size_kb / 1024, 2),
+            "downloaded_mb": round(size_bytes / 1048576, 2),
+            "total_mb": round(size_bytes / 1048576, 2),
         }
     )
 
