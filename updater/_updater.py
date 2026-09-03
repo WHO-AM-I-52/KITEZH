@@ -21,6 +21,7 @@ import sys
 import zipfile
 import shutil
 import tempfile
+import time
 from datetime import datetime
 
 REPO_OWNER = "WHO-AM-I-52"
@@ -315,13 +316,18 @@ def _format_size(num_bytes: int) -> str:
     return f"{num_bytes / 1024:.0f} КБ"
 
 
-def _print_progress(downloaded: int, total_bytes: int, spinner_idx: int):
+def _print_progress(
+    downloaded: int,
+    total_bytes: int,
+    spinner_idx: int,
+    emit_public: bool,
+):
     """
-    Показывает процент только при точном Content-Length текущего ZIP.
+    Обновляет локальный индикатор при каждом блоке.
 
-    Если GitHub не передал Content-Length, используем spinner и фактический
-    объём уже скачанных данных. Предварительная оценка репозитория не должна
-    изображаться как точный размер файла.
+    Публичный лог и SSE обновляются ограниченно, чтобы при скачивании
+    не создавать тысячи строк/событий: не чаще одного раза за интервал,
+    который задаётся в download_zip().
     """
     if total_bytes > 0:
         percent = min(downloaded / total_bytes * 100, 100)
@@ -335,39 +341,43 @@ def _print_progress(downloaded: int, total_bytes: int, spinner_idx: int):
             flush=True,
             file=sys.stderr,
         )
-        _sjson(
-            {
-                "type": "download_pct",
-                "pct": round(percent, 1),
-                "downloaded_mb": round(downloaded / 1048576, 2),
-                "total_mb": round(total_bytes / 1048576, 2),
-            }
-        )
-        _log_public(
-            "download",
-            (
-                f"{percent:.0f}% · {_format_size(downloaded)} / "
-                f"{_format_size(total_bytes)}"
-            ),
-        )
+
+        if emit_public:
+            _sjson(
+                {
+                    "type": "download_pct",
+                    "pct": round(percent, 1),
+                    "downloaded_mb": round(downloaded / 1048576, 2),
+                    "total_mb": round(total_bytes / 1048576, 2),
+                }
+            )
+            _log_public(
+                "download",
+                (
+                    f"{percent:.0f}% · {_format_size(downloaded)} / "
+                    f"{_format_size(total_bytes)}"
+                ),
+            )
         return
 
     spin = SPINNER[spinner_idx % len(SPINNER)]
-    _log_public("download", f"скачано {_format_size(downloaded)}")
-    _sjson(
-        {
-            "type": "download_pct",
-            "pct": -1,
-            "downloaded_mb": round(downloaded / 1048576, 2),
-            "total_mb": 0,
-        }
-    )
     print(
         f"  [{spin}] Скачано: {_format_size(downloaded)}...",
         end="\r",
         flush=True,
         file=sys.stderr,
     )
+
+    if emit_public:
+        _log_public("download", f"скачано {_format_size(downloaded)}")
+        _sjson(
+            {
+                "type": "download_pct",
+                "pct": -1,
+                "downloaded_mb": round(downloaded / 1048576, 2),
+                "total_mb": 0,
+            }
+        )
 
 
 def download_zip(zip_path: str):
@@ -409,6 +419,11 @@ def download_zip(zip_path: str):
         spinner_idx = 0
         chunk_size = 8192
 
+        # UI/SSE/публичный лог обновляются максимум дважды в секунду.
+        # Spinner в текущем cmd обновляется на каждом блоке.
+        public_interval = 0.5
+        last_public_emit = 0.0
+
         with open(zip_path, "wb") as file:
             while True:
                 chunk = response.read(chunk_size)
@@ -418,7 +433,19 @@ def download_zip(zip_path: str):
                 file.write(chunk)
                 downloaded += len(chunk)
                 spinner_idx += 1
-                _print_progress(downloaded, total_bytes, spinner_idx)
+
+                now = time.monotonic()
+                emit_public = (now - last_public_emit) >= public_interval
+
+                _print_progress(
+                    downloaded,
+                    total_bytes,
+                    spinner_idx,
+                    emit_public=emit_public,
+                )
+
+                if emit_public:
+                    last_public_emit = now
 
     print(file=sys.stderr)
 
