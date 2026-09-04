@@ -426,6 +426,14 @@
         <button class="game-menu-item" data-game="hextris" onclick="selectGame('hextris',this)">
           <span class="game-icon">🧱</span> Hextris
         </button>
+        <button class="game-menu-item" data-game="runner" onclick="selectGame('runner', this)">
+          <span class="game-icon">🏃</span> Прыжки
+        </button>
+        <button class="game-menu-item"
+                data-game="runner"
+                onclick="selectGame('runner', this)">
+          <span class="game-icon">🏃</span> Прыжки
+        </button>
       </div>
     </div>
     <button id="returnBtn" onclick="goBack()">✅ Вернуться в KITEZH</button>
@@ -490,6 +498,11 @@ var CONTROLS = {
     { keys: ['←'],  action: 'Вращать влево' },
     { keys: ['→'],  action: 'Вращать вправо' },
   ],
+   runner: [
+    { keys: ['Пробел'], action: 'Прыжок' },
+    { keys: ['Клик'], action: 'Прыжок' },
+    { keys: ['Пробел', 'Клик'], action: 'После проигрыша — новая попытка' },
+  ],
 };
 
 function updateControls(game) {
@@ -510,7 +523,12 @@ function updateControls(game) {
   popup.classList.remove('no-controls');
 
   // заполнить список
-  var names = { asteroids:'☄️ Asteroids', flappy:'🐦 Flappy Bird', hextris:'🧱 Hextris' };
+  var names = {
+  asteroids: '☄️ Asteroids',
+  flappy: '🐦 Flappy Bird',
+  hextris: '🧱 Hextris',
+  runner: '🏃 Прыжки',
+};
   title.textContent = names[game] || 'Управление';
 
   list.innerHTML = '';
@@ -548,6 +566,7 @@ var GAME_META = {
   asteroids:{ icon: '☄️', hint: '☄️ Стрелки — лететь, Пробел — стрелять' },
   flappy:   { icon: '🐦', hint: '🐦 Пробел / клик — прыжок' },
   hextris:  { icon: '🧱', hint: '🧱 ← → — вращать гексагон' },
+  runner:   { icon: '🏃', hint: '🏃 Пробел или клик — прыжок' },
 };
 
 function toggleGameMenu(e) {
@@ -563,22 +582,40 @@ document.addEventListener('click', function(e) {
 
 function selectGame(name, btn) {
   document.getElementById('gameSwitcher').classList.remove('open');
+
   if (name === currentGame) return;
+
+  if (!GAMES[name]) {
+    console.warn('Игра не зарегистрирована:', name);
+    return;
+  }
+
   currentGame = name;
   localStorage.setItem('kitezh_game', name);
 
   document.querySelectorAll('.game-menu-item').forEach(function(el) {
     el.classList.remove('active');
   });
-  btn.classList.add('active');
+
+  if (btn) {
+    btn.classList.add('active');
+  }
+
   document.getElementById('currentGameIcon').textContent = GAME_META[name].icon;
   document.getElementById('hint').textContent = GAME_META[name].hint;
 
   document.body.className = '';
   document.body.classList.add('game-' + name);
 
-  if (currentRAF)     { cancelAnimationFrame(currentRAF); currentRAF = null; }
-  if (currentCleanup) { currentCleanup(); currentCleanup = null; }
+  if (currentRAF) {
+    cancelAnimationFrame(currentRAF);
+    currentRAF = null;
+  }
+
+  if (currentCleanup) {
+    currentCleanup();
+    currentCleanup = null;
+  }
 
   var canvas = document.getElementById('c');
   var ctx = canvas.getContext('2d');
@@ -590,22 +627,26 @@ function selectGame(name, btn) {
 
 function initSwitcher() {
   var saved = currentGame;
+
+  if (!GAMES[saved] || !GAME_META[saved]) {
+    saved = 'lizard';
+    currentGame = saved;
+    localStorage.setItem('kitezh_game', saved);
+  }
+
   document.querySelectorAll('.game-menu-item').forEach(function(el) {
     el.classList.toggle('active', el.dataset.game === saved);
   });
+
   document.getElementById('currentGameIcon').textContent = GAME_META[saved].icon;
   document.getElementById('hint').textContent = GAME_META[saved].hint;
+
+  document.body.className = '';
   document.body.classList.add('game-' + saved);
+
   updateControls(saved);
   GAMES[saved]();
 }
-
-// ==================================================================
-//  CANVAS HELPERS
-// ==================================================================
-var canvas = document.getElementById('c');
-var ctx    = canvas.getContext('2d');
-var W, H;
 
 function resizeCanvas() {
   W = canvas.width  = window.innerWidth;
@@ -1121,5 +1162,6 @@ counter.textContent = 'Данные сохранены';setTimeout(poll,POLL_MS)
   setTimeout(poll, 1000);
 })();
 </script>
+<script src="{{ url_for('static', filename='maintenance_game/runner.js') }}"></script>
 </body>
 </html>
