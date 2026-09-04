@@ -866,31 +866,31 @@ GAMES.asteroids = function() {
           if(lives>0)setTimeout(function(){ship.x=W/2;ship.y=H/2;ship.vx=0;ship.vy=0;ship.angle=0;ship.alive=true;ship.invincible=180;},1500);
         }});
     }
-particles = particles.filter(function(p) {
-  p.x += p.vx;
-  p.y += p.vy;
-  p.vy += 0.1;
-  p.life -= 0.03;
+    particles = particles.filter(function(p) {
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += 0.1;
+      p.life -= 0.03;
 
-  if (p.life <= 0) {
-    return false;
-  }
+      if (p.life <= 0) {
+        return false;
+      }
 
-  var radius = p.r * p.life;
+      var radius = p.r * p.life;
 
-  if (radius <= 0) {
-    return false;
-  }
+      if (radius <= 0) {
+        return false;
+      }
 
-  ctx.beginPath();
-  ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
-  ctx.fillStyle = p.color;
-  ctx.globalAlpha = p.life;
-  ctx.fill();
-  ctx.globalAlpha = 1;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+      ctx.fillStyle = p.color;
+      ctx.globalAlpha = p.life;
+      ctx.fill();
+      ctx.globalAlpha = 1;
 
-  return true;
-});
+      return true;
+    });
     asteroids.forEach(function(a){ctx.save();ctx.translate(a.x,a.y);ctx.rotate(a.rot);ctx.beginPath();
       a.pts.forEach(function(p,i){if(i===0)ctx.moveTo(Math.cos(p.a)*p.r,Math.sin(p.a)*p.r);else ctx.lineTo(Math.cos(p.a)*p.r,Math.sin(p.a)*p.r);});
       ctx.closePath();ctx.strokeStyle='#64748b';ctx.lineWidth=1.5;ctx.stroke();ctx.fillStyle='rgba(30,40,60,0.7)';ctx.fill();ctx.restore();});
