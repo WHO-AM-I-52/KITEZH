@@ -1,396 +1,411 @@
+// ==================================================================
+//  GAME: RUNNER
+// ==================================================================
 GAMES.runner = function() {
-// --- Game Setup ---
-const canvas = document.getElementById("gameCanvas");
-const ctx = canvas.getContext("2d");
-canvas.width = 800;
-canvas.height = 400;
+  var player = {
+    width: 30,
+    height: 30,
+    x: 50,
+    y: 0,
+    velocityY: 0,
+    grounded: true,
+    color: '#4db8ff',
+  };
 
-// --- Game Classes ---
+  var gravity = 0.5;
+  var defaultJumpForce = -12;
+  var jumpForce = defaultJumpForce;
+  var groundLevel = H - 30;
 
-class Player {
-  constructor(game) {
-    this.game = game;
-    this.width = 30;
-    this.height = 30;
-    this.x = 50;
-    this.y = this.game.groundLevel - this.height;
-    this.color = "#4db8ff";
-    this.velocityY = 0;
-    this.isJumping = false;
-    this.isGrounded = true;
-  }
+  var obstacles = [];
+  var powerUps = [];
 
-  draw() {
-    ctx.fillStyle = this.color;
-    ctx.fillRect(this.x, this.y, this.width, this.height);
-    // Shield visual effect
-    if (this.game.shieldActive) {
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.7)";
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.arc(
-        this.x + this.width / 2,
-        this.y + this.height / 2,
-        this.width,
-        0,
-        2 * Math.PI
-      );
-      ctx.stroke();
-    }
-  }
+  var obstacleSpeed = 5;
+  var obstacleInterval = 1200;
+  var powerUpInterval = 5000;
+  var lastObstacleTime = Date.now();
+  var lastPowerUpTime = Date.now();
 
-  update() {
-    // Apply gravity if not on the ground
-    if (!this.isGrounded) {
-      this.velocityY += this.game.physics.gravity;
-    }
-    this.y += this.velocityY;
+  var score = 0;
+  var highScoreKey = 'kitezh_runner_high_score';
+  var highScore = Number(localStorage.getItem(highScoreKey)) || 0;
 
-    // Check for ground collision
-    if (this.y >= this.game.groundLevel - this.height) {
-      this.y = this.game.groundLevel - this.height;
-      this.velocityY = 0;
-      this.isGrounded = true;
-      this.isJumping = false;
-    }
-  }
+  var scoreMultiplier = 1;
+  var shieldActive = false;
+  var timeSlowed = false;
+  var gameOver = false;
+  var backgroundX = 0;
+  var timers = [];
 
-  jump() {
-    if (this.isGrounded) {
-      this.isGrounded = false;
-      this.isJumping = true;
-      this.velocityY = this.game.physics.jumpForce;
-    }
-  }
-}
+  player.y = groundLevel - player.height;
 
-class Obstacle {
-  constructor(game) {
-    this.game = game;
-    this.width = 30;
-    this.height = 30;
-    this.x = canvas.width;
-    this.y = this.game.groundLevel - this.height;
-    this.color = "#ff4d4d";
-  }
-
-  draw() {
-    ctx.fillStyle = this.color;
-    ctx.fillRect(this.x, this.y, this.width, this.height);
-  }
-
-  update() {
-    if (!this.game.timeSlowed) {
-      this.x -= this.game.obstacleSpeed;
-    } else {
-      this.x -= this.game.obstacleSpeed / 2;
-    }
-  }
-}
-
-class PowerUp {
-  constructor(game) {
-    this.game = game;
-    this.width = 20;
-    this.height = 20;
-    this.x = canvas.width;
-    this.y = this.game.groundLevel - this.height - Math.random() * 80 - 40; // Random height
-    this.duration = 5000; // 5 seconds for all power-ups
-    this.type = this.getRandomType();
-    this.color = this.getColorForType();
-  }
-
-  getRandomType() {
-    const types = ["scoreMultiplier", "shield", "highJump", "slowTime"];
-    return types[Math.floor(Math.random() * types.length)];
-  }
-
-  getColorForType() {
-    switch (this.type) {
-      case "scoreMultiplier":
-        return "#ffd700"; // Gold
-      case "shield":
-        return "#00bfff"; // Deep Sky Blue
-      case "highJump":
-        return "#32cd32"; // Lime Green
-      case "slowTime":
-        return "#8a2be2"; // Blue Violet
-      default:
-        return "#cccccc";
-    }
-  }
-
-  draw() {
-    ctx.fillStyle = this.color;
-    ctx.fillRect(this.x, this.y, this.width, this.height);
-  }
-
-  update() {
-    if (!this.game.timeSlowed) {
-      this.x -= this.game.obstacleSpeed;
-    } else {
-      this.x -= this.game.obstacleSpeed / 2;
-    }
-  }
-}
-
-class Game {
-  constructor() {
-    this.player = new Player(this);
-    this.physics = {
-      gravity: 0.5,
-      jumpForce: -12
-    };
-    this.obstacles = [];
-    this.powerUps = [];
-    this.obstacleSpeed = 5;
-    this.obstacleInterval = 1200;
-    this.powerUpInterval = 5000;
-    this.lastObstacleTime = Date.now();
-    this.lastPowerUpTime = Date.now();
-    this.gameOver = false;
-    this.score = 0;
-    this.highScore = localStorage.getItem("highScore") || 0;
-    this.scoreMultiplier = 1;
-    this.groundLevel = canvas.height - 30;
-    this.lastUpdateTime = 0;
-    this.parallaxBackground = { x: 0, y: 0, speed: 1 };
-    this.shieldActive = false;
-    this.timeSlowed = false;
-  }
-
-  drawParallaxBackground() {
-    ctx.fillStyle = "#6b5e54";
-    ctx.fillRect(
-      0,
-      this.groundLevel,
-      canvas.width,
-      canvas.height - this.groundLevel
+  function isCollision(a, b) {
+    return (
+      a.x < b.x + b.width &&
+      a.x + a.width > b.x &&
+      a.y < b.y + b.height &&
+      a.y + a.height > b.y
     );
-    ctx.fillStyle = "#87ceeb";
-    ctx.fillRect(0, 0, canvas.width, this.groundLevel);
-
-    ctx.fillStyle = "#cccccc";
-    for (let i = 0; i < 50; i++) {
-      const starX = (i * 50 + this.parallaxBackground.x) % canvas.width;
-      ctx.beginPath();
-      ctx.arc(starX, (i * 20) % this.groundLevel, 1, 0, 2 * Math.PI);
-      ctx.fill();
-    }
-    this.parallaxBackground.x -= this.parallaxBackground.speed;
   }
 
-  drawUI() {
-    ctx.fillStyle = "white";
-    ctx.font = "20px Arial";
-    ctx.textAlign = "left";
-    ctx.fillText(`Score: ${this.score}`, 10, 25);
-    ctx.textAlign = "right";
-    ctx.fillText(`High Score: ${this.highScore}`, canvas.width - 10, 25);
-
-    ctx.textAlign = "center";
-    if (this.scoreMultiplier > 1) {
-      ctx.fillStyle = "#ffd700";
-      ctx.fillText(
-        `Multiplier: x${this.scoreMultiplier}`,
-        canvas.width / 2,
-        25
-      );
-    }
-    if (this.shieldActive) {
-      ctx.fillStyle = "#00bfff";
-      ctx.fillText("Shield Active!", canvas.width / 2, 50);
-    }
-    if (this.timeSlowed) {
-      ctx.fillStyle = "#8a2be2";
-      ctx.fillText("Time Slowed!", canvas.width / 2, 75);
-    }
-  }
-
-  generateObstacle() {
-    const currentTime = Date.now();
-    const interval = this.timeSlowed
-      ? this.obstacleInterval * 2
-      : this.obstacleInterval;
-    if (currentTime - this.lastObstacleTime > interval) {
-      this.obstacles.push(new Obstacle(this));
-      this.lastObstacleTime = currentTime;
-    }
-  }
-
-  generatePowerUp() {
-    const currentTime = Date.now();
-    const interval = this.timeSlowed
-      ? this.powerUpInterval * 2
-      : this.powerUpInterval;
-    if (currentTime - this.lastPowerUpTime > interval) {
-      this.powerUps.push(new PowerUp(this));
-      this.lastPowerUpTime = currentTime;
-    }
-  }
-
-  checkCollision() {
-    // Obstacle collision
-    this.obstacles.forEach((obstacle, index) => {
-      if (
-        this.player.x < obstacle.x + obstacle.width &&
-        this.player.x + this.player.width > obstacle.x &&
-        this.player.y < obstacle.y + obstacle.height &&
-        this.player.y + this.player.height > obstacle.y
-      ) {
-        if (this.shieldActive) {
-          this.shieldActive = false;
-          this.obstacles.splice(index, 1);
-        } else {
-          this.endGame();
-        }
-      }
+  function clearTimers() {
+    timers.forEach(function(timerId) {
+      clearTimeout(timerId);
     });
-
-    // Power-up collision
-    this.powerUps.forEach((powerUp, index) => {
-      if (
-        this.player.x < powerUp.x + powerUp.width &&
-        this.player.x + this.player.width > powerUp.x &&
-        this.player.y < powerUp.y + powerUp.height &&
-        this.player.y + this.player.height > powerUp.y
-      ) {
-        this.powerUps.splice(index, 1);
-        this.activatePowerUp(powerUp);
-      }
-    });
+    timers = [];
   }
 
-  activatePowerUp(powerUp) {
-    switch (powerUp.type) {
-      case "scoreMultiplier":
-        this.scoreMultiplier = 2;
-        setTimeout(() => {
-          this.scoreMultiplier = 1;
-        }, powerUp.duration);
-        break;
-      case "shield":
-        this.shieldActive = true;
-        setTimeout(() => {
-          this.shieldActive = false;
-        }, powerUp.duration);
-        break;
-      case "highJump":
-        const originalJumpForce = this.physics.jumpForce;
-        this.physics.jumpForce = -18; // Increased jump
-        setTimeout(() => {
-          this.physics.jumpForce = originalJumpForce;
-        }, powerUp.duration);
-        break;
-      case "slowTime":
-        this.timeSlowed = true;
-        setTimeout(() => {
-          this.timeSlowed = false;
-        }, powerUp.duration);
-        break;
+  function addTimer(callback, duration) {
+    var timerId = setTimeout(callback, duration);
+    timers.push(timerId);
+  }
+
+  function jump() {
+    if (!player.grounded || gameOver) return;
+
+    player.grounded = false;
+    player.velocityY = jumpForce;
+  }
+
+  function restart() {
+    clearTimers();
+
+    groundLevel = H - 30;
+    player.x = 50;
+    player.y = groundLevel - player.height;
+    player.velocityY = 0;
+    player.grounded = true;
+
+    obstacles = [];
+    powerUps = [];
+    obstacleSpeed = 5;
+    obstacleInterval = 1200;
+    lastObstacleTime = Date.now();
+    lastPowerUpTime = Date.now();
+
+    score = 0;
+    scoreMultiplier = 1;
+    shieldActive = false;
+    timeSlowed = false;
+    jumpForce = defaultJumpForce;
+    gameOver = false;
+
+    loop();
+  }
+
+  function handleAction(event) {
+    if (event) {
+      event.preventDefault();
     }
-  }
 
-  updateDifficulty() {
-    const speedMultiplier = this.timeSlowed ? 0.5 : 1;
-    this.obstacleSpeed += 0.001 * speedMultiplier;
-    if (this.obstacleInterval > 500) {
-      this.obstacleInterval -= 0.1 * speedMultiplier;
-    }
-  }
-
-  endGame() {
-    this.gameOver = true;
-    this.updateHighScore();
-    ctx.fillStyle = "white";
-    ctx.font = "40px Arial";
-    ctx.textAlign = "center";
-    ctx.fillText("Game Over", canvas.width / 2, canvas.height / 2 - 40);
-    ctx.font = "24px Arial";
-    ctx.fillText(
-      `Your score: ${this.score}`,
-      canvas.width / 2,
-      canvas.height / 2
-    );
-    ctx.fillText(
-      "Press SPACE to restart",
-      canvas.width / 2,
-      canvas.height / 2 + 40
-    );
-  }
-
-  updateHighScore() {
-    if (this.score > this.highScore) {
-      this.highScore = this.score;
-      localStorage.setItem("highScore", this.highScore);
-    }
-  }
-
-  restart() {
-    this.player = new Player(this);
-    this.obstacles = [];
-    this.powerUps = [];
-    this.obstacleSpeed = 5;
-    this.obstacleInterval = 1200;
-    this.score = 0;
-    this.scoreMultiplier = 1;
-    this.gameOver = false;
-    this.lastObstacleTime = Date.now();
-    this.lastPowerUpTime = Date.now();
-    this.shieldActive = false;
-    this.timeSlowed = false;
-    this.gameLoop(0); // Restart the loop
-  }
-
-  gameLoop(timestamp) {
-    if (this.gameOver) {
+    if (gameOver) {
+      restart();
       return;
     }
 
-    const deltaTime = timestamp - this.lastUpdateTime;
-    this.lastUpdateTime = timestamp;
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    this.drawParallaxBackground();
-
-    this.player.update();
-    this.obstacles.forEach((obstacle) => obstacle.update());
-    this.powerUps.forEach((powerUp) => powerUp.update());
-
-    this.generateObstacle();
-    this.generatePowerUp();
-    this.checkCollision();
-    this.updateDifficulty();
-    this.score += this.scoreMultiplier;
-
-    this.obstacles = this.obstacles.filter(
-      (obstacle) => obstacle.x + obstacle.width > 0
-    );
-    this.powerUps = this.powerUps.filter(
-      (powerUp) => powerUp.x + powerUp.width > 0
-    );
-
-    this.player.draw();
-    this.obstacles.forEach((obstacle) => obstacle.draw());
-    this.powerUps.forEach((powerUp) => powerUp.draw());
-    this.drawUI();
-
-    requestAnimationFrame(this.gameLoop.bind(this));
+    jump();
   }
-}
 
-// --- Event Listeners ---
-document.addEventListener("keydown", (event) => {
-  if (event.code === "Space") {
-    if (myGame.gameOver) {
-      myGame.restart();
-    } else {
-      myGame.player.jump();
+  function onKeyDown(event) {
+    if (event.code !== 'Space') return;
+    handleAction(event);
+  }
+
+  function onPointerDown(event) {
+    if (
+      event.target.closest('#topbar') ||
+      event.target.closest('#modal-backdrop') ||
+      event.target.closest('#controls-popup')
+    ) {
+      return;
+    }
+
+    handleAction(event);
+  }
+
+  function createObstacle() {
+    obstacles.push({
+      width: 30,
+      height: 30,
+      x: W,
+      y: groundLevel - 30,
+      color: '#ff4d4d',
+    });
+  }
+
+  function createPowerUp() {
+    var types = ['scoreMultiplier', 'shield', 'highJump', 'slowTime'];
+    var type = types[Math.floor(Math.random() * types.length)];
+
+    var colors = {
+      scoreMultiplier: '#ffd700',
+      shield: '#00bfff',
+      highJump: '#32cd32',
+      slowTime: '#8a2be2',
+    };
+
+    powerUps.push({
+      width: 20,
+      height: 20,
+      x: W,
+      y: groundLevel - 20 - Math.random() * 80 - 40,
+      type: type,
+      color: colors[type],
+      duration: 5000,
+    });
+  }
+
+  function activatePowerUp(powerUp) {
+    if (powerUp.type === 'scoreMultiplier') {
+      scoreMultiplier = 2;
+      addTimer(function() {
+        scoreMultiplier = 1;
+      }, powerUp.duration);
+    }
+
+    if (powerUp.type === 'shield') {
+      shieldActive = true;
+      addTimer(function() {
+        shieldActive = false;
+      }, powerUp.duration);
+    }
+
+    if (powerUp.type === 'highJump') {
+      jumpForce = -18;
+      addTimer(function() {
+        jumpForce = defaultJumpForce;
+      }, powerUp.duration);
+    }
+
+    if (powerUp.type === 'slowTime') {
+      timeSlowed = true;
+      addTimer(function() {
+        timeSlowed = false;
+      }, powerUp.duration);
     }
   }
-});
 
-// --- Start the game ---
-const myGame = new Game();
-myGame.gameLoop(0);
+  function endGame() {
+    if (gameOver) return;
+
+    gameOver = true;
+
+    if (score > highScore) {
+      highScore = score;
+      localStorage.setItem(highScoreKey, String(highScore));
+    }
+  }
+
+  function update() {
+    groundLevel = H - 30;
+
+    if (!player.grounded) {
+      player.velocityY += gravity;
+    }
+
+    player.y += player.velocityY;
+
+    if (player.y >= groundLevel - player.height) {
+      player.y = groundLevel - player.height;
+      player.velocityY = 0;
+      player.grounded = true;
+    }
+
+    var speed = timeSlowed ? obstacleSpeed / 2 : obstacleSpeed;
+
+    obstacles.forEach(function(obstacle) {
+      obstacle.x -= speed;
+    });
+
+    powerUps.forEach(function(powerUp) {
+      powerUp.x -= speed;
+    });
+
+    var now = Date.now();
+    var currentObstacleInterval = timeSlowed
+      ? obstacleInterval * 2
+      : obstacleInterval;
+
+    var currentPowerUpInterval = timeSlowed
+      ? powerUpInterval * 2
+      : powerUpInterval;
+
+    if (now - lastObstacleTime > currentObstacleInterval) {
+      createObstacle();
+      lastObstacleTime = now;
+    }
+
+    if (now - lastPowerUpTime > currentPowerUpInterval) {
+      createPowerUp();
+      lastPowerUpTime = now;
+    }
+
+    for (var obstacleIndex = obstacles.length - 1; obstacleIndex >= 0; obstacleIndex--) {
+      var obstacle = obstacles[obstacleIndex];
+
+      if (!isCollision(player, obstacle)) continue;
+
+      if (shieldActive) {
+        shieldActive = false;
+        obstacles.splice(obstacleIndex, 1);
+      } else {
+        endGame();
+        return;
+      }
+    }
+
+    for (var powerUpIndex = powerUps.length - 1; powerUpIndex >= 0; powerUpIndex--) {
+      var powerUp = powerUps[powerUpIndex];
+
+      if (!isCollision(player, powerUp)) continue;
+
+      powerUps.splice(powerUpIndex, 1);
+      activatePowerUp(powerUp);
+    }
+
+    obstacles = obstacles.filter(function(obstacle) {
+      return obstacle.x + obstacle.width > 0;
+    });
+
+    powerUps = powerUps.filter(function(powerUp) {
+      return powerUp.x + powerUp.width > 0;
+    });
+
+    obstacleSpeed += timeSlowed ? 0.0005 : 0.001;
+
+    if (obstacleInterval > 500) {
+      obstacleInterval -= timeSlowed ? 0.05 : 0.1;
+    }
+
+    score += scoreMultiplier;
+  }
+
+  function drawBackground() {
+    ctx.fillStyle = '#87ceeb';
+    ctx.fillRect(0, 0, W, groundLevel);
+
+    ctx.fillStyle = '#6b5e54';
+    ctx.fillRect(0, groundLevel, W, H - groundLevel);
+
+    ctx.fillStyle = '#d9e3eb';
+
+    for (var i = 0; i < 50; i++) {
+      var starX = (i * 50 + backgroundX) % W;
+
+      ctx.beginPath();
+      ctx.arc(starX, (i * 20) % groundLevel, 1, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    backgroundX -= 1;
+  }
+
+  function drawUI() {
+    ctx.font = '20px Arial';
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'left';
+    ctx.fillText('Очки: ' + score, 12, 28);
+
+    ctx.textAlign = 'right';
+    ctx.fillText('Рекорд: ' + highScore, W - 12, 28);
+
+    ctx.textAlign = 'center';
+
+    if (scoreMultiplier > 1) {
+      ctx.fillStyle = '#ffd700';
+      ctx.fillText('Множитель ×' + scoreMultiplier, W / 2, 28);
+    }
+
+    if (shieldActive) {
+      ctx.fillStyle = '#00bfff';
+      ctx.fillText('Щит активен', W / 2, 54);
+    }
+
+    if (timeSlowed) {
+      ctx.fillStyle = '#8a2be2';
+      ctx.fillText('Время замедлено', W / 2, 80);
+    }
+  }
+
+  function drawGameOver() {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.48)';
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '40px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('Игра окончена', W / 2, H / 2 - 40);
+
+    ctx.font = '24px Arial';
+    ctx.fillText('Ваш результат: ' + score, W / 2, H / 2);
+
+    ctx.fillText(
+      'Пробел или клик — новая попытка',
+      W / 2,
+      H / 2 + 42
+    );
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+
+    drawBackground();
+
+    ctx.fillStyle = player.color;
+    ctx.fillRect(player.x, player.y, player.width, player.height);
+
+    if (shieldActive) {
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(
+        player.x + player.width / 2,
+        player.y + player.height / 2,
+        player.width,
+        0,
+        Math.PI * 2
+      );
+      ctx.stroke();
+    }
+
+    obstacles.forEach(function(obstacle) {
+      ctx.fillStyle = obstacle.color;
+      ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+    });
+
+    powerUps.forEach(function(powerUp) {
+      ctx.fillStyle = powerUp.color;
+      ctx.fillRect(powerUp.x, powerUp.y, powerUp.width, powerUp.height);
+    });
+
+    drawUI();
+
+    if (gameOver) {
+      drawGameOver();
+    }
+  }
+
+  function loop() {
+    if (gameOver) {
+      draw();
+      currentRAF = null;
+      return;
+    }
+
+    update();
+    draw();
+
+    currentRAF = requestAnimationFrame(loop);
+  }
+
+  window.addEventListener('keydown', onKeyDown);
+  window.addEventListener('pointerdown', onPointerDown);
+
+  currentCleanup = function() {
+    clearTimers();
+    window.removeEventListener('keydown', onKeyDown);
+    window.removeEventListener('pointerdown', onPointerDown);
+  };
+
+  loop();
 };
