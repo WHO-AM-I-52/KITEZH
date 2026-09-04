@@ -426,9 +426,6 @@
         <button class="game-menu-item" data-game="hextris" onclick="selectGame('hextris',this)">
           <span class="game-icon">🧱</span> Hextris
         </button>
-        <button class="game-menu-item" data-game="runner" onclick="selectGame('runner', this)">
-          <span class="game-icon">🏃</span> Прыжки
-        </button>
         <button class="game-menu-item"
                 data-game="runner"
                 onclick="selectGame('runner', this)">
@@ -648,6 +645,13 @@ function initSwitcher() {
   GAMES[saved]();
 }
 
+// ==================================================================
+//  CANVAS HELPERS
+// ==================================================================
+var canvas = document.getElementById('c');
+var ctx    = canvas.getContext('2d');
+var W, H;
+  
 function resizeCanvas() {
   W = canvas.width  = window.innerWidth;
   H = canvas.height = window.innerHeight;
