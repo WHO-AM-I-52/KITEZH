@@ -1259,7 +1259,7 @@ def get_monitor_registry_events(conn, limit: int = 30):
             events.reason,
             events.changed_by_user_id,
             users.username AS changed_by_username,
-            users.full_name AS changed_by_full_name
+            users.fullname AS changed_by_full_name
         FROM investmap_rf_monitor_registry_events AS events
         LEFT JOIN users
             ON users.id = events.changed_by_user_id
@@ -1768,6 +1768,10 @@ _DASHBOARD_DETAILS_MAX_PER_PAGE = 100
 _DASHBOARD_DETAILS_KINDS = frozenset({
     "changed_cards",
     "field_changes",
+    "created_in_source",
+    "activated",
+    "deactivated_by_404",
+    "deactivated_by_status",
 })
 
 
@@ -2073,6 +2077,336 @@ def get_investmap_dashboard_field_changes(
         "items": items,
     }
 
+def _dashboard_latest_snapshots_cte() -> str:
+    """Возвращает CTE последнего API-снимка каждой карточки."""
+    return """
+        latest_snapshot_ids AS (
+            SELECT
+                global_id,
+                MAX(id) AS snapshot_id
+            FROM investmap_rf_card_snapshots
+            GROUP BY global_id
+        )
+    """
+
+
+def _dashboard_site_overview_from_row(row: sqlite3.Row) -> dict[str, Any]:
+    """Возвращает название площадки из последнего API-снимка."""
+    payload = _json_or_none(row["payload_json"])
+    return _build_site_overview(payload)
+
+
+def _dashboard_registry_events_context(
+    *,
+    date_from: str | None,
+    date_to: str | None,
+    manager_name: str | None,
+) -> dict[str, Any]:
+    """Нормализует фильтры для деталей по событиям реестра."""
+    normalized_date_from = _dashboard_normalize_date(
+        date_from,
+        field_name="date_from",
+    )
+    normalized_date_to = _dashboard_normalize_date(
+        date_to,
+        field_name="date_to",
+    )
+    normalized_manager_name = _dashboard_normalize_manager_name(manager_name)
+
+    if (
+        normalized_date_from is not None
+        and normalized_date_to is not None
+        and normalized_date_from > normalized_date_to
+    ):
+        raise ValueError("date_from не может быть позже date_to.")
+
+    events_join, events_manager_where, events_manager_params = (
+        _dashboard_manager_join(normalized_manager_name)
+    )
+    events_join = events_join.format(id_column="events.global_id")
+    events_base_where = "WHERE 1 = 1" + events_manager_where
+    events_period_sql, events_period_params = _dashboard_period_where(
+        "events.occurred_at_utc",
+        normalized_date_from,
+        normalized_date_to,
+    )
+
+    return {
+        "date_from": normalized_date_from,
+        "date_to": normalized_date_to,
+        "manager_name": normalized_manager_name,
+        "events_join": events_join,
+        "events_base_where": events_base_where,
+        "events_period_sql": events_period_sql,
+        "events_params": [
+            *events_manager_params,
+            *events_period_params,
+        ],
+    }
+
+
+def _dashboard_event_kind_config(kind: str) -> tuple[str, tuple[str, ...]]:
+    """Возвращает заголовок и типы событий, входящие в KPI."""
+    configs: dict[str, tuple[str, tuple[str, ...]]] = {
+        "activated": (
+            "Добавлены в мониторинг",
+            ("activated",),
+        ),
+        "deactivated_by_404": (
+            "Сняты по HTTP 404",
+            (
+                "deactivated_api_not_found",
+                "deactivated_operator_not_found",
+            ),
+        ),
+        "deactivated_by_status": (
+            "Сняты по смене статуса",
+            ("deactivated_status_changed",),
+        ),
+    }
+
+    try:
+        return configs[kind]
+    except KeyError as exc:
+        raise ValueError("Неподдерживаемый тип события реестра.") from exc
+
+
+def get_investmap_dashboard_registry_events(
+    conn: sqlite3.Connection,
+    *,
+    kind: str,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    manager_name: str | None = None,
+    limit: int = _DASHBOARD_DETAILS_PER_PAGE,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """Возвращает постраничную детализацию KPI по событиям реестра."""
+    title, event_types = _dashboard_event_kind_config(kind)
+    limit, offset = _dashboard_validate_details_pagination(limit, offset)
+    context = _dashboard_registry_events_context(
+        date_from=date_from,
+        date_to=date_to,
+        manager_name=manager_name,
+    )
+    event_types_sql = ", ".join("?" for _ in event_types)
+    query_params = [*context["events_params"], *event_types]
+
+    total = _dashboard_count(
+        conn,
+        f"""
+        SELECT COUNT(*)
+        FROM investmap_rf_monitor_registry_events AS events
+        {context['events_join']}
+        {context['events_base_where']}
+          {context['events_period_sql']}
+          AND events.event_type IN ({event_types_sql})
+        """,
+        query_params,
+    )
+
+    rows = conn.execute(
+        f"""
+        WITH
+        {_dashboard_latest_snapshots_cte()}
+        SELECT
+            events.id AS event_id,
+            events.global_id,
+            events.event_type,
+            events.previous_status,
+            events.current_status,
+            events.source_filename,
+            events.occurred_at_utc,
+            events.reason,
+            events.changed_by_user_id,
+            users.username AS changed_by_username,
+            users.fullname AS changed_by_full_name,
+            snapshots.payload_json,
+            assignments.municipality_raw,
+            assignments.manager_name,
+            assignments.match_status
+        FROM investmap_rf_monitor_registry_events AS events
+        {context['events_join']}
+        LEFT JOIN users
+            ON users.id = events.changed_by_user_id
+        LEFT JOIN latest_snapshot_ids
+            ON latest_snapshot_ids.global_id = events.global_id
+        LEFT JOIN investmap_rf_card_snapshots AS snapshots
+            ON snapshots.id = latest_snapshot_ids.snapshot_id
+        LEFT JOIN investmap_rf_card_manager_assignments AS assignments
+            ON assignments.global_id = events.global_id
+        {context['events_base_where']}
+          {context['events_period_sql']}
+          AND events.event_type IN ({event_types_sql})
+        ORDER BY events.occurred_at_utc DESC, events.id DESC
+        LIMIT ? OFFSET ?
+        """,
+        [*query_params, limit, offset],
+    ).fetchall()
+
+    items: list[dict[str, Any]] = []
+
+    for row in rows:
+        overview = _dashboard_site_overview_from_row(row)
+        items.append(
+            {
+                "event_id": row["event_id"],
+                "global_id": row["global_id"],
+                "site_name": overview["title"],
+                "municipality_name": row["municipality_raw"],
+                "manager_name": row["manager_name"],
+                "manager_match_status": row["match_status"],
+                "event_type": row["event_type"],
+                "previous_status": row["previous_status"],
+                "current_status": row["current_status"],
+                "source_filename": row["source_filename"],
+                "occurred_at_utc": row["occurred_at_utc"],
+                "reason": row["reason"],
+                "changed_by_username": row["changed_by_username"],
+                "changed_by_full_name": row["changed_by_full_name"],
+            }
+        )
+
+    return {
+        "kind": kind,
+        "title": title,
+        "filters": {
+            "date_from": context["date_from"],
+            "date_to": context["date_to"],
+            "manager_name": context["manager_name"],
+            "manager_filter_mode": "current_assignment",
+        },
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "items": items,
+    }
+
+
+def get_investmap_dashboard_created_in_source(
+    conn: sqlite3.Connection,
+    *,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    manager_name: str | None = None,
+    limit: int = _DASHBOARD_DETAILS_PER_PAGE,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """Возвращает карточки, созданные в источнике за выбранный период."""
+    limit, offset = _dashboard_validate_details_pagination(limit, offset)
+    normalized_date_from = _dashboard_normalize_date(
+        date_from,
+        field_name="date_from",
+    )
+    normalized_date_to = _dashboard_normalize_date(
+        date_to,
+        field_name="date_to",
+    )
+    normalized_manager_name = _dashboard_normalize_manager_name(manager_name)
+
+    if (
+        normalized_date_from is not None
+        and normalized_date_to is not None
+        and normalized_date_from > normalized_date_to
+    ):
+        raise ValueError("date_from не может быть позже date_to.")
+
+    cards_join, cards_manager_where, cards_manager_params = (
+        _dashboard_manager_join(normalized_manager_name)
+    )
+    cards_join = cards_join.format(id_column="cards.global_id")
+    cards_base_where = "WHERE cards.object_created_at IS NOT NULL" + (
+        cards_manager_where
+    )
+    created_period_sql, created_period_params = _dashboard_period_where(
+        "cards.object_created_at",
+        normalized_date_from,
+        normalized_date_to,
+    )
+    query_params = [*cards_manager_params, *created_period_params]
+
+    total = _dashboard_count(
+        conn,
+        f"""
+        SELECT COUNT(*)
+        FROM investmap_rf_monitored_cards AS cards
+        {cards_join}
+        {cards_base_where}
+          {created_period_sql}
+        """,
+        query_params,
+    )
+
+    rows = conn.execute(
+        f"""
+        WITH
+        {_dashboard_latest_snapshots_cte()}
+        SELECT
+            cards.global_id,
+            cards.is_active,
+            cards.object_created_at,
+            cards.source_filename,
+            cards.imported_at_utc,
+            cards.last_seen_import_at_utc,
+            cards.last_source_status,
+            cards.last_api_check_at_utc,
+            cards.last_api_check_status,
+            snapshots.payload_json,
+            assignments.municipality_raw,
+            assignments.manager_name,
+            assignments.match_status
+        FROM investmap_rf_monitored_cards AS cards
+        {cards_join}
+        LEFT JOIN latest_snapshot_ids
+            ON latest_snapshot_ids.global_id = cards.global_id
+        LEFT JOIN investmap_rf_card_snapshots AS snapshots
+            ON snapshots.id = latest_snapshot_ids.snapshot_id
+        LEFT JOIN investmap_rf_card_manager_assignments AS assignments
+            ON assignments.global_id = cards.global_id
+        {cards_base_where}
+          {created_period_sql}
+        ORDER BY cards.object_created_at DESC, cards.global_id DESC
+        LIMIT ? OFFSET ?
+        """,
+        [*query_params, limit, offset],
+    ).fetchall()
+
+    items: list[dict[str, Any]] = []
+
+    for row in rows:
+        overview = _dashboard_site_overview_from_row(row)
+        items.append(
+            {
+                "global_id": row["global_id"],
+                "site_name": overview["title"],
+                "municipality_name": row["municipality_raw"],
+                "manager_name": row["manager_name"],
+                "manager_match_status": row["match_status"],
+                "is_active": bool(row["is_active"]),
+                "object_created_at": row["object_created_at"],
+                "source_filename": row["source_filename"],
+                "imported_at_utc": row["imported_at_utc"],
+                "last_seen_import_at_utc": row["last_seen_import_at_utc"],
+                "last_source_status": row["last_source_status"],
+                "last_api_check_at_utc": row["last_api_check_at_utc"],
+                "last_api_check_status": row["last_api_check_status"],
+            }
+        )
+
+    return {
+        "kind": "created_in_source",
+        "title": "Созданы в источнике",
+        "filters": {
+            "date_from": normalized_date_from,
+            "date_to": normalized_date_to,
+            "manager_name": normalized_manager_name,
+            "manager_filter_mode": "current_assignment",
+        },
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "items": items,
+    }
 
 def get_investmap_dashboard_details(
     conn: sqlite3.Connection,
@@ -2086,7 +2420,11 @@ def get_investmap_dashboard_details(
 ) -> dict[str, Any]:
     """Возвращает детальный реестр для поддерживаемого KPI дашборда."""
     if kind not in _DASHBOARD_DETAILS_KINDS:
-        raise ValueError("kind должен быть changed_cards или field_changes.")
+        raise ValueError(
+            "kind должен быть changed_cards, field_changes, "
+            "created_in_source, activated, deactivated_by_404 "
+            "или deactivated_by_status."
+        )
 
     if kind == "changed_cards":
         return get_investmap_dashboard_changed_cards(
@@ -2098,8 +2436,29 @@ def get_investmap_dashboard_details(
             offset=offset,
         )
 
-    return get_investmap_dashboard_field_changes(
+    if kind == "field_changes":
+        return get_investmap_dashboard_field_changes(
+            conn,
+            date_from=date_from,
+            date_to=date_to,
+            manager_name=manager_name,
+            limit=limit,
+            offset=offset,
+        )
+
+    if kind == "created_in_source":
+        return get_investmap_dashboard_created_in_source(
+            conn,
+            date_from=date_from,
+            date_to=date_to,
+            manager_name=manager_name,
+            limit=limit,
+            offset=offset,
+        )
+
+    return get_investmap_dashboard_registry_events(
         conn,
+        kind=kind,
         date_from=date_from,
         date_to=date_to,
         manager_name=manager_name,
