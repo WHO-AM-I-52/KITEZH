@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import datetime
 from typing import Any
 from portal_analysis.api_snapshot_normalizer import api_snapshot_to_portal_row
 from portal_analysis.portal_checker import V2_FORMULA_VERSION, calc_portal_score_v2
@@ -1266,3 +1267,95 @@ def get_monitor_registry_events(conn, limit: int = 30):
         """,
         (limit,),
     ).fetchall()
+
+_DASHBOARD_EVENT_TYPES = (
+    "activated",
+    "reactivated",
+    "api_not_found_detected",
+    "api_not_found_kept_by_operator",
+    "deactivated_api_not_found",
+    "deactivated_operator_not_found",
+    "deactivated_status_changed",
+)
+
+
+def _dashboard_normalize_date(
+    value: str | None,
+    *,
+    field_name: str,
+) -> str | None:
+    """Проверяет дату фильтра дашборда в формате YYYY-MM-DD."""
+    if value is None:
+        return None
+
+    if not isinstance(value, str):
+        raise ValueError(f"{field_name} должен быть строкой YYYY-MM-DD.")
+
+    normalized = value.strip()
+
+    if not normalized:
+        return None
+
+    try:
+        datetime.strptime(normalized, "%Y-%m-%d")
+    except ValueError as exc:
+        raise ValueError(
+            f"{field_name} должен иметь формат YYYY-MM-DD."
+        ) from exc
+
+    return normalized
+
+
+def _dashboard_normalize_manager_name(
+    value: str | None,
+) -> str | None:
+    """Нормализует необязательный фильтр текущего управляющего."""
+    if value is None:
+        return None
+
+    if not isinstance(value, str):
+        raise ValueError("manager_name должен быть строкой.")
+
+    normalized = " ".join(value.split())
+    return normalized or None
+
+
+def _dashboard_period_where(
+    column_name: str,
+    date_from: str | None,
+    date_to: str | None,
+) -> tuple[str, list[Any]]:
+    """
+    Формирует безопасное условие периода для ISO-дат и UTC ISO-времени.
+
+    column_name передаётся только из константных SQL-фрагментов этого модуля.
+    """
+    conditions: list[str] = []
+    params: list[Any] = []
+
+    if date_from is not None:
+        conditions.append(f"substr({column_name}, 1, 10) >= ?")
+        params.append(date_from)
+
+    if date_to is not None:
+        conditions.append(f"substr({column_name}, 1, 10) <= ?")
+        params.append(date_to)
+
+    if not conditions:
+        return "", params
+
+    return " AND " + " AND ".join(conditions), params
+
+
+def _dashboard_manager_join(
+    manager_name: str | None,
+) -> tuple[str, str, list[Any]]:
+    """
+    Возвращает JOIN и условие текущего назначения территориального управляющего.
+
+    Фильтр действует по актуальному назначению карточки. Историческая
+    принадлежность управляющего на момент события в текущей схеме не хранится.
+    """
+    join_sql = """
+        LEFT JOIN investmap_rf_card_manager_assignments AS assignments
+            ON assignments.gl
