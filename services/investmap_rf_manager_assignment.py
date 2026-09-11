@@ -14,6 +14,8 @@ MATCH_STATUS_MATCHED = "matched"
 MATCH_STATUS_UNMATCHED = "unmatched"
 MATCH_STATUS_AMBIGUOUS = "ambiguous"
 MATCH_STATUS_MANUAL = "manual"
+ASSIGNMENT_SOURCE_MANUAL = "manual"
+ASSIGNMENT_SOURCE_XLSX = "xlsx"
 KULIBIN_MANAGER_NAME = "Земсков Александр Николаевич"
 KULIBIN_MARKER = "кулибин"
 ZIMIN_MANAGER_NAME = "Зимин Дмитрий Валерьевич"
@@ -392,7 +394,14 @@ def update_card_manager_assignment(
     municipality_normalized = normalize_municipality(municipality_raw)
     existing = _get_existing_assignment(conn, global_id)
 
-    if existing is not None and existing["assignment_source"] == "manual":
+    if (
+    existing is not None
+    and existing["assignment_source"]
+    in {
+        ASSIGNMENT_SOURCE_MANUAL,
+        ASSIGNMENT_SOURCE_XLSX,
+    }
+):
         return {
             "status": MATCH_STATUS_MANUAL,
             "assignment": dict(existing),
@@ -549,6 +558,164 @@ def update_card_manager_assignment(
         _log_system_action(
             conn,
             action=f"investmap_rf_manager_match_{issue_type}",
+            detail=message,
+        )
+
+    return {
+        "status": match_status,
+        "assignment": assignment,
+        "issue": issue,
+        "notification_created": is_new_issue,
+    }
+
+def update_card_manager_assignment_from_xlsx_municipality(
+    conn,
+    *,
+    global_id: int,
+    municipality_raw: Any,
+    notify_admins: bool = True,
+) -> dict[str, Any]:
+    """
+    Назначает территориального управляющего по муниципалитету из XLSX.
+
+    XLSX — первоисточник автоматических назначений. Он может заменить
+    предыдущие API- и XLSX-назначения, но никогда не заменяет ручное
+    назначение администратора.
+    """
+    global_id = int(global_id)
+    municipality_raw = "" if municipality_raw is None else str(municipality_raw).strip()
+    municipality_normalized = normalize_municipality(municipality_raw)
+    existing = _get_existing_assignment(conn, global_id)
+
+    if (
+        existing is not None
+        and existing["assignment_source"] == ASSIGNMENT_SOURCE_MANUAL
+    ):
+        return {
+            "status": MATCH_STATUS_MANUAL,
+            "assignment": dict(existing),
+            "issue": None,
+            "notification_created": False,
+        }
+
+    if not municipality_normalized:
+        issue, is_new_issue = _upsert_issue(
+            conn,
+            global_id=global_id,
+            municipality_raw=municipality_raw,
+            municipality_normalized=municipality_normalized,
+            issue_type=ISSUE_TYPE_UNMATCHED,
+            details=(
+                "В XLSX отсутствует значение «Муниципальное образование»."
+            ),
+        )
+        assignment = _upsert_assignment(
+            conn,
+            global_id=global_id,
+            municipality_raw=municipality_raw,
+            municipality_normalized=municipality_normalized,
+            manager_name=None,
+            rule_id=None,
+            assignment_source=ASSIGNMENT_SOURCE_XLSX,
+            match_status=MATCH_STATUS_UNMATCHED,
+        )
+
+        if is_new_issue and notify_admins:
+            message = (
+                "Инвесткарта РФ: в XLSX не найдено муниципальное образование "
+                f"для карточки {global_id}."
+            )
+            _notify_admins(
+                conn,
+                message=message,
+                link=f"/investmap/rf-monitor?global_id={global_id}",
+            )
+            _log_system_action(
+                conn,
+                action="investmap_rf_manager_match_xlsx_unmatched",
+                detail=message,
+            )
+
+        return {
+            "status": MATCH_STATUS_UNMATCHED,
+            "assignment": assignment,
+            "issue": issue,
+            "notification_created": is_new_issue,
+        }
+
+    matches = _find_matching_rules(conn, municipality_normalized)
+
+    if len(matches) == 1:
+        rule = matches[0]
+        _resolve_open_issues(conn, global_id=global_id)
+        assignment = _upsert_assignment(
+            conn,
+            global_id=global_id,
+            municipality_raw=municipality_raw,
+            municipality_normalized=municipality_normalized,
+            manager_name=rule["manager_name"],
+            rule_id=int(rule["id"]),
+            assignment_source=ASSIGNMENT_SOURCE_XLSX,
+            match_status=MATCH_STATUS_MATCHED,
+        )
+        return {
+            "status": MATCH_STATUS_MATCHED,
+            "assignment": assignment,
+            "issue": None,
+            "notification_created": False,
+        }
+
+    if len(matches) > 1:
+        details = (
+            "В XLSX найдено несколько правил: "
+            + ", ".join(
+                f"{match['municipality_name']} → {match['manager_name']}"
+                for match in matches
+            )
+        )
+        issue_type = ISSUE_TYPE_AMBIGUOUS
+        match_status = MATCH_STATUS_AMBIGUOUS
+    else:
+        details = (
+            "Для муниципального образования из XLSX "
+            "не найдено активное правило."
+        )
+        issue_type = ISSUE_TYPE_UNMATCHED
+        match_status = MATCH_STATUS_UNMATCHED
+
+    issue, is_new_issue = _upsert_issue(
+        conn,
+        global_id=global_id,
+        municipality_raw=municipality_raw,
+        municipality_normalized=municipality_normalized,
+        issue_type=issue_type,
+        details=details,
+    )
+    assignment = _upsert_assignment(
+        conn,
+        global_id=global_id,
+        municipality_raw=municipality_raw,
+        municipality_normalized=municipality_normalized,
+        manager_name=None,
+        rule_id=None,
+        assignment_source=ASSIGNMENT_SOURCE_XLSX,
+        match_status=match_status,
+    )
+
+    if is_new_issue and notify_admins:
+        message = (
+            f"Инвесткарта РФ: {issue_type} сопоставление управляющего "
+            f"по XLSX для карточки {global_id}; муниципалитет: "
+            f"{municipality_raw or 'не указан'}."
+        )
+        _notify_admins(
+            conn,
+            message=message,
+            link=f"/investmap/rf-monitor?global_id={global_id}",
+        )
+        _log_system_action(
+            conn,
+            action=f"investmap_rf_manager_match_xlsx_{issue_type}",
             detail=message,
         )
 
