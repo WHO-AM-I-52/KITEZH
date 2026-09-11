@@ -21,6 +21,7 @@ from core.auth_utils import (
 )
 from db import get_db
 from services.investmap_rf_monitor_queries import (
+    get_investmap_dashboard_details,
     get_investmap_dashboard_summary,
     get_monitor_card_detail,
     get_monitor_cards,
@@ -232,6 +233,65 @@ def investmap_dashboard_data():
             except Exception:
                 err_logger.exception(
                     "investmap_dashboard_data close error | user=%s",
+                    user,
+                )
+
+@investmap_bp.route("/investmap/dashboard/details")
+@login_required
+@permission_required("can_view_investmap")
+def investmap_dashboard_details():
+    """Возвращает постраничную read-only детализацию KPI дашборда."""
+    user = getattr(g, "user", {}).get("login", "unknown")
+    db = None
+
+    try:
+        kind = request.args.get("kind", "").strip()
+        date_from = request.args.get("date_from")
+        date_to = request.args.get("date_to")
+        manager_name = request.args.get("manager_name")
+
+        try:
+            limit = int(request.args.get("limit", "50"))
+            offset = int(request.args.get("offset", "0"))
+        except (TypeError, ValueError):
+            return jsonify({
+                "error": "limit и offset должны быть целыми числами.",
+            }), 400
+
+        db = get_db()
+        result = get_investmap_dashboard_details(
+            db,
+            kind=kind,
+            date_from=date_from,
+            date_to=date_to,
+            manager_name=manager_name,
+            limit=limit,
+            offset=offset,
+        )
+        return jsonify(result)
+
+    except ValueError as exc:
+        return jsonify({
+            "error": str(exc),
+        }), 400
+
+    except Exception as exc:
+        err_logger.exception(
+            "investmap_dashboard_details error | user=%s | %s",
+            user,
+            exc,
+        )
+        return jsonify({
+            "error": "Внутренняя ошибка сервера.",
+        }), 500
+
+    finally:
+        if db is not None:
+            try:
+                db.close()
+            except Exception:
+                err_logger.exception(
+                    "investmap_dashboard_details close error | user=%s",
                     user,
                 )
 
