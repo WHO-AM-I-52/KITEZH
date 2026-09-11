@@ -546,7 +546,7 @@ def import_monitored_cards_xlsx(
             if normalized and normalized not in header_positions:
                 header_positions[normalized] = index
 
-        gglobal_id_index = header_positions.get("global_id")
+        global_id_index = header_positions.get("global_id")
         status_index = header_positions.get("статус площадки")
         municipality_index = header_positions.get("муниципальное образование")
         object_created_at_index = header_positions.get("дата создания")
