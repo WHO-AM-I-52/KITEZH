@@ -1372,3 +1372,391 @@ def _dashboard_manager_join(
         " AND assignments.manager_name = ?",
         [manager_name],
     )
+
+
+
+def _dashboard_count(
+    conn: sqlite3.Connection,
+    sql: str,
+    params: list[Any],
+) -> int:
+    """Возвращает целое значение первого поля агрегатного SELECT."""
+    row = conn.execute(sql, params).fetchone()
+    return int(row[0] or 0)
+
+
+def get_investmap_dashboard_summary(
+    conn: sqlite3.Connection,
+    *,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    manager_name: str | None = None,
+) -> dict[str, Any]:
+    """
+    Возвращает read-only сводку для отдельного дашборда Инвесткарты.
+
+    Период применяется к событиям реестра, API-изменениям и датам создания.
+    Активность реестра является текущим состоянием на момент запроса.
+    Фильтр manager_name применяется по текущему назначению карточки.
+    """
+    date_from = _dashboard_normalize_date(
+        date_from,
+        field_name="date_from",
+    )
+    date_to = _dashboard_normalize_date(
+        date_to,
+        field_name="date_to",
+    )
+    manager_name = _dashboard_normalize_manager_name(manager_name)
+
+    if (
+        date_from is not None
+        and date_to is not None
+        and date_from > date_to
+    ):
+        raise ValueError("date_from не может быть позже date_to.")
+
+    cards_join, cards_manager_where, cards_manager_params = (
+        _dashboard_manager_join(manager_name)
+    )
+    cards_join = cards_join.format(id_column="cards.global_id")
+
+    events_join, events_manager_where, events_manager_params = (
+        _dashboard_manager_join(manager_name)
+    )
+    events_join = events_join.format(id_column="events.global_id")
+
+    changes_join, changes_manager_where, changes_manager_params = (
+        _dashboard_manager_join(manager_name)
+    )
+    changes_join = changes_join.format(id_column="changes.global_id")
+
+    cards_base_where = "WHERE 1 = 1" + cards_manager_where
+    events_base_where = "WHERE 1 = 1" + events_manager_where
+    changes_base_where = "WHERE 1 = 1" + changes_manager_where
+
+    created_period_sql, created_period_params = _dashboard_period_where(
+        "cards.object_created_at",
+        date_from,
+        date_to,
+    )
+    events_period_sql, events_period_params = _dashboard_period_where(
+        "events.occurred_at_utc",
+        date_from,
+        date_to,
+    )
+    changes_period_sql, changes_period_params = _dashboard_period_where(
+        "changes.detected_at_utc",
+        date_from,
+        date_to,
+    )
+
+    registry_total = _dashboard_count(
+        conn,
+        f"""
+        SELECT COUNT(*)
+        FROM investmap_rf_monitored_cards AS cards
+        {cards_join}
+        {cards_base_where}
+        """,
+        cards_manager_params,
+    )
+
+    active_cards = _dashboard_count(
+        conn,
+        f"""
+        SELECT COUNT(*)
+        FROM investmap_rf_monitored_cards AS cards
+        {cards_join}
+        {cards_base_where}
+          AND cards.is_active = 1
+        """,
+        cards_manager_params,
+    )
+
+    checked_successfully = _dashboard_count(
+        conn,
+        f"""
+        SELECT COUNT(*)
+        FROM investmap_rf_monitored_cards AS cards
+        {cards_join}
+        {cards_base_where}
+          AND cards.is_active = 1
+          AND cards.last_api_check_status = 'success'
+        """,
+        cards_manager_params,
+    )
+
+    awaiting_first_api_check = _dashboard_count(
+        conn,
+        f"""
+        SELECT COUNT(*)
+        FROM investmap_rf_monitored_cards AS cards
+        {cards_join}
+        {cards_base_where}
+          AND cards.is_active = 1
+          AND cards.last_api_check_status IS NULL
+        """,
+        cards_manager_params,
+    )
+
+    pending_404 = _dashboard_count(
+        conn,
+        f"""
+        SELECT COUNT(*)
+        FROM investmap_rf_monitored_cards AS cards
+        {cards_join}
+        {cards_base_where}
+          AND cards.is_active = 1
+          AND cards.api_not_found_pending_decision = 1
+        """,
+        cards_manager_params,
+    )
+
+    cards_without_created_at = _dashboard_count(
+        conn,
+        f"""
+        SELECT COUNT(*)
+        FROM investmap_rf_monitored_cards AS cards
+        {cards_join}
+        {cards_base_where}
+          AND cards.object_created_at IS NULL
+        """,
+        cards_manager_params,
+    )
+
+    created_in_source = _dashboard_count(
+        conn,
+        f"""
+        SELECT COUNT(*)
+        FROM investmap_rf_monitored_cards AS cards
+        {cards_join}
+        {cards_base_where}
+          AND cards.object_created_at IS NOT NULL
+          {created_period_sql}
+        """,
+        [*cards_manager_params, *created_period_params],
+    )
+
+    event_rows = conn.execute(
+        f"""
+        SELECT
+            events.event_type,
+            COUNT(*) AS count
+        FROM investmap_rf_monitor_registry_events AS events
+        {events_join}
+        {events_base_where}
+          {events_period_sql}
+        GROUP BY events.event_type
+        """,
+        [*events_manager_params, *events_period_params],
+    ).fetchall()
+
+    events_by_type = {
+        row["event_type"]: int(row["count"] or 0)
+        for row in event_rows
+    }
+
+    changed_cards = _dashboard_count(
+        conn,
+        f"""
+        SELECT COUNT(DISTINCT changes.global_id)
+        FROM investmap_rf_card_changes AS changes
+        {changes_join}
+        {changes_base_where}
+          {changes_period_sql}
+        """,
+        [*changes_manager_params, *changes_period_params],
+    )
+
+    field_changes = _dashboard_count(
+        conn,
+        f"""
+        SELECT COUNT(*)
+        FROM investmap_rf_card_changes AS changes
+        {changes_join}
+        {changes_base_where}
+          {changes_period_sql}
+        """,
+        [*changes_manager_params, *changes_period_params],
+    )
+
+    top_changed_rows = conn.execute(
+        f"""
+        SELECT
+            changes.field_path,
+            COUNT(*) AS changes_count,
+            COUNT(DISTINCT changes.global_id) AS cards_count
+        FROM investmap_rf_card_changes AS changes
+        {changes_join}
+        {changes_base_where}
+          {changes_period_sql}
+        GROUP BY changes.field_path
+        ORDER BY changes_count DESC, cards_count DESC, changes.field_path
+        LIMIT 10
+        """,
+        [*changes_manager_params, *changes_period_params],
+    ).fetchall()
+
+    top_changed_fields = []
+
+    for row in top_changed_rows:
+        presentation = _history_field_presentation(row["field_path"])
+        top_changed_fields.append(
+            {
+                "field_path": row["field_path"],
+                "section": presentation["section"],
+                "label": presentation["label"],
+                "changes_count": int(row["changes_count"] or 0),
+                "cards_count": int(row["cards_count"] or 0),
+            }
+        )
+
+    manager_rows = conn.execute(
+        """
+        SELECT
+            COALESCE(
+                NULLIF(TRIM(assignments.manager_name), ''),
+                'Не назначен'
+            ) AS manager_name,
+            COUNT(cards.global_id) AS registry_total,
+            SUM(
+                CASE WHEN cards.is_active = 1 THEN 1 ELSE 0 END
+            ) AS active_cards,
+            SUM(
+                CASE
+                    WHEN cards.is_active = 1
+                     AND cards.last_api_check_status = 'success'
+                    THEN 1
+                    ELSE 0
+                END
+            ) AS checked_successfully,
+            SUM(
+                CASE
+                    WHEN cards.is_active = 1
+                     AND cards.last_api_check_status IS NULL
+                    THEN 1
+                    ELSE 0
+                END
+            ) AS awaiting_first_api_check,
+            SUM(
+                CASE
+                    WHEN cards.is_active = 1
+                     AND cards.api_not_found_pending_decision = 1
+                    THEN 1
+                    ELSE 0
+                END
+            ) AS pending_404,
+            SUM(
+                CASE
+                    WHEN cards.object_created_at IS NOT NULL
+                    THEN 1
+                    ELSE 0
+                END
+            ) AS cards_with_created_at
+        FROM investmap_rf_monitored_cards AS cards
+        LEFT JOIN investmap_rf_card_manager_assignments AS assignments
+            ON assignments.global_id = cards.global_id
+        GROUP BY
+            COALESCE(
+                NULLIF(TRIM(assignments.manager_name), ''),
+                'Не назначен'
+            )
+        ORDER BY active_cards DESC, registry_total DESC, manager_name
+        """
+    ).fetchall()
+
+    by_manager = [
+        {
+            "manager_name": row["manager_name"],
+            "registry_total": int(row["registry_total"] or 0),
+            "active_cards": int(row["active_cards"] or 0),
+            "checked_successfully": int(
+                row["checked_successfully"] or 0
+            ),
+            "awaiting_first_api_check": int(
+                row["awaiting_first_api_check"] or 0
+            ),
+            "pending_404": int(row["pending_404"] or 0),
+            "cards_with_created_at": int(
+                row["cards_with_created_at"] or 0
+            ),
+        }
+        for row in manager_rows
+    ]
+
+    warnings: list[str] = []
+
+    if cards_without_created_at > 0:
+        warnings.append(
+            "Дата создания не заполнена у "
+            f"{cards_without_created_at} из {registry_total} карточек "
+            "реестра мониторинга."
+        )
+
+    if awaiting_first_api_check > 0:
+        warnings.append(
+            "Есть активные карточки без зафиксированной проверки API: "
+            f"{awaiting_first_api_check}."
+        )
+
+    if pending_404 > 0:
+        warnings.append(
+            "Есть карточки, ожидающие решения после подтверждённого "
+            f"HTTP 404: {pending_404}."
+        )
+
+    if date_from is None and date_to is None:
+        warnings.append(
+            "Период не выбран: события, API-изменения и даты создания "
+            "показаны за всё доступное время."
+        )
+
+    return {
+        "filters": {
+            "date_from": date_from,
+            "date_to": date_to,
+            "manager_name": manager_name,
+            "manager_filter_mode": "current_assignment",
+        },
+        "kpi": {
+            "registry_total": registry_total,
+            "active_cards": active_cards,
+            "inactive_cards": registry_total - active_cards,
+            "checked_successfully": checked_successfully,
+            "awaiting_first_api_check": awaiting_first_api_check,
+            "pending_404": pending_404,
+            "created_in_source": created_in_source,
+            "cards_without_created_at": cards_without_created_at,
+            "activated": events_by_type.get("activated", 0),
+            "reactivated": events_by_type.get("reactivated", 0),
+            "api_not_found_detected": events_by_type.get(
+                "api_not_found_detected",
+                0,
+            ),
+            "api_not_found_kept_by_operator": events_by_type.get(
+                "api_not_found_kept_by_operator",
+                0,
+            ),
+            "deactivated_by_404": (
+                events_by_type.get("deactivated_api_not_found", 0)
+                + events_by_type.get(
+                    "deactivated_operator_not_found",
+                    0,
+                )
+            ),
+            "deactivated_by_status": events_by_type.get(
+                "deactivated_status_changed",
+                0,
+            ),
+            "changed_cards": changed_cards,
+            "field_changes": field_changes,
+        },
+        "events_by_type": {
+            event_type: events_by_type.get(event_type, 0)
+            for event_type in _DASHBOARD_EVENT_TYPES
+        },
+        "top_changed_fields": top_changed_fields,
+        "by_manager": by_manager,
+        "warnings": warnings,
+    }
