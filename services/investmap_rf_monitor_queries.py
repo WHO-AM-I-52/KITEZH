@@ -2017,14 +2017,12 @@ def get_investmap_dashboard_field_changes(
             assignments.match_status
         FROM investmap_rf_card_changes AS changes
         {context['changes_join']}
-        {context['changes_base_where']}
-          {context['changes_period_sql']}
         LEFT JOIN latest_snapshots
             ON latest_snapshots.global_id = changes.global_id
         LEFT JOIN investmap_rf_card_snapshots AS snapshots
             ON snapshots.id = latest_snapshots.snapshot_id
-        LEFT JOIN investmap_rf_card_manager_assignments AS assignments
-            ON assignments.global_id = changes.global_id
+        {context['changes_base_where']}
+          {context['changes_period_sql']}
         ORDER BY changes.detected_at_utc DESC, changes.id DESC
         LIMIT ? OFFSET ?
         """,
