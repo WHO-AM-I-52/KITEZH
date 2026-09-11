@@ -244,6 +244,7 @@ _HISTORY_ROOT_FIELD_META: dict[str, tuple[str, str]] = {
 _HISTORY_UTILITY_FIELD_META: dict[str, str] = {
     "availability": "доступность",
     "availableCapacity": "доступная мощность",
+    "freePower": "свободная мощность",
     "connectionFeeMin": "стоимость подключения от",
     "tariffConsumption": "тариф потребления",
     "tariffTransportation": "тариф транспортировки",
