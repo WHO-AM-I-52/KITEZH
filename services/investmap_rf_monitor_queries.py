@@ -1259,7 +1259,7 @@ def get_monitor_registry_events(conn, limit: int = 30):
             events.reason,
             events.changed_by_user_id,
             users.username AS changed_by_username,
-            users.fullname AS changed_by_full_name
+            users.full_name AS changed_by_full_name
         FROM investmap_rf_monitor_registry_events AS events
         LEFT JOIN users
             ON users.id = events.changed_by_user_id
