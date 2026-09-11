@@ -188,6 +188,7 @@ def deactivate_card_not_found_in_api(
         (normalized_global_id,),
     )
 
+    
     _append_event(
         conn,
         global_id=normalized_global_id,
@@ -679,6 +680,8 @@ def import_monitored_cards_xlsx(
                         ),
                     )
 
+                    if object_created_at is not None:
+                        report["object_created_at_updated"] += 1
                     _append_event(
                         conn,
                         global_id=global_id,
