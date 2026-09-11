@@ -8,6 +8,13 @@ try:
     from openpyxl import load_workbook
 except ImportError:
     load_workbook = None
+from services.investmap_rf_manager_assignment import (
+    MATCH_STATUS_AMBIGUOUS,
+    MATCH_STATUS_MATCHED,
+    MATCH_STATUS_MANUAL,
+    MATCH_STATUS_UNMATCHED,
+    update_card_manager_assignment_from_xlsx_municipality,
+)
 
 
 FREE_STATUS = "Свободна"
@@ -509,6 +516,12 @@ def import_monitored_cards_xlsx(
         "object_created_at_column_found": False,
         "object_created_at_updated": 0,
         "object_created_at_invalid": 0,
+        "municipality_column_found": False,
+        "manager_assignments_matched": 0,
+        "manager_assignments_unmatched": 0,
+        "manager_assignments_ambiguous": 0,
+        "manager_assignments_skipped_manual": 0,
+        "manager_assignment_errors": 0,
         "added": 0,
         "reactivated": 0,
         "deactivated": 0,
@@ -533,9 +546,12 @@ def import_monitored_cards_xlsx(
             if normalized and normalized not in header_positions:
                 header_positions[normalized] = index
 
-        global_id_index = header_positions.get("global_id")
+        gglobal_id_index = header_positions.get("global_id")
         status_index = header_positions.get("статус площадки")
+        municipality_index = header_positions.get("муниципальное образование")
         object_created_at_index = header_positions.get("дата создания")
+
+        report["municipality_column_found"] = municipality_index is not None
         report["object_created_at_column_found"] = (
             object_created_at_index is not None
         )
@@ -568,6 +584,12 @@ def import_monitored_cards_xlsx(
                 row[object_created_at_index]
                 if object_created_at_index is not None
                 and object_created_at_index < len(row)
+                else None
+            )
+            municipality_value = (
+                row[municipality_index]
+                if municipality_index is not None
+                and municipality_index < len(row)
                 else None
             )
             object_created_at = _parse_object_created_at(
@@ -619,6 +641,42 @@ def import_monitored_cards_xlsx(
                     }
                 )
                 continue
+
+            if municipality_index is not None:
+                try:
+                    assignment_result = (
+                        update_card_manager_assignment_from_xlsx_municipality(
+                            conn,
+                            global_id=global_id,
+                            municipality_raw=municipality_value,
+                            notify_admins=True,
+                        )
+                    )
+                except Exception as exc:
+                    report["manager_assignment_errors"] += 1
+                    report["errors"].append(
+                        {
+                            "row": row_number,
+                            "global_id": global_id,
+                            "reason": (
+                                "Не удалось назначить территориального "
+                                f"управляющего по XLSX: {exc}"
+                            ),
+                        }
+                    )
+                else:
+                    assignment_status = assignment_result["status"]
+
+                    if assignment_status == MATCH_STATUS_MATCHED:
+                        report["manager_assignments_matched"] += 1
+                    elif assignment_status == MATCH_STATUS_UNMATCHED:
+                        report["manager_assignments_unmatched"] += 1
+                    elif assignment_status == MATCH_STATUS_AMBIGUOUS:
+                        report["manager_assignments_ambiguous"] += 1
+                    elif assignment_status == MATCH_STATUS_MANUAL:
+                        report[
+                            "manager_assignments_skipped_manual"
+                        ] += 1
 
             if object_created_at is not None:
                 cursor = conn.execute(
