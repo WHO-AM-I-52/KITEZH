@@ -2220,7 +2220,7 @@ def get_investmap_dashboard_registry_events(
             events.reason,
             events.changed_by_user_id,
             users.username AS changed_by_username,
-            users.fullname AS changed_by_full_name,
+            users.full_name AS changed_by_full_name,
             snapshots.payload_json,
             assignments.municipality_raw,
             assignments.manager_name,
@@ -2361,8 +2361,6 @@ def get_investmap_dashboard_created_in_source(
             ON latest_snapshot_ids.global_id = cards.global_id
         LEFT JOIN investmap_rf_card_snapshots AS snapshots
             ON snapshots.id = latest_snapshot_ids.snapshot_id
-        LEFT JOIN investmap_rf_card_manager_assignments AS assignments
-            ON assignments.global_id = cards.global_id
         {cards_base_where}
           {created_period_sql}
         ORDER BY cards.object_created_at DESC, cards.global_id DESC
