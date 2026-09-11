@@ -1351,11 +1351,24 @@ def _dashboard_manager_join(
     manager_name: str | None,
 ) -> tuple[str, str, list[Any]]:
     """
-    Возвращает JOIN и условие текущего назначения территориального управляющего.
+    Возвращает JOIN и условие текущего назначения
+    территориального управляющего.
 
-    Фильтр действует по актуальному назначению карточки. Историческая
-    принадлежность управляющего на момент события в текущей схеме не хранится.
+    Фильтр действует по актуальному назначению карточки.
+    Историческая принадлежность управляющего на момент события
+    в текущей схеме не хранится.
     """
-    join_sql = """
-        LEFT JOIN investmap_rf_card_manager_assignments AS assignments
-            ON assignments.gl
+    join_sql = (
+        "LEFT JOIN investmap_rf_card_manager_assignments "
+        "AS assignments "
+        "ON assignments.global_id = {id_column}"
+    )
+
+    if manager_name is None:
+        return join_sql, "", []
+
+    return (
+        join_sql,
+        " AND assignments.manager_name = ?",
+        [manager_name],
+    )
