@@ -1761,3 +1761,350 @@ def get_investmap_dashboard_summary(
         "by_manager": by_manager,
         "warnings": warnings,
     }
+
+
+_DASHBOARD_DETAILS_PER_PAGE = 50
+_DASHBOARD_DETAILS_MAX_PER_PAGE = 100
+_DASHBOARD_DETAILS_KINDS = frozenset({
+    "changed_cards",
+    "field_changes",
+})
+
+
+def _dashboard_validate_details_pagination(
+    limit: int,
+    offset: int,
+) -> tuple[int, int]:
+    """Проверяет параметры постраничной выдачи детализации."""
+    if (
+        isinstance(limit, bool)
+        or not isinstance(limit, int)
+        or limit < 1
+    ):
+        raise ValueError("limit должен быть положительным целым числом.")
+
+    if (
+        isinstance(offset, bool)
+        or not isinstance(offset, int)
+        or offset < 0
+    ):
+        raise ValueError("offset должен быть неотрицательным целым числом.")
+
+    return min(limit, _DASHBOARD_DETAILS_MAX_PER_PAGE), offset
+
+
+def _dashboard_details_context(
+    *,
+    date_from: str | None,
+    date_to: str | None,
+    manager_name: str | None,
+) -> dict[str, Any]:
+    """Нормализует общие фильтры детальных реестров дашборда."""
+    normalized_date_from = _dashboard_normalize_date(
+        date_from,
+        field_name="date_from",
+    )
+    normalized_date_to = _dashboard_normalize_date(
+        date_to,
+        field_name="date_to",
+    )
+    normalized_manager_name = _dashboard_normalize_manager_name(
+        manager_name
+    )
+
+    if (
+        normalized_date_from is not None
+        and normalized_date_to is not None
+        and normalized_date_from > normalized_date_to
+    ):
+        raise ValueError("date_from не может быть позже date_to.")
+
+    changes_join, changes_manager_where, changes_manager_params = (
+        _dashboard_manager_join(normalized_manager_name)
+    )
+    changes_join = changes_join.format(id_column="changes.global_id")
+    changes_base_where = "WHERE 1 = 1" + changes_manager_where
+    changes_period_sql, changes_period_params = _dashboard_period_where(
+        "changes.detected_at_utc",
+        normalized_date_from,
+        normalized_date_to,
+    )
+
+    return {
+        "date_from": normalized_date_from,
+        "date_to": normalized_date_to,
+        "manager_name": normalized_manager_name,
+        "changes_join": changes_join,
+        "changes_base_where": changes_base_where,
+        "changes_period_sql": changes_period_sql,
+        "changes_params": [
+            *changes_manager_params,
+            *changes_period_params,
+        ],
+    }
+
+
+def get_investmap_dashboard_changed_cards(
+    conn: sqlite3.Connection,
+    *,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    manager_name: str | None = None,
+    limit: int = _DASHBOARD_DETAILS_PER_PAGE,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """Возвращает постраничный список карточек с API-изменениями."""
+    limit, offset = _dashboard_validate_details_pagination(limit, offset)
+    context = _dashboard_details_context(
+        date_from=date_from,
+        date_to=date_to,
+        manager_name=manager_name,
+    )
+
+    total_row = conn.execute(
+        f"""
+        SELECT COUNT(*)
+        FROM (
+            SELECT changes.global_id
+            FROM investmap_rf_card_changes AS changes
+            {context['changes_join']}
+            {context['changes_base_where']}
+              {context['changes_period_sql']}
+            GROUP BY changes.global_id
+        ) AS changed_cards
+        """,
+        context["changes_params"],
+    ).fetchone()
+    total = int(total_row[0] or 0)
+
+    rows = conn.execute(
+        f"""
+        WITH filtered_changes AS (
+            SELECT
+                changes.global_id,
+                changes.detected_at_utc
+            FROM investmap_rf_card_changes AS changes
+            {context['changes_join']}
+            {context['changes_base_where']}
+              {context['changes_period_sql']}
+        ),
+        changed_cards AS (
+            SELECT
+                global_id,
+                COUNT(*) AS changes_count,
+                MIN(detected_at_utc) AS first_changed_at_utc,
+                MAX(detected_at_utc) AS last_changed_at_utc
+            FROM filtered_changes
+            GROUP BY global_id
+        ),
+        latest_snapshots AS (
+            SELECT
+                global_id,
+                MAX(id) AS snapshot_id
+            FROM investmap_rf_card_snapshots
+            GROUP BY global_id
+        )
+        SELECT
+            changed_cards.global_id,
+            changed_cards.changes_count,
+            changed_cards.first_changed_at_utc,
+            changed_cards.last_changed_at_utc,
+            snapshots.payload_json,
+            assignments.municipality_raw,
+            assignments.manager_name,
+            assignments.match_status
+        FROM changed_cards
+        LEFT JOIN latest_snapshots
+            ON latest_snapshots.global_id = changed_cards.global_id
+        LEFT JOIN investmap_rf_card_snapshots AS snapshots
+            ON snapshots.id = latest_snapshots.snapshot_id
+        LEFT JOIN investmap_rf_card_manager_assignments AS assignments
+            ON assignments.global_id = changed_cards.global_id
+        ORDER BY
+            changed_cards.last_changed_at_utc DESC,
+            changed_cards.changes_count DESC,
+            changed_cards.global_id DESC
+        LIMIT ? OFFSET ?
+        """,
+        [*context["changes_params"], limit, offset],
+    ).fetchall()
+
+    items: list[dict[str, Any]] = []
+
+    for row in rows:
+        payload = _json_or_none(row["payload_json"])
+        overview = _build_site_overview(payload)
+
+        items.append(
+            {
+                "global_id": row["global_id"],
+                "site_name": overview["title"],
+                "municipality_name": row["municipality_raw"],
+                "manager_name": row["manager_name"],
+                "manager_match_status": row["match_status"],
+                "changes_count": int(row["changes_count"] or 0),
+                "first_changed_at_utc": row["first_changed_at_utc"],
+                "last_changed_at_utc": row["last_changed_at_utc"],
+            }
+        )
+
+    return {
+        "kind": "changed_cards",
+        "title": "Изменённые карточки",
+        "filters": {
+            "date_from": context["date_from"],
+            "date_to": context["date_to"],
+            "manager_name": context["manager_name"],
+            "manager_filter_mode": "current_assignment",
+        },
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "items": items,
+    }
+
+
+def get_investmap_dashboard_field_changes(
+    conn: sqlite3.Connection,
+    *,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    manager_name: str | None = None,
+    limit: int = _DASHBOARD_DETAILS_PER_PAGE,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """Возвращает постраничный детальный журнал API-изменений полей."""
+    limit, offset = _dashboard_validate_details_pagination(limit, offset)
+    context = _dashboard_details_context(
+        date_from=date_from,
+        date_to=date_to,
+        manager_name=manager_name,
+    )
+
+    total = _dashboard_count(
+        conn,
+        f"""
+        SELECT COUNT(*)
+        FROM investmap_rf_card_changes AS changes
+        {context['changes_join']}
+        {context['changes_base_where']}
+          {context['changes_period_sql']}
+        """,
+        context["changes_params"],
+    )
+
+    rows = conn.execute(
+        f"""
+        WITH latest_snapshots AS (
+            SELECT
+                global_id,
+                MAX(id) AS snapshot_id
+            FROM investmap_rf_card_snapshots
+            GROUP BY global_id
+        )
+        SELECT
+            changes.id,
+            changes.global_id,
+            changes.previous_snapshot_id,
+            changes.current_snapshot_id,
+            changes.field_path,
+            changes.old_value_json,
+            changes.new_value_json,
+            changes.detected_at_utc,
+            snapshots.payload_json,
+            assignments.municipality_raw,
+            assignments.manager_name,
+            assignments.match_status
+        FROM investmap_rf_card_changes AS changes
+        {context['changes_join']}
+        {context['changes_base_where']}
+          {context['changes_period_sql']}
+        LEFT JOIN latest_snapshots
+            ON latest_snapshots.global_id = changes.global_id
+        LEFT JOIN investmap_rf_card_snapshots AS snapshots
+            ON snapshots.id = latest_snapshots.snapshot_id
+        LEFT JOIN investmap_rf_card_manager_assignments AS assignments
+            ON assignments.global_id = changes.global_id
+        ORDER BY changes.detected_at_utc DESC, changes.id DESC
+        LIMIT ? OFFSET ?
+        """,
+        [*context["changes_params"], limit, offset],
+    ).fetchall()
+
+    items: list[dict[str, Any]] = []
+
+    for row in rows:
+        payload = _json_or_none(row["payload_json"])
+        overview = _build_site_overview(payload)
+        change = _build_history_change(row)
+
+        items.append(
+            {
+                "change_id": change["change_id"],
+                "global_id": row["global_id"],
+                "site_name": overview["title"],
+                "municipality_name": row["municipality_raw"],
+                "manager_name": row["manager_name"],
+                "manager_match_status": row["match_status"],
+                "previous_snapshot_id": change["previous_snapshot_id"],
+                "current_snapshot_id": change["current_snapshot_id"],
+                "field_path": change["field_path"],
+                "section": change["section"],
+                "label": change["label"],
+                "old_value": change["old_value"],
+                "new_value": change["new_value"],
+                "old_display": change["old_display"],
+                "new_display": change["new_display"],
+                "has_complex_value": change["has_complex_value"],
+                "detected_at_utc": change["detected_at_utc"],
+            }
+        )
+
+    return {
+        "kind": "field_changes",
+        "title": "Изменения полей",
+        "filters": {
+            "date_from": context["date_from"],
+            "date_to": context["date_to"],
+            "manager_name": context["manager_name"],
+            "manager_filter_mode": "current_assignment",
+        },
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "items": items,
+    }
+
+
+def get_investmap_dashboard_details(
+    conn: sqlite3.Connection,
+    *,
+    kind: str,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    manager_name: str | None = None,
+    limit: int = _DASHBOARD_DETAILS_PER_PAGE,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """Возвращает детальный реестр для поддерживаемого KPI дашборда."""
+    if kind not in _DASHBOARD_DETAILS_KINDS:
+        raise ValueError("kind должен быть changed_cards или field_changes.")
+
+    if kind == "changed_cards":
+        return get_investmap_dashboard_changed_cards(
+            conn,
+            date_from=date_from,
+            date_to=date_to,
+            manager_name=manager_name,
+            limit=limit,
+            offset=offset,
+        )
+
+    return get_investmap_dashboard_field_changes(
+        conn,
+        date_from=date_from,
+        date_to=date_to,
+        manager_name=manager_name,
+        limit=limit,
+        offset=offset,
+    )
