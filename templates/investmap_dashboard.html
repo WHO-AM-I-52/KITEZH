@@ -341,6 +341,79 @@
     color: #5b6770;
   }
 
+  .dashboard-kpi.is-clickable {
+    cursor: pointer;
+    transition: box-shadow .18s ease, transform .18s ease;
+  }
+
+  .dashboard-kpi.is-clickable:hover,
+  .dashboard-kpi.is-clickable:focus-visible {
+    box-shadow: 0 5px 16px rgba(25, 42, 58, 0.16);
+    outline: none;
+    transform: translateY(-2px);
+  }
+
+  .dashboard-kpi.is-clickable:focus-visible {
+    outline: 3px solid rgba(27, 94, 123, 0.35);
+    outline-offset: 2px;
+  }
+
+  .dashboard-details-meta {
+    color: #6c757d;
+    font-size: 12px;
+    line-height: 1.4;
+    margin: 0 0 12px;
+  }
+
+  .dashboard-details-table-wrap {
+    max-height: 56vh;
+    overflow: auto;
+  }
+
+  .dashboard-details-table {
+    min-width: 900px;
+  }
+
+  .dashboard-details-table td {
+    max-width: 300px;
+  }
+
+  .dashboard-details-site-link {
+    color: #1B5E7B;
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .dashboard-details-site-link:hover {
+    text-decoration: underline;
+  }
+
+  .dashboard-details-value {
+    display: block;
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .dashboard-details-value[title] {
+    cursor: help;
+  }
+
+  .dashboard-details-pagination {
+    align-items: center;
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: 14px;
+  }
+
+  .dashboard-details-pagination span {
+    color: #6c757d;
+    font-size: 12px;
+    margin-right: auto;
+  }
+  
   @media (max-width: 1200px) {
     .dashboard-kpi-grid {
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -521,7 +594,13 @@
       </div>
     </article>
 
-    <article class="dashboard-kpi is-primary">
+    <article
+  class="dashboard-kpi is-primary is-clickable"
+  data-details-kind="changed_cards"
+  role="button"
+  tabindex="0"
+  title="Открыть список изменённых карточек"
+>
       <div class="dashboard-kpi-label">Изменённые карточки</div>
       <div class="dashboard-kpi-value" id="kpiChangedCards">—</div>
       <div class="dashboard-kpi-note">
@@ -529,7 +608,13 @@
       </div>
     </article>
 
-    <article class="dashboard-kpi is-primary">
+    <article
+  class="dashboard-kpi is-primary is-clickable"
+  data-details-kind="field_changes"
+  role="button"
+  tabindex="0"
+  title="Открыть журнал изменений полей"
+>
       <div class="dashboard-kpi-label">Изменения полей</div>
       <div class="dashboard-kpi-value" id="kpiFieldChanges">—</div>
       <div class="dashboard-kpi-note">
@@ -637,11 +722,54 @@
   </section>
 </div>
 
+<div
+  class="modal fade"
+  id="dashboardDetailsModal"
+  tabindex="-1"
+  aria-labelledby="dashboardDetailsModalTitle"
+  aria-hidden="true"
+>
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div>
+          <h5 class="modal-title" id="dashboardDetailsModalTitle">
+            Детализация
+          </h5>
+          <div class="dashboard-details-meta" id="dashboardDetailsMeta"></div>
+        </div>
+        <button
+          type="button"
+          class="btn-close"
+          data-bs-dismiss="modal"
+          aria-label="Закрыть"
+        ></button>
+      </div>
+      <div class="modal-body">
+        <div id="dashboardDetailsError" class="alert alert-danger d-none"></div>
+        <div id="dashboardDetailsLoading" class="dashboard-loading">
+          <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
+          <span>Загружаем детализацию…</span>
+        </div>
+        <div id="dashboardDetailsContent"></div>
+        <div class="dashboard-details-pagination" id="dashboardDetailsPagination"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 (function () {
   "use strict";
 
   const endpoint = "{{ url_for('investmap.investmap_dashboard_data') }}";
+  const detailsEndpoint = "{{ url_for('investmap.investmap_dashboard_details') }}";
+  const monitorDetailBaseUrl = "{{ url_for('investmap.investmap_rf_monitor') }}";
+  const detailsPageSize = 50;
+  let detailsKind = null;
+  let detailsOffset = 0;
+  let detailsModal = null;
+
 
   const elements = {
     form: document.getElementById("dashboardFilters"),
@@ -654,6 +782,13 @@
     warnings: document.getElementById("dashboardWarnings"),
     managersTableBody: document.getElementById("managersTableBody"),
     changedFieldsTableBody: document.getElementById("changedFieldsTableBody"),
+    detailsModal: document.getElementById("dashboardDetailsModal"),
+    detailsTitle: document.getElementById("dashboardDetailsModalTitle"),
+    detailsMeta: document.getElementById("dashboardDetailsMeta"),
+    detailsError: document.getElementById("dashboardDetailsError"),
+    detailsLoading: document.getElementById("dashboardDetailsLoading"),
+    detailsContent: document.getElementById("dashboardDetailsContent"),
+    detailsPagination: document.getElementById("dashboardDetailsPagination"),
     kpi: {
       registryTotal: document.getElementById("kpiRegistryTotal"),
       activeCards: document.getElementById("kpiActiveCards"),
@@ -845,6 +980,241 @@
 
     elements.managerName.innerHTML = options.join("");
   }
+
+  function formatDashboardDateTime(value) {
+  if (!value) {
+    return "—";
+  }
+
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return String(value);
+  }
+
+  return new Intl.DateTimeFormat("ru-RU", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(parsed);
+}
+
+function getDetailsParams(offset) {
+  const params = new URLSearchParams();
+  params.set("kind", detailsKind);
+  params.set("limit", String(detailsPageSize));
+  params.set("offset", String(offset));
+
+  if (elements.dateFrom.value) {
+    params.set("date_from", elements.dateFrom.value);
+  }
+
+  if (elements.dateTo.value) {
+    params.set("date_to", elements.dateTo.value);
+  }
+
+  if (elements.managerName.value) {
+    params.set("manager_name", elements.managerName.value);
+  }
+
+  return params;
+}
+
+function setDetailsLoading(isLoading) {
+  elements.detailsLoading.classList.toggle("is-visible", isLoading);
+}
+
+function setDetailsError(message) {
+  elements.detailsError.textContent = message || "";
+  elements.detailsError.classList.toggle("d-none", !message);
+}
+
+function monitorDetailUrl(globalId) {
+  return monitorDetailBaseUrl + "/" + encodeURIComponent(globalId);
+}
+
+function renderChangedCardsDetails(items) {
+  const rows = Array.isArray(items) ? items : [];
+
+  if (!rows.length) {
+    return '<div class="dashboard-empty">Нет изменённых карточек за выбранный период.</div>';
+  }
+
+  return (
+    '<div class="dashboard-details-table-wrap"><table class="dashboard-table dashboard-details-table">' +
+    "<thead><tr>" +
+    "<th>ID</th><th>Площадка</th><th>Муниципалитет</th>" +
+    "<th>Управляющий</th><th class=\"number\">Изменений</th>" +
+    "<th>Первое изменение</th><th>Последнее изменение</th>" +
+    "</tr></thead><tbody>" +
+    rows.map(function (item) {
+      const title = item.site_name || "Без наименования";
+      return (
+        "<tr>" +
+        "<td><a class=\"dashboard-details-site-link\" href=\"" +
+        escapeHtml(monitorDetailUrl(item.global_id)) +
+        "\">" + escapeHtml(item.global_id) + "</a></td>" +
+        "<td>" + escapeHtml(title) + "</td>" +
+        "<td>" + escapeHtml(item.municipality_name || "—") + "</td>" +
+        "<td>" + escapeHtml(item.manager_name || "Не назначен") + "</td>" +
+        '<td class="number">' + number(item.changes_count) + "</td>" +
+        "<td>" + escapeHtml(formatDashboardDateTime(item.first_changed_at_utc)) + "</td>" +
+        "<td>" + escapeHtml(formatDashboardDateTime(item.last_changed_at_utc)) + "</td>" +
+        "</tr>"
+      );
+    }).join("") +
+    "</tbody></table></div>"
+  );
+}
+
+function detailsValue(value) {
+  const text = String(value || "Не указано");
+  return (
+    '<span class="dashboard-details-value" title="' +
+    escapeHtml(text) +
+    '">' +
+    escapeHtml(text) +
+    "</span>"
+  );
+}
+
+function renderFieldChangesDetails(items) {
+  const rows = Array.isArray(items) ? items : [];
+
+  if (!rows.length) {
+    return '<div class="dashboard-empty">Нет изменений полей за выбранный период.</div>';
+  }
+
+  return (
+    '<div class="dashboard-details-table-wrap"><table class="dashboard-table dashboard-details-table">' +
+    "<thead><tr>" +
+    "<th>Дата</th><th>ID</th><th>Площадка</th><th>Управляющий</th>" +
+    "<th>Раздел</th><th>Поле</th><th>Было</th><th>Стало</th>" +
+    "</tr></thead><tbody>" +
+    rows.map(function (item) {
+      const title = item.site_name || "Без наименования";
+      return (
+        "<tr>" +
+        "<td>" + escapeHtml(formatDashboardDateTime(item.detected_at_utc)) + "</td>" +
+        "<td><a class=\"dashboard-details-site-link\" href=\"" +
+        escapeHtml(monitorDetailUrl(item.global_id)) +
+        "\">" + escapeHtml(item.global_id) + "</a></td>" +
+        "<td>" + escapeHtml(title) + "</td>" +
+        "<td>" + escapeHtml(item.manager_name || "Не назначен") + "</td>" +
+        "<td>" + escapeHtml(item.section) + "</td>" +
+        "<td>" + escapeHtml(item.label) + "</td>" +
+        "<td>" + detailsValue(item.old_display) + "</td>" +
+        "<td>" + detailsValue(item.new_display) + "</td>" +
+        "</tr>"
+      );
+    }).join("") +
+    "</tbody></table></div>"
+  );
+}
+
+function renderDetailsPagination(payload) {
+  const total = Number(payload.total || 0);
+  const limit = Number(payload.limit || detailsPageSize);
+  const offset = Number(payload.offset || 0);
+  const first = total ? offset + 1 : 0;
+  const last = Math.min(offset + limit, total);
+  const previousDisabled = offset <= 0 ? " disabled" : "";
+  const nextDisabled = offset + limit >= total ? " disabled" : "";
+
+  elements.detailsPagination.innerHTML =
+    "<span>Показано " + number(first) + "–" + number(last) +
+    " из " + number(total) + "</span>" +
+    '<button type="button" class="btn btn-sm btn-outline-secondary" ' +
+    'data-details-page="previous"' + previousDisabled + ">Назад</button>" +
+    '<button type="button" class="btn btn-sm btn-outline-secondary" ' +
+    'data-details-page="next"' + nextDisabled + ">Далее</button>";
+
+  elements.detailsPagination.querySelectorAll("[data-details-page]").forEach(
+    function (button) {
+      button.addEventListener("click", function () {
+        const direction = button.dataset.detailsPage;
+        const nextOffset = direction === "next"
+          ? offset + limit
+          : Math.max(0, offset - limit);
+        loadDetails(nextOffset);
+      });
+    }
+  );
+}
+
+async function loadDetails(offset) {
+  detailsOffset = offset;
+  setDetailsError("");
+  setDetailsLoading(true);
+  elements.detailsContent.innerHTML = "";
+  elements.detailsPagination.innerHTML = "";
+
+  try {
+    const response = await fetch(
+      detailsEndpoint + "?" + getDetailsParams(offset).toString(),
+      {
+        credentials: "same-origin",
+        headers: { "Accept": "application/json" },
+      }
+    );
+    const payload = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        payload && payload.error
+          ? payload.error
+          : "Не удалось загрузить детализацию."
+      );
+    }
+
+    elements.detailsTitle.textContent =
+      (payload.title || "Детализация") + ": " + number(payload.total);
+    elements.detailsMeta.textContent =
+      "Текущие фильтры: " +
+      (payload.filters && payload.filters.date_from
+        ? "с " + payload.filters.date_from
+        : "за всё время") +
+      (payload.filters && payload.filters.date_to
+        ? " по " + payload.filters.date_to
+        : "") +
+      (payload.filters && payload.filters.manager_name
+        ? "; управляющий: " + payload.filters.manager_name
+        : "; все управляющие");
+
+    elements.detailsContent.innerHTML = payload.kind === "changed_cards"
+      ? renderChangedCardsDetails(payload.items)
+      : renderFieldChangesDetails(payload.items);
+    renderDetailsPagination(payload);
+  } catch (error) {
+    setDetailsError(error.message || "Не удалось загрузить детализацию.");
+  } finally {
+    setDetailsLoading(false);
+  }
+}
+
+function openDetails(kind) {
+  detailsKind = kind;
+  detailsOffset = 0;
+
+  if (!detailsModal) {
+    detailsModal = new bootstrap.Modal(elements.detailsModal);
+  }
+
+  detailsModal.show();
+  loadDetails(0);
+}
+
+document.querySelectorAll("[data-details-kind]").forEach(function (card) {
+  card.addEventListener("click", function () {
+    openDetails(card.dataset.detailsKind);
+  });
+
+  card.addEventListener("keydown", function (event) {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      openDetails(card.dataset.detailsKind);
+    }
+  });
+});
 
   async function loadDashboard() {
     setError("");
