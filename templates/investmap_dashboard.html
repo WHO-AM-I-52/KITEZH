@@ -1,0 +1,924 @@
+{% extends "base.html" %}
+
+{% block title %}Дашборд Инвесткарты — KITEZH{% endblock %}
+
+{% block content %}
+<style>
+  .investmap-dashboard {
+    max-width: 1600px;
+    margin: 0 auto;
+  }
+
+  .dashboard-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+
+  .dashboard-heading h1 {
+    margin: 0;
+    color: #1B5E7B;
+    font-size: 25px;
+    font-weight: 700;
+  }
+
+  .dashboard-heading p {
+    margin: 6px 0 0;
+    color: #6c757d;
+    font-size: 14px;
+  }
+
+  .dashboard-source-note {
+    flex: 0 0 auto;
+    border: 1px solid #cfe2ff;
+    border-radius: 8px;
+    background: #f3f8ff;
+    color: #1B5E7B;
+    font-size: 12px;
+    line-height: 1.35;
+    max-width: 330px;
+    padding: 9px 11px;
+  }
+
+  .dashboard-filter-card,
+  .dashboard-panel {
+    border: 1px solid #dce4eb;
+    border-radius: 10px;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(25, 42, 58, 0.06);
+  }
+
+  .dashboard-filter-card {
+    margin-bottom: 20px;
+    padding: 16px;
+  }
+
+  .dashboard-filter-grid {
+    display: grid;
+    grid-template-columns: minmax(155px, 1fr) minmax(155px, 1fr)
+      minmax(240px, 1.5fr) auto;
+    align-items: end;
+    gap: 12px;
+  }
+
+  .dashboard-filter-grid label {
+    display: block;
+    color: #455a64;
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 5px;
+  }
+
+  .dashboard-filter-grid input,
+  .dashboard-filter-grid select {
+    width: 100%;
+    border: 1px solid #b9c8d3;
+    border-radius: 6px;
+    color: #243746;
+    font-size: 14px;
+    min-height: 38px;
+    padding: 7px 9px;
+  }
+
+  .dashboard-filter-actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  .dashboard-filter-actions .btn {
+    min-height: 38px;
+    white-space: nowrap;
+  }
+
+  .dashboard-period-shortcuts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    margin-top: 12px;
+  }
+
+  .dashboard-period-shortcuts button {
+    border: 1px solid #b9c8d3;
+    border-radius: 14px;
+    background: #fff;
+    color: #1B5E7B;
+    cursor: pointer;
+    font-size: 12px;
+    padding: 4px 10px;
+  }
+
+  .dashboard-period-shortcuts button:hover {
+    background: #eaf4f8;
+  }
+
+  .dashboard-loading {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    color: #1B5E7B;
+    font-size: 13px;
+    margin: 0 0 14px;
+  }
+
+  .dashboard-loading.is-visible {
+    display: flex;
+  }
+
+  .dashboard-error {
+    display: none;
+    margin-bottom: 16px;
+  }
+
+  .dashboard-error.is-visible {
+    display: block;
+  }
+
+  .dashboard-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 14px;
+    margin-bottom: 20px;
+  }
+
+  .dashboard-kpi {
+    border: 1px solid #dce4eb;
+    border-radius: 10px;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(25, 42, 58, 0.06);
+    min-height: 126px;
+    padding: 15px;
+  }
+
+  .dashboard-kpi.is-primary {
+    border-top: 4px solid #1B5E7B;
+  }
+
+  .dashboard-kpi.is-positive {
+    border-top: 4px solid #198754;
+  }
+
+  .dashboard-kpi.is-warning {
+    border-top: 4px solid #d39e00;
+  }
+
+  .dashboard-kpi.is-danger {
+    border-top: 4px solid #dc3545;
+  }
+
+  .dashboard-kpi-label {
+    color: #546e7a;
+    font-size: 12px;
+    line-height: 1.3;
+    min-height: 31px;
+  }
+
+  .dashboard-kpi-value {
+    color: #1a2a3a;
+    font-size: 29px;
+    font-weight: 700;
+    line-height: 1.15;
+    margin-top: 8px;
+  }
+
+  .dashboard-kpi-note {
+    color: #7b8b95;
+    font-size: 11px;
+    line-height: 1.3;
+    margin-top: 7px;
+  }
+
+  .dashboard-layout-two {
+    display: grid;
+    grid-template-columns: minmax(0, 1.3fr) minmax(360px, 0.7fr);
+    gap: 20px;
+    margin-bottom: 20px;
+  }
+
+  .dashboard-panel {
+    overflow: hidden;
+  }
+
+  .dashboard-panel-head {
+    align-items: center;
+    border-bottom: 1px solid #e3e9ed;
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 13px 16px;
+  }
+
+  .dashboard-panel-head h2 {
+    color: #1a2a3a;
+    font-size: 16px;
+    font-weight: 700;
+    margin: 0;
+  }
+
+  .dashboard-panel-head span {
+    color: #78909c;
+    font-size: 11px;
+    text-align: right;
+  }
+
+  .dashboard-panel-body {
+    padding: 0;
+  }
+
+  .dashboard-table-wrap {
+    overflow-x: auto;
+  }
+
+  .dashboard-table {
+    border-collapse: collapse;
+    margin: 0;
+    min-width: 640px;
+    width: 100%;
+  }
+
+  .dashboard-table th,
+  .dashboard-table td {
+    border-bottom: 1px solid #edf1f3;
+    padding: 10px 12px;
+    text-align: left;
+    vertical-align: middle;
+  }
+
+  .dashboard-table th {
+    background: #f7fafb;
+    color: #50616d;
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .dashboard-table td {
+    color: #2d3f4a;
+    font-size: 13px;
+  }
+
+  .dashboard-table tr:last-child td {
+    border-bottom: 0;
+  }
+
+  .dashboard-table .number {
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+
+  .dashboard-empty {
+    color: #78909c;
+    font-size: 13px;
+    padding: 24px 16px;
+    text-align: center;
+  }
+
+  .dashboard-warning-list {
+    list-style: none;
+    margin: 0 0 20px;
+    padding: 0;
+  }
+
+  .dashboard-warning-list li {
+    align-items: flex-start;
+    background: #fff8e1;
+    border: 1px solid #ffe69c;
+    border-radius: 7px;
+    color: #785600;
+    display: flex;
+    font-size: 13px;
+    gap: 9px;
+    line-height: 1.4;
+    margin-bottom: 8px;
+    padding: 10px 12px;
+  }
+
+  .dashboard-warning-list li:last-child {
+    margin-bottom: 0;
+  }
+
+  .dashboard-warning-list .bi {
+    margin-top: 1px;
+  }
+
+  .dashboard-metric-definition {
+    color: #607d8b;
+    font-size: 12px;
+    line-height: 1.45;
+    padding: 14px 16px 16px;
+  }
+
+  .dashboard-metric-definition p {
+    margin: 0 0 8px;
+  }
+
+  .dashboard-metric-definition p:last-child {
+    margin-bottom: 0;
+  }
+
+  .dashboard-status {
+    border-radius: 12px;
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 8px;
+    white-space: nowrap;
+  }
+
+  .dashboard-status.ok {
+    background: #d1e7dd;
+    color: #0f5132;
+  }
+
+  .dashboard-status.pending {
+    background: #fff3cd;
+    color: #664d03;
+  }
+
+  .dashboard-status.none {
+    background: #e9ecef;
+    color: #5b6770;
+  }
+
+  @media (max-width: 1200px) {
+    .dashboard-kpi-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .dashboard-layout-two {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 850px) {
+    .dashboard-heading {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .dashboard-source-note {
+      max-width: none;
+    }
+
+    .dashboard-filter-grid {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .dashboard-filter-actions {
+      grid-column: 1 / -1;
+    }
+  }
+
+  @media (max-width: 600px) {
+    .dashboard-kpi-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .dashboard-filter-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .dashboard-filter-actions {
+      grid-column: auto;
+    }
+
+    .dashboard-kpi-value {
+      font-size: 25px;
+    }
+  }
+</style>
+
+<div class="investmap-dashboard">
+  <div class="dashboard-heading">
+    <div>
+      <h1>
+        <i class="bi bi-bar-chart-line-fill me-2"></i>
+        Дашборд Инвесткарты
+      </h1>
+      <p>
+        Сводка мониторинга площадок, изменений API и событий реестра.
+      </p>
+    </div>
+    <div class="dashboard-source-note">
+      <strong>Режим просмотра.</strong><br>
+      Экран использует сохранённые данные KITEZH и не запускает импорт,
+      API-проверку или синхронизацию площадок.
+    </div>
+  </div>
+
+  <div class="dashboard-filter-card">
+    <form id="dashboardFilters">
+      <div class="dashboard-filter-grid">
+        <div>
+          <label for="dateFrom">Начало периода</label>
+          <input id="dateFrom" name="date_from" type="date">
+        </div>
+
+        <div>
+          <label for="dateTo">Конец периода</label>
+          <input id="dateTo" name="date_to" type="date">
+        </div>
+
+        <div>
+          <label for="managerName">Территориальный управляющий</label>
+          <select id="managerName" name="manager_name">
+            <option value="">Все управляющие</option>
+          </select>
+        </div>
+
+        <div class="dashboard-filter-actions">
+          <button class="btn btn-primary" type="submit">
+            <i class="bi bi-funnel-fill me-1"></i>Применить
+          </button>
+          <button class="btn btn-outline-secondary" id="resetFilters" type="button">
+            Сбросить
+          </button>
+        </div>
+      </div>
+
+      <div class="dashboard-period-shortcuts" aria-label="Быстрый выбор периода">
+        <button type="button" data-period="7">7 дней</button>
+        <button type="button" data-period="30">30 дней</button>
+        <button type="button" data-period="month">Текущий месяц</button>
+        <button type="button" data-period="prev_month">Предыдущий месяц</button>
+        <button type="button" data-period="all">Всё время</button>
+      </div>
+    </form>
+  </div>
+
+  <div id="dashboardLoading" class="dashboard-loading">
+    <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
+    <span>Загружаем показатели дашборда…</span>
+  </div>
+
+  <div id="dashboardError" class="alert alert-danger dashboard-error" role="alert"></div>
+
+  <ul id="dashboardWarnings" class="dashboard-warning-list"></ul>
+
+  <div class="dashboard-kpi-grid">
+    <article class="dashboard-kpi is-primary">
+      <div class="dashboard-kpi-label">Всего карточек в реестре</div>
+      <div class="dashboard-kpi-value" id="kpiRegistryTotal">—</div>
+      <div class="dashboard-kpi-note">
+        Все площадки, когда-либо добавленные в реестр мониторинга.
+      </div>
+    </article>
+
+    <article class="dashboard-kpi is-positive">
+      <div class="dashboard-kpi-label">Активные в мониторинге</div>
+      <div class="dashboard-kpi-value" id="kpiActiveCards">—</div>
+      <div class="dashboard-kpi-note">
+        Текущее состояние: <code>is_active = 1</code>.
+      </div>
+    </article>
+
+    <article class="dashboard-kpi">
+      <div class="dashboard-kpi-label">Без результата API-проверки</div>
+      <div class="dashboard-kpi-value" id="kpiAwaitingApi">—</div>
+      <div class="dashboard-kpi-note">
+        Активные карточки без последнего зафиксированного API-статуса.
+      </div>
+    </article>
+
+    <article class="dashboard-kpi is-warning">
+      <div class="dashboard-kpi-label">Ожидают решения по 404</div>
+      <div class="dashboard-kpi-value" id="kpiPending404">—</div>
+      <div class="dashboard-kpi-note">
+        API подтвердил отсутствие карточки; решение ещё не принято.
+      </div>
+    </article>
+
+    <article class="dashboard-kpi is-primary">
+      <div class="dashboard-kpi-label">Созданы в источнике за период</div>
+      <div class="dashboard-kpi-value" id="kpiCreatedInSource">—</div>
+      <div class="dashboard-kpi-note">
+        По полю <code>дата создания</code> в XLSX-реестре.
+      </div>
+    </article>
+
+    <article class="dashboard-kpi is-primary">
+      <div class="dashboard-kpi-label">Добавлены в мониторинг за период</div>
+      <div class="dashboard-kpi-value" id="kpiActivated">—</div>
+      <div class="dashboard-kpi-note">
+        События первой постановки в мониторинг KITEZH.
+      </div>
+    </article>
+
+    <article class="dashboard-kpi is-danger">
+      <div class="dashboard-kpi-label">Сняты по 404 за период</div>
+      <div class="dashboard-kpi-value" id="kpiDeactivated404">—</div>
+      <div class="dashboard-kpi-note">
+        Подтверждённые случаи отсутствия карточки на Инвесткарте РФ.
+      </div>
+    </article>
+
+    <article class="dashboard-kpi is-warning">
+      <div class="dashboard-kpi-label">Сняты по смене статуса</div>
+      <div class="dashboard-kpi-value" id="kpiDeactivatedStatus">—</div>
+      <div class="dashboard-kpi-note">
+        Последний статус в XLSX перестал быть «Свободна».
+      </div>
+    </article>
+
+    <article class="dashboard-kpi is-primary">
+      <div class="dashboard-kpi-label">Изменённые карточки</div>
+      <div class="dashboard-kpi-value" id="kpiChangedCards">—</div>
+      <div class="dashboard-kpi-note">
+        Уникальные площадки с API-изменениями за период.
+      </div>
+    </article>
+
+    <article class="dashboard-kpi is-primary">
+      <div class="dashboard-kpi-label">Изменения полей</div>
+      <div class="dashboard-kpi-value" id="kpiFieldChanges">—</div>
+      <div class="dashboard-kpi-note">
+        Все зафиксированные изменения реквизитов API.
+      </div>
+    </article>
+
+    <article class="dashboard-kpi">
+      <div class="dashboard-kpi-label">Успешно проверены API</div>
+      <div class="dashboard-kpi-value" id="kpiCheckedSuccessfully">—</div>
+      <div class="dashboard-kpi-note">
+        Активные карточки с последним статусом проверки <code>success</code>.
+      </div>
+    </article>
+
+    <article class="dashboard-kpi">
+      <div class="dashboard-kpi-label">Без даты создания</div>
+      <div class="dashboard-kpi-value" id="kpiWithoutCreatedAt">—</div>
+      <div class="dashboard-kpi-note">
+        Исторические записи до включения импорта даты.
+      </div>
+    </article>
+  </div>
+
+  <div class="dashboard-layout-two">
+    <section class="dashboard-panel">
+      <div class="dashboard-panel-head">
+        <h2>Площадки по территориальным управляющим</h2>
+        <span>Назначение управляющего — текущее</span>
+      </div>
+      <div class="dashboard-panel-body dashboard-table-wrap">
+        <table class="dashboard-table">
+          <thead>
+            <tr>
+              <th>Территориальный управляющий</th>
+              <th class="number">Всего</th>
+              <th class="number">Активные</th>
+              <th class="number">Проверены API</th>
+              <th class="number">Без API-статуса</th>
+              <th class="number">404</th>
+              <th class="number">С датой создания</th>
+            </tr>
+          </thead>
+          <tbody id="managersTableBody">
+            <tr>
+              <td class="dashboard-empty" colspan="7">Нет данных.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="dashboard-panel">
+      <div class="dashboard-panel-head">
+        <h2>ТОП изменяемых полей</h2>
+        <span>Детальные API-изменения за период</span>
+      </div>
+      <div class="dashboard-panel-body dashboard-table-wrap">
+        <table class="dashboard-table">
+          <thead>
+            <tr>
+              <th>Раздел</th>
+              <th>Поле</th>
+              <th class="number">Карточки</th>
+              <th class="number">Изменения</th>
+            </tr>
+          </thead>
+          <tbody id="changedFieldsTableBody">
+            <tr>
+              <td class="dashboard-empty" colspan="4">Нет данных за период.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <section class="dashboard-panel">
+    <div class="dashboard-panel-head">
+      <h2>Правила расчёта</h2>
+      <span>Чтобы показатели были однозначно интерпретируемы</span>
+    </div>
+    <div class="dashboard-metric-definition">
+      <p>
+        <strong>Активные в мониторинге</strong> — текущие карточки реестра
+        со значением <code>is_active = 1</code>. Этот показатель не является
+        историческим срезом на дату в прошлом.
+      </p>
+      <p>
+        <strong>Созданы в источнике</strong> — карточки, для которых дата из
+        колонки XLSX <code>дата создания</code> попадает в выбранный период.
+        Для старых записей до внедрения импорта дата может отсутствовать.
+      </p>
+      <p>
+        <strong>Изменённые карточки</strong> — уникальные площадки с хотя бы
+        одним изменением API. <strong>Изменения полей</strong> — общее число
+        строк изменений, поэтому оно может быть больше количества карточек.
+      </p>
+      <p>
+        <strong>Сняты по 404</strong> — только финальные события снятия после
+        подтверждённого отсутствия карточки на Инвесткарте РФ; снятие по смене
+        статуса XLSX считается отдельно.
+      </p>
+    </div>
+  </section>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  const endpoint = "{{ url_for('investmap.investmap_dashboard_data') }}";
+
+  const elements = {
+    form: document.getElementById("dashboardFilters"),
+    dateFrom: document.getElementById("dateFrom"),
+    dateTo: document.getElementById("dateTo"),
+    managerName: document.getElementById("managerName"),
+    resetFilters: document.getElementById("resetFilters"),
+    loading: document.getElementById("dashboardLoading"),
+    error: document.getElementById("dashboardError"),
+    warnings: document.getElementById("dashboardWarnings"),
+    managersTableBody: document.getElementById("managersTableBody"),
+    changedFieldsTableBody: document.getElementById("changedFieldsTableBody"),
+    kpi: {
+      registryTotal: document.getElementById("kpiRegistryTotal"),
+      activeCards: document.getElementById("kpiActiveCards"),
+      awaitingApi: document.getElementById("kpiAwaitingApi"),
+      pending404: document.getElementById("kpiPending404"),
+      createdInSource: document.getElementById("kpiCreatedInSource"),
+      activated: document.getElementById("kpiActivated"),
+      deactivated404: document.getElementById("kpiDeactivated404"),
+      deactivatedStatus: document.getElementById("kpiDeactivatedStatus"),
+      changedCards: document.getElementById("kpiChangedCards"),
+      fieldChanges: document.getElementById("kpiFieldChanges"),
+      checkedSuccessfully: document.getElementById("kpiCheckedSuccessfully"),
+      withoutCreatedAt: document.getElementById("kpiWithoutCreatedAt"),
+    },
+  };
+
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  function number(value) {
+    return new Intl.NumberFormat("ru-RU").format(Number(value || 0));
+  }
+
+  function formatDateForInput(value) {
+    return value.toISOString().slice(0, 10);
+  }
+
+  function setShortcutPeriod(kind) {
+    const today = new Date();
+    const end = new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      today.getDate()
+    );
+    let start = null;
+
+    if (kind === "7") {
+      start = new Date(end);
+      start.setDate(start.getDate() - 6);
+    } else if (kind === "30") {
+      start = new Date(end);
+      start.setDate(start.getDate() - 29);
+    } else if (kind === "month") {
+      start = new Date(end.getFullYear(), end.getMonth(), 1);
+    } else if (kind === "prev_month") {
+      start = new Date(end.getFullYear(), end.getMonth() - 1, 1);
+      end.setDate(0);
+    } else if (kind === "all") {
+      elements.dateFrom.value = "";
+      elements.dateTo.value = "";
+      loadDashboard();
+      return;
+    }
+
+    elements.dateFrom.value = formatDateForInput(start);
+    elements.dateTo.value = formatDateForInput(end);
+    loadDashboard();
+  }
+
+  function setLoading(isLoading) {
+    elements.loading.classList.toggle("is-visible", isLoading);
+  }
+
+  function setError(message) {
+    elements.error.textContent = message || "";
+    elements.error.classList.toggle("is-visible", Boolean(message));
+  }
+
+  function renderWarnings(warnings) {
+    const list = Array.isArray(warnings) ? warnings : [];
+
+    if (!list.length) {
+      elements.warnings.innerHTML = "";
+      return;
+    }
+
+    elements.warnings.innerHTML = list.map(function (message) {
+      return (
+        "<li>" +
+        '<i class="bi bi-exclamation-triangle-fill"></i>' +
+        "<span>" + escapeHtml(message) + "</span>" +
+        "</li>"
+      );
+    }).join("");
+  }
+
+  function renderKpi(kpi) {
+    elements.kpi.registryTotal.textContent = number(kpi.registry_total);
+    elements.kpi.activeCards.textContent = number(kpi.active_cards);
+    elements.kpi.awaitingApi.textContent = number(
+      kpi.awaiting_first_api_check
+    );
+    elements.kpi.pending404.textContent = number(kpi.pending_404);
+    elements.kpi.createdInSource.textContent = number(kpi.created_in_source);
+    elements.kpi.activated.textContent = number(kpi.activated);
+    elements.kpi.deactivated404.textContent = number(
+      kpi.deactivated_by_404
+    );
+    elements.kpi.deactivatedStatus.textContent = number(
+      kpi.deactivated_by_status
+    );
+    elements.kpi.changedCards.textContent = number(kpi.changed_cards);
+    elements.kpi.fieldChanges.textContent = number(kpi.field_changes);
+    elements.kpi.checkedSuccessfully.textContent = number(
+      kpi.checked_successfully
+    );
+    elements.kpi.withoutCreatedAt.textContent = number(
+      kpi.cards_without_created_at
+    );
+  }
+
+  function renderManagers(items) {
+    const rows = Array.isArray(items) ? items : [];
+
+    if (!rows.length) {
+      elements.managersTableBody.innerHTML =
+        '<tr><td class="dashboard-empty" colspan="7">' +
+        "Нет данных по назначениям управляющих." +
+        "</td></tr>";
+      return;
+    }
+
+    elements.managersTableBody.innerHTML = rows.map(function (item) {
+      return (
+        "<tr>" +
+        "<td>" + escapeHtml(item.manager_name) + "</td>" +
+        '<td class="number">' + number(item.registry_total) + "</td>" +
+        '<td class="number">' + number(item.active_cards) + "</td>" +
+        '<td class="number">' + number(item.checked_successfully) + "</td>" +
+        '<td class="number">' + number(item.awaiting_first_api_check) + "</td>" +
+        '<td class="number">' + number(item.pending_404) + "</td>" +
+        '<td class="number">' + number(item.cards_with_created_at) + "</td>" +
+        "</tr>"
+      );
+    }).join("");
+  }
+
+  function renderChangedFields(items) {
+    const rows = Array.isArray(items) ? items : [];
+
+    if (!rows.length) {
+      elements.changedFieldsTableBody.innerHTML =
+        '<tr><td class="dashboard-empty" colspan="4">' +
+        "Нет изменений API за выбранный период." +
+        "</td></tr>";
+      return;
+    }
+
+    elements.changedFieldsTableBody.innerHTML = rows.map(function (item) {
+      return (
+        "<tr>" +
+        "<td>" + escapeHtml(item.section) + "</td>" +
+        "<td>" + escapeHtml(item.label) + "</td>" +
+        '<td class="number">' + number(item.cards_count) + "</td>" +
+        '<td class="number">' + number(item.changes_count) + "</td>" +
+        "</tr>"
+      );
+    }).join("");
+  }
+
+  function updateManagerOptions(items, selectedValue) {
+    const rows = Array.isArray(items) ? items : [];
+    const currentValue = selectedValue ?? elements.managerName.value;
+
+    const options = [
+      '<option value="">Все управляющие</option>',
+    ];
+
+    rows.forEach(function (item) {
+      const managerName = String(item.manager_name || "");
+
+      if (!managerName || managerName === "Не назначен") {
+        return;
+      }
+
+      const selected = managerName === currentValue ? " selected" : "";
+      options.push(
+        '<option value="' + escapeHtml(managerName) + '"' + selected + ">" +
+        escapeHtml(managerName) +
+        "</option>"
+      );
+    });
+
+    elements.managerName.innerHTML = options.join("");
+  }
+
+  async function loadDashboard() {
+    setError("");
+    setLoading(true);
+
+    const params = new URLSearchParams();
+
+    if (elements.dateFrom.value) {
+      params.set("date_from", elements.dateFrom.value);
+    }
+
+    if (elements.dateTo.value) {
+      params.set("date_to", elements.dateTo.value);
+    }
+
+    if (elements.managerName.value) {
+      params.set("manager_name", elements.managerName.value);
+    }
+
+    try {
+      const response = await fetch(
+        endpoint + "?" + params.toString(),
+        {
+          credentials: "same-origin",
+          headers: {
+            "Accept": "application/json",
+          },
+        }
+      );
+
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          payload && payload.error
+            ? payload.error
+            : "Не удалось загрузить данные дашборда."
+        );
+      }
+
+      renderKpi(payload.kpi || {});
+      renderWarnings(payload.warnings || []);
+      renderManagers(payload.by_manager || []);
+      renderChangedFields(payload.top_changed_fields || []);
+      updateManagerOptions(
+        payload.by_manager || [],
+        payload.filters ? payload.filters.manager_name : null
+      );
+    } catch (error) {
+      setError(error.message || "Не удалось загрузить данные дашборда.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  elements.form.addEventListener("submit", function (event) {
+    event.preventDefault();
+    loadDashboard();
+  });
+
+  elements.resetFilters.addEventListener("click", function () {
+    elements.dateFrom.value = "";
+    elements.dateTo.value = "";
+    elements.managerName.value = "";
+    loadDashboard();
+  });
+
+  document.querySelectorAll("[data-period]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      setShortcutPeriod(button.dataset.period);
+    });
+  });
+
+  loadDashboard();
+})();
+</script>
+{% endblock %}
