@@ -2233,8 +2233,6 @@ def get_investmap_dashboard_registry_events(
             ON latest_snapshot_ids.global_id = events.global_id
         LEFT JOIN investmap_rf_card_snapshots AS snapshots
             ON snapshots.id = latest_snapshot_ids.snapshot_id
-        LEFT JOIN investmap_rf_card_manager_assignments AS assignments
-            ON assignments.global_id = events.global_id
         {context['events_base_where']}
           {context['events_period_sql']}
           AND events.event_type IN ({event_types_sql})
