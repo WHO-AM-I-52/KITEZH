@@ -562,7 +562,13 @@
       </div>
     </article>
 
-    <article class="dashboard-kpi is-primary">
+    <article
+  class="dashboard-kpi is-clickable"
+  data-details-kind="created_in_source"
+  role="button"
+  tabindex="0"
+  title="Открыть список площадок, созданных в источнике"
+>
       <div class="dashboard-kpi-label">Созданы в источнике за период</div>
       <div class="dashboard-kpi-value" id="kpiCreatedInSource">—</div>
       <div class="dashboard-kpi-note">
@@ -570,7 +576,13 @@
       </div>
     </article>
 
-    <article class="dashboard-kpi is-primary">
+    <article
+  class="dashboard-kpi is-clickable"
+  data-details-kind="activated"
+  role="button"
+  tabindex="0"
+  title="Открыть события добавления в мониторинг"
+>
       <div class="dashboard-kpi-label">Добавлены в мониторинг за период</div>
       <div class="dashboard-kpi-value" id="kpiActivated">—</div>
       <div class="dashboard-kpi-note">
@@ -578,7 +590,13 @@
       </div>
     </article>
 
-    <article class="dashboard-kpi is-danger">
+    <article
+  class="dashboard-kpi is-clickable"
+  data-details-kind="deactivated_by_404"
+  role="button"
+  tabindex="0"
+  title="Открыть события снятия по HTTP 404"
+>
       <div class="dashboard-kpi-label">Сняты по 404 за период</div>
       <div class="dashboard-kpi-value" id="kpiDeactivated404">—</div>
       <div class="dashboard-kpi-note">
@@ -586,7 +604,13 @@
       </div>
     </article>
 
-    <article class="dashboard-kpi is-warning">
+    <article
+  class="dashboard-kpi is-clickable"
+  data-details-kind="deactivated_by_status"
+  role="button"
+  tabindex="0"
+  title="Открыть события снятия по смене статуса"
+>
       <div class="dashboard-kpi-label">Сняты по смене статуса</div>
       <div class="dashboard-kpi-value" id="kpiDeactivatedStatus">—</div>
       <div class="dashboard-kpi-note">
@@ -1111,6 +1135,188 @@ function renderFieldChangesDetails(items) {
   );
 }
 
+function dashboardDetailsText(value, fallback) {
+  if (value === null || value === undefined || value === "") {
+    return fallback || "—";
+  }
+
+  return String(value);
+}
+
+function formatRegistryEventType(eventType) {
+  const labels = {
+    activated: "Добавлена в мониторинг",
+    deactivated_api_not_found: "Снята: API вернул HTTP 404",
+    deactivated_operator_not_found: "Снята оператором после HTTP 404",
+    deactivated_status_changed: "Снята по смене статуса",
+  };
+
+  return labels[eventType] || dashboardDetailsText(eventType);
+}
+
+function formatActiveStatus(isActive) {
+  return isActive ? "Активна" : "Неактивна";
+}
+
+function renderCreatedInSourceDetails(items) {
+  const rows = Array.isArray(items) ? items : [];
+
+  if (!rows.length) {
+    return (
+      '<div class="dashboard-empty">' +
+      "Нет карточек, созданных в источнике за выбранный период." +
+      "</div>"
+    );
+  }
+
+  return (
+    '<div class="dashboard-details-table-wrap">' +
+    '<table class="dashboard-table dashboard-details-table">' +
+    "<thead><tr>" +
+    "<th>Дата создания</th>" +
+    "<th>ID</th>" +
+    "<th>Площадка</th>" +
+    "<th>Муниципалитет</th>" +
+    "<th>Управляющий</th>" +
+    "<th>Состояние</th>" +
+    "<th>Статус источника</th>" +
+    "<th>Исходный XLSX</th>" +
+    "</tr></thead><tbody>" +
+    rows.map(function (item) {
+      const title = dashboardDetailsText(
+        item.site_name,
+        "Без наименования"
+      );
+
+      return (
+        "<tr>" +
+        "<td>" +
+        escapeHtml(dashboardDetailsText(item.object_created_at)) +
+        "</td>" +
+        '<td><a class="dashboard-details-site-link" href="' +
+        escapeHtml(monitorDetailUrl(item.global_id)) +
+        '">' +
+        escapeHtml(item.global_id) +
+        "</a></td>" +
+        "<td>" +
+        escapeHtml(title) +
+        "</td>" +
+        "<td>" +
+        escapeHtml(
+          dashboardDetailsText(item.municipality_name)
+        ) +
+        "</td>" +
+        "<td>" +
+        escapeHtml(
+          dashboardDetailsText(item.manager_name, "Не назначен")
+        ) +
+        "</td>" +
+        "<td>" +
+        escapeHtml(formatActiveStatus(item.is_active)) +
+        "</td>" +
+        "<td>" +
+        escapeHtml(
+          dashboardDetailsText(item.last_source_status)
+        ) +
+        "</td>" +
+        "<td>" +
+        detailsValue(item.source_filename) +
+        "</td>" +
+        "</tr>"
+      );
+    }).join("") +
+    "</tbody></table></div>"
+  );
+}
+
+function renderRegistryEventsDetails(items) {
+  const rows = Array.isArray(items) ? items : [];
+
+  if (!rows.length) {
+    return (
+      '<div class="dashboard-empty">' +
+      "Нет событий за выбранный период." +
+      "</div>"
+    );
+  }
+
+  return (
+    '<div class="dashboard-details-table-wrap">' +
+    '<table class="dashboard-table dashboard-details-table">' +
+    "<thead><tr>" +
+    "<th>Дата события</th>" +
+    "<th>ID</th>" +
+    "<th>Площадка</th>" +
+    "<th>Муниципалитет</th>" +
+    "<th>Управляющий</th>" +
+    "<th>Событие</th>" +
+    "<th>Статус до</th>" +
+    "<th>Статус после</th>" +
+    "<th>Причина</th>" +
+    "<th>Инициатор</th>" +
+    "<th>Исходный XLSX</th>" +
+    "</tr></thead><tbody>" +
+    rows.map(function (item) {
+      const title = dashboardDetailsText(
+        item.site_name,
+        "Без наименования"
+      );
+      const changedBy = item.changed_by_full_name ||
+        item.changed_by_username ||
+        "Система";
+
+      return (
+        "<tr>" +
+        "<td>" +
+        escapeHtml(formatDashboardDateTime(item.occurred_at_utc)) +
+        "</td>" +
+        '<td><a class="dashboard-details-site-link" href="' +
+        escapeHtml(monitorDetailUrl(item.global_id)) +
+        '">' +
+        escapeHtml(item.global_id) +
+        "</a></td>" +
+        "<td>" +
+        escapeHtml(title) +
+        "</td>" +
+        "<td>" +
+        escapeHtml(
+          dashboardDetailsText(item.municipality_name)
+        ) +
+        "</td>" +
+        "<td>" +
+        escapeHtml(
+          dashboardDetailsText(item.manager_name, "Не назначен")
+        ) +
+        "</td>" +
+        "<td>" +
+        escapeHtml(formatRegistryEventType(item.event_type)) +
+        "</td>" +
+        "<td>" +
+        escapeHtml(
+          dashboardDetailsText(item.previous_status)
+        ) +
+        "</td>" +
+        "<td>" +
+        escapeHtml(
+          dashboardDetailsText(item.current_status)
+        ) +
+        "</td>" +
+        "<td>" +
+        detailsValue(item.reason) +
+        "</td>" +
+        "<td>" +
+        escapeHtml(changedBy) +
+        "</td>" +
+        "<td>" +
+        detailsValue(item.source_filename) +
+        "</td>" +
+        "</tr>"
+      );
+    }).join("") +
+    "</tbody></table></div>"
+  );
+}
+  
 function renderDetailsPagination(payload) {
   const total = Number(payload.total || 0);
   const limit = Number(payload.limit || detailsPageSize);
@@ -1180,16 +1386,30 @@ async function loadDetails(offset) {
         ? "; управляющий: " + payload.filters.manager_name
         : "; все управляющие");
 
-    elements.detailsContent.innerHTML = payload.kind === "changed_cards"
-      ? renderChangedCardsDetails(payload.items)
-      : renderFieldChangesDetails(payload.items);
-    renderDetailsPagination(payload);
-  } catch (error) {
-    setDetailsError(error.message || "Не удалось загрузить детализацию.");
-  } finally {
-    setDetailsLoading(false);
-  }
-}
+    if (payload.kind === "changed_cards") {
+      elements.detailsContent.innerHTML = renderChangedCardsDetails(
+        payload.items
+      );
+    } else if (payload.kind === "field_changes") {
+      elements.detailsContent.innerHTML = renderFieldChangesDetails(
+        payload.items
+      );
+    } else if (payload.kind === "created_in_source") {
+      elements.detailsContent.innerHTML = renderCreatedInSourceDetails(
+        payload.items
+      );
+    } else {
+      elements.detailsContent.innerHTML = renderRegistryEventsDetails(
+        payload.items
+      );
+    }
+        renderDetailsPagination(payload);
+      } catch (error) {
+        setDetailsError(error.message || "Не удалось загрузить детализацию.");
+      } finally {
+        setDetailsLoading(false);
+      }
+    }
 
 function openDetails(kind) {
   detailsKind = kind;
