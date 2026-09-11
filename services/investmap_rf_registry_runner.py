@@ -3,7 +3,59 @@ from __future__ import annotations
 from typing import Any
 
 from services.investmap_rf_batch_runner import run_batch
+from services.investmap_rf_registry import (
+    record_card_api_check_error,
+    record_card_api_check_success,
+    record_card_api_not_found,
+)
 
+_NOT_FOUND_ERROR_MARKERS = (
+    "404",
+    "not found",
+    "не найден",
+)
+
+def _is_api_not_found_error(error: str | None) -> bool:
+    """Определяет, соответствует ли текст ошибки отсутствию объекта в API."""
+    if not error:
+        return False
+
+    normalized_error = error.casefold()
+
+    return any(
+        marker in normalized_error
+        for marker in _NOT_FOUND_ERROR_MARKERS
+    )
+
+
+def _record_batch_item_result(
+    conn,
+    *,
+    global_id: int,
+    status: str,
+    error: str | None,
+) -> None:
+    """Синхронизирует результат одной API-проверки с реестром мониторинга."""
+    if status in {"new", "unchanged"}:
+        record_card_api_check_success(
+            conn,
+            global_id=global_id,
+        )
+        return
+
+    if status == "error" and _is_api_not_found_error(error):
+        record_card_api_not_found(
+            conn,
+            global_id=global_id,
+            changed_by_user_id=None,
+        )
+        return
+
+    record_card_api_check_error(
+        conn,
+        global_id=global_id,
+        error=error or "Неизвестная ошибка API-проверки.",
+    )
 
 def get_active_registry_global_ids(conn) -> list[int]:
     """Возвращает активные global_id реестра в стабильном порядке."""
@@ -28,6 +80,9 @@ def run_active_registry_batch(
     """
     Запускает мониторинг для активных площадок реестра.
 
+    После обработки каждой площадки обновляет служебные поля реестра:
+    успешная проверка, HTTP 404 либо иная ошибка API.
+
     Соединение conn передаётся вызывающей стороной и не закрывается.
     commit() не выполняется: транзакцией управляет вызывающая сторона.
     """
@@ -51,6 +106,14 @@ def run_active_registry_batch(
         global_ids=global_ids,
         **batch_kwargs,
     )
+
+    for item in batch_result.items:
+        _record_batch_item_result(
+            conn,
+            global_id=item.global_id,
+            status=item.status,
+            error=item.error,
+        )
 
     return {
         "requested_count": len(global_ids),
