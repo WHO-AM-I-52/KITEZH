@@ -21,6 +21,7 @@ from core.auth_utils import (
 )
 from db import get_db
 from services.investmap_rf_monitor_queries import (
+    get_investmap_dashboard_summary,
     get_monitor_card_detail,
     get_monitor_cards,
     get_monitor_registry_cards,
@@ -178,6 +179,61 @@ def _build_v2_source_row(row, db):
 def investmap():
     """Главная страница — плитки навигации."""
     return render_template('investmap.html')
+
+@investmap_bp.route("/investmap/dashboard")
+@login_required
+@permission_required("can_view_investmap")
+def investmap_dashboard():
+    """Отображает отдельный read-only дашборд Инвесткарты."""
+    return render_template("investmap_dashboard.html")
+
+
+@investmap_bp.route("/investmap/dashboard/data")
+@login_required
+@permission_required("can_view_investmap")
+def investmap_dashboard_data():
+    """Возвращает агрегированные данные read-only дашборда Инвесткарты."""
+    user = getattr(g, "user", {}).get("login", "unknown")
+    db = None
+
+    try:
+        date_from = request.args.get("date_from")
+        date_to = request.args.get("date_to")
+        manager_name = request.args.get("manager_name")
+
+        db = get_db()
+        result = get_investmap_dashboard_summary(
+            db,
+            date_from=date_from,
+            date_to=date_to,
+            manager_name=manager_name,
+        )
+        return jsonify(result)
+
+    except ValueError as exc:
+        return jsonify({
+            "error": str(exc),
+        }), 400
+
+    except Exception as exc:
+        err_logger.exception(
+            "investmap_dashboard_data error | user=%s | %s",
+            user,
+            exc,
+        )
+        return jsonify({
+            "error": "Внутренняя ошибка сервера.",
+        }), 500
+
+    finally:
+        if db is not None:
+            try:
+                db.close()
+            except Exception:
+                err_logger.exception(
+                    "investmap_dashboard_data close error | user=%s",
+                    user,
+                )
 
 _MONITOR_CARDS_PER_PAGE = 50
 
