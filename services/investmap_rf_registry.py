@@ -619,6 +619,27 @@ def import_monitored_cards_xlsx(
                 )
                 continue
 
+            if object_created_at is not None:
+                cursor = conn.execute(
+                    """
+                    UPDATE investmap_rf_monitored_cards
+                    SET object_created_at = ?
+                    WHERE global_id = ?
+                      AND (
+                          object_created_at IS NULL
+                          OR object_created_at <> ?
+                      )
+                    """,
+                    (
+                        object_created_at,
+                        global_id,
+                        object_created_at,
+                    ),
+                )
+
+                if cursor.rowcount > 0:
+                    report["object_created_at_updated"] += 1
+
             row_exists = conn.execute(
                 """
                 SELECT
@@ -658,8 +679,6 @@ def import_monitored_cards_xlsx(
                         ),
                     )
 
-                    if object_created_at is not None:
-                        report["object_created_at_updated"] += 1
                     _append_event(
                         conn,
                         global_id=global_id,
@@ -740,11 +759,6 @@ def import_monitored_cards_xlsx(
                 ),
             )
 
-            if object_created_at is not None:
-                report["object_created_at_updated"] += 1
-
-                if object_created_at is not None:
-                    report["object_created_at_updated"] += 1
 
             if previous_is_active == 1:
                 conn.execute(
