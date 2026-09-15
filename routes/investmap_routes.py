@@ -183,7 +183,7 @@ def investmap():
 
 @investmap_bp.route("/investmap/dashboard")
 @login_required
-@permission_required("can_view_investmap")
+@permission_required("can_view_investmap_dashboard")
 def investmap_dashboard():
     """Отображает отдельный read-only дашборд Инвесткарты."""
     return render_template("investmap_dashboard.html")
@@ -191,7 +191,7 @@ def investmap_dashboard():
 
 @investmap_bp.route("/investmap/dashboard/data")
 @login_required
-@permission_required("can_view_investmap")
+@permission_required("can_view_investmap_dashboard")
 def investmap_dashboard_data():
     """Возвращает агрегированные данные read-only дашборда Инвесткарты."""
     user = getattr(g, "user", {}).get("login", "unknown")
@@ -238,7 +238,7 @@ def investmap_dashboard_data():
 
 @investmap_bp.route("/investmap/dashboard/details")
 @login_required
-@permission_required("can_view_investmap")
+@permission_required("can_view_investmap_dashboard")
 def investmap_dashboard_details():
     """Возвращает постраничную read-only детализацию KPI дашборда."""
     user = getattr(g, "user", {}).get("login", "unknown")
