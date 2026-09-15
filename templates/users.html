@@ -201,26 +201,43 @@
                  style="font-size:11px;color:#1B5E7B;text-transform:uppercase;letter-spacing:.5px">
               <i class="bi bi-shield-check me-1"></i>Права доступа
             </div>
-            {% for key, label, icon, cls in perm_labels %}
-            <div class="form-check form-switch mb-1">
-              <input class="form-check-input perm-new" type="checkbox"
-                     name="{{ key }}" value="1" id="new_{{ key }}"
-                     role="switch"
-                     {% if key in ['can_create','can_export','can_view_all'] %}checked{% endif %}>
-              <label class="form-check-label" for="new_{{ key }}" style="font-size:12px">
-                <i class="bi {{ icon }} {{ cls }} me-1"></i>{{ label }}
-              </label>
-            </div>
-            {% endfor %}
-          </div>
 
-          <button class="btn btn-sm w-100" style="background:#1B5E7B;color:#fff">
-            <i class="bi bi-person-plus me-1"></i>Добавить
-          </button>
-        </form>
-      </div>
-    </div>
-  </div>
+            <div class="accordion accordion-flush" id="newPermissionsAccordion">
+              {% for group_key, group_label, group_icon, group_permissions in permission_groups %}
+              <div class="accordion-item">
+                <h2 class="accordion-header" id="newPermissionsHeading{{ group_key }}">
+                  <button class="accordion-button py-2 {{ '' if group_key == 'investmap' else 'collapsed' }}"
+                          type="button"
+                          data-bs-toggle="collapse"
+                          data-bs-target="#newPermissionsCollapse{{ group_key }}"
+                          aria-expanded="{{ 'true' if group_key == 'investmap' else 'false' }}"
+                          aria-controls="newPermissionsCollapse{{ group_key }}"
+                          style="font-size:12px">
+                    <i class="bi {{ group_icon }} me-2"></i>{{ group_label }}
+                    <span class="badge bg-secondary ms-2">{{ group_permissions|length }}</span>
+                  </button>
+                </h2>
+                <div id="newPermissionsCollapse{{ group_key }}"
+                     class="accordion-collapse collapse {{ 'show' if group_key == 'investmap' }}"
+                     aria-labelledby="newPermissionsHeading{{ group_key }}">
+                  <div class="accordion-body py-2 px-1">
+                    {% for key, label, icon, cls in group_permissions %}
+                    <div class="form-check form-switch mb-1">
+                      <input class="form-check-input perm-new" type="checkbox"
+                             name="{{ key }}" value="1" id="new_{{ key }}"
+                             role="switch"
+                             {% if key in ['can_create','can_export','can_view_all'] %}checked{% endif %}>
+                      <label class="form-check-label" for="new_{{ key }}" style="font-size:12px">
+                        <i class="bi {{ icon }} {{ cls }} me-1"></i>{{ label }}
+                      </label>
+                    </div>
+                    {% endfor %}
+                  </div>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
 
   {# ══ КОЛОНКА ПРАВАЯ — список + журналы ══ #}
   <div class="col-md-8">
@@ -327,19 +344,44 @@
                        style="font-size:11px;color:#1B5E7B;text-transform:uppercase;letter-spacing:.5px">
                     Права доступа
                   </div>
-                  {% for key, label, icon, cls in perm_labels %}
-                  <div class="form-check form-switch mb-1">
-                    <input class="form-check-input" type="checkbox"
-                           name="{{ key }}" value="1"
-                           id="edit_{{ u.id }}_{{ key }}"
-                           role="switch"
-                           {{ 'checked' if u[key] }}>
-                    <label class="form-check-label"
-                           for="edit_{{ u.id }}_{{ key }}" style="font-size:12px">
-                      <i class="bi {{ icon }} {{ cls }} me-1"></i>{{ label }}
-                    </label>
+
+                  <div class="accordion accordion-flush" id="editPermissionsAccordion{{ u.id }}">
+                    {% for group_key, group_label, group_icon, group_permissions in permission_groups %}
+                    <div class="accordion-item">
+                      <h2 class="accordion-header" id="editPermissionsHeading{{ u.id }}{{ group_key }}">
+                        <button class="accordion-button collapsed py-2"
+                                type="button"
+                                data-bs-toggle="collapse"
+                                data-bs-target="#editPermissionsCollapse{{ u.id }}{{ group_key }}"
+                                aria-expanded="false"
+                                aria-controls="editPermissionsCollapse{{ u.id }}{{ group_key }}"
+                                style="font-size:12px">
+                          <i class="bi {{ group_icon }} me-2"></i>{{ group_label }}
+                          <span class="badge bg-secondary ms-2">{{ group_permissions|length }}</span>
+                        </button>
+                      </h2>
+                      <div id="editPermissionsCollapse{{ u.id }}{{ group_key }}"
+                           class="accordion-collapse collapse"
+                           aria-labelledby="editPermissionsHeading{{ u.id }}{{ group_key }}">
+                        <div class="accordion-body py-2 px-1">
+                          {% for key, label, icon, cls in group_permissions %}
+                          <div class="form-check form-switch mb-1">
+                            <input class="form-check-input" type="checkbox"
+                                   name="{{ key }}" value="1"
+                                   id="edit_{{ u.id }}_{{ key }}"
+                                   role="switch"
+                                   {{ 'checked' if u[key] }}>
+                            <label class="form-check-label"
+                                   for="edit_{{ u.id }}_{{ key }}" style="font-size:12px">
+                              <i class="bi {{ icon }} {{ cls }} me-1"></i>{{ label }}
+                            </label>
+                          </div>
+                          {% endfor %}
+                        </div>
+                      </div>
+                    </div>
+                    {% endfor %}
                   </div>
-                  {% endfor %}
                 </div>
                 <div class="modal-footer">
                   <button type="button" class="btn btn-secondary btn-sm"
