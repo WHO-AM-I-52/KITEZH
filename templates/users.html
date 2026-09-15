@@ -92,8 +92,14 @@
   ('can_classifiers',      'Управление справочниками',              'bi-book',                 'text-info'),
   ('can_users',            'Управление пользователями',             'bi-people',               'text-primary'),
   ('can_view_all',         'Видит все обращения (вкл. поиск)',      'bi-eye',                  'text-secondary'),
-  ('can_view_investmap',   'Инвест. карта',                        'bi-map',                  'text-info'),
-  ('can_investmap_rules',  'Инвест. карта — правила размещения',   'bi-map-fill',             'text-info'),
+  ('can_view_investmap',   'Инвест. карта',                         'bi-map',                  'text-info'),
+  (
+    'can_view_investmap_dashboard',
+    'Инвест. карта — дашборд',
+    'bi-speedometer2',
+    'text-primary'
+  ),
+  ('can_investmap_rules',  'Инвест. карта — правила размещения',    'bi-map-fill',             'text-info'),
   (
     'can_refresh_investmap_rf_cards',
     'Инвест. карта — обновлять отдельные площадки',
@@ -149,6 +155,7 @@
             <select name="role" id="rolePreset" class="form-select form-select-sm"
                     onchange="applyRolePreset(this.value)">
               <option value="employee">Исполнитель</option>
+              <option value="territorial_manager">Территориальный управляющий</option>
               <option value="manager">Руководитель</option>
               <option value="admin">Администратор</option>
             </select>
@@ -273,6 +280,10 @@
                     <label class="form-label fw-bold">Роль</label>
                     <select name="role" class="form-select form-select-sm">
                       <option value="employee" {{ 'selected' if u.role=='employee' }}>Исполнитель</option>
+                      <option value="territorial_manager"
+                              {{ 'selected' if u.role=='territorial_manager' }}>
+                        Территориальный управляющий
+                      </option>
                       <option value="manager"  {{ 'selected' if u.role=='manager'  }}>Руководитель</option>
                       <option value="admin"    {{ 'selected' if u.role=='admin'    }}>Администратор</option>
                     </select>
@@ -622,18 +633,70 @@ function genPasswordFor(fid) { document.getElementById(fid).value = genPw(); }
 
 // Синхронизировано с ROLE_PERMISSION_PRESETS в auth_utils.py
 var PRESETS = {
-  employee: { can_create:1, can_edit_others:0, can_confirm:0, can_delete:0,
-              can_rollback:0, can_export:1, can_classifiers:0, can_users:0,
-              can_view_all:0, can_view_investmap:1, can_investmap_rules:0, can_refresh_investmap_rf_cards:0,
-              can_view_phonebook:1 },
-  manager:  { can_create:1, can_edit_others:1, can_confirm:1, can_delete:0,
-              can_rollback:0, can_export:1, can_classifiers:0, can_users:0,
-              can_view_all:1, can_view_investmap:1, can_investmap_rules:1, can_refresh_investmap_rf_cards:0,
-              can_view_phonebook:1 },
-  admin:    { can_create:1, can_edit_others:1, can_confirm:1, can_delete:1,
-              can_rollback:1, can_export:1, can_classifiers:1, can_users:1,
-              can_view_all:1, can_view_investmap:1, can_investmap_rules:1, can_refresh_investmap_rf_cards:1,
-              can_view_phonebook:1 }
+  employee: {
+    can_create: 1,
+    can_edit_others: 0,
+    can_confirm: 0,
+    can_delete: 0,
+    can_rollback: 0,
+    can_export: 1,
+    can_classifiers: 0,
+    can_users: 0,
+    can_view_all: 0,
+    can_view_investmap: 1,
+    can_view_investmap_dashboard: 0,
+    can_investmap_rules: 0,
+    can_refresh_investmap_rf_cards: 0,
+    can_view_phonebook: 1
+  },
+  territorial_manager: {
+    can_create: 0,
+    can_edit_others: 0,
+    can_confirm: 0,
+    can_delete: 0,
+    can_rollback: 0,
+    can_export: 0,
+    can_classifiers: 0,
+    can_users: 0,
+    can_view_all: 0,
+    can_view_investmap: 1,
+    can_view_investmap_dashboard: 1,
+    can_investmap_rules: 0,
+    can_refresh_investmap_rf_cards: 1,
+    can_view_phonebook: 1
+  },
+  manager: {
+    can_create: 1,
+    can_edit_others: 1,
+    can_confirm: 1,
+    can_delete: 0,
+    can_rollback: 0,
+    can_export: 1,
+    can_classifiers: 0,
+    can_users: 0,
+    can_view_all: 1,
+    can_view_investmap: 1,
+    can_view_investmap_dashboard: 0,
+    can_investmap_rules: 1,
+    can_refresh_investmap_rf_cards: 0,
+    can_view_phonebook: 1
+  },
+  admin: {
+    can_create: 1,
+    can_edit_others: 1,
+    can_confirm: 1,
+    can_delete: 1,
+    can_rollback: 1,
+    can_export: 1,
+    can_classifiers: 1,
+    can_users: 1,
+    can_view_all: 1,
+    can_view_investmap: 1,
+    can_view_investmap_dashboard: 1,
+    can_investmap_rules: 1,
+    can_refresh_investmap_rf_cards: 1,
+    can_view_phonebook: 1
+  }
 };
 function applyRolePreset(role) {
   var p = PRESETS[role]; if (!p) return;
