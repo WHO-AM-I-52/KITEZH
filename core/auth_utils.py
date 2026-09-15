@@ -38,7 +38,6 @@ def is_legacy_hash(stored: str) -> bool:
 
 
 # ─── ПРАВА ──────────────────────────────────────────────────────────────────────────────────────
-
 ALL_PERMISSIONS = {
     'can_create':           'Создавать обращения',
     'can_edit_others':      'Редактировать чужие обращения',
@@ -52,6 +51,7 @@ ALL_PERMISSIONS = {
     'can_users':            'Управление пользователями',
     'can_view_all':         'Видит все обращения (вкл. поиск)',
     'can_view_investmap':   'Просмотр инвест. карты',
+    'can_view_investmap_dashboard': 'Инвест. карта — дашборд',
     'can_view_phonebook':   'Просмотр телефонного справочника',
     'can_investmap_rules':  'Инвест. карта — правила размещения',
     'can_refresh_investmap_rf_cards': (
@@ -79,9 +79,30 @@ ROLE_PERMISSION_PRESETS = {
         'can_users':          0,
         'can_view_all':       0,
         'can_view_investmap': 1,
+        'can_view_investmap_dashboard': 0,
         'can_view_phonebook': 1,
         'can_investmap_rules': 0,
         'can_refresh_investmap_rf_cards': 0,
+    },
+    # Территориальный управляющий: Инвесткарта, дашборд,
+    # точечное обновление площадок и телефонный справочник.
+    'territorial_manager': {
+        'can_create':         0,
+        'can_edit_others':    0,
+        'can_confirm':        0,
+        'can_delete':         0,
+        'can_rollback':       0,
+        'can_export':         0,
+        'can_export_full':    0,
+        'can_import_full':    0,
+        'can_classifiers':    0,
+        'can_users':          0,
+        'can_view_all':       0,
+        'can_view_investmap': 1,
+        'can_view_investmap_dashboard': 1,
+        'can_view_phonebook': 1,
+        'can_investmap_rules': 0,
+        'can_refresh_investmap_rf_cards': 1,
     },
     # Руководитель: все обращения, управление ими, полный экспорт
     'manager': {
@@ -97,6 +118,7 @@ ROLE_PERMISSION_PRESETS = {
         'can_users':          0,
         'can_view_all':       1,
         'can_view_investmap': 1,
+        'can_view_investmap_dashboard': 0,
         'can_view_phonebook': 1,
         'can_investmap_rules': 1,
         'can_refresh_investmap_rf_cards': 0,
