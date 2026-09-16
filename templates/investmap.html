@@ -99,7 +99,7 @@
   </div>
 
   {# ─── Плитка 4: Дашборд Инвесткарты ──────────────────────────── #}
-  {% if session.role == 'admin' or perm_can_view_investmap_dashboard %}
+   {% if session.role == 'admin' or session.perm_can_view_investmap_dashboard %}
   <div class="col-12 col-md-6">
     <a
       href="{{ url_for('investmap.investmap_dashboard') }}"
