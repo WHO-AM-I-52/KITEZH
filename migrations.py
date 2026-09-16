@@ -53,6 +53,7 @@ def _migrate_users_cols(conn):
         'can_rollback', 'can_export', 'can_export_full', 'can_import_full',
         'can_classifiers', 'can_users', 'can_view_all',
         'can_view_investmap', 'can_view_investmap_dashboard',
+        'can_view_investmap_analysis',
         'can_view_phonebook', 'can_investmap_rules',
         'can_refresh_investmap_rf_cards',
     ]:
