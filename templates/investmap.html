@@ -15,6 +15,7 @@
   {# ─── Плитка 1: Анализ заполняемости ───────────────────────────── #}
   <div class="col-12 col-md-6">
     <a href="/investmap/v1" class="text-decoration-none">
+  {% if session.role == 'admin' or session.perm_can_view_investmap_analysis %}
       <div class="card h-100 p-3"
            style="border-left:4px solid #1B5E7B; cursor:pointer;
                   background:rgba(27,94,123,0.06);
@@ -35,10 +36,12 @@
       </div>
     </a>
   </div>
+  {% endif %}
 
   {# ─── Плитка 2: Анализ заполняемости v2 ─────────────────────── #}
   <div class="col-12 col-md-6">
     <a href="/investmap/v2" class="text-decoration-none">
+  {% if session.role == 'admin' or session.perm_can_view_investmap_analysis %}
       <div class="card h-100 p-3"
            style="border-left:4px solid #6c757d; cursor:pointer;
                   background:rgba(108,117,125,0.04);
@@ -62,6 +65,7 @@
       </div>
     </a>
   </div>
+  {% endif %}
 
   {# ─── Плитка 3: Мониторинг Инвесткарты РФ ────────────────────── #}
   <div class="col-12 col-md-6">
