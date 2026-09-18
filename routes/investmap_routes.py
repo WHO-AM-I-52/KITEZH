@@ -846,7 +846,7 @@ def investmap_rf_monitor_detail(global_id):
 
 @investmap_bp.route('/investmap/v1')
 @login_required
-@permission_required('can_view_investmap')
+@permission_required('can_view_investmap_analysis')
 def investmap_v1():
     """Анализ заполняемости (ГИС ЭКОНОМИКА) — перенесено с /investmap."""
     return render_template('investmap_v1.html')
@@ -854,7 +854,7 @@ def investmap_v1():
 
 @investmap_bp.route('/investmap/v2')
 @login_required
-@permission_required('can_view_investmap')
+@permission_required('can_view_investmap_analysis')
 def investmap_v2():
     """Анализ заполняемости v2 — страница с кнопкой «Правила» и счётчиком правил."""
     user = getattr(g, 'user', {}).get('login', 'unknown')
