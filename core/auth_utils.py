@@ -58,6 +58,12 @@ ALL_PERMISSIONS = {
     'can_refresh_investmap_rf_cards': (
         'Инвест. карта — обновлять отдельные площадки'
     ),
+    'can_view_investmap_updates': (
+        'Инвест. карта — просмотр актуализации'
+    ),
+    'can_manage_investmap_updates': (
+        'Инвест. карта — управление актуализацией'
+    ),
 }
 
 # Все права включены — для роли admin
@@ -85,6 +91,8 @@ ROLE_PERMISSION_PRESETS = {
         'can_view_phonebook': 1,
         'can_investmap_rules': 0,
         'can_refresh_investmap_rf_cards': 0,
+        'can_view_investmap_updates': 0,
+        'can_manage_investmap_updates': 0,
     },
     # Территориальный управляющий: Инвесткарта, дашборд,
     # точечное обновление площадок и телефонный справочник.
@@ -126,6 +134,8 @@ ROLE_PERMISSION_PRESETS = {
         'can_view_phonebook': 1,
         'can_investmap_rules': 1,
         'can_refresh_investmap_rf_cards': 0,
+        'can_view_investmap_updates': 0,
+        'can_manage_investmap_updates': 0,
     },
     # Администратор: все права
     'admin': ADMIN_PERMISSIONS,
