@@ -122,19 +122,20 @@
                 —
                 {% endif %}
               </td>
+
+              {% if can_manage_updates %}
+              <td class="text-end pe-3">
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-primary"
+                  data-bs-toggle="modal"
+                  data-bs-target="#editRecordModal{{ record.id }}"
+                >
+                  <i class="bi bi-pencil-square me-1"></i>Изменить
+                </button>
+              </td>
+              {% endif %}
             </tr>
-            {% if can_manage_updates %}
-            <td class="text-end pe-3">
-              <button
-                type="button"
-                class="btn btn-sm btn-outline-primary"
-                data-bs-toggle="modal"
-                data-bs-target="#editRecordModal{{ record.id }}"
-              >
-                <i class="bi bi-pencil-square me-1"></i>Изменить
-              </button>
-            </td>
-            {% endif %}
 
             {% if record.note %}
             <tr class="table-light">
