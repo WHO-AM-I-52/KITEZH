@@ -73,8 +73,10 @@ from tools.investmap_analyzer import (
 )
 from services.investmap_data_updates_service import (
     create_or_get_update_plan,
+    get_update_plan_by_id,
     list_update_plans,
-)
+    list_update_records,
+)с
 
 investmap_bp = Blueprint('investmap', __name__)
 _HISTORY_ERROR_STATUSES = frozenset({"invalid_id", "error"})
@@ -1409,6 +1411,25 @@ def investmap_updates():
         is_admin=session.get("role") == "admin",
     )
 
+@investmap_bp.route("/investmap/updates/<int:plan_id>")
+@login_required
+def investmap_updates_plan(plan_id: int):
+    """Детали квартального плана актуализации."""
+    if not _can_view_investmap_updates():
+        abort(403)
+
+    db = get_db()
+    plan = get_update_plan_by_id(db, plan_id)
+    if plan is None:
+        abort(404)
+
+    return render_template(
+        "investmap_data_update_plan.html",
+        plan=plan,
+        records=list_update_records(db, plan_id),
+        can_manage_updates=_can_manage_investmap_updates(),
+        is_admin=session.get("role") == "admin",
+    )
 
 @investmap_bp.route("/investmap/updates/plans", methods=["POST"])
 @login_required
