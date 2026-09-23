@@ -66,6 +66,7 @@
               <th class="text-center">Строк</th>
               <th class="text-center">Получено ответов</th>
               <th>Примечание</th>
+              <th class="text-end pe-3">Действия</th>
             </tr>
           </thead>
           <tbody>
@@ -89,6 +90,14 @@
               </td>
               <td class="text-muted small">
                 {{ plan.note or '—' }}
+              </td>
+              <td class="text-end pe-3">
+                <a
+                  href="{{ url_for('investmap.investmap_updates_plan', plan_id=plan.id) }}"
+                  class="btn btn-sm btn-outline-primary"
+                >
+                  <i class="bi bi-box-arrow-up-right me-1"></i>Открыть
+                </a>
               </td>
             </tr>
             {% endfor %}
