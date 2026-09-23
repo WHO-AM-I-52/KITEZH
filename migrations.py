@@ -59,6 +59,8 @@ def _migrate_users_cols(conn):
         'can_view_investmap_analysis',
         'can_view_phonebook', 'can_investmap_rules',
         'can_refresh_investmap_rf_cards',
+        'can_view_investmap_updates',
+        'can_manage_investmap_updates',
     ]:
         if col not in user_cols:
             conn.execute(f"ALTER TABLE users ADD COLUMN {col} INTEGER DEFAULT 0")
