@@ -85,17 +85,29 @@ def parse_period_label(period_label: str) -> tuple[str, str]:
 
     return period_start, period_end
 
-
 def format_period_label(period_start: str | date, period_end: str | date) -> str:
     """Возвращает отображаемый период вида 01.01.2026-31.03.2026."""
-    start = datetime.strptime(
-        _as_iso_date(period_start), "%Y-%m-%d"
-    ).date()
-    end = datetime.strptime(
-        _as_iso_date(period_end), "%Y-%m-%d"
-    ).date()
-    return f"{start:%d.%m.%Y}-{end:%d.%m.%Y}"
+    def parse_value(value: str | date) -> date:
+        if isinstance(value, date):
+            return value
 
+        if not isinstance(value, str):
+            raise ValueError("Дата периода должна быть строкой или date.")
+
+        value = value.strip()
+        for date_format in ("%Y-%m-%d", "%d.%m.%Y"):
+            try:
+                return datetime.strptime(value, date_format).date()
+            except ValueError:
+                continue
+
+        raise ValueError(
+            "Дата периода должна иметь формат ГГГГ-ММ-ДД или ДД.ММ.ГГГГ."
+        )
+
+    start = parse_value(period_start)
+    end = parse_value(period_end)
+    return f"{start:%d.%m.%Y}-{end:%d.%m.%Y}"
 
 def _require_user_exists(
     conn: sqlite3.Connection,
