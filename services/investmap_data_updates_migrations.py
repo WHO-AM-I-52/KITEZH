@@ -257,16 +257,27 @@ def migrate_investmap_data_updates(conn: sqlite3.Connection) -> None:
     }
 
     investment_sites_category_id = category_ids["investment_sites"]
-    conn.execute(
+    existing_all_districts_rule = conn.execute(
         """
-        INSERT INTO investmap_update_recipient_rules (
-            category_id, recipient_mode, organization_id, is_active
-        )
-        VALUES (?, 'all_districts', NULL, 1)
-        ON CONFLICT(category_id, recipient_mode, organization_id) DO NOTHING
+        SELECT id
+        FROM investmap_update_recipient_rules
+        WHERE category_id = ?
+          AND recipient_mode = 'all_districts'
+          AND organization_id IS NULL
         """,
         (investment_sites_category_id,),
-    )
+    ).fetchone()
+
+    if existing_all_districts_rule is None:
+        conn.execute(
+            """
+            INSERT INTO investmap_update_recipient_rules (
+                category_id, recipient_mode, organization_id, is_active
+            )
+            VALUES (?, 'all_districts', NULL, 1)
+            """,
+            (investment_sites_category_id,),
+        )
 
     for category_code, organization_names in CATEGORY_ORGANIZATION_RULES.items():
         category_id = category_ids[category_code]
