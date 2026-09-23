@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+
+{% block title %}План актуализации Инвесткарты{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-4">
+    <div>
+      <a
+        href="{{ url_for('investmap.investmap_updates') }}"
+        class="btn btn-sm btn-outline-secondary mb-2"
+      >
+        <i class="bi bi-arrow-left me-1"></i>Квартальные планы
+      </a>
+
+      <h3 class="mb-1" style="color:#1B5E7B">
+        <i class="bi bi-calendar-check me-2"></i>
+        План актуализации
+      </h3>
+
+      <div class="text-muted">
+        {{ plan.period_start|replace('-', '.') }} —
+        {{ plan.period_end|replace('-', '.') }}
+      </div>
+    </div>
+
+    <div class="text-end small text-muted">
+      <div>Создал: {{ plan.created_by_name or '—' }}</div>
+      <div>{{ plan.created_at or '—' }}</div>
+    </div>
+  </div>
+
+  {% if plan.note %}
+  <div class="alert alert-light border mb-3">
+    <i class="bi bi-sticky me-1"></i>{{ plan.note }}
+  </div>
+  {% endif %}
+
+  <div class="card shadow-sm border-0">
+    <div class="card-header bg-white d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <span class="fw-semibold" style="color:#1B5E7B">
+        <i class="bi bi-list-check me-1"></i>Строки актуализации
+      </span>
+      <span class="badge text-bg-light">{{ records|length }}</span>
+    </div>
+
+    <div class="card-body p-0">
+      {% if records %}
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th class="ps-3">Категория</th>
+              <th>Получатель</th>
+              <th>Тип</th>
+              <th>Статус</th>
+              <th>Исх. №</th>
+              <th>Вх. №</th>
+              <th class="text-center">Изменений</th>
+              <th class="text-center">Файлы</th>
+              <th>Обновил</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for record in records %}
+            <tr>
+              <td class="ps-3">
+                <div class="fw-semibold">{{ record.category_name }}</div>
+                <div class="small text-muted">{{ record.category_code }}</div>
+              </td>
+
+              <td>{{ record.source_name_snapshot }}</td>
+
+              <td>
+                {% if record.source_type == 'district' %}
+                <span class="badge text-bg-info">Район</span>
+                {% else %}
+                <span class="badge text-bg-secondary">Организация</span>
+                {% endif %}
+              </td>
+
+              <td>
+                {% if record.status == 'planned' %}
+                <span class="badge text-bg-secondary">Не направлено</span>
+                {% elif record.status == 'request_sent' %}
+                <span class="badge text-bg-primary">Запрос направлен</span>
+                {% elif record.status == 'response_received' %}
+                <span class="badge text-bg-success">Получен ответ</span>
+                {% elif record.status == 'overdue' %}
+                <span class="badge text-bg-warning">Требуется уточнение</span>
+                {% else %}
+                <span class="badge text-bg-light">{{ record.status }}</span>
+                {% endif %}
+              </td>
+
+              <td>{{ record.request_letter_number or '—' }}</td>
+              <td>{{ record.response_letter_number or '—' }}</td>
+
+              <td class="text-center">
+                <span class="badge text-bg-light">
+                  {{ record.changes_count or 0 }}
+                </span>
+              </td>
+
+              <td class="text-center">
+                <span class="small text-muted">
+                  <i class="bi bi-send me-1"></i>{{ record.request_documents_count or 0 }}
+                  <i class="bi bi-inbox ms-2 me-1"></i>{{ record.response_documents_count or 0 }}
+                  <i class="bi bi-paperclip ms-2 me-1"></i>{{ record.other_documents_count or 0 }}
+                </span>
+              </td>
+
+              <td class="small text-muted">
+                {% if record.updated_by_name %}
+                <div>{{ record.updated_by_name }}</div>
+                <div>{{ record.updated_at }}</div>
+                {% else %}
+                —
+                {% endif %}
+              </td>
+            </tr>
+
+            {% if record.note %}
+            <tr class="table-light">
+              <td></td>
+              <td colspan="8" class="small text-muted">
+                <i class="bi bi-chat-left-text me-1"></i>{{ record.note }}
+              </td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="text-center text-muted py-5">
+        <i class="bi bi-list-ul fs-1 d-block mb-2"></i>
+        Для этого плана пока нет строк актуализации.
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+{% endblock %}
