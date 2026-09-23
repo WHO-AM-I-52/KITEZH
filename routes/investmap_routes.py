@@ -76,7 +76,7 @@ from services.investmap_data_updates_service import (
     get_update_plan_by_id,
     list_update_plans,
     list_update_records,
-)с
+)
 
 investmap_bp = Blueprint('investmap', __name__)
 _HISTORY_ERROR_STATUSES = frozenset({"invalid_id", "error"})
