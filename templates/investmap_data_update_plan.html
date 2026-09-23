@@ -60,6 +60,9 @@
               <th class="text-center">Изменений</th>
               <th class="text-center">Файлы</th>
               <th>Обновил</th>
+              {% if can_manage_updates %}
+              <th class="text-end pe-3">Действия</th>
+              {% endif %}
             </tr>
           </thead>
           <tbody>
@@ -120,11 +123,26 @@
                 {% endif %}
               </td>
             </tr>
+            {% if can_manage_updates %}
+            <td class="text-end pe-3">
+              <button
+                type="button"
+                class="btn btn-sm btn-outline-primary"
+                data-bs-toggle="modal"
+                data-bs-target="#editRecordModal{{ record.id }}"
+              >
+                <i class="bi bi-pencil-square me-1"></i>Изменить
+              </button>
+            </td>
+            {% endif %}
 
             {% if record.note %}
             <tr class="table-light">
               <td></td>
-              <td colspan="8" class="small text-muted">
+              <td
+                colspan="{% if can_manage_updates %}9{% else %}8{% endif %}"
+                class="small text-muted"
+              >
                 <i class="bi bi-chat-left-text me-1"></i>{{ record.note }}
               </td>
             </tr>
@@ -133,6 +151,176 @@
           </tbody>
         </table>
       </div>
+      {% if can_manage_updates %}
+        {% for record in records %}
+        <div
+          class="modal fade"
+          id="editRecordModal{{ record.id }}"
+          tabindex="-1"
+          aria-labelledby="editRecordModalLabel{{ record.id }}"
+          aria-hidden="true"
+        >
+          <div class="modal-dialog modal-lg">
+            <form
+              method="post"
+              action="{{ url_for(
+                'investmap.investmap_updates_update_record',
+                record_id=record.id
+              ) }}"
+            >
+              <input type="hidden" name="plan_id" value="{{ plan.id }}">
+
+              <div class="modal-content">
+                <div class="modal-header">
+                  <div>
+                    <h5
+                      class="modal-title"
+                      id="editRecordModalLabel{{ record.id }}"
+                    >
+                      Изменить строку актуализации
+                    </h5>
+                    <div class="small text-muted">
+                      {{ record.category_name }} · {{ record.source_name_snapshot }}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    class="btn-close"
+                    data-bs-dismiss="modal"
+                    aria-label="Закрыть"
+                  ></button>
+                </div>
+
+                <div class="modal-body">
+                  <div class="row g-3">
+                    <div class="col-md-6">
+                      <label
+                        for="status{{ record.id }}"
+                        class="form-label"
+                      >
+                        Статус
+                      </label>
+                      <select
+                        class="form-select"
+                        id="status{{ record.id }}"
+                        name="status"
+                        required
+                      >
+                        <option
+                          value="planned"
+                          {% if record.status == 'planned' %}selected{% endif %}
+                        >
+                          Не направлено
+                        </option>
+                        <option
+                          value="request_sent"
+                          {% if record.status == 'request_sent' %}selected{% endif %}
+                        >
+                          Запрос направлен
+                        </option>
+                        <option
+                          value="response_received"
+                          {% if record.status == 'response_received' %}selected{% endif %}
+                        >
+                          Получен ответ
+                        </option>
+                        <option
+                          value="overdue"
+                          {% if record.status == 'overdue' %}selected{% endif %}
+                        >
+                          Требуется уточнение
+                        </option>
+                      </select>
+                    </div>
+
+                    <div class="col-md-6">
+                      <label
+                        for="changesCount{{ record.id }}"
+                        class="form-label"
+                      >
+                        Количество изменений
+                      </label>
+                      <input
+                        type="number"
+                        class="form-control"
+                        id="changesCount{{ record.id }}"
+                        name="changes_count"
+                        min="0"
+                        value="{{ record.changes_count or 0 }}"
+                        required
+                      >
+                    </div>
+
+                    <div class="col-md-6">
+                      <label
+                        for="requestNumber{{ record.id }}"
+                        class="form-label"
+                      >
+                        Исходящий номер запроса
+                      </label>
+                      <input
+                        type="text"
+                        class="form-control"
+                        id="requestNumber{{ record.id }}"
+                        name="request_letter_number"
+                        maxlength="255"
+                        value="{{ record.request_letter_number or '' }}"
+                      >
+                    </div>
+
+                    <div class="col-md-6">
+                      <label
+                        for="responseNumber{{ record.id }}"
+                        class="form-label"
+                      >
+                        Входящий номер ответа
+                      </label>
+                      <input
+                        type="text"
+                        class="form-control"
+                        id="responseNumber{{ record.id }}"
+                        name="response_letter_number"
+                        maxlength="255"
+                        value="{{ record.response_letter_number or '' }}"
+                      >
+                    </div>
+
+                    <div class="col-12">
+                      <label
+                        for="recordNote{{ record.id }}"
+                        class="form-label"
+                      >
+                        Комментарий
+                      </label>
+                      <textarea
+                        class="form-control"
+                        id="recordNote{{ record.id }}"
+                        name="note"
+                        rows="4"
+                        maxlength="5000"
+                      >{{ record.note or '' }}</textarea>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="modal-footer">
+                  <button
+                    type="button"
+                    class="btn btn-outline-secondary"
+                    data-bs-dismiss="modal"
+                  >
+                    Отмена
+                  </button>
+                  <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-check-lg me-1"></i>Сохранить
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+        {% endfor %}
+      {% endif %}
       {% else %}
       <div class="text-center text-muted py-5">
         <i class="bi bi-list-ul fs-1 d-block mb-2"></i>
