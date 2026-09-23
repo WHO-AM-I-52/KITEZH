@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+
+{% block title %}Актуализация данных Инвесткарты{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-4">
+    <div>
+      <h3 class="mb-1" style="color:#1B5E7B">
+        <i class="bi bi-arrow-repeat me-2"></i>Актуализация данных Инвесткарты
+      </h3>
+      <div class="text-muted small">
+        Квартальные планы запросов и получения актуальных данных
+      </div>
+    </div>
+
+    {% if can_manage_updates %}
+    <button
+      type="button"
+      class="btn btn-primary"
+      data-bs-toggle="modal"
+      data-bs-target="#createPlanModal"
+    >
+      <i class="bi bi-plus-lg me-1"></i>Создать квартальный план
+    </button>
+    {% endif %}
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+      <div
+        class="alert alert-{{ category }} alert-dismissible fade show"
+        role="alert"
+      >
+        {{ message }}
+        <button
+          type="button"
+          class="btn-close"
+          data-bs-dismiss="alert"
+          aria-label="Закрыть"
+        ></button>
+      </div>
+      {% endfor %}
+    {% endfor %}
+  {% endwith %}
+
+  <div class="card shadow-sm border-0">
+    <div class="card-header bg-white d-flex align-items-center justify-content-between">
+      <span class="fw-semibold" style="color:#1B5E7B">
+        <i class="bi bi-calendar3 me-1"></i>Квартальные планы
+      </span>
+      <span class="badge text-bg-light">{{ plans|length }}</span>
+    </div>
+
+    <div class="card-body p-0">
+      {% if plans %}
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th class="ps-3">Период</th>
+              <th>Создал</th>
+              <th>Дата создания</th>
+              <th class="text-center">Строк</th>
+              <th class="text-center">Получено ответов</th>
+              <th>Примечание</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for plan in plans %}
+            <tr>
+              <td class="ps-3 fw-semibold">
+                {{ plan.period_start|replace('-', '.') }} —
+                {{ plan.period_end|replace('-', '.') }}
+              </td>
+              <td>{{ plan.created_by_name or '—' }}</td>
+              <td class="text-muted small">{{ plan.created_at or '—' }}</td>
+              <td class="text-center">
+                <span class="badge text-bg-secondary">
+                  {{ plan.records_count or 0 }}
+                </span>
+              </td>
+              <td class="text-center">
+                <span class="badge text-bg-success">
+                  {{ plan.received_count or 0 }}
+                </span>
+              </td>
+              <td class="text-muted small">
+                {{ plan.note or '—' }}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="text-center text-muted py-5">
+        <i class="bi bi-calendar-x fs-1 d-block mb-2"></i>
+        Квартальные планы ещё не созданы.
+        {% if can_manage_updates %}
+        <div class="mt-2">
+          Создайте первый план для начала актуализации данных.
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+
+{% if can_manage_updates %}
+<div
+  class="modal fade"
+  id="createPlanModal"
+  tabindex="-1"
+  aria-labelledby="createPlanModalLabel"
+  aria-hidden="true"
+>
+  <div class="modal-dialog">
+    <form method="post" action="{{ url_for('investmap.investmap_updates_create_plan') }}">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="createPlanModalLabel">
+            Создать квартальный план
+          </h5>
+          <button
+            type="button"
+            class="btn-close"
+            data-bs-dismiss="modal"
+            aria-label="Закрыть"
+          ></button>
+        </div>
+
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="period_label" class="form-label">
+              Период <span class="text-danger">*</span>
+            </label>
+            <input
+              type="text"
+              class="form-control"
+              id="period_label"
+              name="period_label"
+              placeholder="01.01.2026-31.03.2026"
+              pattern="\d{2}\.\d{2}\.\d{4}-\d{2}\.\d{2}\.\d{4}"
+              required
+            >
+            <div class="form-text">
+              Формат: ДД.ММ.ГГГГ-ДД.ММ.ГГГГ
+            </div>
+          </div>
+
+          <div class="mb-0">
+            <label for="note" class="form-label">Примечание</label>
+            <textarea
+              class="form-control"
+              id="note"
+              name="note"
+              rows="3"
+              maxlength="2000"
+              placeholder="Необязательно"
+            ></textarea>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button
+            type="button"
+            class="btn btn-outline-secondary"
+            data-bs-dismiss="modal"
+          >
+            Отмена
+          </button>
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-plus-lg me-1"></i>Создать
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
