@@ -1,4 +1,6 @@
 import json
+import os
+import uuid
 from flask import (
     abort,
     Blueprint,
@@ -21,7 +23,8 @@ from core.auth_utils import (
     login_required,
     permission_required,
 )
-from db import get_db
+from werkzeug.utils import secure_filename
+from db import get_db, UPLOADS_DIR
 from services.investmap_rf_monitor_queries import (
     get_investmap_dashboard_details,
     get_investmap_dashboard_summary,
@@ -78,9 +81,16 @@ from services.investmap_data_updates_service import (
     list_update_records,
     update_record_details,
     update_record_status,
+    add_record_document,
+    list_record_documents,
 )
 
 investmap_bp = Blueprint('investmap', __name__)
+INVESTMAP_UPDATES_UPLOAD_DIR = os.path.join(
+    UPLOADS_DIR,
+    "investmap_updates",
+)
+os.makedirs(INVESTMAP_UPDATES_UPLOAD_DIR, exist_ok=True)
 _HISTORY_ERROR_STATUSES = frozenset({"invalid_id", "error"})
 
 
@@ -1483,6 +1493,100 @@ def investmap_updates_update_record(record_id: int):
 
     return redirect(
         url_for("investmap.investmap_updates_plan", plan_id=plan_id)
+    )
+
+@investmap_bp.route(
+    "/investmap/updates/records/<int:record_id>/documents",
+    methods=["POST"],
+)
+@login_required
+def investmap_updates_upload_document(record_id: int):
+    """Загружает документ для строки актуализации."""
+    if not _can_manage_investmap_updates():
+        abort(403)
+
+    plan_id_raw = (request.form.get("plan_id") or "").strip()
+    document_type = (request.form.get("document_type") or "").strip()
+    uploaded_file = request.files.get("document")
+    user_id = session.get("user_id")
+
+    try:
+        plan_id = int(plan_id_raw)
+    except ValueError:
+        abort(400)
+
+    if uploaded_file is None or not uploaded_file.filename:
+        flash("Выберите файл для загрузки.", "danger")
+        return redirect(
+            url_for("investmap.investmap_updates_plan", plan_id=plan_id)
+        )
+
+    original_name = uploaded_file.filename
+    safe_name = secure_filename(original_name)
+    if not safe_name:
+        flash("Недопустимое имя файла.", "danger")
+        return redirect(
+            url_for("investmap.investmap_updates_plan", plan_id=plan_id)
+        )
+
+    stored_name = f"{uuid.uuid4().hex}_{safe_name}"
+    file_path = os.path.join(INVESTMAP_UPDATES_UPLOAD_DIR, stored_name)
+
+    try:
+        uploaded_file.save(file_path)
+        add_record_document(
+            get_db(),
+            record_id=record_id,
+            document_type=document_type,
+            original_name=original_name,
+            stored_name=stored_name,
+            uploaded_by_user_id=user_id,
+        )
+    except (OSError, ValueError) as error:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        flash(str(error) or "Не удалось загрузить документ.", "danger")
+    else:
+        flash("Документ загружен.", "success")
+
+    return redirect(
+        url_for("investmap.investmap_updates_plan", plan_id=plan_id)
+    )
+
+
+@investmap_bp.route(
+    "/investmap/updates/documents/<int:document_id>/download"
+)
+@login_required
+def investmap_updates_download_document(document_id: int):
+    """Скачивает документ строки актуализации."""
+    if not _can_view_investmap_updates():
+        abort(403)
+
+    db = get_db()
+    document = db.execute(
+        """
+        SELECT id, stored_name, original_name
+        FROM investmap_update_documents
+        WHERE id = ?
+        """,
+        (document_id,),
+    ).fetchone()
+
+    if document is None:
+        abort(404)
+
+    file_path = os.path.join(
+        INVESTMAP_UPDATES_UPLOAD_DIR,
+        document["stored_name"],
+    )
+    if not os.path.isfile(file_path):
+        abort(404)
+
+    return send_file(
+        file_path,
+        as_attachment=True,
+        download_name=document["original_name"],
     )
 
 @investmap_bp.route("/investmap/updates/plans", methods=["POST"])
