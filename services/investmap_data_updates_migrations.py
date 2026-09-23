@@ -178,7 +178,7 @@ def migrate_investmap_data_updates(conn: sqlite3.Connection) -> None:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             record_id INTEGER NOT NULL,
             document_type TEXT NOT NULL
-                CHECK (document_type IN ('request', 'response')),
+                CHECK (document_type IN ('request', 'response', 'other')),
             original_name TEXT NOT NULL,
             stored_name TEXT NOT NULL UNIQUE,
             uploaded_by_user_id INTEGER,
