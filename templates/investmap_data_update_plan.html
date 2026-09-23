@@ -65,6 +65,7 @@
               {% endif %}
             </tr>
           </thead>
+
           <tbody>
             {% for record in records %}
             <tr>
@@ -152,16 +153,41 @@
           </tbody>
         </table>
       </div>
+
       {% if can_manage_updates %}
-        {% for record in records %}
-        <div
-          class="modal fade"
-          id="editRecordModal{{ record.id }}"
-          tabindex="-1"
-          aria-labelledby="editRecordModalLabel{{ record.id }}"
-          aria-hidden="true"
-        >
-          <div class="modal-dialog modal-lg">
+      {% for record in records %}
+      {% set documents = documents_by_record.get(record.id, []) %}
+
+      <div
+        class="modal fade"
+        id="editRecordModal{{ record.id }}"
+        tabindex="-1"
+        aria-labelledby="editRecordModalLabel{{ record.id }}"
+        aria-hidden="true"
+      >
+        <div class="modal-dialog modal-lg">
+          <div class="modal-content">
+            <div class="modal-header">
+              <div>
+                <h5
+                  class="modal-title"
+                  id="editRecordModalLabel{{ record.id }}"
+                >
+                  Изменить строку актуализации
+                </h5>
+                <div class="small text-muted">
+                  {{ record.category_name }} · {{ record.source_name_snapshot }}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                class="btn-close"
+                data-bs-dismiss="modal"
+                aria-label="Закрыть"
+              ></button>
+            </div>
+
             <form
               method="post"
               action="{{ url_for(
@@ -171,353 +197,240 @@
             >
               <input type="hidden" name="plan_id" value="{{ plan.id }}">
 
-              <div class="modal-content">
-                <div class="modal-header">
-                  <div>
-                    <h5
-                      class="modal-title"
-                      id="editRecordModalLabel{{ record.id }}"
+              <div class="modal-body">
+                <div class="row g-3">
+                  <div class="col-md-6">
+                    <label
+                      for="status{{ record.id }}"
+                      class="form-label"
                     >
-                      Изменить строку актуализации
-                    </h5>
-                    <div class="small text-muted">
-                      {{ record.category_name }} · {{ record.source_name_snapshot }}
-                    </div>
+                      Статус
+                    </label>
+                    <select
+                      class="form-select"
+                      id="status{{ record.id }}"
+                      name="status"
+                      required
+                    >
+                      <option
+                        value="planned"
+                        {% if record.status == 'planned' %}selected{% endif %}
+                      >
+                        Не направлено
+                      </option>
+                      <option
+                        value="request_sent"
+                        {% if record.status == 'request_sent' %}selected{% endif %}
+                      >
+                        Запрос направлен
+                      </option>
+                      <option
+                        value="response_received"
+                        {% if record.status == 'response_received' %}selected{% endif %}
+                      >
+                        Получен ответ
+                      </option>
+                      <option
+                        value="overdue"
+                        {% if record.status == 'overdue' %}selected{% endif %}
+                      >
+                        Требуется уточнение
+                      </option>
+                    </select>
                   </div>
-                  <button
-                    type="button"
-                    class="btn-close"
-                    data-bs-dismiss="modal"
-                    aria-label="Закрыть"
-                  ></button>
+
+                  <div class="col-md-6">
+                    <label
+                      for="changesCount{{ record.id }}"
+                      class="form-label"
+                    >
+                      Количество изменений
+                    </label>
+                    <input
+                      type="number"
+                      class="form-control"
+                      id="changesCount{{ record.id }}"
+                      name="changes_count"
+                      min="0"
+                      value="{{ record.changes_count or 0 }}"
+                      required
+                    >
+                  </div>
+
+                  <div class="col-md-6">
+                    <label
+                      for="requestNumber{{ record.id }}"
+                      class="form-label"
+                    >
+                      Исходящий номер запроса
+                    </label>
+                    <input
+                      type="text"
+                      class="form-control"
+                      id="requestNumber{{ record.id }}"
+                      name="request_letter_number"
+                      maxlength="255"
+                      value="{{ record.request_letter_number or '' }}"
+                    >
+                  </div>
+
+                  <div class="col-md-6">
+                    <label
+                      for="responseNumber{{ record.id }}"
+                      class="form-label"
+                    >
+                      Входящий номер ответа
+                    </label>
+                    <input
+                      type="text"
+                      class="form-control"
+                      id="responseNumber{{ record.id }}"
+                      name="response_letter_number"
+                      maxlength="255"
+                      value="{{ record.response_letter_number or '' }}"
+                    >
+                  </div>
+
+                  <div class="col-12">
+                    <label
+                      for="recordNote{{ record.id }}"
+                      class="form-label"
+                    >
+                      Комментарий
+                    </label>
+                    <textarea
+                      class="form-control"
+                      id="recordNote{{ record.id }}"
+                      name="note"
+                      rows="4"
+                      maxlength="5000"
+                    >{{ record.note or '' }}</textarea>
+                  </div>
                 </div>
+              </div>
+
+              <div class="modal-footer">
+                <button
+                  type="button"
+                  class="btn btn-outline-secondary"
+                  data-bs-dismiss="modal"
+                >
+                  Отмена
+                </button>
+                <button type="submit" class="btn btn-primary">
+                  <i class="bi bi-check-lg me-1"></i>Сохранить
+                </button>
+              </div>
+            </form>
+
+            <div class="modal-body border-top">
+              <section aria-labelledby="recordDocumentsTitle{{ record.id }}">
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+                  <h6
+                    class="mb-0"
+                    id="recordDocumentsTitle{{ record.id }}"
+                  >
+                    <i class="bi bi-paperclip me-1"></i>Документы
+                  </h6>
+
+                  <span class="small text-muted">
+                    {{ documents|length }}
+                  </span>
+                </div>
+
+                {% if documents %}
+                <div class="list-group list-group-flush border rounded mb-3">
+                  {% for document in documents %}
+                  <a
+                    href="{{ url_for(
+                      'investmap.investmap_updates_download_document',
+                      document_id=document.id
+                    ) }}"
+                    class="list-group-item list-group-item-action d-flex align-items-center justify-content-between gap-3"
+                  >
+                    <span class="text-truncate">
+                      {% if document.document_type == 'request' %}
+                      <span class="badge text-bg-primary me-2">Запрос</span>
+                      {% elif document.document_type == 'response' %}
+                      <span class="badge text-bg-success me-2">Ответ</span>
+                      {% else %}
+                      <span class="badge text-bg-secondary me-2">Иной</span>
+                      {% endif %}
+                      {{ document.original_name }}
+                    </span>
+
+                    <i class="bi bi-download flex-shrink-0"></i>
+                  </a>
+                  {% endfor %}
+                </div>
+                {% else %}
+                <p class="small text-muted mb-3">
+                  Документы пока не загружены.
+                </p>
+                {% endif %}
 
                 <form
                   method="post"
+                  enctype="multipart/form-data"
                   action="{{ url_for(
-                    'investmap.investmap_updates_update_record',
+                    'investmap.investmap_updates_upload_document',
                     record_id=record.id
                   ) }}"
+                  class="border rounded p-3 bg-light"
                 >
                   <input type="hidden" name="plan_id" value="{{ plan.id }}">
 
-                  <div class="modal-body">
-                    <div class="row g-3">
-                      <div class="col-md-6">
-                        <label
-                          for="status{{ record.id }}"
-                          class="form-label"
-                        >
-                          Статус
-                        </label>
-                        <select
-                          class="form-select"
-                          id="status{{ record.id }}"
-                          name="status"
-                          required
-                        >
-                          <option
-                            value="planned"
-                            {% if record.status == 'planned' %}selected{% endif %}
-                          >
-                            Не направлено
-                          </option>
-                          <option
-                            value="request_sent"
-                            {% if record.status == 'request_sent' %}selected{% endif %}
-                          >
-                            Запрос направлен
-                          </option>
-                          <option
-                            value="response_received"
-                            {% if record.status == 'response_received' %}selected{% endif %}
-                          >
-                            Получен ответ
-                          </option>
-                          <option
-                            value="overdue"
-                            {% if record.status == 'overdue' %}selected{% endif %}
-                          >
-                            Требуется уточнение
-                          </option>
-                        </select>
-                      </div>
-
-                      <div class="col-md-6">
-                        <label
-                          for="changesCount{{ record.id }}"
-                          class="form-label"
-                        >
-                          Количество изменений
-                        </label>
-                        <input
-                          type="number"
-                          class="form-control"
-                          id="changesCount{{ record.id }}"
-                          name="changes_count"
-                          min="0"
-                          value="{{ record.changes_count or 0 }}"
-                          required
-                        >
-                      </div>
-
-                      <div class="col-md-6">
-                        <label
-                          for="requestNumber{{ record.id }}"
-                          class="form-label"
-                        >
-                          Исходящий номер запроса
-                        </label>
-                        <input
-                          type="text"
-                          class="form-control"
-                          id="requestNumber{{ record.id }}"
-                          name="request_letter_number"
-                          maxlength="255"
-                          value="{{ record.request_letter_number or '' }}"
-                        >
-                      </div>
-
-                      <div class="col-md-6">
-                        <label
-                          for="responseNumber{{ record.id }}"
-                          class="form-label"
-                        >
-                          Входящий номер ответа
-                        </label>
-                        <input
-                          type="text"
-                          class="form-control"
-                          id="responseNumber{{ record.id }}"
-                          name="response_letter_number"
-                          maxlength="255"
-                          value="{{ record.response_letter_number or '' }}"
-                        >
-                      </div>
-
-                      <div class="col-12">
-                        <label
-                          for="recordNote{{ record.id }}"
-                          class="form-label"
-                        >
-                          Комментарий
-                        </label>
-                        <textarea
-                          class="form-control"
-                          id="recordNote{{ record.id }}"
-                          name="note"
-                          rows="4"
-                          maxlength="5000"
-                        >{{ record.note or '' }}</textarea>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div class="modal-footer">
-                    <button
-                      type="button"
-                      class="btn btn-outline-secondary"
-                      data-bs-dismiss="modal"
-                    >
-                      Отмена
-                    </button>
-                    <button type="submit" class="btn btn-primary">
-                      <i class="bi bi-check-lg me-1"></i>Сохранить
-                    </button>
-                  </div>
-                </form>
-
-                <div class="modal-body border-top">
-                  <section aria-labelledby="recordDocumentsTitle{{ record.id }}">
-                    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
-                      <h6
-                        class="mb-0"
-                        id="recordDocumentsTitle{{ record.id }}"
-                      >
-                        <i class="bi bi-paperclip me-1"></i>Документы
-                      </h6>
-                      <span class="small text-muted">
-                        {{ documents_by_record.get(record.id, [])|length }}
-                      </span>
-                    </div>
-
-                    {% set documents = documents_by_record.get(record.id, []) %}
-                    {% if documents %}
-                    <div class="list-group list-group-flush border rounded mb-3">
-                      {% for document in documents %}
-                      <a
-                        href="{{ url_for(
-                          'investmap.investmap_updates_download_document',
-                          document_id=document.id
-                        ) }}"
-                        class="list-group-item list-group-item-action d-flex align-items-center justify-content-between gap-3"
-                      >
-                        <span class="text-truncate">
-                          {% if document.document_type == 'request' %}
-                          <span class="badge text-bg-primary me-2">Запрос</span>
-                          {% elif document.document_type == 'response' %}
-                          <span class="badge text-bg-success me-2">Ответ</span>
-                          {% else %}
-                          <span class="badge text-bg-secondary me-2">Иной</span>
-                          {% endif %}
-                          {{ document.original_name }}
-                        </span>
-                        <i class="bi bi-download flex-shrink-0"></i>
-                      </a>
-                      {% endfor %}
-                    </div>
-                    {% else %}
-                    <p class="small text-muted mb-3">
-                      Документы пока не загружены.
-                    </p>
-                    {% endif %}
-
-                    <form
-                      method="post"
-                      enctype="multipart/form-data"
-                      action="{{ url_for(
-                        'investmap.investmap_updates_upload_document',
-                        record_id=record.id
-                      ) }}"
-                      class="border rounded p-3 bg-light"
-                    >
-                      <input type="hidden" name="plan_id" value="{{ plan.id }}">
-
-                      <div class="row g-2 align-items-end">
-                        <div class="col-md-4">
-                          <label
-                            class="form-label"
-                            for="documentType{{ record.id }}"
-                          >
-                            Тип документа
-                          </label>
-                          <select
-                            class="form-select"
-                            id="documentType{{ record.id }}"
-                            name="document_type"
-                            required
-                          >
-                            <option value="request">Запрос</option>
-                            <option value="response">Ответ</option>
-                            <option value="other">Иной</option>
-                          </select>
-                        </div>
-
-                        <div class="col-md-5">
-                          <label
-                            class="form-label"
-                            for="documentFile{{ record.id }}"
-                          >
-                            Файл
-                          </label>
-                          <input
-                            class="form-control"
-                            id="documentFile{{ record.id }}"
-                            name="document"
-                            type="file"
-                            required
-                          >
-                        </div>
-
-                        <div class="col-md-3 d-grid">
-                          <button type="submit" class="btn btn-outline-primary">
-                            <i class="bi bi-upload me-1"></i>Загрузить
-                          </button>
-                        </div>
-                      </div>
-                    </form>
-                  </section>
-                </div>
-              </div>
-                    
-                    <div class="col-md-6">
+                  <div class="row g-2 align-items-end">
+                    <div class="col-md-4">
                       <label
-                        for="changesCount{{ record.id }}"
                         class="form-label"
+                        for="documentType{{ record.id }}"
                       >
-                        Количество изменений
+                        Тип документа
+                      </label>
+                      <select
+                        class="form-select"
+                        id="documentType{{ record.id }}"
+                        name="document_type"
+                        required
+                      >
+                        <option value="request">Запрос</option>
+                        <option value="response">Ответ</option>
+                        <option value="other">Иной</option>
+                      </select>
+                    </div>
+
+                    <div class="col-md-5">
+                      <label
+                        class="form-label"
+                        for="documentFile{{ record.id }}"
+                      >
+                        Файл
                       </label>
                       <input
-                        type="number"
                         class="form-control"
-                        id="changesCount{{ record.id }}"
-                        name="changes_count"
-                        min="0"
-                        value="{{ record.changes_count or 0 }}"
+                        id="documentFile{{ record.id }}"
+                        name="document"
+                        type="file"
                         required
                       >
                     </div>
 
-                    <div class="col-md-6">
-                      <label
-                        for="requestNumber{{ record.id }}"
-                        class="form-label"
-                      >
-                        Исходящий номер запроса
-                      </label>
-                      <input
-                        type="text"
-                        class="form-control"
-                        id="requestNumber{{ record.id }}"
-                        name="request_letter_number"
-                        maxlength="255"
-                        value="{{ record.request_letter_number or '' }}"
-                      >
-                    </div>
-
-                    <div class="col-md-6">
-                      <label
-                        for="responseNumber{{ record.id }}"
-                        class="form-label"
-                      >
-                        Входящий номер ответа
-                      </label>
-                      <input
-                        type="text"
-                        class="form-control"
-                        id="responseNumber{{ record.id }}"
-                        name="response_letter_number"
-                        maxlength="255"
-                        value="{{ record.response_letter_number or '' }}"
-                      >
-                    </div>
-
-                    <div class="col-12">
-                      <label
-                        for="recordNote{{ record.id }}"
-                        class="form-label"
-                      >
-                        Комментарий
-                      </label>
-                      <textarea
-                        class="form-control"
-                        id="recordNote{{ record.id }}"
-                        name="note"
-                        rows="4"
-                        maxlength="5000"
-                      >{{ record.note or '' }}</textarea>
+                    <div class="col-md-3 d-grid">
+                      <button type="submit" class="btn btn-outline-primary">
+                        <i class="bi bi-upload me-1"></i>Загрузить
+                      </button>
                     </div>
                   </div>
-                </div>
-
-                <div class="modal-footer">
-                  <button
-                    type="button"
-                    class="btn btn-outline-secondary"
-                    data-bs-dismiss="modal"
-                  >
-                    Отмена
-                  </button>
-                  <button type="submit" class="btn btn-primary">
-                    <i class="bi bi-check-lg me-1"></i>Сохранить
-                  </button>
-                </div>
-              </div>
-            </form>
+                </form>
+              </section>
+            </div>
           </div>
         </div>
-        {% endfor %}
+      </div>
+      {% endfor %}
       {% endif %}
+
       {% else %}
       <div class="text-center text-muted py-5">
         <i class="bi bi-list-ul fs-1 d-block mb-2"></i>
