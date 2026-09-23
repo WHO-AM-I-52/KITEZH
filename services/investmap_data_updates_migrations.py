@@ -74,7 +74,93 @@ CATEGORY_ORGANIZATION_RULES = {
     ],
 }
 
+def _migrate_update_documents_allow_other(
+    conn: sqlite3.Connection,
+) -> None:
+    """Расширяет допустимые типы документов для уже созданной таблицы."""
+    row = conn.execute(
+        """
+        SELECT sql
+        FROM sqlite_master
+        WHERE type = 'table'
+          AND name = 'investmap_update_documents'
+        """
+    ).fetchone()
 
+    if row is None:
+        return
+
+    table_sql = (row[0] or "").lower()
+    if "'other'" in table_sql:
+        return
+
+    conn.execute("SAVEPOINT investmap_update_documents_rebuild")
+    try:
+        conn.execute(
+            """
+            CREATE TABLE investmap_update_documents_rebuilt (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                record_id INTEGER NOT NULL,
+                document_type TEXT NOT NULL
+                    CHECK (
+                        document_type IN ('request', 'response', 'other')
+                    ),
+                original_name TEXT NOT NULL,
+                stored_name TEXT NOT NULL UNIQUE,
+                uploaded_by_user_id INTEGER,
+                uploaded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(record_id) REFERENCES investmap_update_records(id)
+                    ON DELETE CASCADE,
+                FOREIGN KEY(uploaded_by_user_id) REFERENCES users(id)
+            )
+            """
+        )
+
+        conn.execute(
+            """
+            INSERT INTO investmap_update_documents_rebuilt (
+                id,
+                record_id,
+                document_type,
+                original_name,
+                stored_name,
+                uploaded_by_user_id,
+                uploaded_at
+            )
+            SELECT
+                id,
+                record_id,
+                document_type,
+                original_name,
+                stored_name,
+                uploaded_by_user_id,
+                uploaded_at
+            FROM investmap_update_documents
+            """
+        )
+
+        conn.execute("DROP TABLE investmap_update_documents")
+
+        conn.execute(
+            """
+            ALTER TABLE investmap_update_documents_rebuilt
+            RENAME TO investmap_update_documents
+            """
+        )
+
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_investmap_update_documents_record
+            ON investmap_update_documents(record_id, document_type)
+            """
+        )
+    except Exception:
+        conn.execute("ROLLBACK TO SAVEPOINT investmap_update_documents_rebuild")
+        conn.execute("RELEASE SAVEPOINT investmap_update_documents_rebuild")
+        raise
+    else:
+        conn.execute("RELEASE SAVEPOINT investmap_update_documents_rebuild")
+        
 def migrate_investmap_data_updates(conn: sqlite3.Connection) -> None:
     """Создаёт схему и начальные данные модуля актуализации Инвесткарты."""
     conn.executescript(
@@ -293,3 +379,5 @@ def migrate_investmap_data_updates(conn: sqlite3.Connection) -> None:
                 """,
                 (category_id, organization_ids[organization_name]),
             )
+
+    _migrate_update_documents_allow_other(conn)
