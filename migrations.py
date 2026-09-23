@@ -15,6 +15,9 @@ from core.auth_utils import hash_pw
 from spravochnik import LEGAL_FORMS_DEFAULT, DISTRICTS_DEFAULT, SOURCE_TYPES_DEFAULT
 from db import get_db
 from portal_analysis.analysis_history import create_analysis_history_tables
+from services.investmap_data_updates_migrations import (
+    migrate_investmap_data_updates,
+)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # НОВЫЕ КОЛОНКИ requests (#53)
@@ -1185,6 +1188,7 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         _migrate_investmap_rf_snapshot_tables(conn)
         _migrate_investmap_rf_monitor_registry_tables(conn)
         _migrate_investmap_rf_sync_plan_tables(conn)
+        migrate_investmap_data_updates(conn)
         _migrate_investmap_rf_sync_retry_tables(conn)
         _migrate_investmap_rf_manager_assignment_tables(conn)
         _migrate_letters_tables(conn)
