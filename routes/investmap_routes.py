@@ -1,9 +1,11 @@
 import json
 from flask import (
+    abort,
     Blueprint,
     current_app,
     render_template,
     request,
+    redirect,
     jsonify,
     flash,
     g,
@@ -68,6 +70,10 @@ from tools.investmap_analyzer import (
     analyze,
     build_summary_sms,
     build_v2_summary_sms,
+)
+from services.investmap_data_updates_service import (
+    create_or_get_update_plan,
+    list_update_plans,
 )
 
 investmap_bp = Blueprint('investmap', __name__)
@@ -1371,3 +1377,63 @@ def investmap_analyze():
         'summary_sms': summary_sms,
         'error': None
     })
+def _can_view_investmap_updates() -> bool:
+    """Проверяет доступ к просмотру актуализации Инвесткарты."""
+    return (
+        session.get("role") == "admin"
+        or get_user_perm("can_view_investmap_updates")
+        or get_user_perm("can_manage_investmap_updates")
+    )
+
+
+def _can_manage_investmap_updates() -> bool:
+    """Проверяет доступ к управлению актуализацией Инвесткарты."""
+    return (
+        session.get("role") == "admin"
+        or get_user_perm("can_manage_investmap_updates")
+    )
+
+
+@investmap_bp.route("/investmap/updates")
+@login_required
+def investmap_updates():
+    """Список квартальных планов актуализации Инвесткарты."""
+    if not _can_view_investmap_updates():
+        abort(403)
+
+    db = get_db()
+    return render_template(
+        "investmap_data_updates.html",
+        plans=list_update_plans(db),
+        can_manage_updates=_can_manage_investmap_updates(),
+        is_admin=session.get("role") == "admin",
+    )
+
+
+@investmap_bp.route("/investmap/updates/plans", methods=["POST"])
+@login_required
+def investmap_updates_create_plan():
+    """Создаёт или открывает квартальный план актуализации."""
+    if not _can_manage_investmap_updates():
+        abort(403)
+
+    period_label = (request.form.get("period_label") or "").strip()
+    note = (request.form.get("note") or "").strip()
+    user_id = session.get("user_id")
+
+    try:
+        plan, created = create_or_get_update_plan(
+            get_db(),
+            period_label=period_label,
+            created_by_user_id=user_id,
+            note=note,
+        )
+    except ValueError as error:
+        flash(str(error), "danger")
+    else:
+        if created:
+            flash("План актуализации создан.", "success")
+        else:
+            flash("План за этот период уже существует.", "info")
+
+    return redirect(url_for("investmap.investmap_updates"))
