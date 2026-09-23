@@ -1,6 +1,7 @@
 import json
 import os
 import uuid
+import sqlite3
 from flask import (
     abort,
     Blueprint,
@@ -82,7 +83,6 @@ from services.investmap_data_updates_service import (
     update_record_details,
     update_record_status,
     add_record_document,
-    list_record_documents,
 )
 
 investmap_bp = Blueprint('investmap', __name__)
@@ -1542,7 +1542,7 @@ def investmap_updates_upload_document(record_id: int):
             stored_name=stored_name,
             uploaded_by_user_id=user_id,
         )
-    except (OSError, ValueError) as error:
+    except (OSError, ValueError, sqlite3.IntegrityError) as error:
         if os.path.exists(file_path):
             os.remove(file_path)
         flash(str(error) or "Не удалось загрузить документ.", "danger")
