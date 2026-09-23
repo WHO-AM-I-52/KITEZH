@@ -76,6 +76,8 @@ from services.investmap_data_updates_service import (
     get_update_plan_by_id,
     list_update_plans,
     list_update_records,
+    update_record_details,
+    update_record_status,
 )
 
 investmap_bp = Blueprint('investmap', __name__)
@@ -1429,6 +1431,58 @@ def investmap_updates_plan(plan_id: int):
         records=list_update_records(db, plan_id),
         can_manage_updates=_can_manage_investmap_updates(),
         is_admin=session.get("role") == "admin",
+    )
+
+@investmap_bp.route(
+    "/investmap/updates/records/<int:record_id>",
+    methods=["POST"],
+)
+@login_required
+def investmap_updates_update_record(record_id: int):
+    """Сохраняет статус и рабочие данные строки актуализации."""
+    if not _can_manage_investmap_updates():
+        abort(403)
+
+    plan_id_raw = (request.form.get("plan_id") or "").strip()
+    try:
+        plan_id = int(plan_id_raw)
+    except ValueError:
+        abort(400)
+
+    status = (request.form.get("status") or "").strip()
+    request_letter_number = request.form.get("request_letter_number")
+    response_letter_number = request.form.get("response_letter_number")
+    note = request.form.get("note")
+    changes_count_raw = (request.form.get("changes_count") or "").strip()
+    user_id = session.get("user_id")
+
+    try:
+        changes_count = int(changes_count_raw or "0")
+        if changes_count < 0:
+            raise ValueError
+
+        update_record_details(
+            get_db(),
+            record_id=record_id,
+            updated_by_user_id=user_id,
+            request_letter_number=request_letter_number,
+            response_letter_number=response_letter_number,
+            changes_count=changes_count,
+            note=note,
+        )
+        update_record_status(
+            get_db(),
+            record_id=record_id,
+            status=status,
+            updated_by_user_id=user_id,
+        )
+    except ValueError as error:
+        flash(str(error) or "Проверьте данные строки.", "danger")
+    else:
+        flash("Строка актуализации сохранена.", "success")
+
+    return redirect(
+        url_for("investmap.investmap_updates_plan", plan_id=plan_id)
     )
 
 @investmap_bp.route("/investmap/updates/plans", methods=["POST"])
