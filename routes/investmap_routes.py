@@ -83,6 +83,7 @@ from services.investmap_data_updates_service import (
     update_record_details,
     update_record_status,
     add_record_document,
+    list_record_documents,
 )
 
 investmap_bp = Blueprint('investmap', __name__)
@@ -1435,10 +1436,17 @@ def investmap_updates_plan(plan_id: int):
     if plan is None:
         abort(404)
 
+    records = list_update_records(db, plan_id)
+    documents_by_record = {
+        record["id"]: list_record_documents(db, record["id"])
+        for record in records
+    }
+
     return render_template(
         "investmap_data_update_plan.html",
         plan=plan,
-        records=list_update_records(db, plan_id),
+        records=records,
+        documents_by_record=documents_by_record,
         can_manage_updates=_can_manage_investmap_updates(),
         is_admin=session.get("role") == "admin",
     )
