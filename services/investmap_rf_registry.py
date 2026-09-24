@@ -29,11 +29,127 @@ EVENT_API_NOT_FOUND_KEPT_BY_OPERATOR = (
 EVENT_DEACTIVATED_OPERATOR_NOT_FOUND = (
     "deactivated_operator_not_found"
 )
+EVENT_ACTIVATED_MANUAL = "activated_manual"
 
 API_CHECK_STATUS_SUCCESS = "success"
 API_CHECK_STATUS_ERROR = "error"
 API_CHECK_STATUS_NOT_FOUND_PENDING = "not_found_pending"
 
+
+def activate_manual_monitored_card(
+    conn,
+    global_id: int,
+    added_by_user_id: int | None,
+) -> dict[str, Any]:
+    """
+    Добавляет или реактивирует карточку в реестре по вручную введённому ID.
+
+    Функция не вызывает API, не создаёт snapshot, не делает commit()
+    и не закрывает соединение. API-проверку и первый snapshot выполняет
+    вызывающий маршрут через run_registry_card_refresh().
+    """
+    global_id = _parse_global_id(global_id)
+    if global_id is None:
+        raise ValueError(
+            "Global ID должен быть положительным целым числом."
+        )
+
+    row = conn.execute(
+        """
+        SELECT
+            is_active,
+            last_source_status
+        FROM investmap_rf_monitored_cards
+        WHERE global_id = ?
+        """,
+        (global_id,),
+    ).fetchone()
+
+    occurred_at_utc = _utc_now()
+    source_filename = "manual_global_id"
+
+    if row is None:
+        conn.execute(
+            """
+            INSERT INTO investmap_rf_monitored_cards (
+                global_id,
+                is_active,
+                source_filename,
+                imported_at_utc,
+                last_seen_import_at_utc,
+                last_source_status
+            )
+            VALUES (?, 1, ?, ?, ?, ?)
+            """,
+            (
+                global_id,
+                source_filename,
+                occurred_at_utc,
+                occurred_at_utc,
+                FREE_STATUS,
+            ),
+        )
+        _append_event(
+            conn,
+            global_id=global_id,
+            event_type=EVENT_ACTIVATED_MANUAL,
+            previous_status=None,
+            current_status=FREE_STATUS,
+            source_filename=source_filename,
+            occurred_at_utc=occurred_at_utc,
+        )
+        return {
+            "global_id": global_id,
+            "action": "added",
+            "was_active": False,
+        }
+
+    was_active = bool(row["is_active"])
+    previous_status = row["last_source_status"]
+
+    if was_active:
+        return {
+            "global_id": global_id,
+            "action": "already_active",
+            "was_active": True,
+        }
+
+    conn.execute(
+        """
+        UPDATE investmap_rf_monitored_cards
+        SET
+            is_active = 1,
+            source_filename = ?,
+            last_seen_import_at_utc = ?,
+            last_source_status = ?,
+            last_api_check_status = NULL,
+            last_api_check_error = NULL,
+            api_not_found_pending_decision = 0,
+            api_not_found_detected_at_utc = NULL
+        WHERE global_id = ?
+        """,
+        (
+            source_filename,
+            occurred_at_utc,
+            FREE_STATUS,
+            global_id,
+        ),
+    )
+    _append_event(
+        conn,
+        global_id=global_id,
+        event_type=EVENT_REACTIVATED,
+        previous_status=previous_status,
+        current_status=FREE_STATUS,
+        source_filename=source_filename,
+        occurred_at_utc=occurred_at_utc,
+    )
+
+    return {
+        "global_id": global_id,
+        "action": "reactivated",
+        "was_active": False,
+    }
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
