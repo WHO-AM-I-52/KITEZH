@@ -104,7 +104,10 @@ def run_batch(
             if conn is None:
                 result = collect_snapshot_fn(global_id)
             else:
-    result = collect_snapshot_fn(global_id, conn=conn)
+                result = collect_snapshot_fn(
+                    global_id,
+                    conn=conn,
+                )
         except KeyboardInterrupt:
             interrupted = True
             break
