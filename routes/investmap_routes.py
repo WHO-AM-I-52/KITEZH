@@ -17,6 +17,9 @@ from flask import (
     url_for,
     send_file,
 )
+from services.investmap_data_updates_export import (
+    build_update_plan_export_xlsx,
+)
 from core.activity_log import log_action
 from core.auth_utils import (
     admin_required,
@@ -1449,6 +1452,40 @@ def investmap_updates_plan(plan_id: int):
         documents_by_record=documents_by_record,
         can_manage_updates=_can_manage_investmap_updates(),
         is_admin=session.get("role") == "admin",
+    )
+
+@investmap_bp.route(
+    "/investmap/updates/plans/<int:plan_id>/export"
+)
+@login_required
+def investmap_updates_export_plan(plan_id: int):
+    """Выгружает итоговый XLSX-файл квартального плана актуализации."""
+    if not _can_view_investmap_updates():
+        abort(403)
+
+    db = get_db()
+    plan = get_update_plan_by_id(db, plan_id)
+    if plan is None:
+        abort(404)
+
+    records = list_update_records(db, plan_id)
+    output = build_update_plan_export_xlsx(plan, records)
+
+    period_start = str(plan["period_start"]).replace("-", ".")
+    period_end = str(plan["period_end"]).replace("-", ".")
+    filename = (
+        f"Итоги_актуализации_Инвесткарты_"
+        f"{period_start}-{period_end}.xlsx"
+    )
+
+    return send_file(
+        output,
+        as_attachment=True,
+        download_name=filename,
+        mimetype=(
+            "application/vnd.openxmlformats-officedocument."
+            "spreadsheetml.sheet"
+        ),
     )
 
 @investmap_bp.route(
