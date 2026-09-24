@@ -21,26 +21,35 @@ def collect_card_snapshot(
     *,
     fetch_card_fn: Callable = fetch_card,
     get_db_fn: Callable[[], sqlite3.Connection] = get_db,
+    conn: sqlite3.Connection | None = None,
 ) -> SnapshotSaveResult:
     """
-    Получает одну карточку, сохраняет новый снимок и управляет транзакцией.
+    Получает одну карточку и сохраняет новый снимок.
 
-    Соединение создаётся и закрывается в этой функции. При любой ошибке
-    незавершённая транзакция откатывается.
+    Если conn не передан, функция создаёт и закрывает собственное соединение
+    и самостоятельно фиксирует/откатывает транзакцию. Если conn передан,
+    соединение и транзакцию полностью контролирует вызывающий код.
     """
-    conn = get_db_fn()
+    owns_connection = conn is None
+    if conn is None:
+        conn = get_db_fn()
+
     try:
         card = fetch_card_fn(global_id)
         result = save_card_snapshot(conn, card)
         update_card_manager_assignment(conn, card=card)
-        conn.commit()
+
+        if owns_connection:
+            conn.commit()
+
         return result
     except Exception:
-        conn.rollback()
+        if owns_connection:
+            conn.rollback()
         raise
     finally:
-        conn.close()
-
+        if owns_connection:
+            conn.close()
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
