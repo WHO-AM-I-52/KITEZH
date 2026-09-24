@@ -645,50 +645,45 @@
                         </thead>
                         <tbody>
                             {% for event in registry_events %}
-                            <tr>
-                                <td>
-                                    <code>{{ event.occurred_at_utc }}</code>
-                                </td>
-                                <td>{{ event.global_id }}</td>
-                                <td>
-                                    {% if event.event_type == 'activated_manual' %}
-                                    <span class="badge text-bg-primary">
-                                        Добавлена вручную
-                                    </span>
-                                    {% if event.event_type == 'activated' %}
-                                    <span class="badge text-bg-success">
-                                        Добавлена
-                                    </span>
-                                    {% elif event.event_type == 'reactivated' %}
-                                    <span class="badge text-bg-primary">
-                                        Реактивирована
-                                    </span>
-                                    {% elif event.event_type == 'deactivated_status_changed' %}
-                                    <span class="badge text-bg-warning">
-                                        Снята с мониторинга
-                                    </span>
-                                    {% elif event.event_type == 'deactivated_api_not_found' %}
-                                    <span class="badge text-bg-danger">
-                                        Снята по HTTP 404
-                                    </span>
-                                    {% elif event.event_type == 'api_not_found_detected' %}
-                                    <span class="badge text-bg-warning">
-                                        Не найдена на карте
-                                    </span>
-                                    {% elif event.event_type == 'api_not_found_kept_by_operator' %}
-                                    <span class="badge text-bg-secondary">
-                                        Оставлена оператором
-                                    </span>
-                                    {% elif event.event_type == 'deactivated_operator_not_found' %}
-                                    <span class="badge text-bg-danger">
-                                        Снята оператором
-                                    </span>
-                                    {% else %}
-                                    <span class="badge text-bg-secondary">
-                                        {{ event.event_type }}
-                                    </span>
-                                    {% endif %}
-                                </td>
+                            <td>
+                              {% if event.event_type == 'activated_manual' %}
+                              <span class="badge text-bg-primary">
+                                Добавлена вручную
+                              </span>
+                              {% elif event.event_type == 'activated' %}
+                              <span class="badge text-bg-success">
+                                Добавлена
+                              </span>
+                              {% elif event.event_type == 'reactivated' %}
+                              <span class="badge text-bg-primary">
+                                Реактивирована
+                              </span>
+                              {% elif event.event_type == 'deactivated_status_changed' %}
+                              <span class="badge text-bg-warning">
+                                Снята с мониторинга
+                              </span>
+                              {% elif event.event_type == 'deactivated_api_not_found' %}
+                              <span class="badge text-bg-danger">
+                                Снята по HTTP 404
+                              </span>
+                              {% elif event.event_type == 'api_not_found_detected' %}
+                              <span class="badge text-bg-warning">
+                                Не найдена на карте
+                              </span>
+                              {% elif event.event_type == 'api_not_found_kept_by_operator' %}
+                              <span class="badge text-bg-secondary">
+                                Оставлена оператором
+                              </span>
+                              {% elif event.event_type == 'deactivated_operator_not_found' %}
+                              <span class="badge text-bg-danger">
+                                Снята оператором
+                              </span>
+                              {% else %}
+                              <span class="badge text-bg-secondary">
+                                {{ event.event_type }}
+                              </span>
+                              {% endif %}
+                            </td>
                                 <td>{{ event.previous_status or '—' }}</td>
                                 <td>{{ event.current_status }}</td>
                                 <td class="text-break">
