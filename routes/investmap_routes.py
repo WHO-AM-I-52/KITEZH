@@ -50,6 +50,7 @@ from services.investmap_rf_registry import (
     record_card_api_check_error,
     record_card_api_check_success,
     record_card_api_not_found,
+    activate_manual_monitored_card,
 )
 from services.investmap_rf_registry_runner import run_registry_card_refresh
 from services.investmap_rf_client import (
@@ -583,6 +584,135 @@ def deactivate_investmap_rf_monitor_registry_card(global_id):
     finally:
         conn.close()
 
+    return redirect(_registry_monitor_url(global_id))
+
+@investmap_bp.route(
+    "/investmap-rf/monitor/registry/manual-add",
+    methods=["POST"],
+)
+@login_required
+@permission_required("can_refresh_investmap_rf_cards")
+def add_manual_investmap_rf_monitor_card():
+    """
+    Проверяет Global ID через API и добавляет карточку в мониторинг.
+
+    Активация записи, первый API-снимок и журналирование выполняются
+    одной транзакцией. При ошибке API или отсутствии карточки все
+    изменения реестра откатываются.
+    """
+    raw_global_id = (request.form.get("global_id") or "").strip()
+
+    try:
+        global_id = int(raw_global_id)
+    except (TypeError, ValueError):
+        flash("Введите положительный целый Global ID.", "danger")
+        return redirect(url_for("investmap.investmap_rf_monitor"))
+
+    if global_id <= 0:
+        flash("Global ID должен быть положительным целым числом.", "danger")
+        return redirect(url_for("investmap.investmap_rf_monitor"))
+
+    user_id = getattr(g, "user", {}).get("id")
+    conn = get_db()
+
+    try:
+        activation = activate_manual_monitored_card(
+            conn,
+            global_id=global_id,
+        )
+
+        if activation["action"] == "already_active":
+            conn.rollback()
+            flash(
+                f"Карточка {global_id} уже добавлена в отслеживаемые.",
+                "info",
+            )
+            return redirect(_registry_monitor_url(global_id))
+
+        refresh_result = run_registry_card_refresh(
+            conn,
+            global_id=global_id,
+        )
+        item = refresh_result["item"]
+
+        if item is None:
+            raise RuntimeError(
+                "Проверка API не вернула результат по карточке."
+            )
+
+        if item.status not in {"new", "unchanged"}:
+            error = item.error or "Неизвестная ошибка API."
+
+            if "Внешний API не нашёл карточку." in error:
+                raise ValueError(
+                    f"Карточка с Global ID {global_id} не найдена "
+                    "на Инвесткарте РФ."
+                )
+
+            raise RuntimeError(
+                f"Не удалось проверить карточку {global_id} через API: "
+                f"{error}"
+            )
+
+        result = record_card_api_check_success(
+            conn,
+            global_id=global_id,
+        )
+
+        if not log_action(
+            conn,
+            user_id,
+            "investmap_rf_registry_manual_add",
+            detail=(
+                f"global_id={global_id}; "
+                f"action={activation['action']}; "
+                f"snapshot_id={item.snapshot_id}"
+            ),
+        ):
+            raise RuntimeError(
+                "Не удалось записать действие ручного добавления."
+            )
+
+        conn.commit()
+
+    except (RuntimeError, ValueError) as error:
+        conn.rollback()
+        flash(str(error), "danger")
+        return redirect(url_for("investmap.investmap_rf_monitor"))
+    except Exception:
+        conn.rollback()
+        current_app.logger.exception(
+            "Ошибка ручного добавления карточки в мониторинг "
+            "Инвесткарты РФ: global_id=%s",
+            raw_global_id,
+        )
+        flash(
+            "Не удалось проверить и добавить карточку в мониторинг.",
+            "danger",
+        )
+        return redirect(url_for("investmap.investmap_rf_monitor"))
+    finally:
+        conn.close()
+
+    action_labels = {
+        "added": "добавлена в отслеживаемые",
+        "reactivated": "повторно добавлена в отслеживаемые",
+    }
+    action_label = action_labels.get(
+        activation["action"],
+        "добавлена в отслеживаемые",
+    )
+
+    snapshot_label = (
+        "создан первый снимок"
+        if item.status == "new"
+        else "снимок уже был актуален"
+    )
+    flash(
+        f"Карточка {result['global_id']} {action_label}: "
+        f"{snapshot_label}.",
+        "success",
+    )
     return redirect(_registry_monitor_url(global_id))
 
 @investmap_bp.route(
