@@ -47,6 +47,40 @@
 
     <div class="card-body p-0">
       {% if records %}
+      {% set category_groups = records|groupby('category_id') %}
+
+      <div class="px-3 pt-3">
+        <div
+          class="nav nav-tabs flex-nowrap overflow-auto"
+          id="updateCategoryTabs"
+          role="tablist"
+          style="white-space: nowrap;"
+        >
+          <button
+            type="button"
+            class="nav-link active"
+            data-update-category-filter="all"
+          >
+            <i class="bi bi-collection me-1"></i>Все
+            <span class="badge text-bg-light ms-1">{{ records|length }}</span>
+          </button>
+
+          {% for category_id, category_records in category_groups %}
+          {% set category = category_records[0] %}
+          <button
+            type="button"
+            class="nav-link"
+            data-update-category-filter="{{ category_id }}"
+          >
+            <i class="bi bi-folder2-open me-1"></i>
+            {{ category.category_name }}
+            <span class="badge text-bg-light ms-1">
+              {{ category_records|length }}
+            </span>
+          </button>
+          {% endfor %}
+        </div>
+      </div>
       <div class="table-responsive">
         <table class="table table-hover align-middle mb-0">
           <thead class="table-light">
@@ -68,7 +102,9 @@
 
           <tbody>
             {% for record in records %}
-            <tr>
+            <tr
+              data-update-record-category="{{ record.category_id }}"
+            >
               <td class="ps-3">
                 <div class="fw-semibold">{{ record.category_name }}</div>
                 <div class="small text-muted">{{ record.category_code }}</div>
@@ -139,7 +175,10 @@
             </tr>
 
             {% if record.note %}
-            <tr class="table-light">
+            <tr
+              class="table-light"
+              data-update-note-category="{{ record.category_id }}"
+            >
               <td></td>
               <td
                 colspan="{% if can_manage_updates %}9{% else %}8{% endif %}"
@@ -441,4 +480,54 @@
   </div>
 
 </div>
+<script>
+  (() => {
+    const tabs = document.querySelectorAll("[data-update-category-filter]");
+    const recordRows = document.querySelectorAll(
+      "[data-update-record-category]"
+    );
+    const noteRows = document.querySelectorAll(
+      "[data-update-note-category]"
+    );
+
+    if (!tabs.length) {
+      return;
+    }
+
+    const setVisible = (rows, categoryId, attributeName) => {
+      rows.forEach((row) => {
+        const rowCategoryId = row.dataset[attributeName];
+        const isVisible =
+          categoryId === "all" || rowCategoryId === categoryId;
+
+        row.classList.toggle("d-none", !isVisible);
+      });
+    };
+
+    tabs.forEach((tab) => {
+      tab.addEventListener("click", () => {
+        const categoryId = tab.dataset.updateCategoryFilter;
+
+        tabs.forEach((item) => {
+          item.classList.toggle("active", item === tab);
+          item.setAttribute(
+            "aria-selected",
+            item === tab ? "true" : "false"
+          );
+        });
+
+        setVisible(
+          recordRows,
+          categoryId,
+          "updateRecordCategory"
+        );
+        setVisible(
+          noteRows,
+          categoryId,
+          "updateNoteCategory"
+        );
+      });
+    });
+  })();
+</script>
 {% endblock %}
