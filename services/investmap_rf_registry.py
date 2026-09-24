@@ -39,7 +39,6 @@ API_CHECK_STATUS_NOT_FOUND_PENDING = "not_found_pending"
 def activate_manual_monitored_card(
     conn,
     global_id: int,
-    added_by_user_id: int | None,
 ) -> dict[str, Any]:
     """
     Добавляет или реактивирует карточку в реестре по вручную введённому ID.
