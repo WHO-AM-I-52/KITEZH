@@ -1607,20 +1607,29 @@ def investmap_updates_create_plan():
     period_label = (request.form.get("period_label") or "").strip()
     note = (request.form.get("note") or "").strip()
     user_id = session.get("user_id")
+    db = get_db()
 
     try:
         plan, created = create_or_get_update_plan(
-            get_db(),
+            db,
             period_label=period_label,
             created_by_user_id=user_id,
             note=note,
         )
-    except ValueError as error:
-        flash(str(error), "danger")
-    else:
-        if created:
-            flash("План актуализации создан.", "success")
-        else:
-            flash("План за этот период уже существует.", "info")
+        db.commit()
+    except (ValueError, sqlite3.Error) as error:
+        db.rollback()
+        flash(str(error) or "Не удалось создать план актуализации.", "danger")
+        return redirect(url_for("investmap.investmap_updates"))
 
-    return redirect(url_for("investmap.investmap_updates"))
+    if created:
+        flash("План актуализации создан.", "success")
+    else:
+        flash("План за этот период уже существует.", "info")
+
+    return redirect(
+        url_for(
+            "investmap.investmap_updates_plan",
+            plan_id=plan["id"],
+        )
+    )
