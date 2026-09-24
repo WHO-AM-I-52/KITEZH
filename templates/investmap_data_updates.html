@@ -129,7 +129,11 @@
   aria-hidden="true"
 >
   <div class="modal-dialog">
-    <form method="post" action="{{ url_for('investmap.investmap_updates_create_plan') }}">
+    <form
+      method="post"
+      action="{{ url_for('investmap.investmap_updates_create_plan') }}"
+      id="createPlanForm"
+    >
       <div class="modal-content">
         <div class="modal-header">
           <h5 class="modal-title" id="createPlanModalLabel">
@@ -144,25 +148,77 @@
         </div>
 
         <div class="modal-body">
-          <div class="mb-3">
-            <label for="period_label" class="form-label">
-              Период <span class="text-danger">*</span>
-            </label>
-            <input
-              type="text"
-              class="form-control"
-              id="period_label"
-              name="period_label"
-              placeholder="01.01.2026-31.03.2026"
-              pattern="\d{2}\.\d{2}\.\d{4}-\d{2}\.\d{2}\.\d{4}"
-              required
-            >
-            <div class="form-text">
-              Формат: ДД.ММ.ГГГГ-ДД.ММ.ГГГГ
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label for="planYear" class="form-label">
+                Год <span class="text-danger">*</span>
+              </label>
+              <input
+                type="number"
+                class="form-control"
+                id="planYear"
+                min="2000"
+                max="2100"
+                value="2026"
+                required
+              >
+            </div>
+
+            <div class="col-md-6">
+              <label for="planQuarter" class="form-label">
+                Квартал <span class="text-danger">*</span>
+              </label>
+              <select
+                class="form-select"
+                id="planQuarter"
+                required
+              >
+                <option value="1">I квартал</option>
+                <option value="2">II квартал</option>
+                <option value="3">III квартал</option>
+                <option value="4">IV квартал</option>
+              </select>
+            </div>
+
+            <div class="col-md-6">
+              <label for="periodStart" class="form-label">
+                Начало периода
+              </label>
+              <input
+                type="date"
+                class="form-control"
+                id="periodStart"
+                required
+              >
+            </div>
+
+            <div class="col-md-6">
+              <label for="periodEnd" class="form-label">
+                Конец периода
+              </label>
+              <input
+                type="date"
+                class="form-control"
+                id="periodEnd"
+                required
+              >
             </div>
           </div>
 
-          <div class="mb-0">
+          <input
+            type="hidden"
+            id="period_label"
+            name="period_label"
+            required
+          >
+
+          <div class="form-text mt-2">
+            Выберите квартал — даты заполнятся автоматически. Поля дат можно
+            изменить вручную или выбрать значение в календаре, но план должен
+            охватывать полный календарный квартал.
+          </div>
+
+          <div class="mb-0 mt-3">
             <label for="note" class="form-label">Примечание</label>
             <textarea
               class="form-control"
@@ -191,5 +247,140 @@
     </form>
   </div>
 </div>
+
+<script>
+  (() => {
+    const form = document.getElementById("createPlanForm");
+    const yearInput = document.getElementById("planYear");
+    const quarterInput = document.getElementById("planQuarter");
+    const startInput = document.getElementById("periodStart");
+    const endInput = document.getElementById("periodEnd");
+    const periodLabelInput = document.getElementById("period_label");
+
+    if (
+      !form ||
+      !yearInput ||
+      !quarterInput ||
+      !startInput ||
+      !endInput ||
+      !periodLabelInput
+    ) {
+      return;
+    }
+
+    const pad = (value) => String(value).padStart(2, "0");
+
+    const toIsoDate = (year, month, day) =>
+      `${year}-${pad(month)}-${pad(day)}`;
+
+    const toPeriodDate = (isoDate) => {
+      const [year, month, day] = isoDate.split("-");
+      return `${day}.${month}.${year}`;
+    };
+
+    const getQuarterDates = (year, quarter) => {
+      const startMonth = (quarter - 1) * 3 + 1;
+      const endMonth = startMonth + 2;
+      const endDay = new Date(year, endMonth, 0).getDate();
+
+      return {
+        start: toIsoDate(year, startMonth, 1),
+        end: toIsoDate(year, endMonth, endDay),
+      };
+    };
+
+    const updatePeriodLabel = () => {
+      if (!startInput.value || !endInput.value) {
+        periodLabelInput.value = "";
+        return;
+      }
+
+      periodLabelInput.value =
+        `${toPeriodDate(startInput.value)}-${toPeriodDate(endInput.value)}`;
+    };
+
+    const fillQuarterDates = () => {
+      const year = Number(yearInput.value);
+      const quarter = Number(quarterInput.value);
+
+      if (
+        !Number.isInteger(year) ||
+        year < 2000 ||
+        year > 2100 ||
+        !Number.isInteger(quarter) ||
+        quarter < 1 ||
+        quarter > 4
+      ) {
+        return;
+      }
+
+      const dates = getQuarterDates(year, quarter);
+      startInput.value = dates.start;
+      endInput.value = dates.end;
+      updatePeriodLabel();
+    };
+
+    const syncQuarterFromDates = () => {
+      if (!startInput.value || !endInput.value) {
+        updatePeriodLabel();
+        return;
+      }
+
+      const start = new Date(`${startInput.value}T00:00:00`);
+      const end = new Date(`${endInput.value}T00:00:00`);
+
+      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+        updatePeriodLabel();
+        return;
+      }
+
+      const year = start.getFullYear();
+      const quarter = Math.floor(start.getMonth() / 3) + 1;
+      const expected = getQuarterDates(year, quarter);
+
+      if (
+        startInput.value === expected.start &&
+        endInput.value === expected.end
+      ) {
+        yearInput.value = String(year);
+        quarterInput.value = String(quarter);
+      }
+
+      updatePeriodLabel();
+    };
+
+    const now = new Date();
+    const initialQuarter = Math.floor(now.getMonth() / 3) + 1;
+
+    yearInput.value = String(now.getFullYear());
+    quarterInput.value = String(initialQuarter);
+    fillQuarterDates();
+
+    yearInput.addEventListener("change", fillQuarterDates);
+    quarterInput.addEventListener("change", fillQuarterDates);
+    startInput.addEventListener("change", syncQuarterFromDates);
+    endInput.addEventListener("change", syncQuarterFromDates);
+
+    form.addEventListener("submit", (event) => {
+      syncQuarterFromDates();
+
+      const year = Number(yearInput.value);
+      const quarter = Number(quarterInput.value);
+      const expected = getQuarterDates(year, quarter);
+
+      if (
+        startInput.value !== expected.start ||
+        endInput.value !== expected.end
+      ) {
+        event.preventDefault();
+        startInput.setCustomValidity(
+          "Период должен совпадать с полным календарным кварталом."
+        );
+        startInput.reportValidity();
+        startInput.setCustomValidity("");
+      }
+    });
+  })();
+</script>
 {% endif %}
 {% endblock %}
