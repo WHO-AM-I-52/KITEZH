@@ -87,6 +87,7 @@ def run_batch(
     delay_seconds: float = DEFAULT_DELAY_SECONDS,
     collect_snapshot_fn: Callable[[int], SnapshotSaveResult] = collect_card_snapshot,
     sleep_fn: Callable[[float], None] = time.sleep,
+    conn=None,
 ) -> BatchReport:
     """Последовательно сохраняет снимки, не прерываясь из-за ошибки одной карточки."""
     if delay_seconds < MIN_DELAY_SECONDS:
@@ -100,7 +101,10 @@ def run_batch(
 
     for index, global_id in enumerate(global_ids):
         try:
-            result = collect_snapshot_fn(global_id)
+            if conn is None:
+                result = collect_snapshot_fn(global_id)
+            else:
+    result = collect_snapshot_fn(global_id, conn=conn)
         except KeyboardInterrupt:
             interrupted = True
             break
