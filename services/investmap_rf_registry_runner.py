@@ -153,6 +153,7 @@ def run_registry_card_refresh(
 
     batch = run_batch(
         global_ids=[normalized_global_id],
+        conn=conn,
         **batch_kwargs,
     )
 
