@@ -59,14 +59,24 @@ def _copy_database(destination: Path) -> None:
         raise FileNotFoundError(f"Рабочая БД не найдена: {source_path}")
 
     destination.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(str(source_path), timeout=15) as source:
-        with sqlite3.connect(str(destination), timeout=15) as target:
-            source.backup(target)
 
-    with sqlite3.connect(str(destination), timeout=15) as check:
+    source = sqlite3.connect(str(source_path), timeout=15)
+    try:
+        target = sqlite3.connect(str(destination), timeout=15)
+        try:
+            source.backup(target)
+        finally:
+            target.close()
+    finally:
+        source.close()
+
+    check = sqlite3.connect(str(destination), timeout=15)
+    try:
         result = check.execute("PRAGMA integrity_check").fetchone()
         if result is None or result[0] != "ok":
             raise RuntimeError(f"Проверка копии БД не пройдена: {result}")
+    finally:
+        check.close()
 
 
 def _prune_old_days() -> None:
