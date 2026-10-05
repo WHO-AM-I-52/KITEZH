@@ -1502,7 +1502,7 @@
 
     Object.keys(colors).forEach(function (managerName) {
       const checkboxId = "fillHistoryManager-" +
-        managerName.replace(/[^a-zA-Zа-яА-Я0-9]+/g, "-")
+        managerName.replace(/[^a-zA-Zа-яА-Я0-9]+/g, "-");
 
       elements.fillHistoryControls.insertAdjacentHTML(
         "beforeend",
