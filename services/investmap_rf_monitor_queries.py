@@ -1770,11 +1770,15 @@ def get_investmap_fill_history(
     manager_name: str | None = None,
 ) -> dict[str, Any]:
     """
-    Возвращает динамику среднего процента заполнения по последнему
-    сохранённому API-snapshot каждой площадки за календарный день.
+    Возвращает дневную динамику среднего процента заполнения.
 
-    Управляющий определяется по текущему назначению карточки.
-    Функция только читает локальные данные и не делает API-запросов.
+    Каждая точка — срез на конец дня: для каждой площадки берётся последний
+    сохранённый snapshot с filling_level не позже этой даты. Управляющий
+    определяется по текущему назначению карточки.
+
+    Ряд начинается с первого дня, где в расчёт вошло не менее 80% от
+    максимального числа оценённых площадок выбранного периода, чтобы
+    не выдавать ранние неполные накопления snapshot за общий срез.
     """
     date_from = _dashboard_normalize_date(
         date_from,
@@ -1797,10 +1801,6 @@ def get_investmap_fill_history(
         _dashboard_manager_join(manager_name)
     )
     snapshots_join = snapshots_join.format(id_column="snapshots.global_id")
-    snapshots_base_where = (
-        "WHERE snapshots.filling_level IS NOT NULL"
-        + snapshots_manager_where
-    )
 
     snapshot_period_sql, snapshot_period_params = _dashboard_period_where(
         "snapshots.snapshot_date",
@@ -1810,23 +1810,38 @@ def get_investmap_fill_history(
 
     rows = conn.execute(
         f"""
-        WITH latest_snapshot_ids AS (
-            SELECT
-                global_id,
-                date(fetched_at_utc) AS snapshot_date,
-                MAX(id) AS snapshot_id
+        WITH RECURSIVE
+        available_dates AS (
+            SELECT DISTINCT date(fetched_at_utc) AS snapshot_date
             FROM investmap_rf_card_snapshots
             WHERE filling_level IS NOT NULL
-            GROUP BY global_id, date(fetched_at_utc)
+              AND fetched_at_utc IS NOT NULL
+        ),
+        filtered_dates AS (
+            SELECT snapshot_date
+            FROM available_dates
+            WHERE snapshot_date IS NOT NULL
+            {snapshot_period_sql}
+        ),
+        latest_snapshot_ids AS (
+            SELECT
+                dates.snapshot_date,
+                source.global_id,
+                MAX(source.id) AS snapshot_id
+            FROM filtered_dates AS dates
+            INNER JOIN investmap_rf_card_snapshots AS source
+                ON date(source.fetched_at_utc) <= dates.snapshot_date
+               AND source.filling_level IS NOT NULL
+            GROUP BY dates.snapshot_date, source.global_id
         ),
         daily_snapshots AS (
             SELECT
+                latest.snapshot_date,
                 snapshots.global_id,
-                date(snapshots.fetched_at_utc) AS snapshot_date,
                 snapshots.filling_level
-            FROM investmap_rf_card_snapshots AS snapshots
-            INNER JOIN latest_snapshot_ids
-                ON latest_snapshot_ids.snapshot_id = snapshots.id
+            FROM latest_snapshot_ids AS latest
+            INNER JOIN investmap_rf_card_snapshots AS snapshots
+                ON snapshots.id = latest.snapshot_id
         )
         SELECT
             snapshots.snapshot_date,
@@ -1838,8 +1853,8 @@ def get_investmap_fill_history(
             COUNT(*) AS scored_sites_count
         FROM daily_snapshots AS snapshots
         {snapshots_join}
-        {snapshots_base_where}
-          {snapshot_period_sql}
+        WHERE 1 = 1
+        {snapshots_manager_where}
         GROUP BY
             snapshots.snapshot_date,
             COALESCE(
@@ -1848,7 +1863,7 @@ def get_investmap_fill_history(
             )
         ORDER BY snapshots.snapshot_date ASC, manager_name ASC
         """,
-        [*snapshots_manager_params, *snapshot_period_params],
+        [*snapshot_period_params, *snapshots_manager_params],
     ).fetchall()
 
     points_by_date: dict[str, dict[str, Any]] = {}
@@ -1878,6 +1893,10 @@ def get_investmap_fill_history(
         total_scored_sites_count = sum(
             item["scored_sites_count"] for item in manager_points
         )
+
+        if total_scored_sites_count <= 0:
+            continue
+
         weighted_sum = sum(
             item["average_fill_percent"] * item["scored_sites_count"]
             for item in manager_points
@@ -1886,19 +1905,45 @@ def get_investmap_fill_history(
             weighted_sum / total_scored_sites_count,
             2,
         )
+        point["scored_sites_count"] = total_scored_sites_count
 
         for manager_point in manager_points:
             manager_point["average_fill_percent"] = round(
                 manager_point["average_fill_percent"],
                 2,
             )
-        point["scored_sites_count"] = total_scored_sites_count
+
         points.append(point)
+
+    maximum_scored_sites_count = max(
+        (
+            point["scored_sites_count"]
+            for point in points
+        ),
+        default=0,
+    )
+    minimum_representative_count = (
+        (maximum_scored_sites_count * 80 + 99) // 100
+        if maximum_scored_sites_count
+        else 0
+    )
+    first_representative_index = next(
+        (
+            index
+            for index, point in enumerate(points)
+            if point["scored_sites_count"] >= minimum_representative_count
+        ),
+        0,
+    )
+    representative_points = points[first_representative_index:]
 
     return {
         "metric_label": "Средний процент заполнения",
         "manager_filter_mode": "current_assignment",
-        "points": points,
+        "calculation_mode": "end_of_day_last_known_snapshot",
+        "representative_threshold_percent": 80,
+        "maximum_scored_sites_count": maximum_scored_sites_count,
+        "points": representative_points,
     }
 
 _DASHBOARD_DETAILS_PER_PAGE = 50
