@@ -1762,6 +1762,30 @@ def get_investmap_dashboard_summary(
         "warnings": warnings,
     }
 
+def _fill_history_granularity(
+    date_from: str,
+    date_to: str,
+) -> str:
+    """Возвращает гранулярность ряда по длине выбранного периода."""
+    start = datetime.strptime(date_from, "%Y-%m-%d").date()
+    end = datetime.strptime(date_to, "%Y-%m-%d").date()
+    days_count = (end - start).days + 1
+
+    if days_count <= 31:
+        return "day"
+    if days_count <= 92:
+        return "week"
+    return "month"
+
+
+def _fill_history_series_label(granularity: str) -> str:
+    """Возвращает пользовательскую подпись гранулярности ряда."""
+    return {
+        "day": "По дням",
+        "week": "По неделям",
+        "month": "По месяцам",
+    }[granularity]
+
 def get_investmap_fill_history(
     conn: sqlite3.Connection,
     *,
@@ -1770,15 +1794,13 @@ def get_investmap_fill_history(
     manager_name: str | None = None,
 ) -> dict[str, Any]:
     """
-    Возвращает дневную динамику среднего процента заполнения.
+    Возвращает end-of-period динамику среднего процента заполнения.
 
-    Каждая точка — срез на конец дня: для каждой площадки берётся последний
-    сохранённый snapshot с filling_level не позже этой даты. Управляющий
-    определяется по текущему назначению карточки.
+    На каждую опорную дату берётся последний сохранённый snapshot каждой
+    площадки не позже конца этой даты. Гранулярность выбирается по периоду:
+    до 31 дня — по дням, до 92 дней — по неделям, далее — по месяцам.
 
-    Ряд начинается с первого дня, где в расчёт вошло не менее 80% от
-    максимального числа оценённых площадок выбранного периода, чтобы
-    не выдавать ранние неполные накопления snapshot за общий срез.
+    Управляющий определяется по текущему назначению карточки.
     """
     date_from = _dashboard_normalize_date(
         date_from,
@@ -1797,42 +1819,117 @@ def get_investmap_fill_history(
     ):
         raise ValueError("date_from не может быть позже date_to.")
 
+    bounds = conn.execute(
+        """
+        SELECT
+            MIN(date(fetched_at_utc)) AS first_snapshot_date,
+            MAX(date(fetched_at_utc)) AS last_snapshot_date
+        FROM investmap_rf_card_snapshots
+        WHERE filling_level IS NOT NULL
+          AND fetched_at_utc IS NOT NULL
+        """
+    ).fetchone()
+
+    first_snapshot_date = bounds["first_snapshot_date"]
+    last_snapshot_date = bounds["last_snapshot_date"]
+
+    if first_snapshot_date is None or last_snapshot_date is None:
+        return {
+            "metric_label": "Средний процент заполнения",
+            "manager_filter_mode": "current_assignment",
+            "calculation_mode": "end_of_day_last_known_snapshot",
+            "granularity": "day",
+            "series_label": "По дням",
+            "representative_threshold_percent": 80,
+            "maximum_scored_sites_count": 0,
+            "points": [],
+        }
+
+    series_start = date_from or first_snapshot_date
+    series_end = date_to or last_snapshot_date
+
+    if series_start < first_snapshot_date:
+        series_start = first_snapshot_date
+    if series_end > last_snapshot_date:
+        series_end = last_snapshot_date
+
+    if series_start > series_end:
+        return {
+            "metric_label": "Средний процент заполнения",
+            "manager_filter_mode": "current_assignment",
+            "calculation_mode": "end_of_day_last_known_snapshot",
+            "granularity": "day",
+            "series_label": "По дням",
+            "representative_threshold_percent": 80,
+            "maximum_scored_sites_count": 0,
+            "points": [],
+        }
+
+    granularity = _fill_history_granularity(series_start, series_end)
+
     snapshots_join, snapshots_manager_where, snapshots_manager_params = (
         _dashboard_manager_join(manager_name)
     )
     snapshots_join = snapshots_join.format(id_column="snapshots.global_id")
 
-    snapshot_period_sql, snapshot_period_params = _dashboard_period_where(
-        "snapshot_date",
-        date_from,
-        date_to,
-    )
-
     rows = conn.execute(
         f"""
         WITH RECURSIVE
-        available_dates AS (
-            SELECT DISTINCT date(fetched_at_utc) AS snapshot_date
-            FROM investmap_rf_card_snapshots
-            WHERE filling_level IS NOT NULL
-              AND fetched_at_utc IS NOT NULL
+        calendar_days(snapshot_date) AS (
+            SELECT date(?)
+            UNION ALL
+            SELECT date(snapshot_date, '+1 day')
+            FROM calendar_days
+            WHERE snapshot_date < date(?)
         ),
-        filtered_dates AS (
-            SELECT snapshot_date
-            FROM available_dates
-            WHERE snapshot_date IS NOT NULL
-            {snapshot_period_sql}
+        point_dates AS (
+            SELECT
+                snapshot_date,
+                CASE
+                    WHEN ? = 'day' THEN snapshot_date
+                    WHEN ? = 'week' THEN (
+                        SELECT MAX(day_item.snapshot_date)
+                        FROM calendar_days AS day_item
+                        WHERE strftime(
+                            '%Y-%W',
+                            day_item.snapshot_date
+                        ) = strftime('%Y-%W', calendar_days.snapshot_date)
+                    )
+                    ELSE (
+                        SELECT MAX(day_item.snapshot_date)
+                        FROM calendar_days AS day_item
+                        WHERE strftime(
+                            '%Y-%m',
+                            day_item.snapshot_date
+                        ) = strftime('%Y-%m', calendar_days.snapshot_date)
+                    )
+                END AS point_date
+            FROM calendar_days
+        ),
+        unique_point_dates AS (
+            SELECT DISTINCT point_date
+            FROM point_dates
+            WHERE point_date IS NOT NULL
         ),
         latest_snapshot_ids AS (
             SELECT
-                dates.snapshot_date,
+                points.point_date AS snapshot_date,
                 source.global_id,
                 MAX(source.id) AS snapshot_id
-            FROM filtered_dates AS dates
+            FROM unique_point_dates AS points
             INNER JOIN investmap_rf_card_snapshots AS source
-                ON date(source.fetched_at_utc) <= dates.snapshot_date
+                ON date(source.fetched_at_utc) <= points.point_date
                AND source.filling_level IS NOT NULL
-            GROUP BY dates.snapshot_date, source.global_id
+            GROUP BY points.point_date, source.global_id
+        ),
+        period_end_snapshot_ids AS (
+            SELECT
+                source.global_id,
+                MAX(source.id) AS snapshot_id
+            FROM investmap_rf_card_snapshots AS source
+            WHERE date(source.fetched_at_utc) <= ?
+              AND source.filling_level IS NOT NULL
+            GROUP BY source.global_id
         ),
         daily_snapshots AS (
             SELECT
@@ -1853,6 +1950,8 @@ def get_investmap_fill_history(
             COUNT(*) AS scored_sites_count
         FROM daily_snapshots AS snapshots
         {snapshots_join}
+        INNER JOIN period_end_snapshot_ids
+            ON period_end_snapshot_ids.global_id = snapshots.global_id
         WHERE 1 = 1
         {snapshots_manager_where}
         GROUP BY
@@ -1863,7 +1962,14 @@ def get_investmap_fill_history(
             )
         ORDER BY snapshots.snapshot_date ASC, manager_name ASC
         """,
-        [*snapshot_period_params, *snapshots_manager_params],
+        [
+            series_start,
+            series_end,
+            granularity,
+            granularity,
+            series_end,
+            *snapshots_manager_params,
+        ],
     ).fetchall()
 
     points_by_date: dict[str, dict[str, Any]] = {}
@@ -1935,15 +2041,16 @@ def get_investmap_fill_history(
         ),
         0,
     )
-    representative_points = points[first_representative_index:]
 
     return {
         "metric_label": "Средний процент заполнения",
         "manager_filter_mode": "current_assignment",
         "calculation_mode": "end_of_day_last_known_snapshot",
+        "granularity": granularity,
+        "series_label": _fill_history_series_label(granularity),
         "representative_threshold_percent": 80,
         "maximum_scored_sites_count": maximum_scored_sites_count,
-        "points": representative_points,
+        "points": points[first_representative_index:],
     }
 
 _DASHBOARD_DETAILS_PER_PAGE = 50
