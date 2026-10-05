@@ -1803,7 +1803,7 @@ def get_investmap_fill_history(
     )
 
     snapshot_period_sql, snapshot_period_params = _dashboard_period_where(
-        "date(snapshots.fetched_at_utc)",
+        "snapshots.snapshot_date",
         date_from,
         date_to,
     )
