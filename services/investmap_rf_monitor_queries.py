@@ -1803,7 +1803,7 @@ def get_investmap_fill_history(
     snapshots_join = snapshots_join.format(id_column="snapshots.global_id")
 
     snapshot_period_sql, snapshot_period_params = _dashboard_period_where(
-        "snapshots.snapshot_date",
+        "snapshot_date",
         date_from,
         date_to,
     )
