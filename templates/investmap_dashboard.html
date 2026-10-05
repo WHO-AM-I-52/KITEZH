@@ -460,6 +460,146 @@
       font-size: 25px;
     }
   }
+  .dashboard-fill-history {
+    margin-bottom: 20px;
+  }
+
+  .dashboard-fill-history-body {
+    padding: 16px;
+  }
+
+  .dashboard-fill-history-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 18px;
+    margin-bottom: 14px;
+  }
+
+  .dashboard-fill-history-summary-item {
+    color: #455a64;
+    font-size: 12px;
+  }
+
+  .dashboard-fill-history-summary-item strong {
+    color: #1a2a3a;
+    font-size: 16px;
+  }
+
+  .dashboard-fill-history-chart-wrap {
+    border: 1px solid #e3e9ed;
+    border-radius: 8px;
+    background: #fbfdfe;
+    min-height: 300px;
+    overflow-x: auto;
+    padding: 8px;
+  }
+
+  .dashboard-fill-history-chart {
+    display: block;
+    height: 300px;
+    min-width: 680px;
+    width: 100%;
+  }
+
+  .dashboard-fill-history-grid {
+    stroke: #dce4eb;
+    stroke-width: 1;
+  }
+
+  .dashboard-fill-history-axis {
+    fill: #607d8b;
+    font-size: 11px;
+  }
+
+  .dashboard-fill-history-total-line {
+    fill: none;
+    stroke: #1B5E7B;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 3;
+  }
+
+  .dashboard-fill-history-manager-line {
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 2.25;
+  }
+
+  .dashboard-fill-history-point {
+    cursor: help;
+    fill: #1B5E7B;
+  }
+
+  .dashboard-fill-history-point.is-low-sample {
+    fill: #fff;
+    stroke: #d39e00;
+    stroke-width: 2.5;
+  }
+
+  .dashboard-fill-history-tooltip {
+    pointer-events: none;
+  }
+
+  .dashboard-fill-history-tooltip rect {
+    fill: #243746;
+    opacity: 0.96;
+    rx: 4;
+  }
+
+  .dashboard-fill-history-tooltip text {
+    fill: #fff;
+    font-size: 11px;
+  }
+
+  .dashboard-fill-history-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    margin: 16px 0 10px;
+  }
+
+  .dashboard-fill-history-controls label {
+    align-items: center;
+    color: #455a64;
+    cursor: pointer;
+    display: inline-flex;
+    font-size: 12px;
+    gap: 6px;
+  }
+
+  .dashboard-fill-history-controls input {
+    accent-color: #1B5E7B;
+  }
+
+  .dashboard-fill-history-color {
+    border-radius: 50%;
+    display: inline-block;
+    height: 10px;
+    width: 10px;
+  }
+
+  .dashboard-fill-history-note {
+    color: #607d8b;
+    font-size: 12px;
+    line-height: 1.45;
+    margin: 12px 0 0;
+  }
+
+  .dashboard-fill-history-note .low-sample-mark {
+    color: #a87800;
+    font-weight: 700;
+  }
+
+  @media (max-width: 600px) {
+    .dashboard-fill-history-body {
+      padding: 12px;
+    }
+
+    .dashboard-fill-history-chart {
+      min-width: 620px;
+    }
+  }
 </style>
 
 <div class="investmap-dashboard">
@@ -663,6 +803,56 @@
     </article>
   </div>
 
+  <section class="dashboard-panel dashboard-fill-history">
+    <div class="dashboard-panel-head">
+      <h2>Динамика заполняемости площадок</h2>
+      <span id="fillHistoryPeriodNote">
+        По последнему API-снимку каждой площадки за день
+      </span>
+    </div>
+    <div class="dashboard-fill-history-body">
+      <div id="fillHistorySummary" class="dashboard-fill-history-summary"></div>
+
+      <div id="fillHistoryEmpty" class="dashboard-empty">
+        Нет сохранённых расчётных процентов за выбранный период.
+      </div>
+
+      <div id="fillHistoryContent" hidden>
+        <div class="dashboard-fill-history-chart-wrap">
+          <svg
+            id="fillHistoryChart"
+            class="dashboard-fill-history-chart"
+            viewBox="0 0 900 300"
+            role="img"
+            aria-label="График динамики среднего процента заполнения"
+          ></svg>
+        </div>
+
+        <div id="fillHistoryControls" class="dashboard-fill-history-controls"></div>
+
+        <div class="dashboard-table-wrap">
+          <table class="dashboard-table">
+            <thead>
+              <tr>
+                <th>Дата</th>
+                <th class="number">Средний процент</th>
+                <th class="number">Оценённых площадок</th>
+                <th>Качество выборки</th>
+              </tr>
+            </thead>
+            <tbody id="fillHistoryTableBody"></tbody>
+          </table>
+        </div>
+
+        <p class="dashboard-fill-history-note">
+          <span class="low-sample-mark">○ Малая выборка</span> — менее 10
+          площадок с рассчитанным процентом в точке. Разрез по территориальным
+          управляющим построен по <strong>текущему</strong> назначению площадок.
+        </p>
+      </div>
+    </div>
+  </section>
+
   <div class="dashboard-layout-two">
     <section class="dashboard-panel">
       <div class="dashboard-panel-head">
@@ -806,6 +996,13 @@
     warnings: document.getElementById("dashboardWarnings"),
     managersTableBody: document.getElementById("managersTableBody"),
     changedFieldsTableBody: document.getElementById("changedFieldsTableBody"),
+    fillHistorySummary: document.getElementById("fillHistorySummary"),
+    fillHistoryEmpty: document.getElementById("fillHistoryEmpty"),
+    fillHistoryContent: document.getElementById("fillHistoryContent"),
+    fillHistoryChart: document.getElementById("fillHistoryChart"),
+    fillHistoryControls: document.getElementById("fillHistoryControls"),
+    fillHistoryTableBody: document.getElementById("fillHistoryTableBody"),
+    fillHistoryPeriodNote: document.getElementById("fillHistoryPeriodNote"),
     detailsModal: document.getElementById("dashboardDetailsModal"),
     detailsTitle: document.getElementById("dashboardDetailsModalTitle"),
     detailsMeta: document.getElementById("dashboardDetailsMeta"),
@@ -979,6 +1176,366 @@
     }).join("");
   }
 
+  const fillHistoryColors = [
+    "#0d6efd",
+    "#198754",
+    "#dc3545",
+    "#6f42c1",
+    "#fd7e14",
+    "#20c997",
+    "#d63384",
+    "#0dcaf0",
+  ];
+
+  function formatPercent(value) {
+    const numeric = Number(value);
+
+    if (!Number.isFinite(numeric)) {
+      return "—";
+    }
+
+    return new Intl.NumberFormat("ru-RU", {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    }).format(numeric) + "%";
+  }
+
+  function formatHistoryDate(value) {
+    if (!value) {
+      return "—";
+    }
+
+    const parts = String(value).split("-");
+
+    if (parts.length !== 3) {
+      return String(value);
+    }
+
+    return parts[2] + "." + parts[1] + "." + parts[0];
+  }
+
+  function svgNode(name, attributes, textContent) {
+    const node = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      name
+    );
+
+    Object.entries(attributes || {}).forEach(function (entry) {
+      node.setAttribute(entry[0], String(entry[1]));
+    });
+
+    if (textContent !== undefined && textContent !== null) {
+      node.textContent = textContent;
+    }
+
+    return node;
+  }
+
+  function managerColorMap(points) {
+    const names = [];
+
+    points.forEach(function (point) {
+      (point.by_manager || []).forEach(function (item) {
+        const name = String(item.manager_name || "Не назначен");
+
+        if (!names.includes(name)) {
+          names.push(name);
+        }
+      });
+    });
+
+    names.sort(function (left, right) {
+      return left.localeCompare(right, "ru");
+    });
+
+    const colors = {};
+
+    names.forEach(function (name, index) {
+      colors[name] = fillHistoryColors[index % fillHistoryColors.length];
+    });
+
+    return colors;
+  }
+
+  function createHistoryLine(points, valueAccessor, xScale, yScale) {
+    return points
+      .filter(function (point) {
+        return Number.isFinite(Number(valueAccessor(point)));
+      })
+      .map(function (point) {
+        return xScale(point.date) + "," + yScale(valueAccessor(point));
+      })
+      .join(" ");
+  }
+
+  function renderFillHistoryChart(points, enabledManagers, colors) {
+    const chart = elements.fillHistoryChart;
+    const width = 900;
+    const height = 300;
+    const margin = { top: 20, right: 20, bottom: 42, left: 52 };
+    const plotWidth = width - margin.left - margin.right;
+    const plotHeight = height - margin.top - margin.bottom;
+    const values = [];
+
+    points.forEach(function (point) {
+      values.push(Number(point.average_fill_percent));
+
+      (point.by_manager || []).forEach(function (item) {
+        if (enabledManagers.has(String(item.manager_name || "Не назначен"))) {
+          values.push(Number(item.average_fill_percent));
+        }
+      });
+    });
+
+    const validValues = values.filter(Number.isFinite);
+    const minValue = validValues.length
+      ? Math.max(0, Math.floor((Math.min(...validValues) - 5) / 5) * 5)
+      : 0;
+    const maxValue = validValues.length
+      ? Math.min(100, Math.ceil((Math.max(...validValues) + 5) / 5) * 5)
+      : 100;
+    const yMin = minValue === maxValue ? Math.max(0, minValue - 5) : minValue;
+    const yMax = minValue === maxValue ? Math.min(100, maxValue + 5) : maxValue;
+    const dateIndex = {};
+
+    points.forEach(function (point, index) {
+      dateIndex[point.date] = index;
+    });
+
+    function xScale(date) {
+      if (points.length <= 1) {
+        return margin.left + plotWidth / 2;
+      }
+
+      return margin.left + (
+        dateIndex[date] / (points.length - 1)
+      ) * plotWidth;
+    }
+
+    function yScale(value) {
+      return margin.top + (
+        (yMax - Number(value)) / (yMax - yMin)
+      ) * plotHeight;
+    }
+
+    chart.replaceChildren();
+
+    for (let index = 0; index <= 4; index += 1) {
+      const value = yMin + ((yMax - yMin) * index / 4);
+      const y = yScale(value);
+
+      chart.appendChild(svgNode("line", {
+        x1: margin.left,
+        y1: y,
+        x2: width - margin.right,
+        y2: y,
+        class: "dashboard-fill-history-grid",
+      }));
+      chart.appendChild(svgNode("text", {
+        x: margin.left - 8,
+        y: y + 4,
+        "text-anchor": "end",
+        class: "dashboard-fill-history-axis",
+      }, Math.round(value) + "%"));
+    }
+
+    points.forEach(function (point, index) {
+      const x = xScale(point.date);
+
+      chart.appendChild(svgNode("text", {
+        x: x,
+        y: height - 17,
+        "text-anchor": index === 0 ? "start" : (
+          index === points.length - 1 ? "end" : "middle"
+        ),
+        class: "dashboard-fill-history-axis",
+      }, formatHistoryDate(point.date)));
+    });
+
+    const totalLine = createHistoryLine(
+      points,
+      function (point) {
+        return point.average_fill_percent;
+      },
+      xScale,
+      yScale
+    );
+
+    if (totalLine) {
+      chart.appendChild(svgNode("polyline", {
+        points: totalLine,
+        class: "dashboard-fill-history-total-line",
+      }));
+    }
+
+    enabledManagers.forEach(function (managerName) {
+      const managerPoints = points.map(function (point) {
+        const item = (point.by_manager || []).find(function (candidate) {
+          return String(candidate.manager_name || "Не назначен") === managerName;
+        });
+
+        return {
+          date: point.date,
+          value: item ? item.average_fill_percent : null,
+        };
+      });
+
+      const line = managerPoints
+        .filter(function (point) {
+          return Number.isFinite(Number(point.value));
+        })
+        .map(function (point) {
+          return xScale(point.date) + "," + yScale(point.value);
+        })
+        .join(" ");
+
+      if (line) {
+        chart.appendChild(svgNode("polyline", {
+          points: line,
+          class: "dashboard-fill-history-manager-line",
+          stroke: colors[managerName],
+        }));
+      }
+    });
+
+    points.forEach(function (point) {
+      const x = xScale(point.date);
+      const y = yScale(point.average_fill_percent);
+      const lowSample = Number(point.scored_sites_count) < 10;
+      const circle = svgNode("circle", {
+        cx: x,
+        cy: y,
+        r: lowSample ? 5 : 4,
+        class: (
+          "dashboard-fill-history-point" +
+          (lowSample ? " is-low-sample" : "")
+        ),
+      });
+      const title = svgNode(
+        "title",
+        {},
+        formatHistoryDate(point.date) + ": " +
+        formatPercent(point.average_fill_percent) +
+        " · " + number(point.scored_sites_count) + " площадок"
+      );
+
+      circle.appendChild(title);
+      chart.appendChild(circle);
+    });
+  }
+
+  function renderFillHistoryTable(points) {
+    if (!points.length) {
+      elements.fillHistoryTableBody.innerHTML =
+        '<tr><td class="dashboard-empty" colspan="4">' +
+        "Нет данных за выбранный период." +
+        "</td></tr>";
+      return;
+    }
+
+    elements.fillHistoryTableBody.innerHTML = points.map(function (point) {
+      const lowSample = Number(point.scored_sites_count) < 10;
+
+      return (
+        "<tr>" +
+        "<td>" + escapeHtml(formatHistoryDate(point.date)) + "</td>" +
+        '<td class="number">' +
+        escapeHtml(formatPercent(point.average_fill_percent)) +
+        "</td>" +
+        '<td class="number">' + number(point.scored_sites_count) + "</td>" +
+        "<td>" + (
+          lowSample
+            ? '<span class="dashboard-status pending">Малая выборка</span>'
+            : '<span class="dashboard-status ok">Достаточно данных</span>'
+        ) + "</td>" +
+        "</tr>"
+      );
+    }).join("");
+  }
+
+  function renderFillHistory(history) {
+    const safeHistory = history || {};
+    const points = Array.isArray(safeHistory.points)
+      ? safeHistory.points
+      : [];
+    const colors = managerColorMap(points);
+    const enabledManagers = new Set();
+
+    elements.fillHistorySummary.innerHTML = "";
+    elements.fillHistoryControls.innerHTML = "";
+    elements.fillHistoryTableBody.innerHTML = "";
+    elements.fillHistoryEmpty.hidden = Boolean(points.length);
+    elements.fillHistoryContent.hidden = !points.length;
+
+    if (!points.length) {
+      elements.fillHistoryPeriodNote.textContent =
+        "Нет сохранённых расчётных процентов за выбранный период.";
+      return;
+    }
+
+    const first = points[0];
+    const last = points[points.length - 1];
+    const delta = Number(last.average_fill_percent) -
+      Number(first.average_fill_percent);
+    const deltaLabel = Number.isFinite(delta)
+      ? (delta >= 0 ? "+" : "") + formatPercent(delta)
+      : "—";
+
+    elements.fillHistoryPeriodNote.textContent =
+      safeHistory.metric_label ||
+      "Средний процент заполнения";
+
+    elements.fillHistorySummary.innerHTML =
+      '<div class="dashboard-fill-history-summary-item">' +
+      "Последняя точка: <strong>" +
+      escapeHtml(formatPercent(last.average_fill_percent)) +
+      "</strong> · " + number(last.scored_sites_count) + " площадок" +
+      "</div>" +
+      '<div class="dashboard-fill-history-summary-item">' +
+      "Изменение к первой доступной точке: <strong>" +
+      escapeHtml(deltaLabel) +
+      "</strong>" +
+      "</div>" +
+      '<div class="dashboard-fill-history-summary-item">' +
+      "Доступно дат: <strong>" + number(points.length) + "</strong>" +
+      "</div>";
+
+    Object.keys(colors).forEach(function (managerName) {
+      const checkboxId = "fillHistoryManager-" +
+        managerName.replace(/[^a-zA-Zа-яА-Я0-9]+/g, "-")
+
+      elements.fillHistoryControls.insertAdjacentHTML(
+        "beforeend",
+        '<label for="' + escapeHtml(checkboxId) + '">' +
+        '<input id="' + escapeHtml(checkboxId) + '" type="checkbox" ' +
+        'data-fill-history-manager="' + escapeHtml(managerName) + '">' +
+        '<span class="dashboard-fill-history-color" style="background:' +
+        escapeHtml(colors[managerName]) + '"></span>' +
+        escapeHtml(managerName) +
+        "</label>"
+      );
+    });
+
+    elements.fillHistoryControls
+      .querySelectorAll("[data-fill-history-manager]")
+      .forEach(function (checkbox) {
+        checkbox.addEventListener("change", function () {
+          const managerName = checkbox.dataset.fillHistoryManager;
+
+          if (checkbox.checked) {
+            enabledManagers.add(managerName);
+          } else {
+            enabledManagers.delete(managerName);
+          }
+
+          renderFillHistoryChart(points, enabledManagers, colors);
+        });
+      });
+
+    renderFillHistoryChart(points, enabledManagers, colors);
+    renderFillHistoryTable(points);
+  }
+  
   function updateManagerOptions(items, selectedValue) {
     const rows = Array.isArray(items) ? items : [];
     const currentValue = selectedValue ?? elements.managerName.value;
@@ -1479,6 +2036,7 @@ document.querySelectorAll("[data-details-kind]").forEach(function (card) {
       renderWarnings(payload.warnings || []);
       renderManagers(payload.by_manager || []);
       renderChangedFields(payload.top_changed_fields || []);
+      renderFillHistory(payload.fill_history || {});
       updateManagerOptions(
         payload.by_manager || [],
         payload.filters ? payload.filters.manager_name : null
