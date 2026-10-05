@@ -1865,10 +1865,7 @@ def get_investmap_fill_history(
         point["by_manager"].append(
             {
                 "manager_name": row["manager_name"],
-                "average_fill_percent": round(
-                    float(row["average_fill_percent"]),
-                    2,
-                ),
+                "average_fill_percent": float(row["average_fill_percent"]),
                 "scored_sites_count": int(row["scored_sites_count"] or 0),
             }
         )
@@ -1889,6 +1886,12 @@ def get_investmap_fill_history(
             weighted_sum / total_scored_sites_count,
             2,
         )
+
+        for manager_point in manager_points:
+            manager_point["average_fill_percent"] = round(
+                manager_point["average_fill_percent"],
+                2,
+            )
         point["scored_sites_count"] = total_scored_sites_count
         points.append(point)
 
