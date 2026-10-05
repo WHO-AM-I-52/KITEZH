@@ -32,6 +32,7 @@ from db import get_db, UPLOADS_DIR
 from services.investmap_rf_monitor_queries import (
     get_investmap_dashboard_details,
     get_investmap_dashboard_summary,
+    get_investmap_fill_history,
     get_monitor_card_detail,
     get_monitor_cards,
     get_monitor_registry_cards,
@@ -229,6 +230,12 @@ def investmap_dashboard_data():
 
         db = get_db()
         result = get_investmap_dashboard_summary(
+            db,
+            date_from=date_from,
+            date_to=date_to,
+            manager_name=manager_name,
+        )
+        result["fill_history"] = get_investmap_fill_history(
             db,
             date_from=date_from,
             date_to=date_to,
