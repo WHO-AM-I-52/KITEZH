@@ -1762,6 +1762,141 @@ def get_investmap_dashboard_summary(
         "warnings": warnings,
     }
 
+def get_investmap_fill_history(
+    conn: sqlite3.Connection,
+    *,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    manager_name: str | None = None,
+) -> dict[str, Any]:
+    """
+    Возвращает динамику среднего процента заполнения по последнему
+    сохранённому API-snapshot каждой площадки за календарный день.
+
+    Управляющий определяется по текущему назначению карточки.
+    Функция только читает локальные данные и не делает API-запросов.
+    """
+    date_from = _dashboard_normalize_date(
+        date_from,
+        field_name="date_from",
+    )
+    date_to = _dashboard_normalize_date(
+        date_to,
+        field_name="date_to",
+    )
+    manager_name = _dashboard_normalize_manager_name(manager_name)
+
+    if (
+        date_from is not None
+        and date_to is not None
+        and date_from > date_to
+    ):
+        raise ValueError("date_from не может быть позже date_to.")
+
+    snapshots_join, snapshots_manager_where, snapshots_manager_params = (
+        _dashboard_manager_join(manager_name)
+    )
+    snapshots_join = snapshots_join.format(id_column="snapshots.global_id")
+    snapshots_base_where = (
+        "WHERE snapshots.filling_level IS NOT NULL"
+        + snapshots_manager_where
+    )
+
+    snapshot_period_sql, snapshot_period_params = _dashboard_period_where(
+        "date(snapshots.fetched_at_utc)",
+        date_from,
+        date_to,
+    )
+
+    rows = conn.execute(
+        f"""
+        WITH latest_snapshot_ids AS (
+            SELECT
+                global_id,
+                date(fetched_at_utc) AS snapshot_date,
+                MAX(id) AS snapshot_id
+            FROM investmap_rf_card_snapshots
+            WHERE filling_level IS NOT NULL
+            GROUP BY global_id, date(fetched_at_utc)
+        ),
+        daily_snapshots AS (
+            SELECT
+                snapshots.global_id,
+                date(snapshots.fetched_at_utc) AS snapshot_date,
+                snapshots.filling_level
+            FROM investmap_rf_card_snapshots AS snapshots
+            INNER JOIN latest_snapshot_ids
+                ON latest_snapshot_ids.snapshot_id = snapshots.id
+        )
+        SELECT
+            snapshots.snapshot_date,
+            COALESCE(
+                NULLIF(TRIM(assignments.manager_name), ''),
+                'Не назначен'
+            ) AS manager_name,
+            AVG(snapshots.filling_level) AS average_fill_percent,
+            COUNT(*) AS scored_sites_count
+        FROM daily_snapshots AS snapshots
+        {snapshots_join}
+        {snapshots_base_where}
+          {snapshot_period_sql}
+        GROUP BY
+            snapshots.snapshot_date,
+            COALESCE(
+                NULLIF(TRIM(assignments.manager_name), ''),
+                'Не назначен'
+            )
+        ORDER BY snapshots.snapshot_date ASC, manager_name ASC
+        """,
+        [*snapshots_manager_params, *snapshot_period_params],
+    ).fetchall()
+
+    points_by_date: dict[str, dict[str, Any]] = {}
+
+    for row in rows:
+        snapshot_date = row["snapshot_date"]
+        point = points_by_date.setdefault(
+            snapshot_date,
+            {
+                "date": snapshot_date,
+                "by_manager": [],
+            },
+        )
+        point["by_manager"].append(
+            {
+                "manager_name": row["manager_name"],
+                "average_fill_percent": round(
+                    float(row["average_fill_percent"]),
+                    2,
+                ),
+                "scored_sites_count": int(row["scored_sites_count"] or 0),
+            }
+        )
+
+    points: list[dict[str, Any]] = []
+
+    for snapshot_date in sorted(points_by_date):
+        point = points_by_date[snapshot_date]
+        manager_points = point["by_manager"]
+        total_scored_sites_count = sum(
+            item["scored_sites_count"] for item in manager_points
+        )
+        weighted_sum = sum(
+            item["average_fill_percent"] * item["scored_sites_count"]
+            for item in manager_points
+        )
+        point["average_fill_percent"] = round(
+            weighted_sum / total_scored_sites_count,
+            2,
+        )
+        point["scored_sites_count"] = total_scored_sites_count
+        points.append(point)
+
+    return {
+        "metric_label": "Средний процент заполнения",
+        "manager_filter_mode": "current_assignment",
+        "points": points,
+    }
 
 _DASHBOARD_DETAILS_PER_PAGE = 50
 _DASHBOARD_DETAILS_MAX_PER_PAGE = 100
