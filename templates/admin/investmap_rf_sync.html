@@ -140,6 +140,19 @@
         </div>
       {% endif %}
       <div class="d-flex flex-wrap gap-2">
+        {% if automatic_plan.status in ['idle', 'completed', 'failed'] %}
+          <form
+            method="post"
+            action="{{ url_for('admin.investmap_rf_sync_action', plan_id=automatic_plan.id) }}"
+            onsubmit="return confirm('Запустить новый полный цикл автоматической синхронизации? Обход начнётся с начала, история предыдущих циклов сохранится.');"
+          >
+            <input type="hidden" name="action" value="start">
+            <button class="btn btn-sm btn-success" type="submit">
+              <i class="bi bi-play-fill me-1"></i>
+              Запустить новый цикл сейчас
+            </button>
+          </form>
+        {% endif %}
         {% if automatic_plan.status in ['running', 'paused', 'stopping'] %}
           {% set actions = [('resume', 'Продолжить'), ('stop', 'Остановить цикл')] if automatic_plan.status == 'paused' else [('pause', 'Пауза')] if automatic_plan.status == 'stopping' else [('pause', 'Пауза'), ('stop', 'Остановить цикл')] %}
           {% for action, label in actions %}
