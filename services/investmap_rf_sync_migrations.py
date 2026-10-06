@@ -113,6 +113,38 @@ def migrate_sync_plan_tables(conn):
         """
     )
 
+
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS investmap_rf_sync_schedule (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            plan_id INTEGER UNIQUE,
+            is_enabled INTEGER NOT NULL DEFAULT 1
+                CHECK (is_enabled IN (0, 1)),
+            frequency TEXT NOT NULL DEFAULT 'weekdays'
+                CHECK (frequency IN ('daily', 'weekly', 'weekdays', 'monthly')),
+            start_time_msk TEXT NOT NULL DEFAULT '13:00'
+                CHECK (
+                    length(start_time_msk) = 5
+                    AND start_time_msk GLOB '[0-2][0-9]:[0-5][0-9]'
+                    AND substr(start_time_msk, 1, 2) <= '23'
+                ),
+            weekday INTEGER NOT NULL DEFAULT 0
+                CHECK (weekday BETWEEN 0 AND 6),
+            month_day INTEGER NOT NULL DEFAULT 1
+                CHECK (month_day BETWEEN 1 AND 28),
+            updated_at_utc TEXT NOT NULL
+                DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+            updated_by_user_id INTEGER,
+            FOREIGN KEY(plan_id) REFERENCES investmap_rf_sync_plans(id)
+                ON DELETE SET NULL
+        );
+
+        INSERT OR IGNORE INTO investmap_rf_sync_schedule (id)
+        VALUES (1);
+        """
+    )
+
 def migrate_sync_retry_tables(conn):
     """Создаёт очередь повторной синхронизации ошибочных площадок."""
     conn.executescript(
