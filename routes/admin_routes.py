@@ -549,6 +549,7 @@ def _get_sync_plan_overview(conn) -> list[dict]:
 @login_required
 @admin_required
 def investmap_rf_sync():
+    from services.investmap_rf_daily_sync import get_automatic_sync_settings
     conn = get_db()
 
     try:
@@ -561,14 +562,96 @@ def investmap_rf_sync():
             """
         ).fetchone()["count"]
 
+        automatic_sync = get_automatic_sync_settings(conn)
+
         return render_template(
             "admin/investmap_rf_sync.html",
             plans=plans,
             active_cards_count=active_cards_count,
+            automatic_sync=automatic_sync,
         )
     finally:
         conn.close()
 
+@admin_bp.route(
+    "/admin/investmap-rf-sync/automatic/settings",
+    methods=["POST"],
+)
+@login_required
+@admin_required
+def investmap_rf_sync_automatic_settings():
+    from services.investmap_rf_daily_sync import save_automatic_sync_settings
+
+    conn = get_db()
+
+    try:
+        enabled_value = request.form.get("is_enabled")
+
+        if enabled_value not in (None, "0", "1", "on"):
+            raise ValueError("Некорректный признак включения автоматизации.")
+
+        # Сохранение настроек не должно пересекаться с созданием
+        # автоматического запуска в фоновом потоке.
+        conn.execute("BEGIN IMMEDIATE")
+
+        result = save_automatic_sync_settings(
+            conn,
+            is_enabled=enabled_value in ("1", "on"),
+            frequency=request.form.get("frequency", "").strip(),
+            start_time_msk=request.form.get("start_time_msk", ""),
+            weekday=request.form.get("weekday"),
+            month_day=request.form.get("month_day"),
+            batch_size=request.form.get("batch_size", ""),
+            interval_hhmm=request.form.get("interval_hhmm", ""),
+            updated_by_user_id=session.get("user_id"),
+        )
+
+        schedule = result["schedule"]
+        plan = result["plan"]
+
+        logged = log_action(
+            conn,
+            session.get("user_id"),
+            "investmap_rf_sync_automatic_settings",
+            detail=(
+                f"plan_id={plan['id']}; "
+                f"is_enabled={schedule['is_enabled']}; "
+                f"frequency={schedule['frequency']}; "
+                f"start_time_msk={schedule['start_time_msk']}; "
+                f"weekday={schedule['weekday']}; "
+                f"month_day={schedule['month_day']}; "
+                f"batch_size={plan['batch_size']}; "
+                f"interval_minutes={plan['interval_minutes']}"
+            ),
+        )
+
+        if not logged:
+            raise RuntimeError(
+                "Не удалось записать изменение настроек автоматизации."
+            )
+
+        conn.commit()
+        flash("Настройки автоматической синхронизации сохранены.", "success")
+
+    except ValueError as exc:
+        conn.rollback()
+        flash(str(exc), "error")
+
+    except Exception:
+        conn.rollback()
+        current_app.logger.exception(
+            "Ошибка сохранения настроек автоматической синхронизации "
+            "Инвесткарты РФ."
+        )
+        flash(
+            "Не удалось сохранить настройки автоматической синхронизации.",
+            "error",
+        )
+
+    finally:
+        conn.close()
+
+    return redirect(url_for("admin.investmap_rf_sync"))
 
 @admin_bp.route("/admin/investmap-rf-sync/create", methods=["POST"])
 @login_required
@@ -891,6 +974,7 @@ def investmap_rf_sync_delete(plan_id: int):
 @login_required
 @admin_required
 def investmap_rf_sync_status():
+    from services.investmap_rf_daily_sync import get_automatic_sync_settings
     conn = get_db()
 
     try:
@@ -902,12 +986,14 @@ def investmap_rf_sync_status():
             WHERE is_active = 1
             """
         ).fetchone()["count"]
+        automatic_sync = get_automatic_sync_settings(conn)
 
         return jsonify(
             {
                 "ok": True,
                 "active_cards_count": active_cards_count,
                 "plans": plans,
+                "automatic_sync": automatic_sync,
                 "server_time_utc": datetime.utcnow().isoformat(
                     timespec="seconds"
                 ) + "Z",
