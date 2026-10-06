@@ -182,3 +182,100 @@ def run_weekday_daily_sync(
         raise
     finally:
         conn.close()
+
+
+def _schedule_hhmm(value: str, *, duration: bool = False) -> tuple[str, int]:
+    import re
+
+    text = str(value or "").strip()
+    if not re.fullmatch(r"[0-9]{2}:[0-9]{2}", text):
+        raise ValueError("Укажите часы и минуты в формате ЧЧ:ММ.")
+    hours, minutes = map(int, text.split(":"))
+    total = hours * 60 + minutes
+    if minutes > 59 or (duration and not 1 <= total <= 1440):
+        raise ValueError("Интервал должен быть от 00:01 до 24:00.")
+    if not duration and hours > 23:
+        raise ValueError("Время запуска должно быть от 00:00 до 23:59.")
+    return text, total
+
+
+def get_automatic_sync_settings(conn) -> dict[str, Any]:
+    row = conn.execute(
+        "SELECT * FROM investmap_rf_sync_schedule WHERE id = 1"
+    ).fetchone()
+    if row is None:
+        raise ValueError("Настройки расписания отсутствуют; примените миграции.")
+    schedule = dict(row)
+    if schedule["plan_id"] is not None:
+        plan_row = conn.execute(
+            "SELECT * FROM investmap_rf_sync_plans WHERE id = ?",
+            (schedule["plan_id"],),
+        ).fetchone()
+        if plan_row is None:
+            raise ValueError("Автоматический план расписания не найден.")
+    else:
+        plan_row = conn.execute(
+            "SELECT * FROM investmap_rf_sync_plans WHERE name = ? ORDER BY id ASC LIMIT 1",
+            (DAILY_PLAN_NAME,),
+        ).fetchone()
+    plan = dict(plan_row) if plan_row is not None else None
+    interval = int(plan["interval_minutes"]) if plan else DAILY_INTERVAL_MINUTES
+    return {
+        "schedule": schedule,
+        "plan": plan,
+        "batch_size": int(plan["batch_size"]) if plan else DAILY_BATCH_SIZE,
+        "interval_hhmm": f"{interval // 60:02d}:{interval % 60:02d}",
+    }
+
+
+def save_automatic_sync_settings(
+    conn,
+    *,
+    is_enabled: bool,
+    frequency: str,
+    start_time_msk: str,
+    weekday: str | int | None,
+    month_day: str | int | None,
+    batch_size: str | int,
+    interval_hhmm: str,
+    updated_by_user_id: int | None = None,
+) -> dict[str, Any]:
+    """Сохраняет расписание и параметры; commit/rollback выполняет маршрут."""
+    from services.investmap_rf_sync_plans import update_sync_plan_settings
+
+    if not isinstance(is_enabled, bool):
+        raise ValueError("Признак включения расписания должен быть логическим.")
+    if frequency not in {"daily", "weekly", "weekdays", "monthly"}:
+        raise ValueError("Неизвестный режим автоматического расписания.")
+    start_time, _ = _schedule_hhmm(start_time_msk)
+    _, interval = _schedule_hhmm(interval_hhmm, duration=True)
+    try:
+        size = int(str(batch_size).strip())
+        day = int(str(weekday).strip()) if frequency == "weekly" else 0
+        number = int(str(month_day).strip()) if frequency == "monthly" else 1
+    except (TypeError, ValueError):
+        raise ValueError("Размер пакета, день недели и число должны быть целыми.") from None
+    if not 1 <= size <= 100:
+        raise ValueError("Размер пакета должен быть от 1 до 100.")
+    if not 0 <= day <= 6:
+        raise ValueError("День недели должен быть от 0 до 6.")
+    if not 1 <= number <= 28:
+        raise ValueError("Число месяца должно быть от 1 до 28.")
+    settings = get_automatic_sync_settings(conn)
+    plan = _get_or_create_daily_plan(conn, settings["schedule"])
+    update_sync_plan_settings(
+        conn, plan_id=int(plan["id"]), batch_size=size,
+        interval_minutes=interval, updated_by_user_id=updated_by_user_id,
+    )
+    conn.execute(
+        """
+        UPDATE investmap_rf_sync_schedule
+        SET is_enabled = ?, frequency = ?, start_time_msk = ?,
+            weekday = ?, month_day = ?, updated_at_utc = ?, updated_by_user_id = ?
+        WHERE id = 1
+        """,
+        (int(is_enabled), frequency, start_time, day, number,
+         _utc_text(_utc_now()), updated_by_user_id),
+    )
+    return get_automatic_sync_settings(conn)
+
