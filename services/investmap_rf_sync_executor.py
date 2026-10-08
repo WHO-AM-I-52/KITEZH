@@ -63,6 +63,83 @@ def _calculate_batch_metrics(report) -> dict[str, int]:
         "changed_cards_count": changed_cards_count,
     }
 
+def _snapshot_outcome_counts(report) -> tuple[int, int]:
+    """Проверяет точные счётчики успешных результатов BatchReport."""
+    new_count = report.new_snapshots_count
+    unchanged_count = report.unchanged_count
+    for value in (new_count, unchanged_count):
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError("Счётчики snapshot должны быть неотрицательными целыми.")
+    successful_count = sum(
+        item.status in {"new", "unchanged"} for item in report.items
+    )
+    if new_count + unchanged_count != successful_count:
+        raise ValueError("Счётчики snapshot не совпадают с успешными результатами.")
+    return new_count, unchanged_count
+
+
+def _save_batch_snapshot_outcomes(
+    conn,
+    *,
+    plan_id: int,
+    batch_id: int,
+    report,
+) -> None:
+    """Записывает результаты пакета и пересчитывает связанный цикл без commit."""
+    new_count, unchanged_count = _snapshot_outcome_counts(report)
+    cursor = conn.execute(
+        """
+        UPDATE investmap_rf_sync_batches
+        SET new_snapshots_count = ?, unchanged_count = ?
+        WHERE id = ? AND plan_id = ? AND status = 'completed'
+          AND successful_cards_count = ?
+        """,
+        (new_count, unchanged_count, batch_id, plan_id, new_count + unchanged_count),
+    )
+    if cursor.rowcount != 1:
+        raise ValueError("Не удалось сохранить точные результаты завершённого пакета.")
+    batch = conn.execute(
+        "SELECT run_id FROM investmap_rf_sync_batches WHERE id = ? AND plan_id = ?",
+        (batch_id, plan_id),
+    ).fetchone()
+    run = conn.execute(
+        "SELECT processed_cards_count FROM investmap_rf_sync_runs WHERE id = ? AND plan_id = ?",
+        (batch["run_id"], plan_id),
+    ).fetchone()
+    if run is None:
+        raise ValueError("Цикл завершённого пакета не найден.")
+    totals = conn.execute(
+        """
+        SELECT
+            COUNT(*) AS batches_count,
+            COALESCE(SUM(processed_cards_count), 0) AS processed_count,
+            COALESCE(SUM(CASE
+                WHEN new_snapshots_count IS NULL OR unchanged_count IS NULL
+                THEN 1 ELSE 0 END), 0) AS unknown_count,
+            COALESCE(SUM(new_snapshots_count), 0) AS new_count,
+            COALESCE(SUM(unchanged_count), 0) AS unchanged_count
+        FROM investmap_rf_sync_batches
+        WHERE run_id = ? AND plan_id = ?
+          AND (status = 'completed' OR processed_cards_count > 0)
+        """,
+        (batch["run_id"], plan_id),
+    ).fetchone()
+    known = (
+        totals["batches_count"] > 0
+        and totals["unknown_count"] == 0
+        and int(totals["processed_count"]) == int(run["processed_cards_count"] or 0)
+    )
+    conn.execute(
+        """
+        UPDATE investmap_rf_sync_runs
+        SET new_snapshots_count = ?, unchanged_count = ?
+        WHERE id = ? AND plan_id = ?
+        """,
+        (int(totals["new_count"]) if known else None,
+         int(totals["unchanged_count"]) if known else None,
+         batch["run_id"], plan_id),
+    )
+
 
 def _collect_batch_errors(report) -> str | None:
     """Собирает ошибки отдельных карточек в компактный текст для журнала."""
@@ -155,6 +232,13 @@ def _save_completed_batch(
             **metrics,
         )
 
+        _save_batch_snapshot_outcomes(
+            conn,
+            plan_id=plan_id,
+            batch_id=batch_id,
+            report=report,
+        )
+        
         batch_errors = _collect_batch_errors(report)
 
         if batch_errors:
@@ -399,6 +483,7 @@ def _save_completed_retry_job(
     try:
         metrics = _calculate_batch_metrics(report)
         item_errors = _collect_batch_errors(report)
+        new_snapshots_count, unchanged_count = _snapshot_outcome_counts(report)
 
         conn.execute(
             """
@@ -410,6 +495,8 @@ def _save_completed_retry_job(
                 successful_cards_count = ?,
                 failed_cards_count = ?,
                 changed_cards_count = ?,
+                new_snapshots_count = ?,
+                unchanged_count = ?,
                 error_message = ?
             WHERE id = ? AND status = 'running'
             """,
@@ -419,6 +506,8 @@ def _save_completed_retry_job(
                 metrics["successful_cards_count"],
                 metrics["failed_cards_count"],
                 metrics["changed_cards_count"],
+                new_snapshots_count,
+                unchanged_count,
                 item_errors,
                 retry_job_id,
             ),
