@@ -489,6 +489,78 @@ def _parse_positive_int(value: str | None, field_label: str) -> int:
 
     return parsed
 
+def _get_sync_history(conn) -> dict:
+    """Читает по 20 последних запусков, циклов и повторов без изменения БД."""
+    launches = conn.execute(
+        """
+        SELECT
+            daily.id, daily.scheduled_date_msk, daily.scheduled_at_utc,
+            daily.status, daily.reason, daily.plan_id, daily.run_id,
+            plans.name AS plan_name,
+            runs.status AS run_status,
+            runs.started_at_utc, runs.finished_at_utc,
+            runs.requested_cards_count, runs.processed_cards_count,
+            runs.successful_cards_count, runs.failed_cards_count,
+            runs.changed_cards_count, runs.new_snapshots_count,
+            runs.unchanged_count,
+            CASE WHEN runs.processed_cards_count BETWEEN 0 AND runs.requested_cards_count
+                THEN runs.requested_cards_count - runs.processed_cards_count
+                ELSE NULL END AS remaining_cards_count
+        FROM investmap_rf_daily_sync_runs AS daily
+        LEFT JOIN investmap_rf_sync_plans AS plans ON plans.id = daily.plan_id
+        LEFT JOIN investmap_rf_sync_runs AS runs ON runs.id = daily.run_id
+        ORDER BY daily.scheduled_date_msk DESC, daily.id DESC
+        LIMIT 20
+        """
+    ).fetchall()
+    runs = conn.execute(
+        """
+        SELECT
+            runs.id, runs.plan_id, plans.name AS plan_name,
+            runs.status, runs.started_at_utc, runs.finished_at_utc,
+            runs.requested_cards_count, runs.processed_cards_count,
+            runs.successful_cards_count, runs.failed_cards_count,
+            runs.changed_cards_count, runs.new_snapshots_count,
+            runs.unchanged_count, runs.error_message,
+            CASE WHEN runs.processed_cards_count BETWEEN 0 AND runs.requested_cards_count
+                THEN runs.requested_cards_count - runs.processed_cards_count
+                ELSE NULL END AS remaining_cards_count,
+            EXISTS (
+                SELECT 1 FROM investmap_rf_daily_sync_runs AS daily
+                WHERE daily.run_id = runs.id AND daily.status = 'created'
+            ) AS has_schedule_record
+        FROM investmap_rf_sync_runs AS runs
+        LEFT JOIN investmap_rf_sync_plans AS plans ON plans.id = runs.plan_id
+        ORDER BY runs.id DESC
+        LIMIT 20
+        """
+    ).fetchall()
+    retries = conn.execute(
+        """
+        SELECT
+            jobs.id, jobs.plan_id, jobs.source_run_id,
+            plans.name AS plan_name, jobs.status,
+            jobs.created_at_utc, jobs.started_at_utc, jobs.finished_at_utc,
+            jobs.requested_cards_count, jobs.processed_cards_count,
+            jobs.successful_cards_count, jobs.failed_cards_count,
+            jobs.changed_cards_count, jobs.new_snapshots_count,
+            jobs.unchanged_count, jobs.error_message,
+            CASE WHEN jobs.processed_cards_count BETWEEN 0 AND jobs.requested_cards_count
+                THEN jobs.requested_cards_count - jobs.processed_cards_count
+                ELSE NULL END AS remaining_cards_count
+        FROM investmap_rf_sync_retry_jobs AS jobs
+        LEFT JOIN investmap_rf_sync_plans AS plans ON plans.id = jobs.plan_id
+        ORDER BY jobs.id DESC
+        LIMIT 20
+        """
+    ).fetchall()
+    return {
+        "automatic_launches": [dict(row) for row in launches],
+        "runs": [dict(row) for row in runs],
+        "retry_jobs": [dict(row) for row in retries],
+        "limit": 20,
+    }
+
 
 def _get_sync_plan_overview(conn) -> list[dict]:
     from services.investmap_rf_sync_plans import (
@@ -563,12 +635,14 @@ def investmap_rf_sync():
         ).fetchone()["count"]
 
         automatic_sync = get_automatic_sync_settings(conn)
+        sync_history = _get_sync_history(conn)
 
         return render_template(
             "admin/investmap_rf_sync.html",
             plans=plans,
             active_cards_count=active_cards_count,
             automatic_sync=automatic_sync,
+            sync_history=sync_history,
         )
     finally:
         conn.close()
@@ -987,6 +1061,7 @@ def investmap_rf_sync_status():
             """
         ).fetchone()["count"]
         automatic_sync = get_automatic_sync_settings(conn)
+        sync_history = _get_sync_history(conn)
 
         return jsonify(
             {
@@ -994,6 +1069,7 @@ def investmap_rf_sync_status():
                 "active_cards_count": active_cards_count,
                 "plans": plans,
                 "automatic_sync": automatic_sync,
+                "sync_history": sync_history,
                 "server_time_utc": datetime.utcnow().isoformat(
                     timespec="seconds"
                 ) + "Z",
