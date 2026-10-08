@@ -113,6 +113,15 @@
           успешно {{ run.successful_cards_count or 0 }}; ошибок {{ run.failed_cards_count or 0 }}.
         </div>
       {% endif %}
+      {% if run %}
+        <div class="row g-2 small mb-3">
+          <div class="col-sm-6 col-lg-3">Новый snapshot: {{ run.new_snapshots_count if run.new_snapshots_count is not none else 'нет данных' }}</div>
+          <div class="col-sm-6 col-lg-3">Та же версия: {{ run.unchanged_count if run.unchanged_count is not none else 'нет данных' }}</div>
+          <div class="col-sm-6 col-lg-3">С изменениями: {{ run.changed_cards_count }}</div>
+          <div class="col-sm-6 col-lg-3">Не обработано: {% if 0 <= run.processed_cards_count <= run.requested_cards_count %}{{ run.requested_cards_count - run.processed_cards_count }}{% else %}нет данных{% endif %}</div>
+        </div>
+      {% endif %}
+   
       {% if batch %}
         <div class="border rounded p-3 small mb-3">
           Последний пакет № {{ batch.batch_number }}: {{ batch.status }}.
@@ -729,6 +738,97 @@
   </div>
 {% endif %}
 
+{% macro sync_history_number(value) -%}
+  {% if value is none %}<span class="text-muted">нет данных</span>{% else %}{{ value }}{% endif %}
+{%- endmacro %}
+{% macro sync_history_time(value) -%}
+  {% if value %}{{ value | msk_datetime }}{% else %}—{% endif %}
+{%- endmacro %}
+{% macro sync_history_status(value) -%}
+  {{ {'created': 'Цикл создан', 'skipped_overlap': 'Пропущен: предыдущий цикл',
+      'skipped_empty_registry': 'Пропущен: реестр пуст', 'failed': 'Ошибка',
+      'running': 'Выполняется', 'paused': 'Приостановлен', 'stopped': 'Остановлен',
+      'completed': 'Завершён', 'pending': 'Ожидает'}.get(value, value or '—') }}
+{%- endmacro %}
+
+<div class="card mt-4 mb-4" id="sync-history">
+  <div class="card-header bg-white fw-semibold" style="color:#1B5E7B">История синхронизации</div>
+  <div class="card-body">
+    <p class="small text-muted">
+      В каждом разделе показано до {{ sync_history.limit }} последних записей.
+      Время — МСК. Показатели относятся к сохранённым итогам пакетов;
+      выполняющийся пакет может ещё не входить в счётчики.
+      «Нет данных» не означает ноль. Новые snapshot включают первые сохранения карточек;
+      «с изменениями» — отдельный показатель, не дополнительная категория к успешным.
+    </p>
+    <h6>Автоматические попытки запуска</h6>
+    <div class="table-responsive mb-4">
+      <table class="table table-sm table-striped align-middle">
+        <caption>Дата расписания, фактическое время проверки и результат автоматического запуска.</caption>
+        <thead><tr><th scope="col">Дата расписания</th><th scope="col">Проверка, МСК</th><th scope="col">Результат</th><th scope="col">План</th><th scope="col">Цикл</th><th scope="col">Состояние цикла</th><th scope="col">Причина</th></tr></thead>
+        <tbody>
+          {% for entry in sync_history.automatic_launches %}
+            <tr>
+              <td class="text-nowrap">{{ entry.scheduled_date_msk }}</td>
+              <td class="text-nowrap">{{ sync_history_time(entry.scheduled_at_utc) }}</td>
+              <td>{{ sync_history_status(entry.status) }}</td>
+              <td>{{ entry.plan_name or '—' }}{% if entry.plan_id is not none %} (№ {{ entry.plan_id }}){% endif %}</td>
+              <td>{% if entry.run_id is not none %}<a href="#sync-history-run-{{ entry.run_id }}">№ {{ entry.run_id }}</a>{% else %}—{% endif %}</td>
+              <td>{{ sync_history_status(entry.run_status) }}</td>
+              <td class="small" style="white-space:pre-wrap">{{ entry.reason or '—' }}</td>
+            </tr>
+          {% else %}<tr><td colspan="7" class="text-muted">Записей автоматических попыток запуска нет.</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <h6>Циклы всех планов</h6>
+    <p class="small text-muted">«Есть запись расписания» подтверждает автоматический старт. Её отсутствие само по себе не доказывает ручной запуск. Связанный цикл может не входить в последние {{ sync_history.limit }} циклов.</p>
+    <div class="table-responsive mb-4">
+      <table class="table table-sm table-striped align-middle">
+        <caption>История полных циклов: результаты уже обработанной части и число необработанных площадок.</caption>
+        <thead><tr><th scope="col">Цикл / план</th><th scope="col">Начало / окончание, МСК</th><th scope="col">Статус</th><th scope="col">Всего</th><th scope="col">Обработано</th><th scope="col">Успешно</th><th scope="col">Новый snapshot</th><th scope="col">Та же версия</th><th scope="col">С изменениями</th><th scope="col">Ошибки</th><th scope="col">Не обработано</th></tr></thead>
+        <tbody>
+          {% for entry in sync_history.runs %}
+            <tr id="sync-history-run-{{ entry.id }}">
+              <td>№ {{ entry.id }}<div class="small">{{ entry.plan_name or 'Без названия' }} (план № {{ entry.plan_id }})</div><div class="small text-muted">{{ 'Есть запись расписания' if entry.has_schedule_record else 'Нет связанной записи расписания' }}</div></td>
+              <td class="small text-nowrap">{{ sync_history_time(entry.started_at_utc) }}<br>{{ sync_history_time(entry.finished_at_utc) }}</td>
+              <td>{{ sync_history_status(entry.status) }}</td>
+              {% for field in ['requested_cards_count', 'processed_cards_count', 'successful_cards_count', 'new_snapshots_count', 'unchanged_count', 'changed_cards_count', 'failed_cards_count', 'remaining_cards_count'] %}
+                <td>{{ sync_history_number(entry[field]) }}</td>
+              {% endfor %}
+            </tr>
+            {% if entry.error_message %}<tr><td colspan="11" class="small text-danger" style="white-space:pre-wrap">Цикл № {{ entry.id }}: {{ entry.error_message }}</td></tr>{% endif %}
+          {% else %}<tr><td colspan="11" class="text-muted">Циклов пока нет.</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <h6>Повторы ошибочных площадок</h6>
+    <p class="small text-muted">Результаты повторов не прибавляются к исходному циклу.</p>
+    <div class="table-responsive">
+      <table class="table table-sm table-striped align-middle">
+        <caption>Отдельные задачи повторной синхронизации.</caption>
+        <thead><tr><th scope="col">Повтор / исходный цикл</th><th scope="col">Создан / начало / окончание, МСК</th><th scope="col">Статус</th><th scope="col">Всего</th><th scope="col">Обработано</th><th scope="col">Успешно</th><th scope="col">Новый snapshot</th><th scope="col">Та же версия</th><th scope="col">С изменениями</th><th scope="col">Ошибки</th><th scope="col">Не обработано</th></tr></thead>
+        <tbody>
+          {% for entry in sync_history.retry_jobs %}
+            <tr>
+              <td>№ {{ entry.id }}<div class="small">Исходный цикл № {{ entry.source_run_id }}</div><div class="small">{{ entry.plan_name or 'Без названия' }} (план № {{ entry.plan_id }})</div></td>
+              <td class="small text-nowrap">{{ sync_history_time(entry.created_at_utc) }}<br>{{ sync_history_time(entry.started_at_utc) }}<br>{{ sync_history_time(entry.finished_at_utc) }}</td>
+              <td>{{ sync_history_status(entry.status) }}</td>
+              {% for field in ['requested_cards_count', 'processed_cards_count', 'successful_cards_count', 'new_snapshots_count', 'unchanged_count', 'changed_cards_count', 'failed_cards_count', 'remaining_cards_count'] %}
+                <td>{{ sync_history_number(entry[field]) }}</td>
+              {% endfor %}
+            </tr>
+            {% if entry.error_message %}<tr><td colspan="11" class="small text-danger" style="white-space:pre-wrap">Повтор № {{ entry.id }}: {{ entry.error_message }}</td></tr>{% endif %}
+          {% else %}<tr><td colspan="11" class="text-muted">Задач повтора пока нет.</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+
 <script>
 (function () {
   var statusUrl = "{{ url_for('admin.investmap_rf_sync_status') }}";
@@ -765,6 +865,7 @@
     return JSON.stringify({
       active_cards_count: payload.active_cards_count,
       automatic_sync: payload.automatic_sync,
+      sync_history: payload.sync_history,
       plans: (payload.plans || []).map(function (item) {
         return {plan: item.plan, latest_run: item.latest_run, latest_batch: item.latest_batch,
                 failed_batches: item.failed_batches, latest_retry_job: item.latest_retry_job};
