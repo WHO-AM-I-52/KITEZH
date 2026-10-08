@@ -176,3 +176,25 @@ def migrate_sync_retry_tables(conn):
             ON investmap_rf_sync_retry_jobs(status, id ASC);
         """
     )
+    for table_name in (
+        "investmap_rf_sync_runs",
+        "investmap_rf_sync_batches",
+        "investmap_rf_sync_retry_jobs",
+    ):
+        existing_columns = {
+            row["name"]
+            for row in conn.execute(
+                f"PRAGMA table_info({table_name})"
+            ).fetchall()
+        }
+
+        for column_name in (
+            "new_snapshots_count",
+            "unchanged_count",
+        ):
+            if column_name not in existing_columns:
+                conn.execute(
+                    f"ALTER TABLE {table_name} "
+                    f"ADD COLUMN {column_name} INTEGER "
+                    f"CHECK ({column_name} IS NULL OR {column_name} >= 0)"
+                )
