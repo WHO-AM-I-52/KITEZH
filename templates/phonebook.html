@@ -503,7 +503,7 @@ function applyPhoneMask(el,type){
 /* ── ИСПРАВЛЕНО v2.6.1: закрыта скобка в тернарном операторе ── */
 function fetchAddress(select){
   var opt=select.options[select.selectedIndex];
-  var address=opt?(opt.dataset.address||')':'';
+  var address = opt ? (opt.dataset.address || '') : '';
   var modal=select.closest('.modal-body,.card-body');
   if(modal){var f=modal.querySelector('.org-address-field');if(f)f.value=address;}
 }
