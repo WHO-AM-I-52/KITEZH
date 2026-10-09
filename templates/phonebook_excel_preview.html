@@ -1,0 +1,173 @@
+{% extends 'base.html' %}
+{% block title %}Excel — предпросмотр справочника{% endblock %}
+{% block content %}
+{% set labels = {
+  'name':'Название', 'address':'Адрес', 'inn':'ИНН',
+  'org_id':'Организация', 'full_name':'ФИО', 'position':'Должность',
+  'room':'Кабинет', 'phone_work':'Рабочий телефон', 'phone_ext':'Добавочный',
+  'phone_personal':'Личный телефон', 'email':'Email', 'notes':'Примечания'
+} %}
+{% set actions = {'create':'Добавление','update':'Изменение',
+                  'delete':'Удаление','unchanged':'Без изменений'} %}
+{% macro value_text(value, field='') -%}
+  {% if field == 'org_id' and value is mapping %}
+    Новая организация из строки {{ value.organization_row }} листа «Организации»
+  {% elif field == 'org_id' and value is not none %}
+    ID {{ value }}
+    {% for org in plan.get('snapshot', {}).get('organizations', []) %}
+      {% if org.id == value %} — {{ org.name }}{% endif %}
+    {% endfor %}
+  {% elif value is none or value == '' %}
+    <span class="text-muted">пусто</span>
+  {% else %}{{ value }}{% endif %}
+{%- endmacro %}
+{% macro messages(items, title, css) %}
+  {% if items %}
+  <div class="alert {{ css }}">
+    <h6>{{ title }}</h6>
+    <ul class="mb-0">
+      {% for item in items %}
+      <li>
+        {% if item.get('sheet') %}{{ item.sheet }}{% endif %}
+        {% if item.get('row') is not none %}, строка {{ item.row }}{% endif %}
+        {% if item.get('field') %}, {{ item.field }}{% endif %}:
+        {{ item.message }}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+{% endmacro %}
+<div class="container-fluid py-3">
+  <div class="d-flex gap-3 align-items-center mb-3">
+    <a href="{{ url_for('phonebook.phonebook') }}" class="btn btn-outline-secondary btn-sm">
+      ← К справочнику
+    </a>
+    <h4 class="mb-0">Предпросмотр Excel-изменений</h4>
+  </div>
+  <div class="alert alert-info">
+    Пока ничего не записано в базу. Проверьте оба листа, очистку полей и удаления.
+    Отсутствие строки в книге не удаляет запись из справочника.
+    Срок пакета — один час с момента загрузки.
+  </div>
+  {{ messages(plan.errors, 'Ошибки — применение заблокировано', 'alert-danger') }}
+  {{ messages(plan.warnings, 'Предупреждения — проверьте исходные значения', 'alert-warning') }}
+  <div class="table-responsive mb-4">
+    <table class="table table-sm table-bordered">
+      <thead><tr><th>Лист</th><th>Добавление</th><th>Изменение</th>
+        <th>Удаление</th><th>Без изменений</th></tr></thead>
+      <tbody>
+      {% for kind, title in [('organizations','Организации'),('contacts','Контакты')] %}
+        {% set counts = plan.get('summary', {}).get(kind, {}) %}
+        <tr><td>{{ title }}</td>
+        {% for action in ['create','update','delete','unchanged'] %}
+          <td>{{ counts.get(action, 0) }}</td>
+        {% endfor %}
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if plan.conflicts %}
+  <form method="post" action="{{ url_for('pb_import.excel_resolve') }}" class="card mb-4">
+    <div class="card-header">Совпадения требуют решения</div>
+    <div class="card-body">
+      <input type="hidden" name="pb_excel_csrf" value="{{ pb_excel_csrf_token() }}">
+      <input type="hidden" name="preview_version" value="{{ preview_version }}">
+      {% for conflict in plan.conflicts %}
+      {% set pieces = conflict.key.split(':') %}
+      {% set kind = 'organizations' if pieces[0] == 'org' else 'contacts' %}
+      <div class="mb-3">
+        <label class="form-label" for="resolve-{{ loop.index }}">
+          {{ 'Организации' if kind == 'organizations' else 'Контакты' }},
+          строка {{ pieces[1] }}
+        </label>
+        {% if conflict.get('message') %}<p class="small">{{ conflict.message }}</p>{% endif %}
+        <select class="form-select" id="resolve-{{ loop.index }}"
+                name="resolve_{{ conflict.key }}">
+          <option value="">— выбрать решение —</option>
+          {% for candidate in conflict.candidates %}
+          <option value="{{ candidate }}">
+            Использовать ID {{ candidate }}
+            {% for record in plan.get('snapshot', {}).get(kind, []) %}
+              {% if record.id == candidate %}
+                — {{ record.name if kind == 'organizations' else record.full_name }}
+              {% endif %}
+            {% endfor %}
+          </option>
+          {% endfor %}
+          {% if conflict.allow_create %}
+          <option value="create">Добавить отдельного человека — совпадение намеренное</option>
+          {% endif %}
+        </select>
+      </div>
+      {% endfor %}
+      <button type="submit" class="btn btn-primary">Пересчитать предпросмотр</button>
+    </div>
+  </form>
+  {% endif %}
+  {% for kind, title in [('organizations','Организации'),('contacts','Контакты')] %}
+  <h5>{{ title }}</h5>
+  {% if not plan[kind] %}<p class="text-muted">Нет операций для отображения.</p>{% endif %}
+  {% for item in plan[kind] %}
+  {% set data = item.after if item.after is not none else item.before %}
+  <div class="card mb-2 {{ 'border-danger' if item.action == 'delete' else '' }}">
+    <div class="card-header d-flex gap-2 flex-wrap">
+      <span class="badge {{ 'bg-danger' if item.action == 'delete' else 'bg-secondary' }}">
+        {{ actions[item.action] }}
+      </span>
+      <span>Строка {{ item.row }} · ID {{ item.id if item.id is not none else 'будет назначен' }}</span>
+      <span>{{ data.name if kind == 'organizations' else data.full_name }}</span>
+    </div>
+    {% if item.action in ['create','update'] %}
+    <div class="table-responsive">
+      <table class="table table-sm mb-0">
+        <thead><tr><th>Поле</th><th>Было</th><th>Станет</th></tr></thead>
+        <tbody>
+        {% for field, change in item.changes.items() %}
+        <tr><td>{{ labels.get(field, field) }}</td>
+          <td>{{ value_text(change.before, field) }}</td>
+          <td>{{ value_text(change.after, field) }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% elif item.action == 'delete' %}
+    <div class="card-body py-2">
+      Запись будет удалена.
+      {% if kind == 'contacts' %}Организация: {{ value_text(data.org_id, 'org_id') }}.{% endif %}
+      {% if data.get('inn') %} ИНН: {{ data.inn }}.{% endif %}
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+  {% endfor %}
+  {% if plan.can_apply %}
+  <form method="post" action="{{ url_for('pb_import.excel_apply') }}" class="card mt-4">
+    <div class="card-body">
+      <input type="hidden" name="pb_excel_csrf" value="{{ pb_excel_csrf_token() }}">
+      <input type="hidden" name="preview_version" value="{{ preview_version }}">
+      <div class="alert alert-warning">
+        Применение изменит базу, включая все указанные удаления и очистки полей.
+        Перед проверкой на рабочем справочнике подготовьте резервную копию.
+        При изменении данных после предпросмотра пакет будет отклонён.
+      </div>
+      <div class="form-check mb-3">
+        <input class="form-check-input" type="checkbox" id="confirm-apply"
+               name="confirm_apply" value="1" required>
+        <label class="form-check-label" for="confirm-apply">
+          Я проверил оба листа, удаления и очистки полей и подтверждаю применение.
+        </label>
+      </div>
+      <button type="submit" class="btn btn-success">Применить изменения</button>
+      <a href="{{ url_for('phonebook.phonebook') }}" class="btn btn-outline-secondary">Назад без применения</a>
+    </div>
+  </form>
+  {% else %}
+  <div class="alert alert-danger mt-4">
+    Применение заблокировано. Разрешите совпадения выше либо исправьте книгу
+    и загрузите её заново через страницу справочника.
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
