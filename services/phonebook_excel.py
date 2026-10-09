@@ -64,7 +64,7 @@ def parse_phonebook_workbook(source):
         wb = load_workbook(source, read_only=True, data_only=False)
     except Exception as exc:
         message('errors', '', None, '', f'Не удалось открыть Excel: {exc}')
-        
+        return result
     try:
         for sheet, (headers, keys) in SHEETS.items():
             if sheet not in wb.sheetnames:
