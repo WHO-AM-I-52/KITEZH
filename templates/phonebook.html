@@ -150,6 +150,17 @@
   </div>
   <div class="d-flex gap-2 flex-wrap">
     {% if session.get('role') == 'admin' %}
+    <a href="{{ url_for('pb_import.excel_export') }}"
+       class="btn btn-sm btn-outline-success"
+       title="Выгрузить весь справочник: организации и контакты, независимо от поиска">
+      <i class="bi bi-file-earmark-arrow-down me-1"></i>Выгрузить Excel
+    </a>
+    <button type="button"
+            class="btn btn-sm btn-outline-primary"
+            data-bs-toggle="modal"
+            data-bs-target="#excelEditModal">
+      <i class="bi bi-file-earmark-arrow-up me-1"></i>Загрузить изменения
+    </button>
     <a href="{{ url_for('pb_import.import_template') }}"
        class="btn btn-sm btn-outline-success" title="Скачать шаблон">
       <i class="bi bi-file-earmark-arrow-down me-1"></i>Шаблон
@@ -358,6 +369,101 @@
       </div>
     </form>
   </div></div>
+</div>
+{# ─── Двухлистовый Excel: редактирование справочника ─── #}
+<div class="modal fade" id="excelEditModal" tabindex="-1"
+     aria-labelledby="excelEditModalTitle" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <form method="post"
+            action="{{ url_for('pb_import.excel_upload') }}"
+            enctype="multipart/form-data">
+        <input type="hidden"
+               name="pb_excel_csrf"
+               value="{{ pb_excel_csrf_token() }}">
+
+        <div class="modal-header" style="background:#1B5E7B;color:#fff">
+          <h6 class="modal-title" id="excelEditModalTitle">
+            <i class="bi bi-file-earmark-spreadsheet me-1"></i>
+            Изменения справочника через Excel
+          </h6>
+          <button type="button" class="btn-close btn-close-white"
+                  data-bs-dismiss="modal" aria-label="Закрыть"></button>
+        </div>
+
+        <div class="modal-body">
+          <p>
+            Сначала скачайте текущие данные кнопкой «Выгрузить Excel».
+            Отредактируйте книгу и загрузите её здесь.
+          </p>
+
+          <div class="alert alert-info small">
+            <ul class="mb-0">
+              <li>
+                Лист «Организации» — названия компаний, адреса и ИНН.
+              </li>
+              <li>
+                Лист «Контакты» — сотрудники, телефоны и остальные данные.
+              </li>
+              <li>
+                У существующих записей сохраняйте ID.
+                У новых записей оставляйте ID пустым.
+              </li>
+              <li>
+                Для новой компании добавьте строку на лист «Организации».
+                У контакта укажите её название в колонке «Организация»,
+                оставив ID организации пустым.
+              </li>
+              <li>
+                Действие оставьте пустым для добавления или редактирования.
+                Для удаления укажите «Удалить» и существующий ID записи.
+              </li>
+              <li>
+                Удаление строки из Excel не удаляет запись из базы.
+              </li>
+              <li>
+                Пустое необязательное поле при обновлении очистит
+                прежнее значение. ИНН организации и контакта независимы
+                и необязательны.
+              </li>
+              <li>
+                Не меняйте названия листов и заголовки первой строки.
+                Не используйте формулы.
+              </li>
+            </ul>
+          </div>
+
+          <div class="alert alert-warning small">
+            Загрузка открывает предпросмотр и сама по себе
+            не изменяет справочник. Перед применением проверьте
+            изменения, удаления и очистки полей.
+          </div>
+
+          <div class="mb-3">
+            <label for="excel-edit-file" class="form-label">
+              Двухлистовая книга Excel (.xlsx), до 20 МБ
+            </label>
+            <input type="file"
+                   id="excel-edit-file"
+                   name="import_file"
+                   accept=".xlsx"
+                   class="form-control"
+                   required>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm"
+                  data-bs-dismiss="modal">
+            Отмена
+          </button>
+          <button type="submit" class="btn btn-primary btn-sm">
+            <i class="bi bi-eye me-1"></i>Загрузить и проверить
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
 </div>
 {% endif %}
 
