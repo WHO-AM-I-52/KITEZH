@@ -488,3 +488,232 @@ def _save_import_session_by_token(token: str, data: dict):
     path = os.path.join(IMPORT_TEMP_DIR, f'import_{token}.json')
     with open(path, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False)
+
+# ─── Двухлистовый Excel: независимый сценарий ─────────────────────────────
+# Дополнительные imports размещены здесь, чтобы старый импорт не изменять.
+import secrets
+import time
+import zipfile
+from hmac import compare_digest
+
+from flask import abort
+from services.phonebook_excel import (
+    parse_phonebook_workbook, export_phonebook_workbook,
+)
+from services.phonebook_excel_plan import build_phonebook_plan
+from services.phonebook_excel_apply import apply_phonebook_plan
+
+PB_EXCEL_TTL = 3600
+PB_EXCEL_MAX_BYTES = 20 * 1024 * 1024
+PB_EXCEL_MAX_UNPACKED = 100 * 1024 * 1024
+
+
+def _pb_excel_csrf_token():
+    if not session.get('pb_excel_csrf'):
+        session['pb_excel_csrf'] = secrets.token_hex(32)
+    return session['pb_excel_csrf']
+
+
+@pb_import_bp.app_context_processor
+def _pb_excel_context():
+    return {'pb_excel_csrf_token': _pb_excel_csrf_token}
+
+
+def _pb_excel_check_csrf():
+    expected = session.get('pb_excel_csrf', '')
+    supplied = request.form.get('pb_excel_csrf', '')
+    if not expected or not compare_digest(expected, supplied):
+        abort(400, description='Защитный токен недействителен. Обновите страницу.')
+
+
+def _pb_excel_path(token):
+    if not isinstance(token, str) or len(token) != 32:
+        raise ValueError('Некорректный пакет Excel')
+    if any(c not in '0123456789abcdef' for c in token):
+        raise ValueError('Некорректный пакет Excel')
+    return os.path.join(IMPORT_TEMP_DIR, f'pb_excel_{token}.json')
+
+
+def _pb_excel_save(token, data):
+    path = _pb_excel_path(token)
+    tmp = path + '.' + uuid.uuid4().hex + '.tmp'
+    try:
+        with open(tmp, 'x', encoding='utf-8') as handle:
+            json.dump(data, handle, ensure_ascii=False)
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+
+
+def _pb_excel_load():
+    token = session.get('pb_excel_token')
+    path = _pb_excel_path(token)
+    if os.path.exists(path + '.claimed'):
+        raise ValueError('Этот пакет уже использован. Загрузите книгу заново.')
+    with open(path, encoding='utf-8') as handle:
+        data = json.load(handle)
+    if data['user_id'] != session.get('user_id'):
+        raise ValueError('Пакет принадлежит другому пользователю')
+    if not 0 <= time.time() - data['created_at'] <= PB_EXCEL_TTL:
+        raise ValueError('Срок пакета истёк. Загрузите книгу заново.')
+    return token, data
+
+
+def _pb_excel_build(data):
+    conn = get_db()
+    try:
+        conn.execute('BEGIN')
+        return build_phonebook_plan(conn, data['parsed'], data['resolutions'])
+    finally:
+        conn.rollback()
+        conn.close()
+
+
+def _pb_excel_error(exc):
+    flash(f'Excel-справочник: {exc}', 'error')
+    return redirect(url_for('phonebook.phonebook'))
+
+
+@pb_import_bp.route('/phonebook/excel/export')
+@login_required
+@admin_required
+def excel_export():
+    conn = get_db()
+    try:
+        conn.execute('BEGIN')
+        buf = export_phonebook_workbook(conn)
+    finally:
+        conn.rollback()
+        conn.close()
+    return send_file(
+        buf, as_attachment=True,
+        download_name=f'phonebook_edit_{datetime.now():%Y%m%d_%H%M%S}.xlsx',
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
+
+
+@pb_import_bp.route('/phonebook/excel/upload', methods=['POST'])
+@login_required
+@admin_required
+def excel_upload():
+    _pb_excel_check_csrf()
+    upload = request.files.get('import_file')
+    if not upload or not (upload.filename or '').lower().endswith('.xlsx'):
+        return _pb_excel_error('Выберите файл .xlsx')
+    raw = upload.stream.read(PB_EXCEL_MAX_BYTES + 1)
+    if len(raw) > PB_EXCEL_MAX_BYTES:
+        return _pb_excel_error('Максимальный размер книги — 20 МБ')
+    try:
+        with zipfile.ZipFile(BytesIO(raw)) as archive:
+            if sum(x.file_size for x in archive.infolist()) > PB_EXCEL_MAX_UNPACKED:
+                raise ValueError('Распакованная книга превышает 100 МБ')
+        parsed = parse_phonebook_workbook(BytesIO(raw))
+        token = uuid.uuid4().hex
+        data = {
+            'user_id': session['user_id'], 'created_at': time.time(),
+            'parsed': parsed, 'resolutions': {},
+        }
+        _pb_excel_save(token, data)
+        session['pb_excel_token'] = token
+    except Exception as exc:
+        return _pb_excel_error(exc)
+    return redirect(url_for('pb_import.excel_preview'))
+
+
+@pb_import_bp.route('/phonebook/excel/preview')
+@login_required
+@admin_required
+def excel_preview():
+    try:
+        token, data = _pb_excel_load()
+        plan = _pb_excel_build(data)
+        data['approved_plan'] = plan
+        data['preview_version'] = uuid.uuid4().hex
+        _pb_excel_save(token, data)
+    except Exception as exc:
+        return _pb_excel_error(exc)
+    return render_template(
+        'phonebook_excel_preview.html', plan=plan,
+        preview_version=data['preview_version'],
+        resolutions=data['resolutions'],
+    )
+
+
+@pb_import_bp.route('/phonebook/excel/resolve', methods=['POST'])
+@login_required
+@admin_required
+def excel_resolve():
+    _pb_excel_check_csrf()
+    try:
+        token, data = _pb_excel_load()
+        if request.form.get('preview_version') != data.get('preview_version'):
+            raise ValueError('Предпросмотр изменился. Обновите страницу.')
+        for conflict in data['approved_plan'].get('conflicts', []):
+            key = conflict['key']
+            choice = request.form.get('resolve_' + key, '')
+            if not choice:
+                continue
+            if choice == 'create' and conflict['allow_create']:
+                data['resolutions'][key] = {'create': True}
+            elif choice.isdigit() and int(choice) in conflict['candidates']:
+                data['resolutions'][key] = {'id': int(choice)}
+            else:
+                raise ValueError('Недопустимое решение совпадения')
+        data.pop('approved_plan', None)
+        data.pop('preview_version', None)
+        _pb_excel_save(token, data)
+    except Exception as exc:
+        return _pb_excel_error(exc)
+    return redirect(url_for('pb_import.excel_preview'))
+
+
+@pb_import_bp.route('/phonebook/excel/apply', methods=['POST'])
+@login_required
+@admin_required
+def excel_apply():
+    _pb_excel_check_csrf()
+    if request.form.get('confirm_apply') != '1':
+        return _pb_excel_error('Нужно подтвердить применение изменений')
+    try:
+        token, data = _pb_excel_load()
+        if request.form.get('preview_version') != data.get('preview_version'):
+            raise ValueError('Предпросмотр изменился. Обновите страницу.')
+        approved = data.get('approved_plan', {})
+        if not approved.get('can_apply'):
+            raise ValueError('Сначала исправьте ошибки и совпадения')
+        path = _pb_excel_path(token)
+        # O_EXCL: только один запрос может использовать пакет, даже после сбоя.
+        fd = os.open(path + '.claimed', os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        os.close(fd)
+    except Exception as exc:
+        return _pb_excel_error(exc)
+    try:
+        # После захвата проверяем, что другой запрос не заменил предпросмотр.
+        with open(path, encoding='utf-8') as handle:
+            current = json.load(handle)
+        if current != data:
+            raise ValueError('Пакет изменился. Загрузите книгу заново.')
+        conn = get_db()
+        try:
+            counts = apply_phonebook_plan(
+                conn, data['parsed'], approved, session['user_id'],
+                log_action, data['resolutions'],
+            )
+        finally:
+            conn.close()
+        labels = {'organizations': 'организации', 'contacts': 'контакты'}
+        parts = [f"{labels[k]}: добавлено {v['create']}, "
+                 f"изменено {v['update']}, удалено {v['delete']}"
+                 for k, v in counts.items()]
+        flash('Excel применён: ' + '; '.join(parts), 'success')
+    except Exception as exc:
+        flash(f'Excel не применён: {exc}. Загрузите книгу заново.', 'error')
+    finally:
+        session.pop('pb_excel_token', None)
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+    return redirect(url_for('phonebook.phonebook'))
+
