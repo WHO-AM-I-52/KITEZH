@@ -176,6 +176,38 @@ def build_phonebook_plan(conn, parsed, resolutions=None):
         else:
             key = cid if cid is not None else f"row:{r['row']}"
             final_contacts[key] = data
+    new_contact_groups = defaultdict(list)
+    for item in plan['contacts']:
+        if item['action'] != 'create':
+            continue
+        ref = item['after']['org_id']
+        org_key = (
+            ('new', ref['organization_row'])
+            if isinstance(ref, dict)
+            else ('existing', ref)
+        )
+        key = (org_key, _norm(item['after']['full_name']))
+        new_contact_groups[key].append(item)
+
+    for group in new_contact_groups.values():
+        if len(group) < 2:
+            continue
+        rows = [item['row'] for item in group]
+        for item in group:
+            key = f"contact:{item['row']}"
+            if resolutions.get(key) == {'create': True}:
+                continue
+            plan['conflicts'].append({
+                'key': key,
+                'candidates': [],
+                'allow_create': True,
+                'duplicate_rows': rows,
+                'message': (
+                    'Новые контакты с одинаковыми ФИО и организацией '
+                    f'в строках {rows}. Подтвердите отдельного человека '
+                    'для каждой строки либо исправьте книгу.'
+                ),
+            })
     for oid in deleted:
         if any(c['org_id'] == oid for c in final_contacts.values()):
             error('org', None, f'Организация ID={oid} остаётся с контактами')
