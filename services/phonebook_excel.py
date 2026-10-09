@@ -64,7 +64,7 @@ def parse_phonebook_workbook(source):
         wb = load_workbook(source, read_only=True, data_only=False)
     except Exception as exc:
         message('errors', '', None, '', f'Не удалось открыть Excel: {exc}')
-        return result
+        
     try:
         for sheet, (headers, keys) in SHEETS.items():
             if sheet not in wb.sheetnames:
@@ -131,3 +131,78 @@ def parse_phonebook_workbook(source):
     finally:
         wb.close()
     return result
+
+
+def export_phonebook_workbook(conn):
+    """Возвращает BytesIO с книгой; conn не закрывает и не коммитит.
+
+    Вызывающий код обеспечивает согласованный снимок двух SELECT.
+    """
+    from io import BytesIO
+
+    from openpyxl import Workbook
+    from openpyxl.comments import Comment
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
+
+    organizations = conn.execute(
+        'SELECT id, name, address, inn FROM phonebook_orgs ORDER BY id'
+    ).fetchall()
+    contacts = conn.execute("""
+        SELECT p.id, p.org_id, o.name, p.full_name, p.position,
+               p.room, p.phone_work, p.phone_ext, p.phone_personal,
+               p.email, p.inn, p.notes
+        FROM phonebook p
+        LEFT JOIN phonebook_orgs o ON o.id = p.org_id
+        ORDER BY p.id
+    """).fetchall()
+    wb = Workbook()
+    wb.remove(wb.active)
+    layouts = (
+        ('Организации', ORG_HEADERS, organizations, {2},
+         [16, 18, 42, 48, 22]),
+        ('Контакты', CONTACT_HEADERS, contacts, {2, 3},
+         [16, 16, 18, 42, 32, 28, 12, 22, 12, 22, 30, 20, 40]),
+    )
+    for title, headers, records, id_columns, widths in layouts:
+        ws = wb.create_sheet(title)
+        ws.append(headers)
+        ws.freeze_panes = 'A2'
+        ws.row_dimensions[1].height = 30
+        for column, width in enumerate(widths, 1):
+            ws.column_dimensions[get_column_letter(column)].width = width
+            cell = ws.cell(1, column)
+            cell.font = Font(bold=True, color='FFFFFF')
+            cell.fill = PatternFill('solid', fgColor='1B5E7B')
+            cell.alignment = Alignment(vertical='center', wrap_text=True)
+        ws['A1'].comment = Comment(
+            'Оставьте действие пустым для добавления или обновления. '
+            'Для удаления укажите «Удалить» и существующий ID. '
+            'Удаление строки из Excel не удаляет запись из базы.', 'KITEZH'
+        )
+        ws['B1'].comment = Comment(
+            'Не изменяйте ID существующей записи. '
+            'Для новой записи оставьте ID пустым.', 'KITEZH'
+        )
+        for number, record in enumerate(records, 2):
+            values = ('',) + tuple(record)
+            for column, value in enumerate(values, 1):
+                cell = ws.cell(number, column)
+                if column in id_columns:
+                    cell.value = None if value is None else str(value)
+                    cell.data_type = 's'
+                else:
+                    cell.value = '' if value is None else str(value)
+                    cell.data_type = 's'
+                cell.number_format = '@'
+                cell.alignment = Alignment(vertical='top', wrap_text=True)
+        ws.auto_filter.ref = (
+            f'A1:{get_column_letter(len(headers))}{ws.max_row}'
+        )
+    buf = BytesIO()
+    try:
+        wb.save(buf)
+    finally:
+        wb.close()
+    buf.seek(0)
+    return buf
