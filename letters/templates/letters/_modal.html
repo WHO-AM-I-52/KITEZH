@@ -40,7 +40,7 @@
                 <input type="text" id="cpInput" class="form-control"
                        placeholder="Начните ввод названия..."
                        autocomplete="off">
-                <button type="button" class="btn btn-outline-success" title="Добавить нового контрагента"
+                <button type="button" class="btn btn-outline-success" id="cpAddBtn" title="Добавить нового контрагента"
                         onclick="addCounterparty()">+</button>
               </div>
               <div id="cpSuggestions" class="list-group mt-1"
@@ -152,8 +152,15 @@ function hideCpSuggestions() {
 }
 
 function addCounterparty() {
-  const name = document.getElementById('cpInput').value.trim();
-  if (!name) return;
+  const input = document.getElementById('cpInput');
+  const btn = document.getElementById('cpAddBtn');
+  const name = input.value.trim();
+  if (!name) {
+    input.classList.add('is-invalid');
+    setTimeout(() => input.classList.remove('is-invalid'), 1500);
+    input.focus();
+    return;
+  }
   fetch('/letters/api/counterparties', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
@@ -162,10 +169,17 @@ function addCounterparty() {
     .then(r => r.json())
     .then(data => {
       if (data.id) {
-        document.getElementById('cpInput').value = data.name;
+        input.value = data.name;
         document.getElementById('fCounterpartyId').value = data.id;
         hideCpSuggestions();
+        btn.textContent = '✓';
+        setTimeout(() => { btn.textContent = '+'; }, 1500);
       }
+    })
+    .catch(() => {
+      btn.textContent = '✗';
+      setTimeout(() => { btn.textContent = '+'; }, 1500);
+      input.focus();
     });
 }
 
