@@ -1,6 +1,6 @@
 from flask import (
     Blueprint, render_template, request, redirect,
-    url_for, session, jsonify,
+    url_for, session, jsonify, g,
 )
 from datetime import datetime
 from db import get_db
@@ -12,6 +12,27 @@ letters_bp = Blueprint(
     template_folder='templates',
     url_prefix='/letters',
 )
+
+
+def _get_letters_db():
+    """Отдельное соединение модуля писем на время запроса."""
+    conn = g.get('_letters_db')
+    if conn is None:
+        conn = get_db()
+        g._letters_db = conn
+    return conn
+
+
+@letters_bp.teardown_request
+def _close_letters_db(exc):
+    conn = g.pop('_letters_db', None)
+    if conn is None:
+        return
+    try:
+        if conn.in_transaction:
+            conn.rollback()
+    finally:
+        conn.close()
 
 
 def _login_required():
@@ -93,7 +114,7 @@ def list_letters():
     if _login_required():
         return redirect(url_for('auth.login'))
 
-    db = get_db()
+    db = _get_letters_db()
     users = _get_users(db)
 
     return render_template(
@@ -111,7 +132,7 @@ def api_list():
     if _login_required():
         return jsonify([]), 401
 
-    db = get_db()
+    db = _get_letters_db()
     user_id = session.get('user_id')
     role    = session.get('role')
     can_del = _can_delete()
@@ -160,7 +181,7 @@ def create_letter():
     if _login_required():
         return redirect(url_for('auth.login'))
 
-    db = get_db()
+    db = _get_letters_db()
     date             = request.form.get('date', '').strip()
     number           = request.form.get('number', '').strip()
     subject          = request.form.get('subject', '').strip()
@@ -191,9 +212,8 @@ def create_letter():
     )
     letter_id = cur.lastrowid
     _set_letter_tags(db, letter_id, tags)
-    db.commit()
-
     log_action(db, session['user_id'], 'letter_create', letter_id)
+    db.commit()
     return redirect(url_for('letters.list_letters'))
 
 
@@ -204,7 +224,7 @@ def edit_letter(id):
     if _login_required():
         return redirect(url_for('auth.login'))
 
-    db = get_db()
+    db = _get_letters_db()
     letter = db.execute('SELECT * FROM letters WHERE id = ?', (id,)).fetchone()
     if letter is None:
         return redirect(url_for('letters.list_letters'))
@@ -262,9 +282,8 @@ def edit_letter(id):
         (date, number, subject, note, executor_id, direction, counterparty_id, id),
     )
     _set_letter_tags(db, id, tags)
-    db.commit()
-
     log_action(db, session['user_id'], 'letter_edit', id)
+    db.commit()
     return redirect(url_for('letters.list_letters'))
 
 
@@ -277,11 +296,10 @@ def delete_letter(id):
     if not _can_delete():
         return redirect(url_for('letters.list_letters'))
 
-    db = get_db()
+    db = _get_letters_db()
     db.execute('DELETE FROM letters WHERE id = ?', (id,))
-    db.commit()
-
     log_action(db, session['user_id'], 'letter_delete', id)
+    db.commit()
     return redirect(url_for('letters.list_letters'))
 
 
@@ -292,7 +310,7 @@ def api_tags():
     if _login_required():
         return jsonify([])
     q = request.args.get('q', '').strip().lower()
-    db = get_db()
+    db = _get_letters_db()
     if q:
         rows = db.execute(
             'SELECT id, name FROM letter_tags WHERE name LIKE ? ORDER BY name LIMIT 20',
@@ -314,7 +332,7 @@ def api_counterparties():
             return jsonify([])
         return jsonify({'error': 'unauthorized'}), 401
 
-    db = get_db()
+    db = _get_letters_db()
 
     if request.method == 'GET':
         q = request.args.get('q', '').strip()
@@ -344,8 +362,8 @@ def api_counterparties():
         'INSERT INTO counterparties (name, created_at) VALUES (?, ?)',
         (name, created_at),
     )
-    db.commit()
     log_action(db, session['user_id'], 'counterparty_create', cur.lastrowid)
+    db.commit()
     return jsonify({'id': cur.lastrowid, 'name': name}), 201
 
 
@@ -356,7 +374,7 @@ def list_templates():
     if _login_required():
         return redirect(url_for('auth.login'))
 
-    db = get_db()
+    db = _get_letters_db()
     user_id = session['user_id']
     role = session.get('role')
 
@@ -414,7 +432,7 @@ def create_template():
     if not name:
         return redirect(url_for('letters.list_templates'))
 
-    db = get_db()
+    db = _get_letters_db()
     cur = db.execute(
         '''
         INSERT INTO letter_templates (name, subject, body, created_by, is_shared)
@@ -422,8 +440,8 @@ def create_template():
         ''',
         (name, subject, body, session['user_id'], is_shared),
     )
-    db.commit()
     log_action(db, session['user_id'], 'letter_template_create', cur.lastrowid)
+    db.commit()
     return redirect(url_for('letters.list_templates'))
 
 
@@ -432,7 +450,7 @@ def delete_template(id):
     if _login_required():
         return redirect(url_for('auth.login'))
 
-    db = get_db()
+    db = _get_letters_db()
     tmpl = db.execute(
         'SELECT id, created_by FROM letter_templates WHERE id = ?', (id,)
     ).fetchone()
@@ -441,8 +459,8 @@ def delete_template(id):
         return redirect(url_for('letters.list_templates'))
 
     db.execute('DELETE FROM letter_templates WHERE id = ?', (id,))
-    db.commit()
     log_action(db, session['user_id'], 'letter_template_delete', id)
+    db.commit()
     return redirect(url_for('letters.list_templates'))
 
 
@@ -454,7 +472,7 @@ def api_templates():
     q = request.args.get('q', '').strip()
     user_id = session['user_id']
     role = session.get('role')
-    db = get_db()
+    db = _get_letters_db()
 
     if role == 'admin':
         base_where = 'WHERE 1=1'
