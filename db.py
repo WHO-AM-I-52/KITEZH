@@ -4,7 +4,7 @@
 # ╚═══════════════════════════════════════════════════════════════
 
 import sqlite3
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 # ─── ПУТИ ──────────────────────────────────────────────────────
 # Единый источник правды для всех runtime-путей — paths.py (корень проекта).
@@ -686,6 +686,126 @@ def _migrate(conn):
     if not _has_column(conn, 'requests', 'appeal_text'):
         conn.execute(
             "ALTER TABLE requests ADD COLUMN appeal_text TEXT"
+        )
+
+    # ════════════════════════════════════════════════════════════════
+    # Единый справочник адресатов: связи человек–организация,
+    # архивный статус и снимок адресата в письмах
+    # ════════════════════════════════════════════════════════════════
+
+    # Таблицы справочника (если БД создавалась только через _migrate).
+    # При наличии таблиц, созданных migrations.migrate_db(), — no-op.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS phonebook_orgs (
+            id      INTEGER PRIMARY KEY AUTOINCREMENT,
+            name    TEXT NOT NULL UNIQUE,
+            address TEXT,
+            inn     TEXT
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS phonebook (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            org_id         INTEGER REFERENCES phonebook_orgs(id) ON DELETE SET NULL,
+            position       TEXT,
+            room           TEXT,
+            full_name      TEXT NOT NULL,
+            phone_work     TEXT,
+            phone_ext      TEXT,
+            phone_personal TEXT,
+            email          TEXT,
+            notes          TEXT
+        )
+    """)
+
+    # Архивный статус и автор создания общих карточек.
+    # Для старых карточек автор неизвестен — остаётся NULL.
+    for _pb_table in ('phonebook', 'phonebook_orgs'):
+        for _col, _ddl in (
+            ('archived',   'INTEGER NOT NULL DEFAULT 0'),
+            ('created_by', 'INTEGER'),
+            ('created_at', 'TEXT'),
+        ):
+            if not _has_column(conn, _pb_table, _col):
+                conn.execute(
+                    f"ALTER TABLE {_pb_table} ADD COLUMN {_col} {_ddl}"
+                )
+
+    # Связи человека с организацией (в т.ч. одновременные).
+    # Каноническая история мест работы; phonebook.org_id/position —
+    # совместимые поля основного места работы, обновляет общий сервис.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS phonebook_employment (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            contact_id INTEGER NOT NULL
+                       REFERENCES phonebook(id) ON DELETE CASCADE,
+            org_id     INTEGER REFERENCES phonebook_orgs(id) ON DELETE SET NULL,
+            position   TEXT,
+            start_date TEXT,
+            end_date   TEXT,
+            archived   INTEGER NOT NULL DEFAULT 0,
+            created_by INTEGER,
+            created_at TEXT NOT NULL,
+            updated_at TEXT
+        )
+    """)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pbe_contact ON phonebook_employment(contact_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pbe_org ON phonebook_employment(org_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pbe_archived ON phonebook_employment(archived)"
+    )
+
+    # Ссылки письма на общий справочник и исторический снимок адресата.
+    # counterparty_id сохраняется для отображения старых писем.
+    for _col, _typ in (
+        ('org_id', 'INTEGER'),
+        ('contact_id', 'INTEGER'),
+        ('employment_id', 'INTEGER'),
+        ('snapshot_org_name', 'TEXT'),
+        ('snapshot_full_name', 'TEXT'),
+        ('snapshot_position', 'TEXT'),
+        ('snapshot_email', 'TEXT'),
+        ('snapshot_phone', 'TEXT'),
+    ):
+        if not _has_column(conn, 'letters', _col):
+            conn.execute(f"ALTER TABLE letters ADD COLUMN {_col} {_typ}")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_letters_contact ON letters(contact_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_letters_org ON letters(org_id)"
+    )
+
+    # Однократный перенос существующих org_id/position в связи.
+    # Флаг в settings исключает повторный backfill (в т.ч. после того,
+    # как связь была удалена/изменена администратором).
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS settings (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )
+    """)
+    _backfill_done = conn.execute(
+        "SELECT value FROM settings WHERE key='pb_employment_backfill'"
+    ).fetchone()
+    if not _backfill_done:
+        conn.execute("""
+            INSERT INTO phonebook_employment
+                (contact_id, org_id, position, created_at)
+            SELECT p.id, p.org_id, p.position, ?
+            FROM phonebook p
+            WHERE p.org_id IS NOT NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM phonebook_employment e WHERE e.contact_id = p.id
+              )
+        """, (datetime.utcnow().isoformat(),))
+        conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) "
+            "VALUES ('pb_employment_backfill', '1')"
         )
 
     create_analysis_history_tables(conn)
