@@ -146,12 +146,16 @@ def list_letters():
 
     db = _get_letters_db()
     users = _get_users(db)
+    orgs = db.execute(
+        'SELECT id, name, address FROM phonebook_orgs'
+        ' WHERE archived = 0 ORDER BY name'
+    ).fetchall()
 
     return render_template(
         'letters/list.html',
-        can_delete=_can_delete(),
         can_manage_templates=(session.get('role') == 'admin'),
         users=users,
+        orgs=orgs,
     )
 
 

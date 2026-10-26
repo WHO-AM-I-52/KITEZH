@@ -38,16 +38,48 @@
               <label class="form-label" id="cpLabel">Кому</label>
               <div class="input-group">
                 <input type="text" id="cpInput" class="form-control"
-                       placeholder="Начните ввод названия..."
+                       placeholder="Организация, ФИО или должность..."
                        autocomplete="off">
-                <button type="button" class="btn btn-outline-success" id="cpAddBtn" title="Добавить нового контрагента"
-                        onclick="addCounterparty()">+</button>
+                <button type="button" class="btn btn-outline-success" id="cpAddBtn"
+                        title="Создать адресата в справочнике"
+                        onclick="toggleDirCreate(true)">+</button>
               </div>
               <div id="cpSuggestions" class="list-group mt-1"
                    style="display:none; position:absolute; z-index:1060; min-width:260px"></div>
+              <div id="cpSelected" class="form-text" style="display:none"></div>
+              <input type="hidden" id="fOrgId" name="org_id" value="">
+              <input type="hidden" id="fContactId" name="contact_id" value="">
+              <input type="hidden" id="fEmploymentId" name="employment_id" value="">
+              <input type="hidden" id="fRecipientUpdate" name="recipient_update" value="">
               <input type="hidden" id="fCounterpartyId" name="counterparty_id" value="">
             </div>
-            <!-- /Направление + Контрагент -->
+
+            <!-- Создание адресата в общем справочнике (та же модалка, без вложенной формы) -->
+            <div class="col-12" id="dirCreateSection" style="display:none">
+              <div class="card card-body bg-light border mb-2">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <span class="fw-semibold"><i class="bi bi-person-plus me-1"></i>Новый адресат</span>
+                  <button type="button" class="btn-close" onclick="toggleDirCreate(false)"></button>
+                </div>
+                <div class="mb-2">
+                  <label class="form-label fw-bold">Новая организация</label>
+                  <div class="input-group input-group-sm">
+                    <input type="text" id="dirNewOrg" class="form-control"
+                           placeholder="Название, если организации нет в списке ниже">
+                    <button type="button" class="btn btn-outline-secondary" id="dirNewOrgBtn"
+                            onclick="dirCreateOrg()">Создать</button>
+                  </div>
+                </div>
+                {% from '_directory_contact_fields.html' import directory_contact_fields %}
+                {{ directory_contact_fields(orgs, field_prefix='dir_') }}
+                <div class="mt-2">
+                  <button type="button" class="btn btn-primary btn-sm" id="dirCreateSubmitBtn"
+                          onclick="dirCreateContact()">Создать и выбрать</button>
+                </div>
+                <div id="dirCreateMsg" class="form-text mt-2" style="display:none"></div>
+              </div>
+            </div>
+            <!-- /Направление + адресат -->
 
             <div class="col-12">
               <label class="form-label d-flex align-items-center justify-content-between">
@@ -122,22 +154,56 @@ function onDirectionChange(dir) {
 
 let _cpTimer = null;
 
+// CSRF-токен общих JSON-эндпойнтов справочника
+const DIR_CSRF = {{ dir_csrf_token() | tojson }};
+
+// ─── Адресат из общего справочника ───
+
+function _setRecipient(orgId, contactId, employmentId, display, info) {
+  document.getElementById('fOrgId').value = orgId || '';
+  document.getElementById('fContactId').value = contactId || '';
+  document.getElementById('fEmploymentId').value = employmentId || '';
+  document.getElementById('fRecipientUpdate').value = '1';
+  document.getElementById('fCounterpartyId').value = '';
+  document.getElementById('cpInput').value = display || '';
+  const sel = document.getElementById('cpSelected');
+  if (info) { sel.textContent = info; sel.style.display = 'block'; }
+  else { sel.style.display = 'none'; sel.textContent = ''; }
+}
+
+function _clearRecipient() {
+  document.getElementById('fOrgId').value = '';
+  document.getElementById('fContactId').value = '';
+  document.getElementById('fEmploymentId').value = '';
+  document.getElementById('fRecipientUpdate').value = '';
+  document.getElementById('fCounterpartyId').value = '';
+  const sel = document.getElementById('cpSelected');
+  sel.style.display = 'none'; sel.textContent = '';
+}
+
 function fetchCpSuggestions(q) {
-  fetch('/letters/api/counterparties?q=' + encodeURIComponent(q))
+  fetch('/phonebook/api/search?q=' + encodeURIComponent(q))
     .then(r => r.json())
     .then(items => {
       const box = document.getElementById('cpSuggestions');
       box.innerHTML = '';
-      if (!items.length) { box.style.display = 'none'; return; }
+      if (!items.length) {
+        const empty = document.createElement('div');
+        empty.className = 'list-group-item small text-muted py-1 px-2';
+        empty.textContent = 'Ничего не найдено — создайте адресата кнопкой «+»';
+        box.appendChild(empty);
+        box.style.display = 'block';
+        return;
+      }
       items.forEach(item => {
         const a = document.createElement('a');
         a.href = '#';
         a.className = 'list-group-item list-group-item-action py-1 px-2';
-        a.textContent = item.name;
+        a.textContent = item.display;
         a.addEventListener('click', function (e) {
           e.preventDefault();
-          document.getElementById('cpInput').value = item.name;
-          document.getElementById('fCounterpartyId').value = item.id;
+          _setRecipient(item.org_id, item.contact_id, item.employment_id,
+                       item.display, '');
           hideCpSuggestions();
         });
         box.appendChild(a);
@@ -151,36 +217,105 @@ function hideCpSuggestions() {
   if (box) { box.style.display = 'none'; box.innerHTML = ''; }
 }
 
-function addCounterparty() {
-  const input = document.getElementById('cpInput');
-  const btn = document.getElementById('cpAddBtn');
-  const name = input.value.trim();
-  if (!name) {
-    input.classList.add('is-invalid');
-    setTimeout(() => input.classList.remove('is-invalid'), 1500);
-    input.focus();
-    return;
-  }
-  fetch('/letters/api/counterparties', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({name: name}),
-  })
-    .then(r => r.json())
-    .then(data => {
-      if (data.id) {
-        input.value = data.name;
-        document.getElementById('fCounterpartyId').value = data.id;
-        hideCpSuggestions();
-        btn.textContent = '✓';
-        setTimeout(() => { btn.textContent = '+'; }, 1500);
-      }
-    })
-    .catch(() => {
-      btn.textContent = '✗';
-      setTimeout(() => { btn.textContent = '+'; }, 1500);
-      input.focus();
+// ─── Создание адресата (карточка справочника внутри модалки письма) ───
+
+function toggleDirCreate(show) {
+  const sec = document.getElementById('dirCreateSection');
+  sec.style.display = show ? 'block' : 'none';
+  const msg = document.getElementById('dirCreateMsg');
+  msg.style.display = 'none';
+  msg.textContent = '';
+}
+
+function _dirMsg(text, isErr) {
+  const msg = document.getElementById('dirCreateMsg');
+  msg.textContent = text;
+  msg.className = 'form-text mt-2 ' + (isErr ? 'text-danger' : 'text-success');
+  msg.style.display = 'block';
+}
+
+async function dirCreateOrg() {
+  const inp = document.getElementById('dirNewOrg');
+  const name = inp.value.trim();
+  if (!name) { inp.focus(); return; }
+  const btn = document.getElementById('dirNewOrgBtn');
+  btn.disabled = true;
+  try {
+    const r = await fetch('/phonebook/api/orgs', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-Dir-CSRF': DIR_CSRF},
+      body: JSON.stringify({name: name}),
     });
+    const data = await r.json();
+    if (!r.ok) {
+      _dirMsg(data.error || 'Не удалось сохранить организацию', true);
+      return;
+    }
+    const sel = document.getElementById('dir_orgSelectnew');
+    let exists = Array.from(sel.options).some(o => o.value == data.org_id);
+    if (!exists) {
+      const opt = new Option(data.name, data.org_id);
+      opt.dataset.address = '';
+      sel.add(opt);
+    }
+    sel.value = String(data.org_id);
+    _dirMsg(data.message || 'Организация сохранена в справочнике');
+    inp.value = '';
+  } catch (e) {
+    _dirMsg('Сеть недоступна — организация не сохранена', true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function dirCreateContact() {
+  const fullName = document.getElementById('dir_full_name').value.trim();
+  if (!fullName) { _dirMsg('Укажите ФИО', true); return; }
+  const sel = document.getElementById('dir_orgSelectnew');
+  const payload = {
+    full_name: fullName,
+    org_id: sel.value || null,
+    position: document.getElementById('dir_position').value.trim(),
+    room: document.getElementById('dir_room').value.trim(),
+    phone_work: document.getElementById('dir_phone_work').value.trim(),
+    phone_ext: document.getElementById('dir_phone_ext').value.trim(),
+    phone_personal: document.getElementById('dir_phone_personal').value.trim(),
+    email: document.getElementById('dir_email').value.trim(),
+    inn: document.getElementById('dir_inn').value.trim(),
+    notes: document.getElementById('dir_notes').value.trim(),
+  };
+  const btn = document.getElementById('dirCreateSubmitBtn');
+  btn.disabled = true;
+  btn.textContent = 'Сохранение...';
+  try {
+    const r = await fetch('/phonebook/api/contacts', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-Dir-CSRF': DIR_CSRF},
+      body: JSON.stringify(payload),
+    });
+    const data = await r.json();
+    if (!r.ok) {
+      if (r.status === 409 && data.candidates) {
+        const names = data.candidates.map(c =>
+          c.full_name + ' (' + (c.org_name || 'без орг.') + ')').join('; ');
+        _dirMsg('Однофамильцы уже есть: ' + names
+                + '. Уточните ФИО или выберите существующего через поиск.', true);
+      } else {
+        _dirMsg(data.error || 'Не удалось сохранить контакт', true);
+      }
+      return;
+    }
+    const display = fullName + (payload.position ? ' — ' + payload.position : '');
+    _setRecipient(payload.org_id, data.contact_id, data.employment_id || '',
+                  display,
+                  'Карточка сохранена в справочнике — она останется там, даже если письмо не будет отправлено.');
+    toggleDirCreate(false);
+  } catch (e) {
+    _dirMsg('Сеть недоступна — контакт не сохранён', true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Создать и выбрать';
+  }
 }
 
 // ─── Теги ───
@@ -249,7 +384,7 @@ document.addEventListener('DOMContentLoaded', function () {
   if (cpInput) {
     cpInput.addEventListener('input', function () {
       clearTimeout(_cpTimer);
-      document.getElementById('fCounterpartyId').value = '';
+      _clearRecipient();
       const q = this.value.trim();
       if (!q) { hideCpSuggestions(); return; }
       _cpTimer = setTimeout(() => fetchCpSuggestions(q), 200);
@@ -276,11 +411,23 @@ document.addEventListener('DOMContentLoaded', function () {
     hideSuggestions();
     hideCpSuggestions();
     document.getElementById('cpInput').value = '';
-    document.getElementById('fCounterpartyId').value = '';
+    _clearRecipient();
+    toggleDirCreate(false);
     document.getElementById('dirOut').checked = true;
     document.getElementById('cpLabel').textContent = 'Кому';
   });
 });
+
+// Адрес организации для общей карточки адресата (как в телефоне)
+function fetchAddress(select) {
+  const opt = select.options[select.selectedIndex];
+  const address = opt ? (opt.dataset.address || '') : '';
+  const wrap = select.closest('.modal-body,.card-body');
+  if (wrap) {
+    const f = wrap.querySelector('.org-address-field');
+    if (f) f.value = address;
+  }
+}
 
 function fetchSuggestions(q) {
   fetch('/letters/api/tags?q=' + encodeURIComponent(q))

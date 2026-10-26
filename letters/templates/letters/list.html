@@ -37,10 +37,16 @@ function fmtDirection(cell) {
   const badge = dir === 'in'
     ? '<span class="badge bg-info text-dark" title="Входящее">&larr; Вх.</span>'
     : '<span class="badge bg-primary" title="Исходящее">&rarr; Исх.</span>';
-  const cp = row.counterparty_name
-    ? '<br><small class="text-muted">' + row.counterparty_name + '</small>'
-    : '';
-  return badge + cp;
+  // Организация (или старый контрагент) и человек показываются раздельно
+  let html = badge;
+  if (row.counterparty_name) {
+    html += '<br><small class="text-muted fw-semibold">' + row.counterparty_name + '</small>';
+  }
+  if (row.recipient_name) {
+    html += '<br><small>' + row.recipient_name
+         + (row.recipient_position ? ' — ' + row.recipient_position : '') + '</small>';
+  }
+  return html;
 }
 
 function fmtSubject(cell) {
@@ -102,7 +108,7 @@ const table = new Tabulator('#letters-table', {
       headerFilter: 'input',
     },
     {
-      title: 'Напр. / Контрагент', field: 'direction', width: 170,
+      title: 'Напр. / Адресат', field: 'direction', width: 200,
       hozAlign: 'left',
       formatter: fmtDirection,
       headerFilter: 'select',
@@ -135,6 +141,10 @@ const table = new Tabulator('#letters-table', {
     },
     {
       title: 'Исполнитель', field: 'executor_display', width: 150,
+      headerFilter: 'input',
+    },
+    {
+      title: 'Создал', field: 'created_by_display', width: 150,
       headerFilter: 'input',
     },
     {
@@ -171,7 +181,8 @@ function openCreateModal() {
   document.getElementById('fTags').value     = '';
   document.getElementById('fExecutor').value = '';
   document.getElementById('cpInput').value   = '';
-  document.getElementById('fCounterpartyId').value = '';
+  _clearRecipient();
+  toggleDirCreate(false);
   document.getElementById('dirOut').checked  = true;
   document.getElementById('cpLabel').textContent = 'Кому';
   updateTagBadges([]);
@@ -197,8 +208,22 @@ function openEditModal(id) {
       document.getElementById('dirIn').checked  = (dir === 'in');
       document.getElementById('cpLabel').textContent = (dir === 'out') ? 'Кому' : 'От кого';
 
-      document.getElementById('cpInput').value = data.counterparty_name || '';
-      document.getElementById('fCounterpartyId').value = data.counterparty_id || '';
+      // Адресат: новый формат (справочник) либо старый контрагент
+      if (data.contact_id || data.org_id) {
+        const display = [data.recipient_name, data.recipient_position]
+          .filter(Boolean).join(' — ');
+        _setRecipient(data.org_id, data.contact_id, data.employment_id,
+                      display, '');
+        document.getElementById('cpSelected').textContent =
+          data.recipient_org || '';
+        document.getElementById('cpSelected').style.display =
+          data.recipient_org ? 'block' : 'none';
+      } else {
+        _clearRecipient();
+        document.getElementById('cpInput').value = data.counterparty_name || '';
+        document.getElementById('fCounterpartyId').value = data.counterparty_id || '';
+      }
+      toggleDirCreate(false);
 
       const tagList = data.tags ? data.tags.split(',').map(s => s.trim()).filter(Boolean) : [];
       updateTagBadges(tagList);

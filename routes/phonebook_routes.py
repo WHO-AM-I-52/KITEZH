@@ -86,6 +86,22 @@ def get_all_contacts(search: str = ''):
     return rows
 
 
+def get_contact_employments():
+    """Активные места работы для отображения на карточках."""
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT e.contact_id, e.org_id, e.position, o.name AS org_name
+        FROM phonebook_employment e
+        LEFT JOIN phonebook_orgs o ON o.id = e.org_id
+        WHERE e.archived = 0 AND (o.id IS NULL OR o.archived = 0)
+    """).fetchall()
+    conn.close()
+    result = {}
+    for r in rows:
+        result.setdefault(r['contact_id'], []).append(dict(r))
+    return result
+
+
 @phonebook_bp.route('/phonebook')
 @login_required
 @permission_required('can_view_phonebook')
@@ -93,12 +109,14 @@ def phonebook():
     search   = request.args.get('q', '').strip()
     contacts = get_all_contacts(search)
     orgs     = get_all_orgs()
+    employments = get_contact_employments()
     groups   = {}
     for c in contacts:
         org = c['org_name'] or '—'
         groups.setdefault(org, []).append(c)
     return render_template('phonebook.html',
                            groups=groups, orgs=orgs,
+                           employments=employments,
                            search=search, total=len(contacts))
 
 
@@ -306,7 +324,8 @@ def phonebook_orgs():
     counts   = {
         row['org_id']: row['cnt']
         for row in conn.execute(
-            "SELECT org_id, COUNT(*) AS cnt FROM phonebook GROUP BY org_id"
+            "SELECT org_id, COUNT(*) AS cnt FROM phonebook"
+            " WHERE archived = 0 GROUP BY org_id"
         ).fetchall()
     }
     conn.close()
@@ -568,8 +587,13 @@ def api_create_contact():
         result = contact_directory.create_contact(
             conn, full_name, org_id=org_id,
             position=(data.get('position') or '').strip(),
+            room=(data.get('room') or '').strip(),
             phone_work=(data.get('phone_work') or '').strip(),
+            phone_ext=(data.get('phone_ext') or '').strip(),
+            phone_personal=(data.get('phone_personal') or '').strip(),
             email=(data.get('email') or '').strip(),
+            inn=(data.get('inn') or '').strip(),
+            notes=(data.get('notes') or '').strip(),
             user_id=session['user_id'],
         )
         log_action(conn, session['user_id'], 'create', None,
