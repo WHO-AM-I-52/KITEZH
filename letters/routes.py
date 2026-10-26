@@ -1,10 +1,12 @@
 from flask import (
     Blueprint, render_template, request, redirect,
-    url_for, session, jsonify, g,
+    url_for, session, jsonify, g, flash,
 )
 from datetime import datetime
 from db import get_db
 from core.activity_log import log_action
+from services import contact_directory
+from services.contact_directory import DirectoryError
 
 letters_bp = Blueprint(
     'letters',
@@ -40,14 +42,22 @@ def _login_required():
 
 
 def _can_edit(letter):
+    """Редактирование письма: автор или администратор.
+
+    Роль manager сама по себе не даёт прав на чужие письма.
+    """
     return (
         letter['created_by'] == session.get('user_id')
-        or session.get('role') in ('admin', 'manager')
+        or session.get('role') == 'admin'
     )
 
 
-def _can_delete():
-    return session.get('role') == 'admin'
+def _can_delete(letter):
+    """Удаление письма: автор или администратор (для конкретного письма)."""
+    return (
+        letter['created_by'] == session.get('user_id')
+        or session.get('role') == 'admin'
+    )
 
 
 def _can_delete_template(template):
@@ -107,6 +117,26 @@ def _get_users(conn):
     ).fetchall()
 
 
+def _get_active_orgs(conn):
+    """Организации для формы письма (без архивных)."""
+    return conn.execute(
+        'SELECT id, name, address FROM phonebook_orgs '
+        'WHERE archived = 0 ORDER BY name'
+    ).fetchall()
+
+
+def _recipient_from_form():
+    """ID адресата из формы письма (None, если не передан)."""
+    def _int_field(name):
+        raw = request.form.get(name)
+        if not raw or not str(raw).strip().isdigit():
+            return None
+        value = int(raw)
+        return value if value > 0 else None
+
+    return _int_field('org_id'), _int_field('contact_id'), _int_field('employment_id')
+
+
 # ─── СПИСОК ──────────────────────────────────────────────────────────────────────────────────
 
 @letters_bp.route('/')
@@ -135,18 +165,23 @@ def api_list():
     db = _get_letters_db()
     user_id = session.get('user_id')
     role    = session.get('role')
-    can_del = _can_delete()
 
     rows = db.execute(
         '''
         SELECT l.id, l.date, l.number, l.subject, l.note,
                l.created_by, l.direction, l.counterparty_id,
+               l.org_id, l.contact_id, l.employment_id,
+               l.snapshot_org_name, l.snapshot_full_name,
+               l.snapshot_position, l.snapshot_email, l.snapshot_phone,
                l.executor_id,
                u_exec.username  AS executor_username,
                u_exec.full_name AS executor_name,
+               u_creator.username  AS creator_username,
+               u_creator.full_name AS creator_name,
                cp.name          AS counterparty_name
         FROM letters l
         LEFT JOIN users u_exec ON u_exec.id = l.executor_id
+        LEFT JOIN users u_creator ON u_creator.id = l.created_by
         LEFT JOIN counterparties cp ON cp.id = l.counterparty_id
         ORDER BY l.date DESC, l.id DESC
         ''',
@@ -156,17 +191,27 @@ def api_list():
     for r in rows:
         tags = _get_letter_tags(db, r['id'])
         executor_display = r['executor_name'] or r['executor_username'] or ''
-        can_edit = (r['created_by'] == user_id or role in ('admin', 'manager'))
+        creator_display = r['creator_name'] or r['creator_username'] or ''
+        can_edit = can_del = (
+            r['created_by'] == user_id or role == 'admin'
+        )
+        # Исторический снимок адресата; для старых писем без
+        # снимка — fallback на контрагента (без угадывания организации).
+        org_display = r['snapshot_org_name'] or r['counterparty_name'] or ''
         result.append({
             'id':                r['id'],
             'date':              r['date'] or '',
             'number':            r['number'] or '',
             'direction':         r['direction'] or 'out',
-            'counterparty_name': r['counterparty_name'] or '',
+            'counterparty_name': org_display,
+            'recipient_name':    r['snapshot_full_name'] or '',
+            'recipient_position': r['snapshot_position'] or '',
             'subject':           r['subject'] or '',
             'note':              r['note'] or '',
             'tags':              tags,
             'executor_display':  executor_display,
+            'created_by':        r['created_by'],
+            'created_by_display': creator_display,
             'can_edit':          can_edit,
             'can_delete':        can_del,
         })
@@ -199,21 +244,63 @@ def create_letter():
     if not date:
         return redirect(url_for('letters.list_letters'))
 
+    # Адресат из общего справочника: проверка ID, архивного статуса
+    # и соответствия связи; снимок сохраняется при создании письма.
+    org_id, contact_id, employment_id = _recipient_from_form()
+    snapshot = None
+    if contact_id or org_id or employment_id:
+        try:
+            snapshot = contact_directory.letter_snapshot(
+                db, org_id=org_id, contact_id=contact_id,
+                employment_id=employment_id,
+                address=request.form.get('recipient_address', '').strip(),
+                email=request.form.get('recipient_email', '').strip(),
+            )
+            # Новый способ не использует независимый каталог контрагентов.
+            counterparty_id = None
+        except DirectoryError as exc:
+            flash(str(exc), 'error')
+            return redirect(url_for('letters.list_letters'))
+
     created_at = datetime.utcnow().isoformat()
-    cur = db.execute(
-        '''
-        INSERT INTO letters
-            (date, number, subject, note, created_by, created_at,
-             executor_id, direction, counterparty_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''',
-        (date, number, subject, note, session['user_id'], created_at,
-         executor_id, direction, counterparty_id),
-    )
-    letter_id = cur.lastrowid
-    _set_letter_tags(db, letter_id, tags)
-    log_action(db, session['user_id'], 'letter_create', letter_id)
-    db.commit()
+    try:
+        if snapshot:
+            cur = db.execute(
+                '''
+                INSERT INTO letters
+                    (date, number, subject, note, created_by, created_at,
+                     executor_id, direction, counterparty_id,
+                     org_id, contact_id, employment_id,
+                     snapshot_org_name, snapshot_full_name, snapshot_position,
+                     snapshot_email, snapshot_phone)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''',
+                (date, number, subject, note, session['user_id'], created_at,
+                 executor_id, direction, counterparty_id,
+                 snapshot['org_id'], snapshot['contact_id'],
+                 snapshot['employment_id'],
+                 snapshot['snapshot_org_name'], snapshot['snapshot_full_name'],
+                 snapshot['snapshot_position'], snapshot['snapshot_email'],
+                 snapshot['snapshot_phone']),
+            )
+        else:
+            cur = db.execute(
+                '''
+                INSERT INTO letters
+                    (date, number, subject, note, created_by, created_at,
+                     executor_id, direction, counterparty_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''',
+                (date, number, subject, note, session['user_id'], created_at,
+                 executor_id, direction, counterparty_id),
+            )
+        letter_id = cur.lastrowid
+        _set_letter_tags(db, letter_id, tags)
+        log_action(db, session['user_id'], 'letter_create', letter_id)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     return redirect(url_for('letters.list_letters'))
 
 
@@ -253,6 +340,13 @@ def edit_letter(id):
             'direction':        letter['direction'] or 'out',
             'counterparty_id':  letter['counterparty_id'],
             'counterparty_name': cp_name,
+            'org_id':           letter['org_id'],
+            'contact_id':       letter['contact_id'],
+            'employment_id':    letter['employment_id'],
+            'recipient_name':   letter['snapshot_full_name'] or '',
+            'recipient_org':    letter['snapshot_org_name'] or '',
+            'recipient_position': letter['snapshot_position'] or '',
+            'recipient_email':  letter['snapshot_email'] or '',
         })
 
     date             = request.form.get('date', '').strip()
@@ -272,18 +366,57 @@ def edit_letter(id):
     if not date:
         return redirect(url_for('letters.list_letters'))
 
-    db.execute(
-        '''
-        UPDATE letters
-        SET date=?, number=?, subject=?, note=?,
-            executor_id=?, direction=?, counterparty_id=?
-        WHERE id=?
-        ''',
-        (date, number, subject, note, executor_id, direction, counterparty_id, id),
-    )
-    _set_letter_tags(db, id, tags)
-    log_action(db, session['user_id'], 'letter_edit', id)
-    db.commit()
+    # Снимок адресата меняется только при явной замене адресата
+    # (recipient_update=1 и выбранные ID из общего справочника).
+    # Правка темы/тегов не пересоздаёт снимок и не трогает ссылки.
+    org_id, contact_id, employment_id = _recipient_from_form()
+    replace_recipient = request.form.get('recipient_update') == '1'
+
+    try:
+        if replace_recipient and (contact_id or org_id or employment_id):
+            snapshot = contact_directory.letter_snapshot(
+                db, org_id=org_id, contact_id=contact_id,
+                employment_id=employment_id,
+                address=request.form.get('recipient_address', '').strip(),
+                email=request.form.get('recipient_email', '').strip(),
+            )
+            db.execute(
+                '''
+                UPDATE letters
+                SET date=?, number=?, subject=?, note=?,
+                    executor_id=?, direction=?, counterparty_id=NULL,
+                    org_id=?, contact_id=?, employment_id=?,
+                    snapshot_org_name=?, snapshot_full_name=?,
+                    snapshot_position=?, snapshot_email=?, snapshot_phone=?
+                WHERE id=?
+                ''',
+                (date, number, subject, note, executor_id, direction,
+                 snapshot['org_id'], snapshot['contact_id'],
+                 snapshot['employment_id'],
+                 snapshot['snapshot_org_name'], snapshot['snapshot_full_name'],
+                 snapshot['snapshot_position'], snapshot['snapshot_email'],
+                 snapshot['snapshot_phone'], id),
+            )
+        else:
+            db.execute(
+                '''
+                UPDATE letters
+                SET date=?, number=?, subject=?, note=?,
+                    executor_id=?, direction=?, counterparty_id=?
+                WHERE id=?
+                ''',
+                (date, number, subject, note, executor_id, direction,
+                 counterparty_id, id),
+            )
+        _set_letter_tags(db, id, tags)
+        log_action(db, session['user_id'], 'letter_edit', id)
+        db.commit()
+    except DirectoryError as exc:
+        db.rollback()
+        flash(str(exc), 'error')
+    except Exception:
+        db.rollback()
+        raise
     return redirect(url_for('letters.list_letters'))
 
 
@@ -293,10 +426,14 @@ def edit_letter(id):
 def delete_letter(id):
     if _login_required():
         return redirect(url_for('letters.list_letters'))
-    if not _can_delete():
-        return redirect(url_for('letters.list_letters'))
 
     db = _get_letters_db()
+    letter = db.execute('SELECT * FROM letters WHERE id = ?', (id,)).fetchone()
+    if letter is None:
+        return redirect(url_for('letters.list_letters'))
+    if not _can_delete(letter):
+        return redirect(url_for('letters.list_letters'))
+
     db.execute('DELETE FROM letters WHERE id = ?', (id,))
     log_action(db, session['user_id'], 'letter_delete', id)
     db.commit()
@@ -347,7 +484,10 @@ def api_counterparties():
             ).fetchall()
         return jsonify([{'id': r['id'], 'name': r['name']} for r in rows])
 
-    # POST
+    # POST — совместимость старых записей: существующий контрагент
+    # возвращается, но новый независимый каталог не создаётся.
+    # Новый адресат вводится через общий справочник
+    # (/phonebook/api/orgs, /phonebook/api/contacts).
     data = request.get_json(silent=True) or {}
     name = (data.get('name') or request.form.get('name', '')).strip()
     if not name:
@@ -357,14 +497,11 @@ def api_counterparties():
     ).fetchone()
     if row:
         return jsonify({'id': row['id'], 'name': row['name']})
-    created_at = datetime.utcnow().isoformat()
-    cur = db.execute(
-        'INSERT INTO counterparties (name, created_at) VALUES (?, ?)',
-        (name, created_at),
-    )
-    log_action(db, session['user_id'], 'counterparty_create', cur.lastrowid)
-    db.commit()
-    return jsonify({'id': cur.lastrowid, 'name': name}), 201
+    return jsonify({
+        'error': 'Создание контрагентов устарело. '
+                 'Выберите адресата из общего справочника '
+                 'или создайте карточку в форме письма.',
+    }), 409
 
 
 # ─── ШАБЛОНЫ ПИСЕМ (#12) ───────────────────────────────────────────────────────────────────────────
