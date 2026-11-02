@@ -126,15 +126,22 @@ def _get_active_orgs(conn):
 
 
 def _recipient_from_form():
-    """ID адресата из формы письма (None, если не передан)."""
-    def _int_field(name):
-        raw = request.form.get(name)
-        if not raw or not str(raw).strip().isdigit():
-            return None
-        value = int(raw)
-        return value if value > 0 else None
+    """ID адресата из формы письма (None, если не передан).
 
-    return _int_field('org_id'), _int_field('contact_id'), _int_field('employment_id')
+    Заполненный, но некорректный ID не превращается молча в None:
+    письмо сохраняется только с осмысленным адресатом либо не сохраняется.
+    """
+    values = []
+    for name in ('org_id', 'contact_id', 'employment_id'):
+        raw = (request.form.get(name) or '').strip()
+        if not raw:
+            values.append(None)
+            continue
+        if not raw.isdigit() or int(raw) <= 0:
+            raise DirectoryError(
+                'Некорректный идентификатор адресата: ' + name)
+        values.append(int(raw))
+    return tuple(values)
 
 
 # ─── СПИСОК ──────────────────────────────────────────────────────────────────────────────────
@@ -250,7 +257,12 @@ def create_letter():
 
     # Адресат из общего справочника: проверка ID, архивного статуса
     # и соответствия связи; снимок сохраняется при создании письма.
-    org_id, contact_id, employment_id = _recipient_from_form()
+    # Некорректный ID — отказ без создания письма.
+    try:
+        org_id, contact_id, employment_id = _recipient_from_form()
+    except DirectoryError as exc:
+        flash(str(exc), 'error')
+        return redirect(url_for('letters.list_letters'))
     snapshot = None
     if contact_id or org_id or employment_id:
         try:
@@ -373,7 +385,12 @@ def edit_letter(id):
     # Снимок адресата меняется только при явной замене адресата
     # (recipient_update=1 и выбранные ID из общего справочника).
     # Правка темы/тегов не пересоздаёт снимок и не трогает ссылки.
-    org_id, contact_id, employment_id = _recipient_from_form()
+    # Некорректный ID адресата — отказ без изменения письма.
+    try:
+        org_id, contact_id, employment_id = _recipient_from_form()
+    except DirectoryError as exc:
+        flash(str(exc), 'error')
+        return redirect(url_for('letters.list_letters'))
     replace_recipient = request.form.get('recipient_update') == '1'
 
     try:

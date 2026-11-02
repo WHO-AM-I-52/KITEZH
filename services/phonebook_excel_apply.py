@@ -1,4 +1,11 @@
-"""Транзакционное применение серверного плана Excel-справочника."""
+"""Транзакционное применение серверного плана Excel-справочника.
+
+Создание/удаление организаций и контактов и смена занятости выполняются
+через сервис общего справочника (services.contact_directory): одинаковые
+бизнес-правила для UI и Excel. Прежние связи занятости не закрываются.
+"""
+from services import contact_directory
+from services.contact_directory import DirectoryError
 from services.phonebook_excel_plan import build_phonebook_plan
 
 ORG_FIELDS = ('name', 'address', 'inn')
@@ -6,10 +13,19 @@ CONTACT_FIELDS = (
     'org_id', 'full_name', 'position', 'room', 'phone_work',
     'phone_ext', 'phone_personal', 'email', 'inn', 'notes',
 )
+# Поля контакта вне занятости: пишутся напрямую, занятость — сервисом.
+CONTACT_DETAIL_FIELDS = (
+    'full_name', 'room', 'phone_work', 'phone_ext',
+    'phone_personal', 'email', 'inn', 'notes',
+)
 
 
 class PhonebookApplyError(ValueError):
     """Пакет не применён; требуется исправление или новый предпросмотр."""
+
+
+def _fail(exc):
+    raise PhonebookApplyError(str(exc)) from None
 
 
 def apply_phonebook_plan(conn, parsed, approved_plan, user_id,
@@ -47,65 +63,116 @@ def apply_phonebook_plan(conn, parsed, approved_plan, user_id,
             if log_action(conn, user_id, action, None, detail) is not True:
                 raise PhonebookApplyError('Не удалось записать журнал действий')
 
-        def write(kind, item, data, fields, table):
-            action = item['action']
-            if action == 'unchanged':
-                return item['id']
-            if action == 'create':
-                columns = ', '.join(fields)
-                placeholders = ', '.join('?' for _ in fields)
-                cur = conn.execute(
-                    f'INSERT INTO {table} ({columns}) VALUES ({placeholders})',
-                    tuple(data[f] for f in fields),
-                )
-                record_id = cur.lastrowid
-            elif action == 'update':
-                assignments = ', '.join(f'{f}=?' for f in fields)
-                cur = conn.execute(
-                    f'UPDATE {table} SET {assignments} WHERE id=?',
-                    tuple(data[f] for f in fields) + (item['id'],),
-                )
-                record_id = item['id']
-                if cur.rowcount != 1:
-                    raise PhonebookApplyError('Обновляемая запись отсутствует')
-            elif action == 'delete':
-                cur = conn.execute(f'DELETE FROM {table} WHERE id=?', (item['id'],))
-                record_id = item['id']
-                if cur.rowcount != 1:
-                    raise PhonebookApplyError('Удаляемая запись отсутствует')
-            else:
-                raise PhonebookApplyError('Неизвестная операция')
-            audit(kind, dict(item, id=record_id))
-            counts[kind][action] += 1
-            return record_id
-
-        for item in plan['organizations']:
-            if item['action'] == 'delete':
-                continue
+        def _apply_org(item):
+            """Организации: создание и удаление — сервис, поля — напрямую."""
             data = dict(item['after'])
             data['inn'] = data['inn'] or None
-            oid = write('organizations', item, data, ORG_FIELDS, 'phonebook_orgs')
             if item['action'] == 'create':
-                org_map[item['row']] = oid
-        for item in plan['contacts']:
-            data = dict(item['after']) if item['after'] is not None else {}
+                try:
+                    result = contact_directory.create_org(
+                        conn, data['name'], address=data['address'] or '',
+                        inn=data['inn'], user_id=user_id,
+                    )
+                except DirectoryError as exc:
+                    _fail(exc)
+                if result.get('status') != 'created':
+                    raise PhonebookApplyError(
+                        f"Организация уже существует: {data['name']}"
+                    )
+                return result['org_id']
+            if item['action'] == 'update':
+                assignments = ', '.join(f'{f}=?' for f in ORG_FIELDS)
+                cur = conn.execute(
+                    f'UPDATE phonebook_orgs SET {assignments} WHERE id=?',
+                    tuple(data[f] for f in ORG_FIELDS) + (item['id'],),
+                )
+                if cur.rowcount != 1:
+                    raise PhonebookApplyError('Обновляемая запись отсутствует')
+            return item['id']
+
+        def _apply_contact(item):
+            """Контакты: создание/удаление и занятость — сервис."""
+            if item['action'] == 'delete':
+                try:
+                    contact_directory.delete_contact(
+                        conn, item['id'], user_id=user_id)
+                except DirectoryError as exc:
+                    _fail(exc)
+                return item['id']
+            data = dict(item['after'])
             if isinstance(data.get('org_id'), dict):
                 row = data['org_id'].get('organization_row')
                 if row not in org_map:
                     raise PhonebookApplyError('Новая организация не создана')
                 data['org_id'] = org_map[row]
-            oid = data.get('org_id')
-            if item['action'] != 'delete' and oid is not None:
-                if conn.execute('SELECT id FROM phonebook_orgs WHERE id=?', (oid,)).fetchone() is None:
-                    raise PhonebookApplyError('Организация контакта отсутствует')
-            write('contacts', item, data, CONTACT_FIELDS, 'phonebook')
+            if item['action'] == 'create':
+                try:
+                    result = contact_directory.create_contact(
+                        conn, data['full_name'], org_id=data.get('org_id'),
+                        position=data.get('position', ''),
+                        room=data.get('room', ''),
+                        phone_work=data.get('phone_work', ''),
+                        phone_ext=data.get('phone_ext', ''),
+                        phone_personal=data.get('phone_personal', ''),
+                        email=data.get('email', ''),
+                        inn=data.get('inn', ''),
+                        notes=data.get('notes', ''),
+                        user_id=user_id,
+                    )
+                except DirectoryError as exc:
+                    _fail(exc)
+                return result['contact_id']
+            # update: смена организации/должности — сервис занятости,
+            # остальные поля — прямое обновление.
+            before = item['before']
+            org_changed = (data.get('org_id') or None) != (before.get('org_id') or None)
+            position_changed = (data.get('position') or '') != (before.get('position') or '')
+            if org_changed or position_changed:
+                try:
+                    contact_directory.set_main_employment(
+                        conn, item['id'], data.get('org_id'),
+                        data.get('position', ''), user_id=user_id,
+                    )
+                except DirectoryError as exc:
+                    _fail(exc)
+            assignments = ', '.join(f'{f}=?' for f in CONTACT_DETAIL_FIELDS)
+            cur = conn.execute(
+                f'UPDATE phonebook SET {assignments} WHERE id=?',
+                tuple(data.get(f) or '' for f in CONTACT_DETAIL_FIELDS)
+                + (item['id'],),
+            )
+            if cur.rowcount != 1:
+                raise PhonebookApplyError('Обновляемая запись отсутствует')
+            return item['id']
+
+        # 1. Организации без удалений (создание/обновление).
+        for item in plan['organizations']:
+            if item['action'] == 'delete':
+                continue
+            org_id = _apply_org(item)
+            if item['action'] != 'unchanged':
+                audit('organizations', dict(item, id=org_id))
+                counts['organizations'][item['action']] += 1
+            if item['action'] == 'create':
+                org_map[item['row']] = org_id
+        # 2. Контакты (включая удаления — до удаления организаций).
+        for item in plan['contacts']:
+            if item['action'] == 'unchanged':
+                continue
+            record_id = _apply_contact(item)
+            audit('contacts', dict(item, id=record_id))
+            counts['contacts'][item['action']] += 1
+        # 3. Удаления организаций — в конце, с проверкой зависимостей.
         for item in plan['organizations']:
             if item['action'] != 'delete':
                 continue
-            if conn.execute('SELECT id FROM phonebook WHERE org_id=? LIMIT 1',
-                            (item['id'],)).fetchone() is not None:
-                raise PhonebookApplyError('У организации остаются контакты')
-            write('organizations', item, {}, ORG_FIELDS, 'phonebook_orgs')
+            try:
+                contact_directory.delete_org(
+                    conn, item['id'], user_id=user_id)
+            except DirectoryError as exc:
+                _fail(exc)
+            audit('organizations', item)
+            counts['organizations']['delete'] += 1
         conn.commit()
         return counts
     except Exception:

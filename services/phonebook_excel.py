@@ -145,8 +145,11 @@ def export_phonebook_workbook(conn):
     from openpyxl.styles import Alignment, Font, PatternFill
     from openpyxl.utils import get_column_letter
 
+    # Архивные записи не выгружаются: их отсутствие в книге
+    # не является командой удаления и не создаёт изменений.
     organizations = conn.execute(
-        'SELECT id, name, address, inn FROM phonebook_orgs ORDER BY id'
+        'SELECT id, name, address, inn FROM phonebook_orgs'
+        ' WHERE archived = 0 ORDER BY id'
     ).fetchall()
     contacts = conn.execute("""
         SELECT p.id, p.org_id, o.name, p.full_name, p.position,
@@ -154,6 +157,7 @@ def export_phonebook_workbook(conn):
                p.email, p.inn, p.notes
         FROM phonebook p
         LEFT JOIN phonebook_orgs o ON o.id = p.org_id
+        WHERE p.archived = 0 AND (o.id IS NULL OR o.archived = 0)
         ORDER BY p.id
     """).fetchall()
     wb = Workbook()

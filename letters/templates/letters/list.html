@@ -208,12 +208,14 @@ function openEditModal(id) {
       document.getElementById('dirIn').checked  = (dir === 'in');
       document.getElementById('cpLabel').textContent = (dir === 'out') ? 'Кому' : 'От кого';
 
-      // Адресат: новый формат (справочник) либо старый контрагент
+      // Адресат: новый формат (справочник) либо старый контрагент.
+      // Организация без человека показывается в поле адресата.
       if (data.contact_id || data.org_id) {
-        const display = [data.recipient_name, data.recipient_position]
-          .filter(Boolean).join(' — ');
+        const display = data.recipient_name
+          ? [data.recipient_name, data.recipient_position].filter(Boolean).join(' — ')
+          : (data.recipient_org || '');
         _setRecipient(data.org_id, data.contact_id, data.employment_id,
-                      display, '');
+                      display, '', false);
         document.getElementById('cpSelected').textContent =
           data.recipient_org || '';
         document.getElementById('cpSelected').style.display =

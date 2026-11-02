@@ -159,11 +159,13 @@ const DIR_CSRF = {{ dir_csrf_token() | tojson }};
 
 // ─── Адресат из общего справочника ───
 
-function _setRecipient(orgId, contactId, employmentId, display, info) {
+function _setRecipient(orgId, contactId, employmentId, display, info, markUpdate = true) {
   document.getElementById('fOrgId').value = orgId || '';
   document.getElementById('fContactId').value = contactId || '';
   document.getElementById('fEmploymentId').value = employmentId || '';
-  document.getElementById('fRecipientUpdate').value = '1';
+  // Флаг замены адресата ставится только при выборе пользователем,
+  // но не при открытии существующего письма на редактирование.
+  document.getElementById('fRecipientUpdate').value = markUpdate ? '1' : '';
   document.getElementById('fCounterpartyId').value = '';
   document.getElementById('cpInput').value = display || '';
   const sel = document.getElementById('cpSelected');

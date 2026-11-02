@@ -28,6 +28,8 @@ from openpyxl.utils import get_column_letter
 from db import get_db, UPLOADS_DIR
 from core.auth_utils import login_required, admin_required
 from core.activity_log import log_action
+from services import contact_directory
+from services.contact_directory import DirectoryError
 
 pb_import_bp = Blueprint('pb_import', __name__)
 
@@ -371,11 +373,15 @@ def import_confirm_post():
                 new_name = info['new_name']
                 key = new_name.strip().lower()
                 if key not in known_orgs:
-                    cur = conn.execute(
-                        'INSERT INTO phonebook_orgs (name) VALUES (?)', (new_name,)
-                    )
-                    known_orgs[key] = cur.lastrowid
-                    orgs_created += 1
+                    # Организации создаёт сервис справочника:
+                    # он же не даст молча задублировать существующую.
+                    result = contact_directory.create_org(
+                        conn, new_name, user_id=session['user_id'])
+                    if result['status'] == 'created':
+                        known_orgs[key] = result['org_id']
+                        orgs_created += 1
+                    else:
+                        known_orgs[key] = result['org']['id']
             elif info['action'] == 'map' and info['map_id']:
                 known_orgs[orig_name.strip().lower()] = info['map_id']
 
@@ -415,16 +421,16 @@ def import_confirm_post():
                     skipped += 1
                 continue
 
-            conn.execute("""
-                INSERT INTO phonebook
-                    (org_id, full_name, position, room,
-                     phone_work, phone_ext, phone_personal, email, notes)
-                VALUES (?,?,?,?,?,?,?,?,?)
-            """, (
-                org_id, r['full_name'], r['position'], r['room'],
-                r['phone_work'], r['phone_ext'], r['phone_personal'],
-                r['email'], r['notes'],
-            ))
+            # Контакты создаёт сервис справочника: вместе с контактом
+            # создаётся связь занятости с выбранной организацией.
+            contact_directory.create_contact(
+                conn, r['full_name'], org_id=org_id,
+                position=r['position'], room=r['room'],
+                phone_work=r['phone_work'], phone_ext=r['phone_ext'],
+                phone_personal=r['phone_personal'],
+                email=r['email'], notes=r['notes'],
+                user_id=session['user_id'],
+            )
             created += 1
 
         log_parts = [f'добавлено {created} контактов']

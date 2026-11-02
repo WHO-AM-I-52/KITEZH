@@ -132,6 +132,11 @@
         </tbody>
       </table>
     </div>
+    {% if kind == 'contacts' and (item.changes.get('org_id') or item.changes.get('position')) %}
+    <div class="card-body py-2 small text-muted">
+      Смена места работы: прежняя связь занятости сохраняется в истории.
+    </div>
+    {% endif %}
     {% elif item.action == 'delete' %}
     <div class="card-body py-2">
       Запись будет удалена.
