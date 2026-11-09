@@ -27,40 +27,68 @@
     cursor: pointer;
     accent-color: #0d6efd;
   }
+
+  /* statCards: активная подсветка */
+  .stat-card .card { transition: box-shadow .15s, transform .15s; }
+  .stat-card:hover .card { box-shadow: 0 4px 12px rgba(0,0,0,.15); }
+  .stat-card.active .card { box-shadow: 0 0 0 2.5px var(--bs-primary); }
+  .stat-card.active.sc-overdue .card { box-shadow: 0 0 0 2.5px var(--bs-danger); }
 </style>
 
 <div class="container-fluid mt-3">
 
   {# ─── statCards ─── #}
   <div class="row g-2 mb-3">
-    <div class="col-6 col-md-3">
-      <a href="{{ url_for('tasks.my_tasks') }}" class="text-decoration-none">
-        <div class="card text-center py-2 px-1 {% if not status_filter %}border-primary{% endif %}">
-          <div class="fs-4 fw-bold">{{ stats.total }}</div>
+    <div class="col-4 col-md-2">
+      <a href="{{ url_for('tasks.my_tasks') }}" class="text-decoration-none stat-card"
+         data-status="">
+        <div class="card text-center py-2 px-1">
+          <div class="fs-4 fw-bold" id="sc-total">—</div>
           <div class="text-muted small">Всего</div>
         </div>
       </a>
     </div>
-    <div class="col-6 col-md-3">
-      <a href="{{ url_for('tasks.my_tasks', status='new') }}" class="text-decoration-none">
-        <div class="card text-center py-2 px-1 {% if status_filter=='new' %}border-primary{% endif %}">
-          <div class="fs-4 fw-bold text-secondary">{{ stats.new }}</div>
+    <div class="col-4 col-md-2">
+      <a href="{{ url_for('tasks.my_tasks', status='new') }}" class="text-decoration-none stat-card"
+         data-status="new">
+        <div class="card text-center py-2 px-1">
+          <div class="fs-4 fw-bold text-secondary" id="sc-new">—</div>
           <div class="text-muted small">Новые</div>
         </div>
       </a>
     </div>
-    <div class="col-6 col-md-3">
-      <a href="{{ url_for('tasks.my_tasks', status='in_progress') }}" class="text-decoration-none">
-        <div class="card text-center py-2 px-1 {% if status_filter=='in_progress' %}border-primary{% endif %}">
-          <div class="fs-4 fw-bold text-primary">{{ stats.in_progress }}</div>
+    <div class="col-4 col-md-2">
+      <a href="{{ url_for('tasks.my_tasks', status='in_progress') }}" class="text-decoration-none stat-card"
+         data-status="in_progress">
+        <div class="card text-center py-2 px-1">
+          <div class="fs-4 fw-bold text-primary" id="sc-in_progress">—</div>
           <div class="text-muted small">В работе</div>
         </div>
       </a>
     </div>
-    <div class="col-6 col-md-3">
-      <a href="{{ url_for('tasks.my_tasks', status='overdue') }}" class="text-decoration-none">
-        <div class="card text-center py-2 px-1 {% if status_filter=='overdue' %}border-danger{% endif %}">
-          <div class="fs-4 fw-bold text-danger">{{ stats.overdue }}</div>
+    <div class="col-4 col-md-2">
+      <a href="{{ url_for('tasks.my_tasks', status='review') }}" class="text-decoration-none stat-card"
+         data-status="review">
+        <div class="card text-center py-2 px-1">
+          <div class="fs-4 fw-bold text-warning" id="sc-review">—</div>
+          <div class="text-muted small">На проверке</div>
+        </div>
+      </a>
+    </div>
+    <div class="col-4 col-md-2">
+      <a href="{{ url_for('tasks.my_tasks', status='done') }}" class="text-decoration-none stat-card"
+         data-status="done">
+        <div class="card text-center py-2 px-1">
+          <div class="fs-4 fw-bold text-success" id="sc-done">—</div>
+          <div class="text-muted small">Выполнена</div>
+        </div>
+      </a>
+    </div>
+    <div class="col-4 col-md-2">
+      <a href="{{ url_for('tasks.my_tasks', status='overdue') }}" class="text-decoration-none stat-card sc-overdue"
+         data-status="overdue">
+        <div class="card text-center py-2 px-1">
+          <div class="fs-4 fw-bold text-danger" id="sc-overdue">—</div>
           <div class="text-muted small">Просрочено</div>
         </div>
       </a>
@@ -378,6 +406,97 @@ document.getElementById('showClosed').addEventListener('change', function() {
   table.removeFilter(closedFilter);
   if (!this.checked) table.addFilter(closedFilter);
 });
+
+// ─── statCards: мост к Tabulator ────────────────────────────────────────────
+// Клик по карточке фильтрует таблицу без перезагрузки.
+// dataLoaded — счётчики по всем загруженным строкам.
+// Клик по «Выполнена» (и др. закрытым) временно включает showClosed.
+
+var activeStatStatus = '';  // '' = все
+
+function updateStatCards(data) {
+  const counts = { total: 0, new: 0, in_progress: 0, review: 0, done: 0, overdue: 0 };
+  const todayS = new Date().toISOString().slice(0, 10);
+  data.forEach(function(row) {
+    counts.total++;
+    const s = row.status;
+    if (s === 'new') counts.new++;
+    else if (s === 'in_progress' || s === 'in_work') counts.in_progress++;
+    else if (s === 'review') counts.review++;
+    else if (s === 'done' || s === 'closed') counts.done++;
+    if (row.deadline && row.deadline < todayS
+        && !CLOSED_STATUSES.includes(s)) counts.overdue++;
+  });
+  const ids = {
+    total: 'sc-total', new: 'sc-new', in_progress: 'sc-in_progress',
+    review: 'sc-review', done: 'sc-done', overdue: 'sc-overdue',
+  };
+  Object.keys(ids).forEach(function(k) {
+    const el = document.getElementById(ids[k]);
+    if (el) el.textContent = counts[k];
+  });
+}
+
+function applyStatStatusFilter(status) {
+  activeStatStatus = status;
+  const cards = document.querySelectorAll('.stat-card');
+  cards.forEach(function(c) { c.classList.toggle('active', c.dataset.status === status); });
+
+  // Снимаем старый статус-фильтр и ставим новый (если не «Все»)
+  table.clearFilter();
+  // чекбокс закрытых
+  const showClosedEl = document.getElementById('showClosed');
+  if (showClosedEl && showClosedEl.checked) {
+    // показать всё включая закрытые
+  } else if (status === 'done' || status === 'review') {
+    // для карточки «Выполнена» (done/closed) и «На проверке» показываем закрытые временно
+    table.removeFilter(closedFilter);
+  } else {
+    table.addFilter(closedFilter);
+  }
+  if (status === 'overdue') {
+    const todayS = new Date().toISOString().slice(0, 10);
+    table.addFilter(function(data) {
+      return data.deadline && data.deadline < todayS
+             && !CLOSED_STATUSES.includes(data.status);
+    });
+  } else if (status) {
+    // список статусов, которые считаются частью карточки
+    const map = {
+      'new': ['new'],
+      'in_progress': ['in_progress', 'in_work'],
+      'review': ['review'],
+      'done': ['done', 'closed'],
+    };
+    const statuses = map[status] || [status];
+    table.addFilter(function(data) {
+      return statuses.includes(data.status);
+    });
+  }
+}
+
+document.querySelectorAll('.stat-card').forEach(function(card) {
+  card.addEventListener('click', function(ev) {
+    ev.preventDefault();
+    applyStatStatusFilter(card.dataset.status);
+  });
+});
+
+// Данные загружены → счётчики + восстановление активного статуса из URL
+table.on('dataLoaded', function(data) {
+  updateStatCards(data);
+  if (activeStatStatus) applyStatStatusFilter(activeStatStatus);
+});
+
+// Инициализация: если в URL уже есть ?status=... — применяем фильтр без перезагрузки
+(function() {
+  const params = new URLSearchParams(window.location.search);
+  const s = params.get('status') || '';
+  if (s) {
+    activeStatStatus = s;
+    // при первом dataLoaded будет применён фильтр
+  }
+})();
 
 // ─── Перезагрузка после создания задачи ─────────────────────────────────────
 
