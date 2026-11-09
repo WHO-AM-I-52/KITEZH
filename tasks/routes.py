@@ -351,6 +351,10 @@ def api_my_tasks():
 @tasks_bp.route('/assigned-by-me')
 @login_required
 def assigned_by_me():
+    # Серверная защита: страница доступна только руководителю и выше
+    if session.get('role') not in ('manager', 'admin'):
+        abort(403)
+
     user_id       = session['user_id']
     status_filter = request.args.get('status', '')
     show_closed   = bool(request.args.get('show_closed', ''))
