@@ -65,6 +65,9 @@ def _migrate_users_cols(conn):
         'can_refresh_investmap_rf_cards',
         'can_view_investmap_updates',
         'can_manage_investmap_updates',
+        'can_view_contracts', 'can_edit_contracts',
+        'can_view_all_contracts', 'can_manage_contracts',
+        'can_contract_payments', 'can_contract_settings',
     ]:
         if col not in user_cols:
             conn.execute(f"ALTER TABLE users ADD COLUMN {col} INTEGER DEFAULT 0")
@@ -209,6 +212,290 @@ CREATE TABLE IF NOT EXISTS suggestions (
 CREATE INDEX IF NOT EXISTS idx_sg_user   ON suggestions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sg_status ON suggestions(status);
 """)
+
+
+def _migrate_contracts_tables(conn):
+    """Создаёт таблицы раздела «Договоры» если их нет.
+
+    Дизайн:
+    - contracts: карточка договора со снимками реквизитов заказчика,
+      условиями оплаты/сроков, стадией и состоянием;
+    - contract_tariff_editions / contract_tariff_items: редакции приказа
+      и позиции тарифа (первая редакция - 81/26/КРНО от 03.06.2026);
+    - contract_services: строки услуг со снимком цены;
+    - contract_stage_log: история стадий (дата события и внесения раздельно);
+    - contract_files: версии файлов;
+    - contract_activities / contract_payments / contract_reviews /
+      contract_tasks / contract_settings / work_calendar.
+    Суммы хранятся в копейках (INTEGER).
+    """
+    conn.executescript("""
+CREATE TABLE IF NOT EXISTS contract_tariff_editions (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    code       TEXT NOT NULL UNIQUE,
+    name       TEXT NOT NULL,
+    doc_date   TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS contract_tariff_items (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    edition_id   INTEGER NOT NULL REFERENCES contract_tariff_editions(id),
+    code         TEXT NOT NULL,
+    section      TEXT,
+    name         TEXT NOT NULL,
+    unit         TEXT,
+    price_kop    INTEGER NOT NULL,
+    duration_days INTEGER,
+    duration_type TEXT DEFAULT 'work',
+    per_area     INTEGER NOT NULL DEFAULT 0,
+    template_family TEXT,
+    sort_order   INTEGER DEFAULT 0,
+    is_active    INTEGER NOT NULL DEFAULT 1
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_cti_edition_code
+    ON contract_tariff_items(edition_id, code);
+CREATE TABLE IF NOT EXISTS contract_object_types (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    parent_id  INTEGER REFERENCES contract_object_types(id),
+    name       TEXT NOT NULL,
+    sort_order INTEGER DEFAULT 0,
+    is_active  INTEGER NOT NULL DEFAULT 1
+);
+CREATE TABLE IF NOT EXISTS contracts (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    inner_number      TEXT UNIQUE,
+    reg_number        TEXT,
+    reg_date          TEXT,
+    is_free          INTEGER NOT NULL DEFAULT 0,
+    free_basis       TEXT,
+    free_basis_date  TEXT,
+    origin           TEXT NOT NULL DEFAULT 'new',
+    customer_type    TEXT NOT NULL DEFAULT 'legal',
+    customer_full_name TEXT,
+    customer_short_name TEXT,
+    customer_opf      TEXT,
+    customer_inn      TEXT,
+    customer_ogrn     TEXT,
+    customer_kpp      TEXT,
+    customer_address  TEXT,
+    signatory_name   TEXT,
+    signatory_position TEXT,
+    signatory_basis  TEXT,
+    contact_name     TEXT,
+    contact_position TEXT,
+    contact_phone    TEXT,
+    contact_email    TEXT,
+    directory_org_id INTEGER REFERENCES phonebook_orgs(id) ON DELETE SET NULL,
+    directory_contact_id INTEGER REFERENCES phonebook(id) ON DELETE SET NULL,
+    project_name     TEXT,
+    object_description TEXT,
+    object_type_id   INTEGER REFERENCES contract_object_types(id),
+    address          TEXT,
+    district_id      INTEGER REFERENCES districts(id),
+    cadastral_numbers TEXT,
+    area_ha          TEXT,
+    executor_id      INTEGER NOT NULL REFERENCES users(id),
+    stage            TEXT NOT NULL DEFAULT 'draft',
+    state            TEXT NOT NULL DEFAULT 'active',
+    payment_scheme   TEXT,
+    payment_days     INTEGER,
+    payment_day_type TEXT DEFAULT 'work',
+    payment_event    TEXT,
+    duration_days    INTEGER,
+    duration_day_type TEXT DEFAULT 'work',
+    work_start_basis TEXT,
+    act_sign_method TEXT,
+    incoming_docs_ok  INTEGER DEFAULT 0,
+    incoming_docs_date TEXT,
+    total_kop        INTEGER NOT NULL DEFAULT 0,
+    vat_percent      TEXT DEFAULT '22',
+    created_by       INTEGER NOT NULL REFERENCES users(id),
+    created_at       TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at       TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_contracts_stage ON contracts(stage);
+CREATE INDEX IF NOT EXISTS idx_contracts_executor ON contracts(executor_id);
+CREATE INDEX IF NOT EXISTS idx_contracts_customer ON contracts(customer_full_name);
+CREATE TABLE IF NOT EXISTS contract_services (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    contract_id  INTEGER NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
+    tariff_item_id INTEGER REFERENCES contract_tariff_items(id),
+    edition_code TEXT,
+    code         TEXT,
+    name         TEXT,
+    qty          TEXT,
+    area_ha      TEXT,
+    price_kop    INTEGER,
+    amount_kop   INTEGER,
+    manual_edit  INTEGER DEFAULT 0,
+    manual_reason TEXT,
+    sort_order   INTEGER DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_cs_contract ON contract_services(contract_id);
+CREATE TABLE IF NOT EXISTS contract_stage_log (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    contract_id  INTEGER NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
+    from_stage   TEXT,
+    to_stage     TEXT,
+    event_date   TEXT,
+    entered_at   TEXT DEFAULT CURRENT_TIMESTAMP,
+    user_id      INTEGER,
+    comment      TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_csl_contract ON contract_stage_log(contract_id);
+CREATE TABLE IF NOT EXISTS contract_files (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    contract_id  INTEGER NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
+    category     TEXT NOT NULL,
+    stage        TEXT,
+    version      INTEGER NOT NULL DEFAULT 1,
+    is_current   INTEGER NOT NULL DEFAULT 1,
+    orig_name    TEXT,
+    stored_name  TEXT,
+    user_id      INTEGER,
+    sha256       TEXT,
+    size_bytes   INTEGER,
+    comment      TEXT,
+    created_at   TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_cf_contract ON contract_files(contract_id);
+CREATE INDEX IF NOT EXISTS idx_cf_current ON contract_files(contract_id, is_current);
+CREATE TABLE IF NOT EXISTS contract_activities (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    contract_id  INTEGER NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
+    name         TEXT NOT NULL,
+    assignee     TEXT,
+    assignee_user_id INTEGER REFERENCES users(id),
+    assigned_at  TEXT,
+    deadline     TEXT,
+    status       TEXT DEFAULT 'new',
+    result       TEXT,
+    note_file_id INTEGER REFERENCES contract_files(id),
+    created_at   TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_ca_contract ON contract_activities(contract_id);
+CREATE TABLE IF NOT EXISTS contract_payments (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    contract_id  INTEGER NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
+    kind         TEXT NOT NULL DEFAULT 'income',
+    number       TEXT,
+    pay_date     TEXT,
+    amount_kop   INTEGER NOT NULL,
+    note         TEXT,
+    file_id      INTEGER REFERENCES contract_files(id),
+    user_id      INTEGER,
+    created_at   TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_cp_contract ON contract_payments(contract_id);
+CREATE TABLE IF NOT EXISTS contract_reviews (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    contract_id   INTEGER NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
+    body          TEXT NOT NULL,
+    request_no    TEXT,
+    sent_date     TEXT,
+    accepted_date TEXT,
+    decision_date TEXT,
+    result        TEXT,
+    comment       TEXT,
+    file_id       INTEGER REFERENCES contract_files(id),
+    created_at    TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_crv_contract ON contract_reviews(contract_id);
+CREATE TABLE IF NOT EXISTS contract_tasks (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    contract_id  INTEGER NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
+    task_id      INTEGER NOT NULL REFERENCES tasks(id),
+    stage        TEXT,
+    kind         TEXT DEFAULT 'stage',
+    created_at   TEXT DEFAULT CURRENT_TIMESTAMP,
+    closed_at    TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_ct_contract ON contract_tasks(contract_id);
+CREATE INDEX IF NOT EXISTS idx_ct_task ON contract_tasks(task_id);
+CREATE TABLE IF NOT EXISTS contract_settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT
+);
+CREATE TABLE IF NOT EXISTS work_calendar (
+    day  TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    note TEXT
+);
+""")
+
+    # Первая редакция тарифов — приказ 81/26/КРНО от 03.06.2026.
+    if not conn.execute(
+        "SELECT id FROM contract_tariff_editions LIMIT 1"
+    ).fetchone():
+        conn.execute(
+            "INSERT INTO contract_tariff_editions (code, name, doc_date)"
+            " VALUES ('81-26-KRNO', 'Приказ 81/26/КРНО от 03.06.2026',"
+            " '2026-06-03')"
+        )
+        edition_id = conn.execute(
+            "SELECT id FROM contract_tariff_editions"
+            " WHERE code='81-26-KRNO'"
+        ).fetchone()[0]
+        tariff_rows = [
+            ('1.1',  'Подготовка комплексной градостроительной справки земельного участка', 'га', 2000000, None, None, 1, 'council', 10),
+            ('2.1',  'Подготовка пакета документов для предоставления земельного участка на Совете', 'комплект', 3000000, None, None, 0, 'council', 20),
+            ('2.2',  'Подготовка выкопировки земельного участка', 'комплект', 4000000, None, None, 0, 'council', 30),
+            ('2.3',  'Подготовка расчета нагрузок для сбора технических условий', 'комплект', 1500000, None, None, 0, 'council', 40),
+            ('2.4',  'Подготовка архитектурного решения', 'комплект', 6000000, None, None, 0, 'council', 50),
+            ('2.5',  'Подготовка бизнес-плана', 'комплект', 1500000, None, None, 0, 'council', 60),
+            ('2.6',  'Полный пакет документов (2.1-2.5), справочная позиция', 'комплект', 16000000, None, None, 0, 'council', 70),
+            ('3.1',  'Заполнение ходатайства и направление документов через ГИСОГД НО', 'комплект', 500000, None, None, 0, 'council', 80),
+            ('4.1',  'Полный пакет документов для предоставления земельного участка на аукционе', 'комплект', 16000000, None, None, 0, 'auction', 90),
+            ('5.1',  'Информация об условиях технологического присоединения к сетям газораспределения', 'комплект', 6500000, None, None, 0, 'tech', 100),
+            ('5.2',  'Информация об условиях технологического присоединения к электрическим сетям', 'комплект', 2100000, None, None, 0, 'tech', 110),
+            ('6.1',  'Подготовка заявления для получения разрешения на размещение объекта (ПП РФ 1300)', 'комплект', 500000, None, None, 0, 'placement', 120),
+            ('6.2',  'Подготовка схемы границ земель с координатами (размещение объекта)', 'комплект', 4000000, None, None, 0, 'placement', 130),
+            ('7.1',  'Заявление и графический материал: изменения в генеральный план (КЗЗ)', 'комплект', 800000, None, None, 0, 'kzz', 140),
+            ('7.2',  'Заявление и графический материал: изменения в ПЗЗ (КЗЗ)', 'комплект', 800000, None, None, 0, 'kzz', 150),
+            ('7.3',  'Заявление: условно-разрешённый вид использования (КЗЗ)', 'комплект', 700000, None, None, 0, 'kzz', 160),
+            ('8.1',  'Подготовка и получение заданий на инженерные изыскания и ДПТ', 'комплект', 1600000, None, None, 0, 'dpt', 170),
+        ]
+        conn.executemany(
+            """INSERT INTO contract_tariff_items
+               (edition_id, code, section, name, unit, price_kop,
+                per_area, template_family, sort_order)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
+            [(edition_id, c, '', n, u, p, pa, fam, so)
+             for (c, n, u, p, dd, dt, pa, fam, so) in tariff_rows]
+        )
+
+    # Начальные типы объектов (родитель -> подтип).
+    if not conn.execute(
+        "SELECT id FROM contract_object_types LIMIT 1"
+    ).fetchone():
+        roots = [
+            ('Социально-культурного и коммунально-бытового назначения',
+             ['Образование', 'Здравоохранение', 'Культура',
+              'Физкультура и спорт', 'Социальное обслуживание',
+              'Коммунальное хозяйство', 'Бытовое обслуживание']),
+            ('Туристический и рекреационный объект', []),
+            ('Промышленный объект',
+             ['Обрабатывающее производство',
+              'Переработка сельхозпродукции',
+              'Логистика и склады', 'Энергетика',
+              'Индустриальный парк / промплощадка']),
+            ('Сельскохозяйственный объект', []),
+            ('Торговый и сервисный объект', []),
+            ('Жилищное строительство', []),
+            ('Иное', []),
+        ]
+        for si, (root, subs) in enumerate(roots):
+            cur = conn.execute(
+                "INSERT INTO contract_object_types (name, sort_order)"
+                " VALUES (?, ?)", (root, si)
+            )
+            root_id = cur.lastrowid
+            for sj, sub in enumerate(subs):
+                conn.execute(
+                    "INSERT INTO contract_object_types"
+                    " (parent_id, name, sort_order) VALUES (?, ?, ?)",
+                    (root_id, sub, sj)
+                )
 
 
 def _migrate_letters_tables(conn):
@@ -1055,6 +1342,7 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         _migrate_investmap_rf_sync_retry_tables(conn)
         _migrate_investmap_rf_manager_assignment_tables(conn)
         _migrate_letters_tables(conn)
+        _migrate_contracts_tables(conn)
         _migrate_tasks_tables(conn)
         _migrate_task_comments_table(conn)
         _migrate_suggestions_table(conn)
