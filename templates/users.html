@@ -152,6 +152,19 @@
       ),
       ('can_view_phonebook', 'Телефонный справочник',            'bi-telephone-fill',        'text-success'),
     ]
+  ),
+  (
+    'contracts',
+    'Договоры',
+    'bi-file-earmark-text',
+    [
+      ('can_view_contracts',     'Доступ к разделу',                'bi-folder2-open',         'text-success'),
+      ('can_edit_contracts',     'Создание и ведение',              'bi-plus-circle',          'text-success'),
+      ('can_view_all_contracts', 'Все договоры и реестр',           'bi-eye',                  'text-secondary'),
+      ('can_manage_contracts',   'Управление и возврат стадий',      'bi-sliders',              'text-warning'),
+      ('can_contract_payments',  'Счета и оплаты',                   'bi-cash-coin',            'text-primary'),
+      ('can_contract_settings',   'Справочники и шаблоны',            'bi-gear-fill',            'text-info'),
+    ]
   )
 ] %}
 
@@ -210,6 +223,9 @@
               <option value="employee">Исполнитель</option>
               <option value="territorial_manager">Территориальный управляющий</option>
               <option value="manager">Руководитель</option>
+              <option value="contract_executor">Исполнитель договоров</option>
+              <option value="contract_head">Руководитель договорной работы</option>
+              <option value="contract_accountant">Бухгалтерия по договорам</option>
               <option value="admin">Администратор</option>
             </select>
           </div>
@@ -363,6 +379,9 @@
                         Территориальный управляющий
                       </option>
                       <option value="manager"  {{ 'selected' if u.role=='manager'  }}>Руководитель</option>
+                      <option value="contract_executor" {{ 'selected' if u.role=='contract_executor' }}>Исполнитель договоров</option>
+                      <option value="contract_head" {{ 'selected' if u.role=='contract_head' }}>Руководитель договорной работы</option>
+                      <option value="contract_accountant" {{ 'selected' if u.role=='contract_accountant' }}>Бухгалтерия по договорам</option>
                       <option value="admin"    {{ 'selected' if u.role=='admin'    }}>Администратор</option>
                     </select>
                   </div>
