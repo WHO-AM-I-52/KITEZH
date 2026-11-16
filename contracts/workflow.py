@@ -107,6 +107,9 @@ def transition_allowed(conn, contract, target: str) -> bool:
         return False
     if contract['state'] not in ('active',):
         return False
+    # Повторное нажатие той же кнопки: договор уже на целевой стадии.
+    if target == current:
+        return True
     if STAGE_ORDER[target] == STAGE_ORDER[current] + 1:
         return True
     if STAGE_ORDER[target] < STAGE_ORDER[current]:
