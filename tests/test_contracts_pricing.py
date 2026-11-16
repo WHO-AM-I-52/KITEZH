@@ -35,8 +35,8 @@ def test_vat_rounding():
 def test_area_1_1_proportional():
     # 20 000 за 1 га; 1,25 га -> 25 000
     assert service_amount(_to_kop(20000), area_ha='1.25') == 2500000
-    # 1,3333 га -> 26666 руб. (26666,60 коп. -> 26666,60)
-    assert service_amount(_to_kop(20000), area_ha="1.3333") == 2666660
+    # 1,3333 га: 20 000 x 1,3333 = 26 666,00 руб.
+    assert service_amount(_to_kop(20000), area_ha="1.3333") == 2666600
 
 
 def test_qty():
