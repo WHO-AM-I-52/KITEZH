@@ -379,7 +379,7 @@ def restore_contact(conn, contact_id, user_id=None):
 
 
 def org_dependencies(conn, org_id):
-    """Зависимости организации: письма, контакты."""
+    """Зависимости организации: письма, контакты, договоры."""
     letters = conn.execute(
         'SELECT COUNT(*) FROM letters WHERE org_id = ?', (org_id,)
     ).fetchone()[0]
@@ -392,14 +392,22 @@ def org_dependencies(conn, org_id):
         'SELECT COUNT(*) FROM phonebook_employment '
         'WHERE org_id = ? AND archived = 0', (org_id,)
     ).fetchone()[0]
-    return {'letters': letters, 'contacts': max(main_contacts, linked)}
+    contracts = conn.execute(
+        'SELECT COUNT(*) FROM contracts WHERE directory_org_id = ?', (org_id,)
+    ).fetchone()[0]
+    return {'letters': letters, 'contacts': max(main_contacts, linked),
+            'contracts': contracts}
 
 
 def contact_dependencies(conn, contact_id):
-    """Зависимости контакта: письма."""
+    """Зависимости контакта: письма, договоры."""
     return {
         'letters': conn.execute(
             'SELECT COUNT(*) FROM letters WHERE contact_id = ?', (contact_id,)
+        ).fetchone()[0],
+        'contracts': conn.execute(
+            'SELECT COUNT(*) FROM contracts '
+            'WHERE directory_contact_id = ?', (contact_id,)
         ).fetchone()[0],
     }
 
@@ -411,9 +419,9 @@ def delete_org(conn, org_id, user_id=None):
     вызывающий код предлагает архивирование.
     """
     deps = org_dependencies(conn, org_id)
-    if deps['letters'] or deps['contacts']:
+    if deps['letters'] or deps['contacts'] or deps.get('contracts'):
         raise DirectoryError(
-            'Организация связана с письмами или контактами. '
+            'Организация связана с письмами, контактами или договорами. '
             'Удалите связи или архивируйте организацию.'
         )
     conn.execute('DELETE FROM phonebook_employment WHERE org_id = ?', (org_id,))
@@ -423,9 +431,10 @@ def delete_org(conn, org_id, user_id=None):
 def delete_contact(conn, contact_id, user_id=None):
     """Окончательное удаление контакта — только без зависимостей."""
     deps = contact_dependencies(conn, contact_id)
-    if deps['letters']:
+    if deps['letters'] or deps.get('contracts'):
         raise DirectoryError(
-            'Контакт связан с письмами. Архивируйте его вместо удаления.'
+            'Контакт связан с письмами или договорами. '
+            'Архивируйте его вместо удаления.'
         )
     conn.execute('DELETE FROM phonebook_employment WHERE contact_id = ?',
                  (contact_id,))
