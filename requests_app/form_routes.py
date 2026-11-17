@@ -209,7 +209,7 @@ def new_request():
 
         inn = request.form.get('applicant_inn', '').strip()
         ok_inn, inn_reason = validate_inn(inn)
-        if not ok_inn:
+        if not ok_inn and inn_reason != 'empty':
             if inn_reason == 'format':
                 flash('ИНН должен содержать только цифры.', 'warning')
             elif inn_reason == 'length':
@@ -319,7 +319,7 @@ def edit_request(rid):
 
         inn = request.form.get('applicant_inn', '').strip()
         ok_inn, inn_reason = validate_inn(inn)
-        if not ok_inn:
+        if not ok_inn and inn_reason != 'empty':
             if inn_reason == 'format':
                 flash('ИНН должен содержать только цифры.', 'warning')
             elif inn_reason == 'length':
