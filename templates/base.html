@@ -571,6 +571,11 @@
       <a href="{{ url_for('letters.list_letters') }}" class="sb-link {{ 'active' if request.endpoint and request.endpoint.startswith('letters') }}">
         <i class="bi bi-envelope-paper"></i><span class="sb-lbl">Журнал писем</span>
       </a>
+      {% if perms.can_view_contracts %}
+      <a href="{{ url_for('contracts.list_contracts') }}" class="sb-link {{ 'active' if request.endpoint and request.endpoint.startswith('contracts') }}">
+        <i class="bi bi-file-earmark-text-fill"></i><span class="sb-lbl">Договоры</span>
+      </a>
+      {% endif %}
     </div>
 
     {# ────────────────────────────── ЗАДАЧИ ──────────────────────────────────────── #}

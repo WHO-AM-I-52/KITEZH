@@ -100,6 +100,12 @@ def insert_contract(conn, form, user_id: int) -> int:
         v = form.get(f)
         if v in ('', None):
             v = None
+        if f == 'origin' and v is None:
+            v = 'new'
+        if f == 'is_free':
+            v = 1 if str(v) == '1' else 0
+        if f == 'incoming_docs_ok':
+            v = 1 if str(v) == '1' else 0
         cols.append(f)
         vals.append(v)
     placeholders = ', '.join('?' for _ in vals)
@@ -118,6 +124,12 @@ def update_contract(conn, contract_id: int, form: dict):
         v = form.get(f)
         if v in ('', None):
             v = None
+        if f == 'origin' and v is None:
+            v = 'new'
+        if f == 'is_free':
+            v = 1 if str(v) == '1' else 0
+        if f == 'incoming_docs_ok':
+            v = 1 if str(v) == '1' else 0
         sets.append(f"{f}=?")
         vals.append(v)
     sets.append("updated_at=?")
@@ -141,13 +153,15 @@ def get_services(conn, contract_id: int):
 def add_service(conn, contract_id: int, tariff_item, amount_kop: int,
                 qty=None, area_ha=None, manual_reason=None):
     from contracts import pricing
+    edition_code = (tariff_item['edition_code']
+                    if 'edition_code' in tariff_item.keys() else None)
     cur = conn.execute(
         """INSERT INTO contract_services
            (contract_id, tariff_item_id, edition_code, code, name, qty,
             area_ha, price_kop, amount_kop, manual_edit, manual_reason,
             sort_order)
            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
-        (contract_id, tariff_item['id'], tariff_item.get('edition_code'),
+        (contract_id, tariff_item['id'], edition_code,
          tariff_item['code'], tariff_item['name'], qty, area_ha,
          tariff_item['price_kop'], amount_kop,
          1 if manual_reason else 0, manual_reason,
@@ -247,4 +261,60 @@ def get_activities(conn, contract_id: int):
     return conn.execute(
         "SELECT * FROM contract_activities WHERE contract_id=? ORDER BY id",
         (contract_id,)
+    ).fetchall()
+
+
+def add_payment(conn, contract_id: int, kind: str, amount_kop: int,
+                 number=None, pay_date=None, note=None, file_id=None,
+                 user_id=None):
+    cur = conn.execute(
+        """INSERT INTO contract_payments
+           (contract_id, kind, number, pay_date, amount_kop, note,
+            file_id, user_id, created_at)
+           VALUES (?,?,?,?,?,?,?,?,?)""",
+        (contract_id, kind, number, pay_date, amount_kop, note,
+         file_id, user_id, _now())
+    )
+    return cur.lastrowid
+
+
+def add_review(conn, contract_id: int, body: str, request_no=None,
+               sent_date=None, accepted_date=None, decision_date=None,
+               result=None, comment=None, file_id=None):
+    cur = conn.execute(
+        """INSERT INTO contract_reviews
+           (contract_id, body, request_no, sent_date, accepted_date,
+            decision_date, result, comment, file_id, created_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?)""",
+        (contract_id, body, request_no, sent_date, accepted_date,
+         decision_date, result, comment, file_id, _now())
+    )
+    return cur.lastrowid
+
+
+def add_activity(conn, contract_id: int, name: str, assignee=None,
+                 assignee_user_id=None, assigned_at=None, deadline=None,
+                 status='new', result=None):
+    cur = conn.execute(
+        """INSERT INTO contract_activities
+           (contract_id, name, assignee, assignee_user_id, assigned_at,
+            deadline, status, result, created_at)
+           VALUES (?,?,?,?,?,?,?,?,?)""",
+        (contract_id, name, assignee, assignee_user_id, assigned_at,
+         deadline, status, result, _now())
+    )
+    return cur.lastrowid
+
+
+def list_executors(conn):
+    """Исполнители для выбора в форме (пользователи с доступом)."""
+    return conn.execute(
+        "SELECT id, full_name FROM users WHERE is_active=1"
+        " ORDER BY full_name"
+    ).fetchall()
+
+
+def list_districts(conn):
+    return conn.execute(
+        "SELECT id, name FROM districts ORDER BY name"
     ).fetchall()

@@ -1,0 +1,395 @@
+{% extends 'base.html' %}
+{% block title %}Договор {{ c.inner_number }}{% endblock %}
+
+{% macro stage_badge(stage) %}
+<span class="badge text-bg-secondary">{{ stage_labels[stage] }}</span>
+{% endmacro %}
+
+{% block content %}
+<div class="container-fluid mt-3" style="max-width: 1200px;">
+
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+      <h1 class="h4 mb-1">
+        {{ c.inner_number }}
+        {% if c.reg_number %}<span class="text-muted fs-6"> / № {{ c.reg_number }}</span>{% endif %}
+        {% if c.is_free %}<span class="badge text-bg-info">безвозмездный</span>{% endif %}
+      </h1>
+      <div>
+        {{ stage_badge(c.stage) }}
+        <span class="badge text-bg-{{ 'success' if c.state == 'active' else 'warning text-dark' }}">
+          {{ state_labels[c.state] }}
+        </span>
+      </div>
+    </div>
+    <div class="d-flex gap-2">
+      {% if can_edit %}
+      <a href="{{ url_for('contracts.edit_contract', contract_id=c.id) }}" class="btn btn-outline-primary">
+        <i class="bi bi-pencil"></i> Редактировать
+      </a>
+      {% endif %}
+      {% if not c.is_free and can_edit %}
+      <a href="{{ url_for('contracts.generate_docx', contract_id=c.id) }}" class="btn btn-outline-success">
+        <i class="bi bi-file-earmark-word"></i> Проект договора (DOCX)
+      </a>
+      {% endif %}
+      <a href="{{ url_for('contracts.list_contracts') }}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> К реестру
+      </a>
+    </div>
+  </div>
+
+  <div class="row g-3">
+
+    {# ── Левая колонка ── #}
+    <div class="col-lg-8">
+
+      {# Заказчик и предмет #}
+      <div class="card mb-3">
+        <div class="card-header">Заказчик и предмет</div>
+        <div class="card-body">
+          <dl class="row mb-0">
+            <dt class="col-sm-4">Заказчик</dt>
+            <dd class="col-sm-8">{{ c.customer_full_name or '—' }}</dd>
+            <dt class="col-sm-4">ИНН / КПП</dt>
+            <dd class="col-sm-8">{{ c.customer_inn or '—' }} / {{ c.customer_kpp or '—' }}</dd>
+            <dt class="col-sm-4">Подписант</dt>
+            <dd class="col-sm-8">
+              {{ c.signatory_name or '—' }}
+              {% if c.signatory_position %}({{ c.signatory_position }}, {{ c.signatory_basis or '—' }}){% endif %}
+            </dd>
+            <dt class="col-sm-4">Контакт</dt>
+            <dd class="col-sm-8">
+              {{ c.contact_name or '—' }}
+              {% if c.contact_phone %}· {{ c.contact_phone }}{% endif %}
+              {% if c.contact_email %}· {{ c.contact_email }}{% endif %}
+            </dd>
+            <dt class="col-sm-4">Проект</dt>
+            <dd class="col-sm-8">{{ c.project_name or '—' }}</dd>
+            <dt class="col-sm-4">Объект</dt>
+            <dd class="col-sm-8">
+              {{ c.object_description or '—' }}
+              {% if c.area_ha %}· {{ c.area_ha }} га{% endif %}
+              {% if c.address %}· {{ c.address }}{% endif %}
+            </dd>
+            <dt class="col-sm-4">Исполнитель</dt>
+            <dd class="col-sm-8">{{ c.executor_name }}</dd>
+          </dl>
+        </div>
+      </div>
+
+      {# Услуги #}
+      <div class="card mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <span>Услуги по приказу 81/26/КРНО</span>
+          {% if not c.is_free %}
+          <span class="fw-normal">
+            Итого: <strong>{{ rub_words(c.total_kop) }}</strong>
+          </span>
+          {% endif %}
+        </div>
+        <div class="card-body p-0">
+          <table class="table table-sm mb-0 align-middle">
+            <thead class="table-light">
+              <tr>
+                <th>Код</th><th>Наименование</th>
+                <th class="text-end">Кол-во / га</th>
+                <th class="text-end">Сумма, руб.</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for s in services %}
+              <tr>
+                <td class="text-nowrap">{{ s.code or '—' }}</td>
+                <td>{{ s.name }}</td>
+                <td class="text-end">{{ s.qty or s.area_ha or '' }}</td>
+                <td class="text-end text-nowrap">{{ '%d'|format(rub(s.amount_kop)) }}</td>
+                <td class="text-end">
+                  {% if can_edit and c.stage == 'draft' %}
+                  <form method="post" class="d-inline"
+                        action="{{ url_for('contracts.delete_service', contract_id=c.id, service_id=s.id) }}">
+                    <button class="btn btn-sm btn-outline-danger" title="Удалить">
+                      <i class="bi bi-x-lg"></i>
+                    </button>
+                  </form>
+                  {% endif %}
+                </td>
+              </tr>
+              {% else %}
+              <tr><td colspan="5" class="text-center text-muted py-3">Услуги не добавлены</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% if can_edit and c.stage == 'draft' %}
+        <div class="card-footer bg-white">
+          <form method="post" class="row g-2 align-items-end"
+                action="{{ url_for('contracts.add_service', contract_id=c.id) }}">
+            <div class="col-md-6">
+              <label class="form-label small mb-1">Услуга</label>
+              <select class="form-select form-select-sm" name="tariff_item_id" required>
+                <option value="">Выберите услугу</option>
+                {% for t in tariffs %}
+                <option value="{{ t.id }}">{{ t.code }} — {{ t.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-6 col-md-2">
+              <label class="form-label small mb-1">Кол-во</label>
+              <input type="text" class="form-control form-control-sm" name="qty" placeholder="1">
+            </div>
+            <div class="col-6 col-md-2">
+              <label class="form-label small mb-1">Площадь, га</label>
+              <input type="text" class="form-control form-control-sm" name="area_ha">
+            </div>
+            <div class="col-md-2">
+              <button class="btn btn-sm btn-primary w-100"><i class="bi bi-plus-lg"></i> Добавить</button>
+            </div>
+          </form>
+        </div>
+        {% endif %}
+      </div>
+
+      {# Файлы #}
+      <div class="card mb-3">
+        <div class="card-header">Файлы</div>
+        <div class="card-body p-0">
+          <table class="table table-sm mb-0 align-middle">
+            <thead class="table-light">
+              <tr><th>Категория</th><th>Файл</th><th>Версия</th><th>Загрузил</th><th></th></tr>
+            </thead>
+            <tbody>
+              {% for f in files %}
+              <tr>
+                <td>{{ category_labels[f.category] or f.category }}
+                  {% if f.is_current %}<span class="badge text-bg-success ms-1">текущая</span>{% endif %}
+                </td>
+                <td class="small">{{ f.orig_name }}</td>
+                <td>v{{ f.version }}</td>
+                <td class="small">{{ f.user_name or '—' }}</td>
+                <td class="text-end">
+                  <a class="btn btn-sm btn-outline-primary"
+                     href="{{ url_for('contracts.download_file', contract_id=c.id, file_id=f.id) }}">
+                    <i class="bi bi-download"></i>
+                  </a>
+                </td>
+              </tr>
+              {% else %}
+              <tr><td colspan="5" class="text-center text-muted py-3">Файлов нет</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% if can_edit %}
+        <div class="card-footer bg-white">
+          <form method="post" enctype="multipart/form-data" class="row g-2 align-items-end"
+                action="{{ url_for('contracts.upload_file', contract_id=c.id) }}">
+            <div class="col-md-4">
+              <label class="form-label small mb-1">Категория</label>
+              <select class="form-select form-select-sm" name="category" required>
+                {% for key, label in category_labels.items() %}
+                <option value="{{ key }}">{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small mb-1">Файл</label>
+              <input type="file" class="form-control form-control-sm" name="file" required>
+            </div>
+            <div class="col-md-2">
+              <button class="btn btn-sm btn-primary w-100"><i class="bi bi-upload"></i> Загрузить</button>
+            </div>
+          </form>
+        </div>
+        {% endif %}
+      </div>
+
+      {# Рассмотрения: Совет, КЗЗ #}
+      <div class="card mb-3">
+        <div class="card-header">Рассмотрения (Совет, КЗЗ)</div>
+        <div class="card-body p-0">
+          <table class="table table-sm mb-0 align-middle">
+            <thead class="table-light">
+              <tr><th>Орган</th><th>Исх. №</th><th>Направлено</th><th>Решение</th><th>Дата</th></tr>
+            </thead>
+            <tbody>
+              {% for r in reviews %}
+              <tr>
+                <td>{{ r.body }}</td>
+                <td class="small">{{ r.request_no or '—' }}</td>
+                <td class="small">{{ r.sent_date or '—' }}</td>
+                <td class="small">{{ r.result or '—' }}</td>
+                <td class="small">{{ r.decision_date or '—' }}</td>
+              </tr>
+              {% else %}
+              <tr><td colspan="5" class="text-center text-muted py-3">Нет записей</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% if can_edit %}
+        <div class="card-footer bg-white">
+          <form method="post" class="row g-2 align-items-end"
+                action="{{ url_for('contracts.add_review', contract_id=c.id) }}">
+            <div class="col-md-3">
+              <label class="form-label small mb-1">Орган</label>
+              <input type="text" class="form-control form-control-sm" name="body" required
+                     placeholder="Совет / КЗЗ">
+            </div>
+            <div class="col-md-2">
+              <label class="form-label small mb-1">Исх. №</label>
+              <input type="text" class="form-control form-control-sm" name="request_no">
+            </div>
+            <div class="col-md-2">
+              <label class="form-label small mb-1">Направлено</label>
+              <input type="date" class="form-control form-control-sm" name="sent_date">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small mb-1">Решение</label>
+              <input type="text" class="form-control form-control-sm" name="result">
+            </div>
+            <div class="col-md-2">
+              <button class="btn btn-sm btn-primary w-100"><i class="bi bi-plus-lg"></i> Добавить</button>
+            </div>
+          </form>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    {# ── Правая колонка ── #}
+    <div class="col-lg-4">
+
+      {# Стадия и действия #}
+      <div class="card mb-3">
+        <div class="card-header">Стадия исполнения</div>
+        <div class="card-body">
+          <ol class="list-unstyled small mb-3">
+            {% for s in stages %}
+            <li class="mb-1">
+              <span class="badge {{ 'text-bg-primary' if s == c.stage else 'text-bg-light text-muted border' }}">
+                {% if s == c.stage %}▶{% else %}{{ loop.index }}{% endif %}
+              </span>
+              {{ stage_labels[s] }}
+            </li>
+            {% endfor %}
+          </ol>
+
+          {% for action, target, label in actions %}
+          <form method="post" class="mb-2"
+                action="{{ url_for('contracts.transition', contract_id=c.id) }}">
+            <input type="hidden" name="target" value="{{ target }}">
+            <input type="hidden" name="event_date" value="{{ today }}">
+            <div class="input-group input-group-sm">
+              <button class="btn btn-primary flex-fill">{{ label }} →</button>
+            </div>
+          </form>
+          {% endfor %}
+
+          {% if c.stage == 'act_signing' and not c.is_free and can_edit %}
+          <form method="post" class="mb-2"
+                action="{{ url_for('contracts.acts_sent', contract_id=c.id) }}">
+            <div class="input-group input-group-sm">
+              <input type="date" class="form-control" name="send_date" value="{{ today }}">
+              <button class="btn btn-outline-primary">Акты направлены</button>
+            </div>
+          </form>
+          {% endif %}
+
+          {% if can_edit %}
+          <details class="mt-3">
+            <summary class="small text-muted">Вернуть на предыдущую стадию</summary>
+            <form method="post" class="mt-2"
+                  action="{{ url_for('contracts.transition', contract_id=c.id) }}">
+              <div class="row g-2">
+                <div class="col-7">
+                  <select class="form-select form-select-sm" name="target" required>
+                    {% for s in stages %}
+                    {% if s != c.stage %}
+                    <option value="{{ s }}">{{ stage_labels[s] }}</option>
+                    {% endif %}
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="col-5">
+                  <input type="date" class="form-control form-control-sm" name="event_date" value="{{ today }}">
+                </div>
+                <div class="col-12">
+                  <input type="text" class="form-control form-control-sm" name="comment"
+                         placeholder="Причина возврата (обязательно)" required>
+                </div>
+                <div class="col-12">
+                  <button class="btn btn-sm btn-outline-danger w-100">Вернуть</button>
+                </div>
+              </div>
+            </form>
+          </details>
+          {% endif %}
+        </div>
+      </div>
+
+      {# Финансы #}
+      {% if not c.is_free %}
+      <div class="card mb-3">
+        <div class="card-header">Финансы</div>
+        <div class="card-body small">
+          <div class="d-flex justify-content-between">
+            <span>Сумма договора</span>
+            <strong>{{ '%d'|format(rub(c.total_kop)) }} руб.</strong>
+          </div>
+          <div class="d-flex justify-content-between text-muted">
+            <span>в т.ч. НДС {{ c.vat_percent }}%</span>
+            <span>{{ '%d'|format(rub(vat)) }} руб.</span>
+          </div>
+          <hr class="my-2">
+          <div class="d-flex justify-content-between">
+            <span>Оплачено</span>
+            <strong class="{{ 'text-success' if paid_kop >= (c.total_kop or 0) else 'text-danger' }}">
+              {{ '%d'|format(rub(paid_kop)) }} руб.
+            </strong>
+          </div>
+        </div>
+        {% if can_payments or can_edit %}
+        <div class="card-footer bg-white">
+          <form method="post" class="row g-2 align-items-end"
+                action="{{ url_for('contracts.add_payment', contract_id=c.id) }}">
+            <div class="col-5">
+              <input type="text" class="form-control form-control-sm" name="amount"
+                     placeholder="Сумма, руб." required>
+            </div>
+            <div class="col-4">
+              <input type="date" class="form-control form-control-sm" name="pay_date" value="{{ today }}">
+            </div>
+            <div class="col-3">
+              <button class="btn btn-sm btn-primary w-100">+</button>
+            </div>
+          </form>
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      {# История стадий #}
+      <div class="card mb-3">
+        <div class="card-header">История стадий</div>
+        <div class="card-body p-0">
+          <ul class="list-group list-group-flush small">
+            {% for l in stage_log %}
+            <li class="list-group-item">
+              <div class="d-flex justify-content-between">
+                <span>{{ stage_labels[l.from_stage] }} → {{ stage_labels[l.to_stage] }}</span>
+                <span class="text-muted">{{ wd_fmt(l.event_date) if l.event_date else '' }}</span>
+              </div>
+              {% if l.comment %}<div class="text-muted">{{ l.comment }}</div>{% endif %}
+            </li>
+            {% else %}
+            <li class="list-group-item text-muted">Нет переходов</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

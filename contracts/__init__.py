@@ -12,3 +12,5 @@ contracts_bp = Blueprint(
 )
 
 from . import workflow, pricing, workdays  # noqa: E402,F401
+from . import repository, documents  # noqa: E402,F401
+from . import routes  # noqa: E402,F401

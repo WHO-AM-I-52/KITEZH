@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="ru">
+<body>
+{% for cat, msg in get_flashed_messages(with_categories=true) %}
+<div class="flash flash-{{ cat }}">{{ msg }}</div>
+{% endfor %}
+{% block content %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,317 @@
+{% extends 'base.html' %}
+{% block title %}{{ 'Новый договор' if is_new else 'Редактирование договора' }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-3" style="max-width: 1100px;">
+
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">
+      {{ 'Новый договор' if is_new else 'Договор ' ~ (c.inner_number or c.id) }}
+    </h1>
+    <a href="{{ url_for('contracts.list_contracts') }}" class="btn btn-outline-secondary">
+      <i class="bi bi-arrow-left"></i> К реестру
+    </a>
+  </div>
+
+  <form method="post">
+
+    {# ─── Тип договора ─── #}
+    <div class="card mb-3">
+      <div class="card-header">Тип договора</div>
+      <div class="card-body row g-3">
+        <div class="col-12 col-md-4">
+          <label class="form-label">Возмездность</label>
+          <select class="form-select" name="is_free" id="id_is_free">
+            <option value="0" {{ 'selected' if not c or not c.is_free }}>Возмездный</option>
+            <option value="1" {{ 'selected' if c and c.is_free }}>Безвозмездный (поручение руководителя)</option>
+          </select>
+        </div>
+        <div class="col-12 col-md-4" data-free-only style="{{ '' if c and c.is_free else 'display:none' }}">
+          <label class="form-label">Основание поручения</label>
+          <input type="text" class="form-control" name="free_basis"
+                 value="{{ c.free_basis if c else '' }}"
+                 placeholder="Напр.: поручение директора от 01.11.2026">
+        </div>
+        <div class="col-12 col-md-4" data-free-only style="{{ '' if c and c.is_free else 'display:none' }}">
+          <label class="form-label">Дата поручения</label>
+          <input type="date" class="form-control" name="free_basis_date"
+                 value="{{ c.free_basis_date if c else '' }}">
+        </div>
+      </div>
+    </div>
+
+    {# ─── Заказчик ─── #}
+    <div class="card mb-3">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Заказчик</span>
+        <div class="input-group input-group-sm" style="max-width: 380px;">
+          <input type="text" class="form-control" id="dir-search"
+                 placeholder="Поиск в справочнике (ИНН, название, ФИО)">
+          <button class="btn btn-outline-secondary" type="button" id="dir-search-btn">
+            <i class="bi bi-search"></i>
+          </button>
+        </div>
+      </div>
+      <div class="card-body row g-3">
+        <div class="col-12">
+          <ul class="list-group mb-2" id="dir-results" style="max-height: 200px; overflow:auto;"></ul>
+        </div>
+        <div class="col-12 col-md-3">
+          <label class="form-label">Тип заказчика</label>
+          <select class="form-select" name="customer_type" id="id_customer_type">
+            <option value="legal" {{ 'selected' if not c or c.customer_type == 'legal' }}>Юридическое лицо</option>
+            <option value="ip" {{ 'selected' if c and c.customer_type == 'ip' }}>Индивидуальный предприниматель</option>
+            <option value="individual" {{ 'selected' if c and c.customer_type == 'individual' }}>Физическое лицо</option>
+          </select>
+        </div>
+        <div class="col-12 col-md-5">
+          <label class="form-label">Полное наименование</label>
+          <input type="text" class="form-control" name="customer_full_name" required
+                 value="{{ c.customer_full_name if c else '' }}">
+        </div>
+        <div class="col-6 col-md-4">
+          <label class="form-label">Сокращённое</label>
+          <input type="text" class="form-control" name="customer_short_name"
+                 value="{{ c.customer_short_name if c else '' }}">
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label">ИНН</label>
+          <input type="text" class="form-control" name="customer_inn"
+                 value="{{ c.customer_inn if c else '' }}">
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label">КПП</label>
+          <input type="text" class="form-control" name="customer_kpp"
+                 value="{{ c.customer_kpp if c else '' }}">
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label">ОГРН</label>
+          <input type="text" class="form-control" name="customer_ogrn"
+                 value="{{ c.customer_ogrn if c else '' }}">
+        </div>
+        <div class="col-12 col-md-6">
+          <label class="form-label">Адрес</label>
+          <input type="text" class="form-control" name="customer_address"
+                 value="{{ c.customer_address if c else '' }}">
+        </div>
+        <div class="col-12"><hr class="my-1"></div>
+        <div class="col-12 col-md-4">
+          <label class="form-label">Подписант (ФИО)</label>
+          <input type="text" class="form-control" name="signatory_name"
+                 value="{{ c.signatory_name if c else '' }}">
+        </div>
+        <div class="col-6 col-md-4">
+          <label class="form-label">Должность</label>
+          <input type="text" class="form-control" name="signatory_position"
+                 value="{{ c.signatory_position if c else '' }}">
+        </div>
+        <div class="col-6 col-md-4">
+          <label class="form-label">Основание полномочий</label>
+          <input type="text" class="form-control" name="signatory_basis"
+                 value="{{ c.signatory_basis if c else '' }}" placeholder="Устава">
+        </div>
+        <div class="col-12 col-md-4">
+          <label class="form-label">Контактное лицо</label>
+          <input type="text" class="form-control" name="contact_name"
+                 value="{{ c.contact_name if c else '' }}">
+        </div>
+        <div class="col-6 col-md-4">
+          <label class="form-label">Телефон</label>
+          <input type="text" class="form-control" name="contact_phone"
+                 value="{{ c.contact_phone if c else '' }}">
+        </div>
+        <div class="col-6 col-md-4">
+          <label class="form-label">E-mail</label>
+          <input type="email" class="form-control" name="contact_email"
+                 value="{{ c.contact_email if c else '' }}">
+        </div>
+      </div>
+    </div>
+
+    {# ─── Предмет и объект ─── #}
+    <div class="card mb-3">
+      <div class="card-header">Предмет и объект</div>
+      <div class="card-body row g-3">
+        <div class="col-12 col-md-6">
+          <label class="form-label">Название проекта</label>
+          <input type="text" class="form-control" name="project_name"
+                 value="{{ c.project_name if c else '' }}">
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label">Тип объекта</label>
+          <select class="form-select" name="object_type_id">
+            <option value="">—</option>
+            {% for ot in object_types %}
+            <option value="{{ ot.id }}" {{ 'selected' if c and c.object_type_id == ot.id }}>
+              {{ ot.parent_name ~ ' / ' if ot.parent_name }}{{ ot.name }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label">Площадь, га</label>
+          <input type="text" class="form-control" name="area_ha"
+                 value="{{ c.area_ha if c else '' }}" placeholder="1,3333">
+        </div>
+        <div class="col-12">
+          <label class="form-label">Описание объекта</label>
+          <textarea class="form-control" name="object_description" rows="2">{{ c.object_description if c else '' }}</textarea>
+        </div>
+        <div class="col-12 col-md-8">
+          <label class="form-label">Адрес объекта</label>
+          <input type="text" class="form-control" name="address"
+                 value="{{ c.address if c else '' }}">
+        </div>
+        <div class="col-6 col-md-4">
+          <label class="form-label">Район</label>
+          <select class="form-select" name="district_id">
+            <option value="">—</option>
+            {% for d in districts %}
+            <option value="{{ d.id }}" {{ 'selected' if c and c.district_id == d.id }}>{{ d.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-md-4">
+          <label class="form-label">Кадастровые номера</label>
+          <input type="text" class="form-control" name="cadastral_numbers"
+                 value="{{ c.cadastral_numbers if c else '' }}">
+        </div>
+        <div class="col-6 col-md-4">
+          <label class="form-label">Исполнитель</label>
+          <select class="form-select" name="executor_id">
+            {% for e in executors %}
+            <option value="{{ e.id }}" {{ 'selected' if (not c and e.id == session.user_id) or (c and c.executor_id == e.id) }}>
+              {{ e.full_name }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+    </div>
+
+    {# ─── Условия (возмездный) ─── #}
+    <div class="card mb-3" data-paid-block>
+      <div class="card-header">Условия оплаты и исполнения</div>
+      <div class="card-body row g-3">
+        <div class="col-6 col-md-3">
+          <label class="form-label">Схема оплаты</label>
+          <select class="form-select" name="payment_scheme">
+            <option value="">—</option>
+            <option value="prepay_100" {{ 'selected' if c and c.payment_scheme == 'prepay_100' }}>100% предоплата</option>
+            <option value="postpay" {{ 'selected' if c and c.payment_scheme == 'postpay' }}>Постоплата</option>
+            <option value="partial" {{ 'selected' if c and c.payment_scheme == 'partial' }}>Частями</option>
+          </select>
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label">Срок оплаты</label>
+          <input type="number" min="1" class="form-control" name="payment_days"
+                 value="{{ c.payment_days if c else '' }}">
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label">Тип дней оплаты</label>
+          <select class="form-select" name="payment_day_type">
+            <option value="work" {{ 'selected' if not c or c.payment_day_type != 'cal' }}>Рабочие</option>
+            <option value="cal" {{ 'selected' if c and c.payment_day_type == 'cal' }}>Календарные</option>
+          </select>
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label">Срок работ, дней</label>
+          <input type="number" min="1" class="form-control" name="duration_days"
+                 value="{{ c.duration_days if c else '' }}">
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label">Тип дней работ</label>
+          <select class="form-select" name="duration_day_type">
+            <option value="work" {{ 'selected' if not c or c.duration_day_type != 'cal' }}>Рабочие</option>
+            <option value="cal" {{ 'selected' if c and c.duration_day_type == 'cal' }}>Календарные</option>
+          </select>
+        </div>
+        <div class="col-6 col-md-4">
+          <label class="form-label">Основание начала работ</label>
+          <select class="form-select" name="work_start_basis">
+            <option value="">—</option>
+            <option value="payment" {{ 'selected' if c and c.work_start_basis == 'payment' }}>Оплата</option>
+            <option value="signed_contract" {{ 'selected' if c and c.work_start_basis == 'signed_contract' }}>Подписанный договор</option>
+            <option value="order" {{ 'selected' if c and c.work_start_basis == 'order' }}>Письменное поручение</option>
+          </select>
+        </div>
+        <div class="col-6 col-md-4">
+          <label class="form-label">Способ подписания актов</label>
+          <select class="form-select" name="act_sign_method">
+            <option value="">—</option>
+            <option value="edo_upp" {{ 'selected' if c and c.act_sign_method == 'edo_upp' }}>ЭДО (УПД)</option>
+            <option value="sbis" {{ 'selected' if c and c.act_sign_method == 'sbis' }}>СБИС</option>
+            <option value="paper" {{ 'selected' if c and c.act_sign_method == 'paper' }}>Бумага</option>
+          </select>
+        </div>
+        <div class="col-6 col-md-4">
+          <label class="form-label">Номер по Directum</label>
+          <input type="text" class="form-control" name="reg_number"
+                 value="{{ c.reg_number if c else '' }}"
+                 placeholder="Присваивается после подписания">
+        </div>
+      </div>
+    </div>
+
+    <div class="d-flex gap-2 mb-4">
+      <button type="submit" class="btn btn-primary">
+        <i class="bi bi-save"></i> Сохранить
+      </button>
+      <a href="{{ url_for('contracts.list_contracts') }}" class="btn btn-outline-secondary">Отмена</a>
+    </div>
+  </form>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  // Безвозмездный: скрываем блок условий
+  var freeSel = document.getElementById('id_is_free');
+  var paid = document.querySelector('[data-paid-block]');
+  function refresh() {
+    var isFree = freeSel.value === '1';
+    paid.style.display = isFree ? 'none' : '';
+    document.querySelectorAll('[data-free-only]').forEach(function (el) {
+      el.style.display = isFree ? '' : 'none';
+    });
+  }
+  freeSel.addEventListener('change', refresh);
+  refresh();
+
+  // Поиск в телефонном справочнике
+  var inp = document.getElementById('dir-search');
+  function doSearch() {
+    var q = inp.value.trim();
+    var ul = document.getElementById('dir-results');
+    ul.innerHTML = '';
+    if (q.length < 2) return;
+    fetch('{{ url_for("contracts.api_directory_search") }}?q=' + encodeURIComponent(q))
+      .then(function (r) { return r.json(); })
+      .then(function (items) {
+        items.forEach(function (it) {
+          var li = document.createElement('li');
+          li.className = 'list-group-item list-group-item-action';
+          li.style.cursor = 'pointer';
+          li.textContent = it.display;
+          li.addEventListener('click', function () {
+            var f = document.querySelector('form');
+            if (it.type === 'org') {
+              f.customer_full_name.value = it.org_name;
+            } else {
+              f.customer_full_name.value = it.org_name || '';
+              f.signatory_name.value = it.full_name || '';
+              f.contact_name.value = it.full_name || '';
+              f.contact_email.value = it.email || '';
+            }
+            ul.innerHTML = '';
+          });
+          ul.appendChild(li);
+        });
+      });
+  }
+  document.getElementById('dir-search-btn').addEventListener('click', doSearch);
+  inp.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); doSearch(); }
+  });
+});
+</script>
+{% endblock %}

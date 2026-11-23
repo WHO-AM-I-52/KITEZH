@@ -1,0 +1,131 @@
+{% extends 'base.html' %}
+{% block title %}Договоры{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-3">
+
+  <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+    <h1 class="h4 mb-0">Договоры</h1>
+    {% if can_edit %}
+    <a href="{{ url_for('contracts.new_contract') }}" class="btn btn-primary">
+      <i class="bi bi-plus-lg"></i> Новый договор
+    </a>
+    {% endif %}
+  </div>
+
+  {# ─── Фильтры ─── #}
+  <form method="get" class="row g-2 mb-3 align-items-end">
+    <div class="col-12 col-md-3">
+      <label class="form-label small mb-1">Поиск</label>
+      <input type="text" class="form-control" name="q"
+             value="{{ filters.q }}" placeholder="Номер, заказчик, проект">
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label small mb-1">Стадия</label>
+      <select class="form-select" name="stage">
+        <option value="">Все стадии</option>
+        {% for s in stages %}
+        <option value="{{ s }}" {{ 'selected' if filters.stage == s }}>
+          {{ stage_labels[s] }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label small mb-1">Тип</label>
+      <select class="form-select" name="free">
+        <option value="">Все</option>
+        <option value="paid" {{ 'selected' if filters.free == 'paid' }}>Возмездные</option>
+        <option value="free" {{ 'selected' if filters.free == 'free' }}>Безвозмездные</option>
+      </select>
+    </div>
+    {% if view_all %}
+    <div class="col-6 col-md-2">
+      <label class="form-label small mb-1">Исполнитель</label>
+      <select class="form-select" name="executor">
+        <option value="">Все</option>
+        {% for e in executors %}
+        <option value="{{ e.id }}" {{ 'selected' if filters.executor == e.id|string }}>
+          {{ e.full_name }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
+    <div class="col-6 col-md-2">
+      <label class="form-label small mb-1">Год</label>
+      <select class="form-select" name="year">
+        <option value="">Все годы</option>
+        {% for y in [2026, 2027, 2028] %}
+        <option value="{{ y }}" {{ 'selected' if filters.year == y|string }}>{{ y }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-12 col-md-2 d-flex gap-2">
+      <button type="submit" class="btn btn-outline-primary flex-fill">
+        <i class="bi bi-funnel"></i> Фильтр
+      </button>
+      <a href="{{ url_for('contracts.list_contracts') }}" class="btn btn-outline-secondary"
+         title="Сбросить"><i class="bi bi-x-lg"></i></a>
+    </div>
+  </form>
+
+  {# ─── Реестр ─── #}
+  <div class="table-responsive card">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Внутр. номер</th>
+          <th>Номер договора</th>
+          <th>Заказчик</th>
+          <th>Проект</th>
+          <th>Стадия</th>
+          <th class="text-end">Сумма, руб.</th>
+          <th>Исполнитель</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in contracts %}
+        <tr>
+          <td>
+            <a href="{{ url_for('contracts.detail', contract_id=c.id) }}"
+               class="fw-semibold text-decoration-none">
+              {{ c.inner_number }}
+            </a>
+            {% if c.is_free %}<span class="badge text-bg-info ms-1">безвозм.</span>{% endif %}
+          </td>
+          <td class="text-muted small">{{ c.reg_number or '—' }}</td>
+          <td>{{ c.customer_short_name or c.customer_full_name or '—' }}</td>
+          <td class="small">{{ c.project_name or '—' }}</td>
+          <td>
+            <span class="badge text-bg-secondary">{{ stage_labels[c.stage] }}</span>
+            {% if c.state != 'active' %}
+            <span class="badge text-bg-warning text-dark">{{ c.state }}</span>
+            {% endif %}
+          </td>
+          <td class="text-end text-nowrap">
+            {% if c.is_free %}—{% else %}{{ '%d'|format(rub(c.total_kop)) }}{% endif %}
+          </td>
+          <td class="small">{{ c.executor_name }}</td>
+          <td class="text-end">
+            <a class="btn btn-sm btn-outline-primary"
+               href="{{ url_for('contracts.detail', contract_id=c.id) }}">
+              <i class="bi bi-card-text"></i>
+            </a>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" class="text-center text-muted py-4">
+          Договоры не найдены
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="text-muted small mt-2">
+    Всего: {{ contracts|length }}
+  </div>
+</div>
+{% endblock %}
