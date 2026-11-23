@@ -20,7 +20,8 @@ from contracts import pricing
 from contracts.workdays import add_days
 from contracts import workflow
 from contracts.workflow import (
-    apply_transition, stage_requirements, transition_allowed,
+    acts_sent, apply_transition, stage_deadline, stage_requirements,
+    transition_allowed,
 )
 
 
@@ -218,6 +219,167 @@ class TransitionTests(WorkflowTestBase):
             "SELECT COUNT(*) FROM tasks WHERE title LIKE '%обратную связь%'"
         ).fetchone()[0]
         self.assertEqual(cnt, 1)
+
+
+class FreeRouteTests(WorkflowTestBase):
+    """Безвозмездный маршрут: без договора, Directum и оплаты."""
+
+    def _make_free(self):
+        self.conn.execute(
+            """UPDATE contracts SET is_free=1, free_basis='Поручение
+               директора от 16.11.2026' WHERE id=?""",
+            (self.contract_id,)
+        )
+        self.conn.commit()
+        return self._get()
+
+    def test_free_route_transitions(self):
+        contract = self._make_free()
+        ok, err = apply_transition(
+            self.conn, contract, 'in_work', 1, '2026-11-16'
+        )
+        self.assertTrue(ok, err)
+        self.assertEqual(self._get()['stage'], 'in_work')
+        # задача без срока (устное поручение)
+        row = self.conn.execute(
+            """SELECT t.* FROM tasks t JOIN contract_tasks ct
+               ON ct.task_id = t.id WHERE ct.contract_id=?""",
+            (self.contract_id,)
+        ).fetchone()
+        self.assertIsNone(row['deadline'])
+        self.assertIn('поручени', row['title'].lower())
+        # возмездные стадии недоступны
+        self.assertFalse(transition_allowed(self.conn, self._get(),
+                                            'payment'))
+        ok, err = apply_transition(
+            self.conn, self._get(), 'customer_review', 1, '2026-11-16'
+        )
+        self.assertFalse(ok)
+
+    def test_free_route_to_completed(self):
+        contract = self._make_free()
+        for target, need_file in (('in_work', None),
+                                  ('act_signing', 'result'),
+                                  ('completed', None)):
+            if need_file:
+                self._add_file(need_file)
+            ok, err = apply_transition(
+                self.conn, self._get(), target, 1, '2026-11-16'
+            )
+            self.assertTrue(ok, f"{target}: {err}")
+        self.assertEqual(self._get()['state'], 'completed')
+
+    def test_free_in_work_requires_basis(self):
+        contract = self._make_free()
+        self.conn.execute(
+            "UPDATE contracts SET free_basis=NULL WHERE id=?",
+            (self.contract_id,)
+        )
+        self.conn.commit()
+        missing = stage_requirements(self.conn, self._get(), 'in_work')
+        self.assertTrue(missing)
+
+
+class StageDeadlineTests(WorkflowTestBase):
+    """Автоматический расчёт контрольных сроков при переходе."""
+
+    def test_customer_review_deadline_5_workdays(self):
+        ok, err = apply_transition(
+            self.conn, self.contract, 'customer_review', 1, '2026-11-16'
+        )
+        self.assertTrue(ok, err)
+        row = self.conn.execute(
+            """SELECT t.deadline FROM tasks t JOIN contract_tasks ct
+               ON ct.task_id = t.id WHERE ct.contract_id=?""",
+            (self.contract_id,)
+        ).fetchone()
+        # Пн 16.11.2026 + 5 раб. дней = Пн 23.11.2026
+        self.assertEqual(row['deadline'], '2026-11-23')
+
+    def test_stage_deadline_payment_from_contract(self):
+        deadline = stage_deadline(self.conn, self.contract, 'payment',
+                                  '2026-11-16')
+        # 10 рабочих дней по условию договора
+        self.assertEqual(deadline, str(add_days(date(2026, 11, 16), 10)))
+
+    def test_stage_deadline_in_work_from_duration(self):
+        deadline = stage_deadline(self.conn, self.contract, 'in_work',
+                                  '2026-11-16')
+        self.assertEqual(deadline, str(add_days(date(2026, 11, 16), 10)))
+
+    def test_stage_deadline_uses_work_calendar(self):
+        # 23.11.2026 (Пн) объявлен выходным: срок сдвигается на 24.11
+        self.conn.execute(
+            "INSERT INTO work_calendar (day, kind) VALUES ('2026-11-23', 'holiday')"
+        )
+        self.conn.commit()
+        deadline = stage_deadline(self.conn, self.contract,
+                                  'customer_review', '2026-11-16')
+        self.assertEqual(deadline, '2026-11-24')
+
+
+class ActsSentTests(WorkflowTestBase):
+
+    def _to_act_signing(self):
+        route = [
+            ('customer_review', 'project'),
+            ('directum_review', None),
+            ('customer_signing', None),
+            ('payment', 'signed_contract'),
+            ('in_work', None),
+            ('act_signing', 'result'),
+        ]
+        self._add_file('project')
+        for target, file_cat in route:
+            if file_cat:
+                self._add_file(file_cat)
+            if target == 'customer_signing':
+                self.conn.execute(
+                    "UPDATE contracts SET reg_number='81/26-ДГ' WHERE id=?",
+                    (self.contract_id,)
+                )
+                self.conn.commit()
+            ok, err = apply_transition(
+                self.conn, self._get(), target, 1, '2026-11-16'
+            )
+            self.assertTrue(ok, f"{target}: {err}")
+        return self._get()
+
+    def test_acts_sent_creates_sign_task(self):
+        self._to_act_signing()
+        ok, err = acts_sent(self.conn, self._get(), 1, '2026-11-16')
+        self.assertTrue(ok, err)
+        rows = self.conn.execute(
+            """SELECT t.title, t.deadline, t.status FROM tasks t
+               JOIN contract_tasks ct ON ct.task_id = t.id
+               WHERE ct.contract_id=? AND ct.kind='act_sign'""",
+            (self.contract_id,)
+        ).fetchall()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['title'], 'Получить подписанный акт')
+        # 7 рабочих дней от 16.11.2026 = 25.11.2026
+        self.assertEqual(rows[0]['deadline'], '2026-11-25')
+        # задача направления закрыта
+        closed = self.conn.execute(
+            """SELECT t.status FROM tasks t JOIN contract_tasks ct
+               ON ct.task_id = t.id
+               WHERE ct.contract_id=? AND ct.kind='stage'
+                 AND ct.stage='act_signing'""",
+            (self.contract_id,)
+        ).fetchall()
+        self.assertTrue(all(r['status'] == 'done' for r in closed))
+
+    def test_acts_sent_duplicate_rejected(self):
+        self._to_act_signing()
+        ok, _ = acts_sent(self.conn, self._get(), 1, '2026-11-16')
+        self.assertTrue(ok)
+        ok, err = acts_sent(self.conn, self._get(), 1, '2026-11-17')
+        self.assertFalse(ok)
+        self.assertIn('уже направлены', err)
+
+    def test_acts_sent_wrong_stage(self):
+        ok, err = acts_sent(self.conn, self.contract, 1, '2026-11-16')
+        self.assertFalse(ok)
 
 
 class DeadlineTests(WorkflowTestBase):
