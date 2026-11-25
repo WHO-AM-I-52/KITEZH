@@ -27,14 +27,38 @@ def _now() -> str:
     return datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
 
 
-def next_inner_number(conn) -> str:
-    """ДГ-ГГГГ-NNNN по порядку создания в текущем году."""
-    year = datetime.utcnow().year
+def _inner_number_counter(conn, year: int, advance: bool) -> int:
+    """Счётчик года в существующей таблице настроек; без commit."""
+    key = f'inner_number_counter:{year}'
+    conn.execute(
+        "INSERT OR IGNORE INTO contract_settings (key, value) VALUES (?, '0')",
+        (key,)
+    )
     row = conn.execute(
-        """SELECT COUNT(*) FROM contracts
-           WHERE inner_number LIKE ?""", (f'ДГ-{year}-%',)
+        "SELECT value FROM contract_settings WHERE key=?", (key,)
     ).fetchone()
-    return f'ДГ-{year}-{row[0] + 1:04d}'
+    current = int(row[0])
+    prefix = f'ДГ-{year}-'
+    rows = conn.execute(
+        "SELECT inner_number FROM contracts WHERE inner_number LIKE ?",
+        (prefix + '%',)
+    ).fetchall()
+    for row in rows:
+        suffix = row[0][len(prefix):]
+        if suffix and suffix.isascii() and suffix.isdigit():
+            current = max(current, int(suffix))
+    value = current + 1 if advance else current
+    conn.execute(
+        "UPDATE contract_settings SET value=? WHERE key=?", (str(value), key)
+    )
+    return value
+
+
+def next_inner_number(conn) -> str:
+    """ДГ-ГГГГ-NNNN; удалённые номера повторно не выдаются."""
+    year = datetime.utcnow().year
+    number = _inner_number_counter(conn, year, advance=True)
+    return f'ДГ-{year}-{number:04d}'
 
 
 def get_contract(conn, contract_id: int):
@@ -138,6 +162,72 @@ def update_contract(conn, contract_id: int, form: dict):
     conn.execute(
         f"UPDATE contracts SET {', '.join(sets)} WHERE id=?", vals
     )
+
+
+def contract_delete_error(conn, contract_id: int):
+    """Причина запрета удаления или None. Права проверяет маршрут."""
+    row = conn.execute(
+        "SELECT stage, state, reg_number, reg_date FROM contracts WHERE id=?",
+        (contract_id,)
+    ).fetchone()
+    if row is None:
+        return 'Договор не найден'
+    if row['stage'] != 'draft' or row['state'] != 'active':
+        return 'Удалить можно только действующий черновик'
+    if row['reg_number'] or row['reg_date']:
+        return 'Нельзя удалить зарегистрированный договор'
+    checks = (
+        ('contract_stage_log', 'У договора есть история переходов стадий'),
+        ('contract_payments', 'У договора есть платежи'),
+        ('contract_files', 'У договора есть прикреплённые файлы'),
+        ('contract_reviews', 'У договора есть рассмотрения'),
+        ('contract_activities', 'У договора есть мероприятия'),
+        ('contract_tasks', 'У договора есть связанные задачи'),
+    )
+    for table, message in checks:
+        if conn.execute(
+            f"SELECT 1 FROM {table} WHERE contract_id=? LIMIT 1",
+            (contract_id,)
+        ).fetchone():
+            return message
+    return None
+
+
+def delete_contract(conn, contract_id: int):
+    """Удаляет допустимый черновик и услуги; возвращает причину отказа.
+
+    Вызывающий код проверяет права, журналирует и делает commit/rollback.
+    SAVEPOINT защищает от частичного удаления; UPDATE получает write-lock
+    до повторной проверки условий, исключая гонку с другими писателями.
+    """
+    if not conn.in_transaction:
+        conn.execute("BEGIN IMMEDIATE")
+    conn.execute("SAVEPOINT contract_delete")
+    try:
+        conn.execute("UPDATE contracts SET id=id WHERE id=?", (contract_id,))
+        error = contract_delete_error(conn, contract_id)
+        if error:
+            conn.execute("ROLLBACK TO SAVEPOINT contract_delete")
+            conn.execute("RELEASE SAVEPOINT contract_delete")
+            return error
+        row = conn.execute(
+            "SELECT inner_number FROM contracts WHERE id=?", (contract_id,)
+        ).fetchone()
+        parts = (row['inner_number'] or '').split('-')
+        if (len(parts) == 3 and parts[0] == 'ДГ'
+                and len(parts[1]) == 4 and parts[1].isascii()
+                and parts[1].isdigit()):
+            _inner_number_counter(conn, int(parts[1]), advance=False)
+        conn.execute(
+            "DELETE FROM contract_services WHERE contract_id=?", (contract_id,)
+        )
+        conn.execute("DELETE FROM contracts WHERE id=?", (contract_id,))
+    except Exception:
+        conn.execute("ROLLBACK TO SAVEPOINT contract_delete")
+        conn.execute("RELEASE SAVEPOINT contract_delete")
+        raise
+    conn.execute("RELEASE SAVEPOINT contract_delete")
+    return None
 
 
 # ─── УСЛУГИ ─────────────────────────────────────────────────────────────────
