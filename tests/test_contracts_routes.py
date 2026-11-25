@@ -328,8 +328,8 @@ class DeleteTests(RoutesTestBase):
         self._login()
         cid = self._seed_contract()
         other = self._seed_contract(inner_number='ДГ-2026-0002')
-        self._sql('INSERT INTO contract_services (contract_id, name) VALUES (?, ?)',
-                  (cid, 'Тестовая услуга'))
+        self._sql('INSERT INTO contract_services (contract_id, name, amount_kop) VALUES (?, ?, ?)',
+                  (cid, 'Тестовая услуга', 16000000))
         r = self.client.post(f'/contracts/{cid}/delete', data=self._delete_data(cid))
         self.assertEqual(r.status_code, 302)
         self.assertTrue(r.location.endswith('/contracts/'))
