@@ -39,6 +39,33 @@
     </div>
   </div>
 
+  {% if can_edit %}
+  <details class="card border-danger mb-3">
+    <summary class="card-header text-danger">Удалить договор</summary>
+    <div class="card-body">
+      {% if can_delete %}
+      <p>Удаление черновика <strong>{{ c.inner_number or c.id }}</strong>
+        и всех его строк услуг необратимо. Восстановления через интерфейс нет.</p>
+      <form method="post" action="{{ url_for('contracts.delete_contract', contract_id=c.id) }}">
+        <input type="hidden" name="delete_token" value="{{ delete_token }}">
+        <label for="confirm-contract-number" class="form-label">
+          Для подтверждения введите номер: {{ c.inner_number or c.id }}
+        </label>
+        <input type="text" id="confirm-contract-number" name="confirm_number"
+               class="form-control mb-3" required autocomplete="off"
+               aria-describedby="contract-delete-help">
+        <p id="contract-delete-help" class="small text-muted">
+          Чтобы отменить действие, закройте этот блок, не нажимая кнопку удаления.
+        </p>
+        <button type="submit" class="btn btn-danger">Удалить договор безвозвратно</button>
+      </form>
+      {% else %}
+      <p class="mb-0" role="status">Удаление недоступно: {{ delete_error }}</p>
+      {% endif %}
+    </div>
+  </details>
+  {% endif %}
+
   <div class="row g-3">
 
     {# ── Левая колонка ── #}
