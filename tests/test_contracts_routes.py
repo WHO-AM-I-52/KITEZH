@@ -295,5 +295,241 @@ class ActionTests(RoutesTestBase):
         self.assertEqual(cnt, 1)
 
 
+class DeleteTests(RoutesTestBase):
+
+    def _sql(self, sql, params=()):
+        conn = sqlite3.connect(self.db_path)
+        try:
+            rows = conn.execute(sql, params).fetchall()
+            conn.commit()
+            return rows
+        finally:
+            conn.close()
+
+    def _delete_data(self, cid):
+        r = self.client.get(f'/contracts/{cid}')
+        self.assertEqual(r.status_code, 200)
+        with self.client.session_transaction() as s:
+            token = s['_contract_delete_token']
+        number = self._sql(
+            'SELECT inner_number FROM contracts WHERE id=?', (cid,)
+        )[0][0]
+        return {'delete_token': token, 'confirm_number': number or str(cid)}
+
+    def _assert_retained(self, cid):
+        self.assertEqual(len(self._sql(
+            'SELECT id FROM contracts WHERE id=?', (cid,)
+        )), 1)
+        self.assertEqual(self._sql(
+            "SELECT COUNT(*) FROM activity_log WHERE action='contract_delete'"
+        )[0][0], 0)
+
+    def test_delete_services_and_commit_audit(self):
+        self._login()
+        cid = self._seed_contract()
+        other = self._seed_contract(inner_number='ДГ-2026-0002')
+        self._sql('INSERT INTO contract_services (contract_id, name) VALUES (?, ?)',
+                  (cid, 'Тестовая услуга'))
+        r = self.client.post(f'/contracts/{cid}/delete', data=self._delete_data(cid))
+        self.assertEqual(r.status_code, 302)
+        self.assertTrue(r.location.endswith('/contracts/'))
+        self.assertEqual(self._sql('SELECT id FROM contracts WHERE id=?', (cid,)), [])
+        self.assertEqual(self._sql(
+            'SELECT id FROM contract_services WHERE contract_id=?', (cid,)), [])
+        self.assertEqual(len(self._sql('SELECT id FROM contracts WHERE id=?', (other,))), 1)
+        audit = self._sql(
+            "SELECT user_id, request_id, detail FROM activity_log WHERE action='contract_delete'"
+        )
+        self.assertEqual(len(audit), 1)
+        self.assertEqual(audit[0][0], self.executor_id)
+        self.assertIsNone(audit[0][1])
+        self.assertIn('ДГ-2026-0001', audit[0][2])
+        self.assertEqual(self.client.get(f'/contracts/{cid}').status_code, 404)
+
+    def test_get_and_anonymous_delete(self):
+        cid = self._seed_contract()
+        self.assertEqual(self.client.post(f'/contracts/{cid}/delete').status_code, 302)
+        self._login()
+        self.assertEqual(self.client.get(f'/contracts/{cid}/delete').status_code, 405)
+        self._assert_retained(cid)
+
+    def test_token_and_number_required(self):
+        self._login()
+        cid = self._seed_contract()
+        valid = self._delete_data(cid)
+        for token in ('', 'wrong', 'я'):
+            with self.subTest(token=token):
+                data = dict(valid, delete_token=token)
+                self.assertEqual(self.client.post(
+                    f'/contracts/{cid}/delete', data=data).status_code, 400)
+                self._assert_retained(cid)
+        for number in ('', 'wrong'):
+            with self.subTest(number=number):
+                r = self.client.post(f'/contracts/{cid}/delete',
+                                     data=dict(valid, confirm_number=number))
+                self.assertEqual(r.status_code, 302)
+                self._assert_retained(cid)
+
+    def test_permissions_and_hidden_form(self):
+        self._login()
+        cid = self._seed_contract()
+        data = self._delete_data(cid)
+        for denied in ('can_view_contracts', 'can_edit_contracts'):
+            with self.subTest(permission=denied):
+                self._login(perms={
+                    'can_view_contracts': int(denied != 'can_view_contracts'),
+                    'can_edit_contracts': int(denied != 'can_edit_contracts'),
+                })
+                self.assertEqual(self.client.post(
+                    f'/contracts/{cid}/delete', data=data).status_code, 403)
+                self._assert_retained(cid)
+        r = self.client.get(f'/contracts/{cid}')
+        self.assertEqual(r.status_code, 200)
+        self.assertNotIn('name="confirm_number"', r.get_data(as_text=True))
+
+    def test_foreign_contract_requires_management(self):
+        self._login()
+        cid = self._seed_contract()
+        data = self._delete_data(cid)
+        self._sql(
+            "INSERT INTO users (username, password, full_name, role) VALUES (?, ?, ?, ?)",
+            ('other', 'x', 'Другой исполнитель', 'contract_executor'))
+        uid = self._sql('SELECT id FROM users WHERE username=?', ('other',))[0][0]
+        self._sql('UPDATE contracts SET executor_id=?, created_by=? WHERE id=?',
+                  (uid, uid, cid))
+        self._login(perms={'can_view_contracts': 1, 'can_edit_contracts': 1,
+                           'can_view_all_contracts': 1})
+        self.assertEqual(self.client.post(
+            f'/contracts/{cid}/delete', data=data).status_code, 403)
+        self._assert_retained(cid)
+        self._login()
+        self.assertEqual(self.client.post(
+            f'/contracts/{cid}/delete', data=data).status_code, 302)
+        self.assertEqual(self._sql('SELECT id FROM contracts WHERE id=?', (cid,)), [])
+
+    def test_stage_state_registration_guards(self):
+        self._login()
+        cid = self._seed_contract()
+        data = self._delete_data(cid)
+        for column, value, original in (
+                ('stage', 'in_work', 'draft'), ('state', 'completed', 'active'),
+                ('reg_number', '81/26', None), ('reg_date', '2026-11-25', None)):
+            with self.subTest(column=column):
+                self._sql(f'UPDATE contracts SET {column}=? WHERE id=?', (value, cid))
+                r = self.client.post(f'/contracts/{cid}/delete', data=data)
+                self.assertEqual(r.status_code, 302)
+                self._assert_retained(cid)
+                html = self.client.get(f'/contracts/{cid}').get_data(as_text=True)
+                self.assertIn('Удаление недоступно:', html)
+                self.assertNotIn('name="confirm_number"', html)
+                self._sql(f'UPDATE contracts SET {column}=? WHERE id=?', (original, cid))
+
+    def test_related_records_block_deletion(self):
+        self._login()
+        cid = self._seed_contract()
+        data = self._delete_data(cid)
+        fixtures = (
+            ('contract_stage_log', 'INSERT INTO contract_stage_log (contract_id, from_stage, to_stage) VALUES (?, ?, ?)', (cid, 'customer_review', 'draft')),
+            ('contract_payments', 'INSERT INTO contract_payments (contract_id, amount_kop) VALUES (?, ?)', (cid, 100)),
+            ('contract_reviews', 'INSERT INTO contract_reviews (contract_id, body) VALUES (?, ?)', (cid, 'Совет')),
+            ('contract_activities', 'INSERT INTO contract_activities (contract_id, name) VALUES (?, ?)', (cid, 'Проверка')),
+        )
+        for table, sql, params in fixtures:
+            with self.subTest(table=table):
+                self._sql(sql, params)
+                self.assertEqual(self.client.post(
+                    f'/contracts/{cid}/delete', data=data).status_code, 302)
+                self._assert_retained(cid)
+                self.assertEqual(len(self._sql(
+                    f'SELECT id FROM {table} WHERE contract_id=?', (cid,))), 1)
+                self._sql(f'DELETE FROM {table} WHERE contract_id=?', (cid,))
+
+    def test_uploaded_file_is_preserved(self):
+        self._login()
+        cid = self._seed_contract()
+        r = self.client.post(f'/contracts/{cid}/files/upload', data={
+            'category': 'project', 'file': (io.BytesIO(b'keep-me'), 'test.docx'),
+        }, content_type='multipart/form-data')
+        self.assertEqual(r.status_code, 302)
+        data = self._delete_data(cid)
+        html = self.client.get(f'/contracts/{cid}').get_data(as_text=True)
+        self.assertIn('У договора есть прикреплённые файлы', html)
+        self.assertNotIn('name="confirm_number"', html)
+        self.assertEqual(self.client.post(
+            f'/contracts/{cid}/delete', data=data).status_code, 302)
+        self._assert_retained(cid)
+        fid = self._sql('SELECT id FROM contract_files WHERE contract_id=?', (cid,))[0][0]
+        r = self.client.get(f'/contracts/{cid}/files/{fid}/download')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.get_data(), b'keep-me')
+        r.close()
+
+    def test_linked_task_is_preserved(self):
+        self._login()
+        cid = self._seed_contract()
+        data = self._delete_data(cid)
+        self._sql('INSERT INTO tasks (title, created_by) VALUES (?, ?)',
+                  ('Сохранить задачу', self.executor_id))
+        tid = self._sql('SELECT id FROM tasks WHERE title=?', ('Сохранить задачу',))[0][0]
+        self._sql('INSERT INTO contract_tasks (contract_id, task_id) VALUES (?, ?)', (cid, tid))
+        self.assertEqual(self.client.post(
+            f'/contracts/{cid}/delete', data=data).status_code, 302)
+        self._assert_retained(cid)
+        self.assertEqual(len(self._sql('SELECT id FROM tasks WHERE id=?', (tid,))), 1)
+        self.assertEqual(len(self._sql(
+            'SELECT id FROM contract_tasks WHERE contract_id=?', (cid,))), 1)
+
+    def test_failed_audit_rolls_back_services_and_counter(self):
+        from unittest.mock import patch
+        self._login()
+        cid = self._seed_contract()
+        data = self._delete_data(cid)
+        self._sql('INSERT INTO contract_services (contract_id, name) VALUES (?, ?)', (cid, 'Услуга'))
+        settings = self._sql('SELECT key, value FROM contract_settings ORDER BY key')
+        with patch('contracts.routes.log_action', return_value=False):
+            r = self.client.post(f'/contracts/{cid}/delete', data=data)
+        self.assertEqual(r.status_code, 302)
+        self._assert_retained(cid)
+        self.assertEqual(len(self._sql(
+            'SELECT id FROM contract_services WHERE contract_id=?', (cid,))), 1)
+        self.assertEqual(self._sql('SELECT key, value FROM contract_settings ORDER BY key'), settings)
+        with patch('contracts.routes.log_action', side_effect=RuntimeError('audit failed')):
+            with self.assertRaises(RuntimeError):
+                self.client.post(f'/contracts/{cid}/delete', data=data)
+        self._assert_retained(cid)
+        self.assertEqual(self._sql('SELECT key, value FROM contract_settings ORDER BY key'), settings)
+
+    def test_number_not_reused_after_middle_and_last_delete(self):
+        from datetime import datetime
+        from contracts import repository
+        self._login()
+        year = datetime.utcnow().year
+        first = self._seed_contract(inner_number=f'ДГ-{year}-0001')
+        last = self._seed_contract(inner_number=f'ДГ-{year}-0003')
+        for cid in (first, last):
+            r = self.client.post(f'/contracts/{cid}/delete', data=self._delete_data(cid))
+            self.assertEqual(r.status_code, 302)
+            self.assertEqual(self._sql('SELECT id FROM contracts WHERE id=?', (cid,)), [])
+            conn = sqlite3.connect(self.db_path)
+            try:
+                number = repository.next_inner_number(conn)
+                self.assertEqual(number, f'ДГ-{year}-0004')
+                conn.rollback()
+            finally:
+                conn.close()
+
+    def test_missing_and_repeated_delete(self):
+        self._login()
+        cid = self._seed_contract()
+        data = self._delete_data(cid)
+        self.assertEqual(self.client.post('/contracts/999999/delete', data=data).status_code, 404)
+        self._assert_retained(cid)
+        self.assertEqual(self.client.post(f'/contracts/{cid}/delete', data=data).status_code, 302)
+        self.assertEqual(self.client.post(f'/contracts/{cid}/delete', data=data).status_code, 404)
+        self.assertEqual(self._sql(
+            "SELECT COUNT(*) FROM activity_log WHERE action='contract_delete'"
+        )[0][0], 1)
+
+
 if __name__ == '__main__':
     unittest.main()
