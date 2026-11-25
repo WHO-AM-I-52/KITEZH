@@ -7,6 +7,7 @@
 # ╚══════════════════════════════════════════════════════════════════════╝
 
 import os
+import secrets
 
 from datetime import datetime
 
@@ -152,6 +153,14 @@ def detail(contract_id):
     stage_log = repository.get_stage_log(conn, contract_id)
     activities = repository.get_activities(conn, contract_id)
     paid = sum(p['amount_kop'] for p in payments if p['kind'] == 'income')
+    can_edit = _can_edit(contract)
+    delete_error = (repository.contract_delete_error(conn, contract_id)
+                    if can_edit else 'Недостаточно прав для удаления договора')
+    delete_token = ''
+    if can_edit:
+        if not session.get('_contract_delete_token'):
+            session['_contract_delete_token'] = secrets.token_urlsafe(32)
+        delete_token = session['_contract_delete_token']
     return render_template(
         'contracts/detail.html',
         c=contract, services=services, files=files, payments=payments,
@@ -166,7 +175,9 @@ def detail(contract_id):
         vat=pricing.vat_from_total(
             contract['total_kop'] or 0, contract['vat_percent'] or '22'
         ) if not contract['is_free'] else 0,
-        can_edit=_can_edit(contract),
+        can_edit=can_edit,
+        can_delete=can_edit and delete_error is None,
+        delete_error=delete_error, delete_token=delete_token,
         can_manage=_perm('can_manage_contracts'),
         can_payments=_perm('can_contract_payments'),
         rub=pricing.rub, rub_words=pricing.rub_in_words,
@@ -198,6 +209,44 @@ def edit_contract(contract_id):
         flash('Изменения сохранены', 'success')
         return redirect(url_for('contracts.detail', contract_id=contract_id))
     return _render_form(contract)
+
+
+@contracts_bp.route('/<int:contract_id>/delete', methods=['POST'])
+@login_required
+def delete_contract(contract_id):
+    token = session.get('_contract_delete_token', '')
+    supplied = request.form.get('delete_token', '')
+    if not token or not secrets.compare_digest(
+            token.encode('utf-8'), supplied.encode('utf-8')):
+        abort(400)
+    conn = _db()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        contract = _get_or_404(contract_id)
+        if not _can_edit(contract):
+            abort(403)
+        number = contract['inner_number'] or str(contract_id)
+        if request.form.get('confirm_number', '').strip() != number:
+            conn.rollback()
+            flash('Для удаления подтвердите номер договора', 'danger')
+            return redirect(url_for('contracts.detail', contract_id=contract_id))
+        error = repository.delete_contract(conn, contract_id)
+        if error:
+            conn.rollback()
+            flash(error, 'danger')
+            return redirect(url_for('contracts.detail', contract_id=contract_id))
+        if not log_action(
+                conn, session['user_id'], 'contract_delete',
+                detail=f'Удалён черновик договора #{contract_id}: {number}'):
+            conn.rollback()
+            flash('Не удалось сохранить журнал. Договор не удалён', 'danger')
+            return redirect(url_for('contracts.detail', contract_id=contract_id))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    flash(f'Черновик договора {number} удалён', 'success')
+    return redirect(url_for('contracts.list_contracts'))
 
 
 def _render_form(contract):
