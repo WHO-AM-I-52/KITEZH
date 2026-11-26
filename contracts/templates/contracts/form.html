@@ -156,9 +156,11 @@
                  value="{{ (c.signatory_name or '') if c else '' }}">
         </div>
         <div class="col-6 col-md-4">
-          <label class="form-label">Должность</label>
+          <label class="form-label">Должность (в родительном падеже)</label>
           <input type="text" class="form-control" name="signatory_position"
-                 value="{{ (c.signatory_position or '') if c else '' }}">
+                 value="{{ (c.signatory_position or '') if c else '' }}"
+                 placeholder="генерального директора">
+          <div class="form-text">В подписи подставится именительный падеж автоматически</div>
         </div>
         <div class="col-6 col-md-4">
           <label class="form-label">Основание полномочий</label>
