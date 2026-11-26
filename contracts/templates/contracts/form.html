@@ -29,7 +29,7 @@
 
   {% if is_new %}
   <div class="text-muted small mb-3">
-    Поля со звёздочкой обязательны. Не обязательны: кадастровые номера, описание объекта, контактное лицо (с телефоном и e-mail), номер по Directum.
+    Поля со звёздочкой обязательны. Не обязательны: кадастровые номера, описание объекта, площадь, контактное лицо (с телефоном и e-mail), номер по Directum.
   </div>
   {% endif %}
 
@@ -308,7 +308,7 @@ document.addEventListener('DOMContentLoaded', function () {
       'customer_short_name', 'customer_inn', 'customer_address',
       'signatory_name', 'signatory_position', 'signatory_basis',
       'project_name', 'object_type_id',
-      'area_ha', 'address', 'district_id', 'executor_id'
+      'address', 'district_id', 'executor_id'
     ].forEach(function (n) { mark(n, true); });
     mark('customer_kpp', ctype === 'legal');
     mark('customer_ogrn', ctype !== 'individual');
