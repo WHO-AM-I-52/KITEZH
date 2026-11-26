@@ -16,7 +16,7 @@ from datetime import datetime
 import docx
 
 from paths import UPLOADS_DIR
-from . import pricing
+from . import positions, pricing
 
 CONTRACTS_UPLOAD_DIR = os.path.join(UPLOADS_DIR, 'contracts')
 
@@ -366,6 +366,7 @@ def generate_contract_docx(conn, contract, services) -> str:
     # без названия, {{customer_signatory_position}} и {{customer_signatory_name}}
     # — должность и ФИО подписанта; ранее: {{customer_info}},
     # {{customer_full_name}}, {{customer_short_name}}, {{object_address}}.
+    # Должность в подписи — в именительном падеже из positions.
     labels = {
         '{{customer_preamble}}': _preamble(contract),
         '{{price_clause}}': (
@@ -388,7 +389,9 @@ def generate_contract_docx(conn, contract, services) -> str:
             f"{contract['signatory_position'] or ''} "
             f"{contract['signatory_name'] or ''}"
         ),
-        '{{customer_signatory_position}}': contract['signatory_position'] or '',
+        '{{customer_signatory_position}}': positions.signature_position(
+            contract['signatory_position']
+        ),
         '{{customer_signatory_name}}': contract['signatory_name'] or '',
         '{{reg_number}}': contract['reg_number'] or '___',
         '{{doc_date}}': (
