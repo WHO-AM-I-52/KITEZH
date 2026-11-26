@@ -4,7 +4,7 @@
 # ║  услуги, файлы, оплаты, DOCX и API подсказки.                          ║
 # ║  Права: can_view_contracts / can_view_all_contracts /                  ║
 # ║  can_edit_contracts / can_manage_contracts / can_contract_payments.    ║
-# ╚══════════════════════════════════════════════════════════════════════╝
+# ╚═══════════════════════════════════════════════════════════════════════╝
 
 import os
 import secrets
@@ -27,7 +27,7 @@ from contracts.workdays import fmt as wd_fmt
 from . import contracts_bp
 
 
-# ─── СОЕДИНЕНИЕ НА ВРЕМЯ ЗАПРОСА ────────────────────────────────────────────
+# ─── СОЕДИНЕНИЕ НА ВРЕМЯ ЗАПРОСА ────────────────────────────────────────────────────────
 
 def _db():
     conn = g.get('_contracts_db')
@@ -49,7 +49,7 @@ def _close_db(exc):
         conn.close()
 
 
-# ─── ПРАВА И ДОСТУП ─────────────────────────────────────────────────────────
+# ─── ПРАВА И ДОСТУП ───────────────────────────────────────────────────────────────────────
 
 def _perm(key):
     return get_user_perm(key)
@@ -94,7 +94,88 @@ def _rub_to_kop(value):
         return None
 
 
-# ─── РЕЕСТР ────────────────────────────────────────────────────────────────
+# ─── ПРОВЕРКА ОБЯЗАТЕЛЬНЫХ ПОЛЕЙ ПРИ СОЗДАНИИ ───────────────────────────
+
+# Не обязательны: кадастровые номера, описание объекта, контактное лицо
+# (с телефоном и e-mail), номер по Directum. Исполнитель берётся из формы,
+# а при отсутствии — текущий пользователь (repository.insert_contract).
+_REQUIRED_ALWAYS = (
+    ('customer_full_name', 'Полное наименование'),
+    ('customer_short_name', 'Сокращённое наименование'),
+    ('customer_inn', 'ИНН'),
+    ('customer_address', 'Адрес заказчика'),
+    ('signatory_name', 'Подписант (ФИО)'),
+    ('signatory_position', 'Должность подписанта'),
+    ('signatory_basis', 'Основание полномочий'),
+    ('project_name', 'Название проекта'),
+    ('object_type_id', 'Тип объекта'),
+    ('area_ha', 'Площадь, га'),
+    ('address', 'Адрес объекта'),
+    ('district_id', 'Район'),
+)
+_REQUIRED_PAID = (
+    ('payment_scheme', 'Схема оплаты'),
+    ('payment_days', 'Срок оплаты'),
+    ('duration_days', 'Срок работ'),
+    ('work_start_basis', 'Основание начала работ'),
+    ('act_sign_method', 'Способ подписания актов'),
+)
+_REQUIRED_FREE = (
+    ('free_basis', 'Основание поручения'),
+    ('free_basis_date', 'Дата поручения'),
+)
+
+
+def _is_blank(form, name):
+    return not (form.get(name) or '').strip()
+
+
+def _is_digits(value, length=None):
+    value = (value or '').strip()
+    ok = value.isascii() and value.isdigit()
+    return ok and (length is None or len(value) == length)
+
+
+def validate_new_contract(form):
+    """Список ошибок для новой карточки; пустой — данные приняты.
+
+    Проверка действует только при создании; редактирование не проверяется,
+    чтобы не блокировать уже созданные карточки с неполными данными.
+    """
+    errors = []
+    ctype = form.get('customer_type') or 'legal'
+    if ctype not in ('legal', 'ip', 'individual'):
+        errors.append('Неизвестный тип заказчика')
+        ctype = 'legal'
+    is_free = str(form.get('is_free')) == '1'
+
+    required = list(_REQUIRED_ALWAYS)
+    if ctype == 'legal':
+        required.append(('customer_kpp', 'КПП'))
+    if ctype != 'individual':
+        required.append(('customer_ogrn', 'ОГРН / ОГРНИП'))
+    required += _REQUIRED_FREE if is_free else _REQUIRED_PAID
+
+    for name, label in required:
+        if _is_blank(form, name):
+            errors.append(f'Не заполнено: {label}')
+
+    if not _is_blank(form, 'customer_inn'):
+        need = 10 if ctype == 'legal' else 12
+        if not _is_digits(form.get('customer_inn'), need):
+            errors.append(f'ИНН должен состоять из {need} цифр')
+
+    if not is_free:
+        for name, label in (('payment_days', 'Срок оплаты'),
+                            ('duration_days', 'Срок работ')):
+            value = form.get(name)
+            if (not _is_blank(form, name)
+                    and not (_is_digits(value) and int(value) > 0)):
+                errors.append(f'{label}: нужно целое число больше нуля')
+    return errors
+
+
+# ─── РЕЕСТР ─────────────────────────────────────────────────────────────────────────────
 
 @contracts_bp.route('/')
 @login_required
@@ -125,6 +206,9 @@ def new_contract():
         abort(403)
     if request.method == 'POST':
         form = {f: request.form.get(f) for f in repository.CONTRACT_FIELDS}
+        errors = validate_new_contract(form)
+        if errors:
+            return _render_form(form, errors=errors, is_new=True), 400
         conn = _db()
         try:
             contract_id = repository.insert_contract(
@@ -249,7 +333,7 @@ def delete_contract(contract_id):
     return redirect(url_for('contracts.list_contracts'))
 
 
-def _render_form(contract):
+def _render_form(contract, errors=None, is_new=None):
     conn = _db()
     tariffs = repository.get_tariff_items(conn)
     return render_template(
@@ -260,11 +344,12 @@ def _render_form(contract):
         executors=repository.list_executors(conn),
         districts=repository.list_districts(conn),
         rub=pricing.rub,
-        is_new=contract is None,
+        errors=errors or [],
+        is_new=(contract is None) if is_new is None else is_new,
     )
 
 
-# ─── ПЕРЕХОДЫ И СОБЫТИЯ ────────────────────────────────────────────────────
+# ─── ПЕРЕХОДЫ И СОБЫТИЯ ──────────────────────────────────────────────────────────────
 
 @contracts_bp.route('/<int:contract_id>/transition', methods=['POST'])
 @login_required
@@ -326,7 +411,7 @@ def acts_sent(contract_id):
     return redirect(url_for('contracts.detail', contract_id=contract_id))
 
 
-# ─── УСЛУГИ ПО ПРИКАЗУ ─────────────────────────────────────────────────────
+# ─── УСЛУГИ ПО ПРИКАЗУ ─────────────────────────────────────────────────────────────────
 
 @contracts_bp.route('/<int:contract_id>/services/add', methods=['POST'])
 @login_required
@@ -381,7 +466,7 @@ def delete_service(contract_id, service_id):
     return redirect(url_for('contracts.detail', contract_id=contract_id))
 
 
-# ─── ФАЙЛЫ ─────────────────────────────────────────────────────────────────
+# ─── ФАЙЛЫ ──────────────────────────────────────────────────────────────────────────────
 
 @contracts_bp.route('/<int:contract_id>/files/upload', methods=['POST'])
 @login_required
@@ -494,7 +579,7 @@ def add_review(contract_id):
     return redirect(url_for('contracts.detail', contract_id=contract_id))
 
 
-# ─── ГЕНЕРАЦИЯ ДОГОВОРА ─────────────────────────────────────────────────────
+# ─── ГЕНЕРАЦИЯ ДОГОВОРА ─────────────────────────────────────────────────────────
 
 @contracts_bp.route('/<int:contract_id>/docx')
 @login_required
@@ -513,7 +598,7 @@ def generate_docx(contract_id):
     return send_file(path, as_attachment=True, download_name=name)
 
 
-# ─── API: СПРАВОЧНИК И ТАРИФЫ ───────────────────────────────────────────────
+# ─── API: СПРАВОЧНИК И ТАРИФЫ ──────────────────────────────────────────────────────────
 
 @contracts_bp.route('/api/directory/search')
 @login_required
