@@ -29,7 +29,7 @@
 
   {% if is_new %}
   <div class="text-muted small mb-3">
-    Поля со звёздочкой обязательны. Не обязательны: кадастровые номера, описание объекта, площадь, контактное лицо (с телефоном и e-mail), номер по Directum.
+    Поля со звёздочкой обязательны. Не обязательны: кадастровые номера, описание объекта, площадь, контактное лицо (с телефоном и e-mail), номер по Directum. Банковские реквизиты обязательны для юрлица и ИП.
   </div>
   {% endif %}
 
@@ -110,9 +110,44 @@
                  value="{{ (c.customer_ogrn or '') if c else '' }}">
         </div>
         <div class="col-12 col-md-6">
-          <label class="form-label">Адрес</label>
+          <label class="form-label">Юридический адрес</label>
           <input type="text" class="form-control" name="customer_address"
                  value="{{ (c.customer_address or '') if c else '' }}">
+        </div>
+        <div class="col-12 col-md-6">
+          <label class="form-label">Фактический (почтовый) адрес</label>
+          <input type="text" class="form-control" name="customer_fact_address"
+                 value="{{ (c.customer_fact_address or '') if c else '' }}">
+        </div>
+        <div class="col-12 col-md-4">
+          <label class="form-label">E-mail организации</label>
+          <input type="email" class="form-control" name="customer_email"
+                 value="{{ (c.customer_email or '') if c else '' }}">
+        </div>
+        <div class="col-12"><hr class="my-1"></div>
+        <div class="col-12 col-md-6">
+          <label class="form-label">Банк</label>
+          <input type="text" class="form-control" name="customer_bank_name"
+                 value="{{ (c.customer_bank_name or '') if c else '' }}"
+                 placeholder="Напр.: Волго-Вятский Банк ПАО Сбербанк">
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label">БИК</label>
+          <input type="text" class="form-control" name="customer_bank_bik"
+                 inputmode="numeric" maxlength="9" pattern="[0-9]{9}" title="9 цифр"
+                 value="{{ (c.customer_bank_bik or '') if c else '' }}">
+        </div>
+        <div class="col-12 col-md-6">
+          <label class="form-label">Расчётный счёт (р/с)</label>
+          <input type="text" class="form-control" name="customer_bank_account"
+                 inputmode="numeric" maxlength="20" pattern="[0-9]{20}" title="20 цифр"
+                 value="{{ (c.customer_bank_account or '') if c else '' }}">
+        </div>
+        <div class="col-12 col-md-6">
+          <label class="form-label">Корреспондентский счёт (к/с)</label>
+          <input type="text" class="form-control" name="customer_bank_corr_account"
+                 inputmode="numeric" maxlength="20" pattern="[0-9]{20}" title="20 цифр"
+                 value="{{ (c.customer_bank_corr_account or '') if c else '' }}">
         </div>
         <div class="col-12"><hr class="my-1"></div>
         <div class="col-12 col-md-4">
@@ -141,9 +176,10 @@
                  value="{{ (c.contact_phone or '') if c else '' }}">
         </div>
         <div class="col-6 col-md-4">
-          <label class="form-label">E-mail</label>
+          <label class="form-label">E-mail контактного лица</label>
           <input type="email" class="form-control" name="contact_email"
-                 value="{{ (c.contact_email or '') if c else '' }}">
+                 value="{{ (c.contact_email or '') if c else '' }}"
+                 placeholder="Если пусто — в п. 1.4 будет e-mail организации">
         </div>
       </div>
     </div>
@@ -306,12 +342,17 @@ document.addEventListener('DOMContentLoaded', function () {
     var ctype = typeSel.value;
     [
       'customer_short_name', 'customer_inn', 'customer_address',
+      'customer_fact_address', 'customer_email',
       'signatory_name', 'signatory_position', 'signatory_basis',
       'project_name', 'object_type_id',
       'address', 'district_id', 'executor_id'
     ].forEach(function (n) { mark(n, true); });
     mark('customer_kpp', ctype === 'legal');
     mark('customer_ogrn', ctype !== 'individual');
+    [
+      'customer_bank_name', 'customer_bank_bik',
+      'customer_bank_account', 'customer_bank_corr_account'
+    ].forEach(function (n) { mark(n, ctype !== 'individual'); });
     mark('free_basis', isFree);
     mark('free_basis_date', isFree);
     [
