@@ -7,6 +7,7 @@
 # ╚══════════════════════════════════════════════════════════════════════╝
 
 import os
+import re
 import secrets
 
 from datetime import datetime
@@ -33,6 +34,8 @@ def _db():
     conn = g.get('_contracts_db')
     if conn is None:
         conn = get_db()
+        if repository.ensure_contract_columns(conn):
+            conn.commit()
         g._contracts_db = conn
     return conn
 
@@ -103,7 +106,9 @@ _REQUIRED_ALWAYS = (
     ('customer_full_name', 'Полное наименование'),
     ('customer_short_name', 'Сокращённое наименование'),
     ('customer_inn', 'ИНН'),
-    ('customer_address', 'Адрес заказчика'),
+    ('customer_address', 'Юридический адрес заказчика'),
+    ('customer_fact_address', 'Фактический (почтовый) адрес заказчика'),
+    ('customer_email', 'E-mail организации'),
     ('signatory_name', 'Подписант (ФИО)'),
     ('signatory_position', 'Должность подписанта'),
     ('signatory_basis', 'Основание полномочий'),
@@ -111,6 +116,12 @@ _REQUIRED_ALWAYS = (
     ('object_type_id', 'Тип объекта'),
     ('address', 'Адрес объекта'),
     ('district_id', 'Район'),
+)
+_REQUIRED_BANK = (
+    ('customer_bank_account', 'Расчётный счёт'),
+    ('customer_bank_name', 'Банк'),
+    ('customer_bank_bik', 'БИК'),
+    ('customer_bank_corr_account', 'Корреспондентский счёт'),
 )
 _REQUIRED_PAID = (
     ('payment_scheme', 'Схема оплаты'),
@@ -123,6 +134,7 @@ _REQUIRED_FREE = (
     ('free_basis', 'Основание поручения'),
     ('free_basis_date', 'Дата поручения'),
 )
+_EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
 
 
 def _is_blank(form, name):
@@ -153,6 +165,8 @@ def validate_new_contract(form):
         required.append(('customer_kpp', 'КПП'))
     if ctype != 'individual':
         required.append(('customer_ogrn', 'ОГРН / ОГРНИП'))
+    if ctype in ('legal', 'ip'):
+        required += _REQUIRED_BANK
     required += _REQUIRED_FREE if is_free else _REQUIRED_PAID
 
     for name, label in required:
@@ -163,6 +177,18 @@ def validate_new_contract(form):
         need = 10 if ctype == 'legal' else 12
         if not _is_digits(form.get('customer_inn'), need):
             errors.append(f'ИНН должен состоять из {need} цифр')
+
+    for name, label, need in (
+            ('customer_bank_account', 'Расчётный счёт', 20),
+            ('customer_bank_corr_account', 'Корреспондентский счёт', 20),
+            ('customer_bank_bik', 'БИК', 9)):
+        if (not _is_blank(form, name)
+                and not _is_digits(form.get(name), need)):
+            errors.append(f'{label}: нужно {need} цифр')
+
+    email = (form.get('customer_email') or '').strip()
+    if email and not _EMAIL_RE.match(email):
+        errors.append('E-mail организации указан неверно')
 
     if not is_free:
         for name, label in (('payment_days', 'Срок оплаты'),
