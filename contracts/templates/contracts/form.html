@@ -2,6 +2,9 @@
 {% block title %}{{ 'Новый договор' if is_new else 'Редактирование договора' }}{% endblock %}
 
 {% block content %}
+<style>
+  label.req::after { content: " *"; color: #dc3545; }
+</style>
 <div class="container-fluid mt-3" style="max-width: 1100px;">
 
   <div class="d-flex justify-content-between align-items-center mb-3">
@@ -13,7 +16,24 @@
     </a>
   </div>
 
-  <form method="post">
+  {% if errors %}
+  <div class="alert alert-danger">
+    <div class="fw-bold mb-1">Договор не создан. Исправьте:</div>
+    <ul class="mb-0">
+      {% for err in errors %}
+      <li>{{ err }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {% if is_new %}
+  <div class="text-muted small mb-3">
+    Поля со звёздочкой обязательны. Не обязательны: кадастровые номера, описание объекта, контактное лицо, номер по Directum.
+  </div>
+  {% endif %}
+
+  <form method="post" id="contract-form" data-new="{{ '1' if is_new else '0' }}">
 
     {# ─── Тип договора ─── #}
     <div class="card mb-3">
@@ -22,20 +42,20 @@
         <div class="col-12 col-md-4">
           <label class="form-label">Возмездность</label>
           <select class="form-select" name="is_free" id="id_is_free">
-            <option value="0" {{ 'selected' if not c or not c.is_free }}>Возмездный</option>
-            <option value="1" {{ 'selected' if c and c.is_free }}>Безвозмездный (поручение руководителя)</option>
+            <option value="0" {{ 'selected' if not c or c.is_free|string != '1' }}>Возмездный</option>
+            <option value="1" {{ 'selected' if c and c.is_free|string == '1' }}>Безвозмездный (поручение руководителя)</option>
           </select>
         </div>
-        <div class="col-12 col-md-4" data-free-only style="{{ '' if c and c.is_free else 'display:none' }}">
+        <div class="col-12 col-md-4" data-free-only style="{{ '' if c and c.is_free|string == '1' else 'display:none' }}">
           <label class="form-label">Основание поручения</label>
           <input type="text" class="form-control" name="free_basis"
-                 value="{{ c.free_basis if c else '' }}"
+                 value="{{ (c.free_basis or '') if c else '' }}"
                  placeholder="Напр.: поручение директора от 01.11.2026">
         </div>
-        <div class="col-12 col-md-4" data-free-only style="{{ '' if c and c.is_free else 'display:none' }}">
+        <div class="col-12 col-md-4" data-free-only style="{{ '' if c and c.is_free|string == '1' else 'display:none' }}">
           <label class="form-label">Дата поручения</label>
           <input type="date" class="form-control" name="free_basis_date"
-                 value="{{ c.free_basis_date if c else '' }}">
+                 value="{{ (c.free_basis_date or '') if c else '' }}">
         </div>
       </div>
     </div>
@@ -65,65 +85,65 @@
           </select>
         </div>
         <div class="col-12 col-md-5">
-          <label class="form-label">Полное наименование</label>
+          <label class="form-label {{ 'req' if is_new }}">Полное наименование</label>
           <input type="text" class="form-control" name="customer_full_name" required
-                 value="{{ c.customer_full_name if c else '' }}">
+                 value="{{ (c.customer_full_name or '') if c else '' }}">
         </div>
         <div class="col-6 col-md-4">
           <label class="form-label">Сокращённое</label>
           <input type="text" class="form-control" name="customer_short_name"
-                 value="{{ c.customer_short_name if c else '' }}">
+                 value="{{ (c.customer_short_name or '') if c else '' }}">
         </div>
         <div class="col-6 col-md-3">
           <label class="form-label">ИНН</label>
           <input type="text" class="form-control" name="customer_inn"
-                 value="{{ c.customer_inn if c else '' }}">
+                 value="{{ (c.customer_inn or '') if c else '' }}">
         </div>
         <div class="col-6 col-md-3">
           <label class="form-label">КПП</label>
           <input type="text" class="form-control" name="customer_kpp"
-                 value="{{ c.customer_kpp if c else '' }}">
+                 value="{{ (c.customer_kpp or '') if c else '' }}">
         </div>
         <div class="col-6 col-md-3">
           <label class="form-label">ОГРН</label>
           <input type="text" class="form-control" name="customer_ogrn"
-                 value="{{ c.customer_ogrn if c else '' }}">
+                 value="{{ (c.customer_ogrn or '') if c else '' }}">
         </div>
         <div class="col-12 col-md-6">
           <label class="form-label">Адрес</label>
           <input type="text" class="form-control" name="customer_address"
-                 value="{{ c.customer_address if c else '' }}">
+                 value="{{ (c.customer_address or '') if c else '' }}">
         </div>
         <div class="col-12"><hr class="my-1"></div>
         <div class="col-12 col-md-4">
           <label class="form-label">Подписант (ФИО)</label>
           <input type="text" class="form-control" name="signatory_name"
-                 value="{{ c.signatory_name if c else '' }}">
+                 value="{{ (c.signatory_name or '') if c else '' }}">
         </div>
         <div class="col-6 col-md-4">
           <label class="form-label">Должность</label>
           <input type="text" class="form-control" name="signatory_position"
-                 value="{{ c.signatory_position if c else '' }}">
+                 value="{{ (c.signatory_position or '') if c else '' }}">
         </div>
         <div class="col-6 col-md-4">
           <label class="form-label">Основание полномочий</label>
           <input type="text" class="form-control" name="signatory_basis"
-                 value="{{ c.signatory_basis if c else '' }}" placeholder="Устава">
+                 value="{{ (c.signatory_basis or '') if c else '' }}" placeholder="Устава">
         </div>
         <div class="col-12 col-md-4">
           <label class="form-label">Контактное лицо</label>
           <input type="text" class="form-control" name="contact_name"
-                 value="{{ c.contact_name if c else '' }}">
+                 value="{{ (c.contact_name or '') if c else '' }}">
         </div>
         <div class="col-6 col-md-4">
           <label class="form-label">Телефон</label>
           <input type="text" class="form-control" name="contact_phone"
-                 value="{{ c.contact_phone if c else '' }}">
+                 value="{{ (c.contact_phone or '') if c else '' }}">
         </div>
         <div class="col-6 col-md-4">
           <label class="form-label">E-mail</label>
           <input type="email" class="form-control" name="contact_email"
-                 value="{{ c.contact_email if c else '' }}">
+                 value="{{ (c.contact_email or '') if c else '' }}">
         </div>
       </div>
     </div>
@@ -135,14 +155,14 @@
         <div class="col-12 col-md-6">
           <label class="form-label">Название проекта</label>
           <input type="text" class="form-control" name="project_name"
-                 value="{{ c.project_name if c else '' }}">
+                 value="{{ (c.project_name or '') if c else '' }}">
         </div>
         <div class="col-6 col-md-3">
           <label class="form-label">Тип объекта</label>
           <select class="form-select" name="object_type_id">
             <option value="">—</option>
             {% for ot in object_types %}
-            <option value="{{ ot.id }}" {{ 'selected' if c and c.object_type_id == ot.id }}>
+            <option value="{{ ot.id }}" {{ 'selected' if c and c.object_type_id|string == ot.id|string }}>
               {{ ot.parent_name ~ ' / ' if ot.parent_name }}{{ ot.name }}
             </option>
             {% endfor %}
@@ -151,36 +171,36 @@
         <div class="col-6 col-md-3">
           <label class="form-label">Площадь, га</label>
           <input type="text" class="form-control" name="area_ha"
-                 value="{{ c.area_ha if c else '' }}" placeholder="1,3333">
+                 value="{{ (c.area_ha or '') if c else '' }}" placeholder="1,3333">
         </div>
         <div class="col-12">
           <label class="form-label">Описание объекта</label>
-          <textarea class="form-control" name="object_description" rows="2">{{ c.object_description if c else '' }}</textarea>
+          <textarea class="form-control" name="object_description" rows="2">{{ (c.object_description or '') if c else '' }}</textarea>
         </div>
         <div class="col-12 col-md-8">
           <label class="form-label">Адрес объекта</label>
           <input type="text" class="form-control" name="address"
-                 value="{{ c.address if c else '' }}">
+                 value="{{ (c.address or '') if c else '' }}">
         </div>
         <div class="col-6 col-md-4">
           <label class="form-label">Район</label>
           <select class="form-select" name="district_id">
             <option value="">—</option>
             {% for d in districts %}
-            <option value="{{ d.id }}" {{ 'selected' if c and c.district_id == d.id }}>{{ d.name }}</option>
+            <option value="{{ d.id }}" {{ 'selected' if c and c.district_id|string == d.id|string }}>{{ d.name }}</option>
             {% endfor %}
           </select>
         </div>
         <div class="col-6 col-md-4">
           <label class="form-label">Кадастровые номера</label>
           <input type="text" class="form-control" name="cadastral_numbers"
-                 value="{{ c.cadastral_numbers if c else '' }}">
+                 value="{{ (c.cadastral_numbers or '') if c else '' }}">
         </div>
         <div class="col-6 col-md-4">
           <label class="form-label">Исполнитель</label>
           <select class="form-select" name="executor_id">
             {% for e in executors %}
-            <option value="{{ e.id }}" {{ 'selected' if (not c and e.id == session.user_id) or (c and c.executor_id == e.id) }}>
+            <option value="{{ e.id }}" {{ 'selected' if (not c and e.id == session.user_id) or (c and c.executor_id|string == e.id|string) }}>
               {{ e.full_name }}
             </option>
             {% endfor %}
@@ -205,7 +225,7 @@
         <div class="col-6 col-md-2">
           <label class="form-label">Срок оплаты</label>
           <input type="number" min="1" class="form-control" name="payment_days"
-                 value="{{ c.payment_days if c else '' }}">
+                 value="{{ (c.payment_days or '') if c else '' }}">
         </div>
         <div class="col-6 col-md-2">
           <label class="form-label">Тип дней оплаты</label>
@@ -217,7 +237,7 @@
         <div class="col-6 col-md-2">
           <label class="form-label">Срок работ, дней</label>
           <input type="number" min="1" class="form-control" name="duration_days"
-                 value="{{ c.duration_days if c else '' }}">
+                 value="{{ (c.duration_days or '') if c else '' }}">
         </div>
         <div class="col-6 col-md-3">
           <label class="form-label">Тип дней работ</label>
@@ -247,7 +267,7 @@
         <div class="col-6 col-md-4">
           <label class="form-label">Номер по Directum</label>
           <input type="text" class="form-control" name="reg_number"
-                 value="{{ c.reg_number if c else '' }}"
+                 value="{{ (c.reg_number or '') if c else '' }}"
                  placeholder="Присваивается после подписания">
         </div>
       </div>
@@ -264,8 +284,43 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-  // Безвозмездный: скрываем блок условий
+  var contractForm = document.getElementById('contract-form');
+  var isNewForm = contractForm.dataset.new === '1';
+
+  // Обязательность полей действует только при создании карточки
+  function mark(name, flag) {
+    var el = contractForm.elements[name];
+    if (!el) return;
+    var on = isNewForm && flag;
+    el.required = on;
+    var box = el.closest('[class*="col-"]');
+    var lbl = box ? box.querySelector('label') : null;
+    if (lbl) lbl.classList.toggle('req', on);
+  }
+
+  var typeSel = document.getElementById('id_customer_type');
   var freeSel = document.getElementById('id_is_free');
+
+  function applyRequired() {
+    var isFree = freeSel.value === '1';
+    var ctype = typeSel.value;
+    [
+      'customer_short_name', 'customer_inn', 'customer_address',
+      'signatory_name', 'signatory_position', 'signatory_basis',
+      'contact_phone', 'contact_email', 'project_name', 'object_type_id',
+      'area_ha', 'address', 'district_id', 'executor_id'
+    ].forEach(function (n) { mark(n, true); });
+    mark('customer_kpp', ctype === 'legal');
+    mark('customer_ogrn', ctype !== 'individual');
+    mark('free_basis', isFree);
+    mark('free_basis_date', isFree);
+    [
+      'payment_scheme', 'payment_days', 'duration_days',
+      'work_start_basis', 'act_sign_method'
+    ].forEach(function (n) { mark(n, !isFree); });
+  }
+
+  // Безвозмездный: скрываем блок условий
   var paid = document.querySelector('[data-paid-block]');
   function refresh() {
     var isFree = freeSel.value === '1';
@@ -273,8 +328,10 @@ document.addEventListener('DOMContentLoaded', function () {
     document.querySelectorAll('[data-free-only]').forEach(function (el) {
       el.style.display = isFree ? '' : 'none';
     });
+    applyRequired();
   }
   freeSel.addEventListener('change', refresh);
+  typeSel.addEventListener('change', applyRequired);
   refresh();
 
   // Поиск в телефонном справочнике
