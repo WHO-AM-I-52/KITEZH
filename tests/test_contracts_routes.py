@@ -144,6 +144,58 @@ class RoutesTestBase(unittest.TestCase):
         conn.close()
         return cid
 
+    def _valid_form(self, **overrides):
+        """Полный набор полей для успешного создания возмездного договора юрлица."""
+        form = {
+            'is_free': '0',
+            'customer_type': 'legal',
+            'customer_full_name': 'ООО «Новая»',
+            'customer_short_name': 'ООО «Новая»',
+            'customer_inn': '5250000000',
+            'customer_kpp': '525001001',
+            'customer_ogrn': '1025200000000',
+            'customer_address': 'г. Нижний Новгород, ул. Юридическая, 1',
+            'customer_fact_address': 'г. Нижний Новгород, ул. Почтовая, 2',
+            'customer_email': 'info@novaya.example',
+            'customer_bank_account': '40702810000000000001',
+            'customer_bank_name': 'ПАО Банк',
+            'customer_bank_bik': '042202603',
+            'customer_bank_corr_account': '30101810900000000603',
+            'signatory_name': 'Петров Пётр Петрович',
+            'signatory_position': 'Генеральный директор',
+            'signatory_basis': 'Устава',
+            'project_name': 'Новый проект',
+            'address': 'г. Нижний Новгород, ул. Объектная, 3',
+            'payment_scheme': 'prepay_100',
+            'payment_days': '10',
+            'duration_days': '10',
+            'work_start_basis': 'payment',
+            'act_sign_method': 'edo_upp',
+        }
+        conn = sqlite3.connect(self.db_path)
+        try:
+            obj = conn.execute(
+                'SELECT id FROM contract_object_types ORDER BY id LIMIT 1'
+            ).fetchone()
+            dist = conn.execute(
+                'SELECT id FROM districts ORDER BY id LIMIT 1'
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertIsNotNone(obj, 'в тестовой БД нет типов объектов')
+        self.assertIsNotNone(dist, 'в тестовой БД нет районов')
+        form['object_type_id'] = str(obj[0])
+        form['district_id'] = str(dist[0])
+        form.update(overrides)
+        return form
+
+    def _count_contracts(self):
+        conn = sqlite3.connect(self.db_path)
+        try:
+            return conn.execute('SELECT COUNT(*) FROM contracts').fetchone()[0]
+        finally:
+            conn.close()
+
 
 class AccessTests(RoutesTestBase):
 
@@ -175,6 +227,39 @@ class ActionTests(RoutesTestBase):
 
     def test_create_contract(self):
         self._login()
+        r = self.client.post('/contracts/new', data=self._valid_form(),
+                             follow_redirects=True)
+        self.assertEqual(r.status_code, 200)
+        self.assertIn('Договор создан', r.get_data(as_text=True))
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT * FROM contracts WHERE customer_full_name=?",
+            ('ООО «Новая»',)
+        ).fetchone()
+        conn.close()
+        self.assertIsNotNone(row)
+        self.assertEqual(row['customer_address'],
+                         'г. Нижний Новгород, ул. Юридическая, 1')
+        self.assertEqual(row['customer_fact_address'],
+                         'г. Нижний Новгород, ул. Почтовая, 2')
+        self.assertEqual(row['customer_email'], 'info@novaya.example')
+        self.assertEqual(row['customer_bank_account'], '40702810000000000001')
+        self.assertEqual(row['customer_bank_name'], 'ПАО Банк')
+        self.assertEqual(row['customer_bank_bik'], '042202603')
+        self.assertEqual(row['customer_bank_corr_account'],
+                         '30101810900000000603')
+
+    def test_create_without_contact_and_area(self):
+        self._login()
+        r = self.client.post('/contracts/new', data=self._valid_form(
+            contact_name='', contact_phone='', contact_email='', area_ha=''),
+            follow_redirects=True)
+        self.assertEqual(r.status_code, 200)
+        self.assertIn('Договор создан', r.get_data(as_text=True))
+
+    def test_create_rejects_missing_required_fields(self):
+        self._login()
         r = self.client.post('/contracts/new', data={
             'customer_full_name': 'ООО «Новая»',
             'customer_short_name': 'ООО «Новая»',
@@ -182,9 +267,55 @@ class ActionTests(RoutesTestBase):
             'contact_name': 'Пётр Петров',
             'project_name': 'Новый проект',
             'is_free': '0',
-        }, follow_redirects=True)
+        })
+        self.assertEqual(r.status_code, 400)
+        html = r.get_data(as_text=True)
+        for label in ('Фактический (почтовый) адрес заказчика',
+                      'E-mail организации', 'Расчётный счёт',
+                      'БИК', 'Корреспондентский счёт'):
+            with self.subTest(label=label):
+                self.assertIn(f'Не заполнено: {label}', html)
+        self.assertEqual(self._count_contracts(), 0)
+
+    def test_bank_requisites_required_for_ip_but_not_individual(self):
+        self._login()
+        bank_blank = dict(
+            customer_bank_account='', customer_bank_name='',
+            customer_bank_bik='', customer_bank_corr_account='',
+        )
+        r = self.client.post('/contracts/new', data=self._valid_form(
+            customer_type='ip', customer_inn='525000000000',
+            customer_kpp='', **bank_blank))
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('Не заполнено: Расчётный счёт',
+                      r.get_data(as_text=True))
+        self.assertEqual(self._count_contracts(), 0)
+
+        r = self.client.post('/contracts/new', data=self._valid_form(
+            customer_type='individual', customer_inn='525000000000',
+            customer_kpp='', customer_ogrn='', **bank_blank),
+            follow_redirects=True)
         self.assertEqual(r.status_code, 200)
         self.assertIn('Договор создан', r.get_data(as_text=True))
+
+    def test_bank_and_email_formats(self):
+        self._login()
+        cases = (
+            ('customer_bank_bik', '123', 'БИК: нужно 9 цифр'),
+            ('customer_bank_account', 'abc', 'Расчётный счёт: нужно 20 цифр'),
+            ('customer_bank_corr_account', '1' * 19,
+             'Корреспондентский счёт: нужно 20 цифр'),
+            ('customer_email', 'not-an-email',
+             'E-mail организации указан неверно'),
+        )
+        for field, value, message in cases:
+            with self.subTest(field=field):
+                r = self.client.post(
+                    '/contracts/new',
+                    data=self._valid_form(**{field: value}))
+                self.assertEqual(r.status_code, 400)
+                self.assertIn(message, r.get_data(as_text=True))
+        self.assertEqual(self._count_contracts(), 0)
 
     def test_transition_creates_stage_task(self):
         self._login()
@@ -293,6 +424,39 @@ class ActionTests(RoutesTestBase):
         ).fetchone()[0]
         conn.close()
         self.assertEqual(cnt, 1)
+
+
+class ColumnMigrationTests(RoutesTestBase):
+
+    def _columns(self):
+        conn = sqlite3.connect(self.db_path)
+        try:
+            return {row[1] for row in conn.execute(
+                'PRAGMA table_info(contracts)').fetchall()}
+        finally:
+            conn.close()
+
+    def test_ensure_columns_is_idempotent(self):
+        from contracts import repository
+        conn = sqlite3.connect(self.db_path)
+        try:
+            repository.ensure_contract_columns(conn)
+            conn.commit()
+            names = {row[1] for row in conn.execute(
+                'PRAGMA table_info(contracts)').fetchall()}
+            for name, _sql_type in repository._ADDED_COLUMNS:
+                self.assertIn(name, names)
+            self.assertFalse(repository.ensure_contract_columns(conn))
+        finally:
+            conn.close()
+
+    def test_request_adds_columns_to_existing_database(self):
+        from contracts import repository
+        self._login()
+        self.assertEqual(self.client.get('/contracts/').status_code, 200)
+        names = self._columns()
+        for name, _sql_type in repository._ADDED_COLUMNS:
+            self.assertIn(name, names)
 
 
 class DeleteTests(RoutesTestBase):
