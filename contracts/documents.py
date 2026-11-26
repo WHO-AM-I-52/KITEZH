@@ -209,19 +209,55 @@ def _duration_clause(contract) -> str:
     )
 
 
-def _requisites_block(contract) -> str:
+_CUSTOMER_KIND = {
+    'legal': 'Юридическое лицо',
+    'ip': 'Индивидуальный предприниматель',
+    'individual': 'Физическое лицо',
+}
+
+
+def _customer_lines(contract, full=False) -> list:
+    """Строки с данными заказчика; пустые поля пропускаются.
+
+    full=False — реквизиты для подписной части договора;
+    full=True  — все данные заказчика (для приложений).
+    """
     lines = [contract['customer_full_name'] or '']
-    if contract['customer_inn']:
-        lines.append(f"ИНН: {contract['customer_inn']}")
-    if contract['customer_kpp']:
-        lines.append(f"КПП: {contract['customer_kpp']}")
-    if contract['customer_ogrn']:
-        lines.append(f"ОГРН/ОГРНИП: {contract['customer_ogrn']}")
-    if contract['customer_address']:
-        lines.append(f"Юридический адрес: {contract['customer_address']}")
-    if contract['contact_email']:
-        lines.append(f"E-mail: {contract['contact_email']}")
-    return '\n'.join(l for l in lines if l)
+    if full:
+        kind = _CUSTOMER_KIND.get(contract['customer_type'])
+        if kind:
+            lines.append(f"Тип заказчика: {kind}")
+        short = contract['customer_short_name']
+        if short and short != contract['customer_full_name']:
+            lines.append(f"Сокращённое наименование: {short}")
+    pairs = [
+        ('ИНН', contract['customer_inn']),
+        ('КПП', contract['customer_kpp']),
+        ('ОГРН/ОГРНИП', contract['customer_ogrn']),
+        ('Юридический адрес', contract['customer_address']),
+    ]
+    if full:
+        signatory = ' '.join(
+            x for x in (contract['signatory_position'],
+                        contract['signatory_name']) if x
+        )
+        pairs.append(('Представитель', signatory))
+        pairs.append(('Действует на основании', contract['signatory_basis']))
+    pairs += [
+        ('Контактное лицо', contract['contact_name']),
+        ('Телефон', contract['contact_phone']),
+        ('E-mail', contract['contact_email']),
+    ]
+    lines += [f"{label}: {value}" for label, value in pairs if value]
+    return [l for l in lines if l]
+
+
+def _requisites_block(contract) -> str:
+    return '\n'.join(_customer_lines(contract))
+
+
+def _customer_info_block(contract) -> str:
+    return '\n'.join(_customer_lines(contract, full=True))
 
 
 def _replace_paragraph_text(p, new_text):
@@ -267,6 +303,9 @@ def generate_contract_docx(conn, contract, services) -> str:
     if not service_lines:
         service_lines = ['- Услуги не выбраны']
 
+    # Метки для Word. Новые (этап 3): {{customer_info}} — все данные заказчика
+    # (для приложений), {{customer_full_name}}, {{customer_short_name}},
+    # {{object_address}} — адрес объекта (п. 1.1).
     labels = {
         '{{customer_preamble}}': _preamble(contract),
         '{{price_clause}}': (
@@ -277,6 +316,13 @@ def generate_contract_docx(conn, contract, services) -> str:
         '{{payment_clause}}': _payment_clause(contract),
         '{{duration_clause}}': _duration_clause(contract),
         '{{customer_requisites}}': _requisites_block(contract),
+        '{{customer_info}}': _customer_info_block(contract),
+        '{{customer_full_name}}': contract['customer_full_name'] or '',
+        '{{customer_short_name}}': (
+            contract['customer_short_name']
+            or contract['customer_full_name'] or ''
+        ),
+        '{{object_address}}': contract['address'] or '____________',
         '{{customer_signatory}}': (
             f"{contract['signatory_position'] or ''} "
             f"{contract['signatory_name'] or ''}"
