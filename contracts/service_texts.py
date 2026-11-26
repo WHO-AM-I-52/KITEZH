@@ -51,8 +51,9 @@ def _get(row, key):
 def contract_service_items(services) -> list:
     """Список (текст, количество) для п. 1.1 в порядке выбора услуг.
 
-    Позиция 2.6 раскрывается в шесть пунктов (количество у них
-    не указывается). Повторы одинакового текста убираются.
+    Позиция 2.6 раскрывается в шесть пунктов. Количество
+    указывается только у позиций без полной формулировки
+    в SERVICE_TEXTS. Повторы одинакового текста убираются.
     """
     items = []
     seen = set()
@@ -68,6 +69,9 @@ def contract_service_items(services) -> list:
             for part in PACKAGE_CONTENT:
                 add(SERVICE_TEXTS[part])
             continue
-        text = SERVICE_TEXTS.get(code) or _get(s, 'name') or ''
-        add(text, _get(s, 'qty'))
+        full_text = SERVICE_TEXTS.get(code)
+        if full_text:
+            add(full_text)
+        else:
+            add(_get(s, 'name') or '', _get(s, 'qty'))
     return items
