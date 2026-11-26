@@ -4,7 +4,7 @@
 # ║  услуги, файлы, оплаты, DOCX и API подсказки.                          ║
 # ║  Права: can_view_contracts / can_view_all_contracts /                  ║
 # ║  can_edit_contracts / can_manage_contracts / can_contract_payments.    ║
-# ╚═══════════════════════════════════════════════════════════════════════╝
+# ╚══════════════════════════════════════════════════════════════════════╝
 
 import os
 import secrets
@@ -27,7 +27,7 @@ from contracts.workdays import fmt as wd_fmt
 from . import contracts_bp
 
 
-# ─── СОЕДИНЕНИЕ НА ВРЕМЯ ЗАПРОСА ────────────────────────────────────────────────────────
+# ─── СОЕДИНЕНИЕ НА ВРЕМЯ ЗАПРОСА ────────────────────────────────────────────
 
 def _db():
     conn = g.get('_contracts_db')
@@ -49,7 +49,7 @@ def _close_db(exc):
         conn.close()
 
 
-# ─── ПРАВА И ДОСТУП ───────────────────────────────────────────────────────────────────────
+# ─── ПРАВА И ДОСТУП ─────────────────────────────────────────────────────────
 
 def _perm(key):
     return get_user_perm(key)
@@ -96,9 +96,9 @@ def _rub_to_kop(value):
 
 # ─── ПРОВЕРКА ОБЯЗАТЕЛЬНЫХ ПОЛЕЙ ПРИ СОЗДАНИИ ───────────────────────────
 
-# Не обязательны: кадастровые номера, описание объекта, контактное лицо
-# (с телефоном и e-mail), номер по Directum. Исполнитель берётся из формы,
-# а при отсутствии — текущий пользователь (repository.insert_contract).
+# Не обязательны: кадастровые номера, описание объекта, площадь, контактное
+# лицо (с телефоном и e-mail), номер по Directum. Исполнитель берётся из
+# формы, а при отсутствии — текущий пользователь (repository.insert_contract).
 _REQUIRED_ALWAYS = (
     ('customer_full_name', 'Полное наименование'),
     ('customer_short_name', 'Сокращённое наименование'),
@@ -109,7 +109,6 @@ _REQUIRED_ALWAYS = (
     ('signatory_basis', 'Основание полномочий'),
     ('project_name', 'Название проекта'),
     ('object_type_id', 'Тип объекта'),
-    ('area_ha', 'Площадь, га'),
     ('address', 'Адрес объекта'),
     ('district_id', 'Район'),
 )
@@ -175,7 +174,7 @@ def validate_new_contract(form):
     return errors
 
 
-# ─── РЕЕСТР ─────────────────────────────────────────────────────────────────────────────
+# ─── РЕЕСТР ────────────────────────────────────────────────────────────────
 
 @contracts_bp.route('/')
 @login_required
@@ -349,7 +348,7 @@ def _render_form(contract, errors=None, is_new=None):
     )
 
 
-# ─── ПЕРЕХОДЫ И СОБЫТИЯ ──────────────────────────────────────────────────────────────
+# ─── ПЕРЕХОДЫ И СОБЫТИЯ ────────────────────────────────────────────────────
 
 @contracts_bp.route('/<int:contract_id>/transition', methods=['POST'])
 @login_required
@@ -411,7 +410,7 @@ def acts_sent(contract_id):
     return redirect(url_for('contracts.detail', contract_id=contract_id))
 
 
-# ─── УСЛУГИ ПО ПРИКАЗУ ─────────────────────────────────────────────────────────────────
+# ─── УСЛУГИ ПО ПРИКАЗУ ─────────────────────────────────────────────────────
 
 @contracts_bp.route('/<int:contract_id>/services/add', methods=['POST'])
 @login_required
@@ -466,7 +465,7 @@ def delete_service(contract_id, service_id):
     return redirect(url_for('contracts.detail', contract_id=contract_id))
 
 
-# ─── ФАЙЛЫ ──────────────────────────────────────────────────────────────────────────────
+# ─── ФАЙЛЫ ─────────────────────────────────────────────────────────────────
 
 @contracts_bp.route('/<int:contract_id>/files/upload', methods=['POST'])
 @login_required
@@ -579,7 +578,7 @@ def add_review(contract_id):
     return redirect(url_for('contracts.detail', contract_id=contract_id))
 
 
-# ─── ГЕНЕРАЦИЯ ДОГОВОРА ─────────────────────────────────────────────────────────
+# ─── ГЕНЕРАЦИЯ ДОГОВОРА ─────────────────────────────────────────────────────
 
 @contracts_bp.route('/<int:contract_id>/docx')
 @login_required
@@ -598,7 +597,7 @@ def generate_docx(contract_id):
     return send_file(path, as_attachment=True, download_name=name)
 
 
-# ─── API: СПРАВОЧНИК И ТАРИФЫ ──────────────────────────────────────────────────────────
+# ─── API: СПРАВОЧНИК И ТАРИФЫ ───────────────────────────────────────────────
 
 @contracts_bp.route('/api/directory/search')
 @login_required
