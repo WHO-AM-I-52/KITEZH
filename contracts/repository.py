@@ -142,7 +142,7 @@ def list_contracts(conn, view_all: bool, user_id: int, filters: dict):
     return conn.execute(sql, params).fetchall()
 
 
-# ─── СОЗДАНИЕ И ОБНОВЛЕНИЕ ──────────────────────────────────────────────────────────────
+# ─── СОЗДАНИЕ И ОБНОВЛЕНИЕ ──────────────────────────────────────────────────
 
 def insert_contract(conn, form, user_id: int) -> int:
     inner_number = next_inner_number(conn)
@@ -341,7 +341,7 @@ def get_object_types(conn):
     ).fetchall()
 
 
-# ─── ФАЙЛЫ, ОПЛАТЫ, РАССМОТРЕНИЯ, ИСТОРИЯ ─────────────────────────────────────────
+# ─── ФАЙЛЫ, ОПЛАТЫ, РАССМОТРЕНИЯ, ИСТОРИЯ ─────────────────────────────────
 
 def get_files(conn, contract_id: int):
     return conn.execute(

@@ -1,4 +1,4 @@
-# ╔════════════════════════════════════════════════════════════════════════╗
+# ╔═══════════════════════════════════════════════════════════════════════╗
 # ║                          documents.py                                     ║
 # ║  Файлы договоров (версии), генерация DOCX из шаблона.                   ║
 # ║                                                                        ║
@@ -260,6 +260,65 @@ def _customer_info_block(contract) -> str:
     return '\n'.join(_customer_lines(contract, full=True))
 
 
+def _field(contract, name):
+    """Значение поля карточки; None, если колонки ещё нет в базе."""
+    return contract[name] if name in contract.keys() else None
+
+
+def _customer_details_block(contract) -> str:
+    """Реквизиты заказчика без названия (метка {{customer_details}}).
+
+    Адреса, ОГРН, ИНН/КПП, банковские реквизиты, e-mail организации.
+    Пустые поля пропускаются; если юридический и почтовый адреса
+    совпадают, выводится один.
+    """
+    lines = []
+    legal = (_field(contract, 'customer_address') or '').strip()
+    fact = (_field(contract, 'customer_fact_address') or '').strip()
+    if legal and fact and legal.casefold() == fact.casefold():
+        lines.append(f"Адрес: {legal}")
+    else:
+        if legal:
+            lines.append(f"Юридический адрес: {legal}")
+        if fact:
+            lines.append(f"Почтовый адрес: {fact}")
+    ogrn = _field(contract, 'customer_ogrn')
+    if ogrn:
+        label = 'ОГРНИП' if _field(contract, 'customer_type') == 'ip' else 'ОГРН'
+        lines.append(f"{label}: {ogrn}")
+    tax = [f"{label} {value}" for label, value in (
+        ('ИНН', _field(contract, 'customer_inn')),
+        ('КПП', _field(contract, 'customer_kpp')),
+    ) if value]
+    if tax:
+        lines.append(', '.join(tax))
+    account = _field(contract, 'customer_bank_account')
+    bank_name = _field(contract, 'customer_bank_name')
+    bank = []
+    if account:
+        bank.append(f"р/с {account}" + (f" в {bank_name}" if bank_name else ''))
+    elif bank_name:
+        bank.append(f"Банк: {bank_name}")
+    if _field(contract, 'customer_bank_bik'):
+        bank.append(f"БИК {_field(contract, 'customer_bank_bik')}")
+    if _field(contract, 'customer_bank_corr_account'):
+        bank.append(f"к/с {_field(contract, 'customer_bank_corr_account')}")
+    if bank:
+        lines.append(',\n'.join(bank))
+    if _field(contract, 'customer_email'):
+        lines.append(f"e-mail: {_field(contract, 'customer_email')}")
+    return '\n'.join(lines)
+
+
+def _notice_email(contract) -> str:
+    """E-mail для п. 1.4: контактного лица, иначе организации."""
+    return (
+        _field(contract, 'contact_email')
+        or _field(contract, 'customer_email')
+        or '_______'
+    )
+
+
 def _replace_paragraph_text(p, new_text):
     for run in list(p.runs[1:]):
         run.text = ''
@@ -303,9 +362,10 @@ def generate_contract_docx(conn, contract, services) -> str:
     if not service_lines:
         service_lines = ['- Услуги не выбраны']
 
-    # Метки для Word. Новые (этап 3): {{customer_info}} — все данные заказчика
-    # (для приложений), {{customer_full_name}}, {{customer_short_name}},
-    # {{object_address}} — адрес объекта (п. 1.1).
+    # Метки для Word. Новые: {{customer_details}} — реквизиты заказчика
+    # без названия, {{customer_signatory_position}} и {{customer_signatory_name}}
+    # — должность и ФИО подписанта; ранее: {{customer_info}},
+    # {{customer_full_name}}, {{customer_short_name}}, {{object_address}}.
     labels = {
         '{{customer_preamble}}': _preamble(contract),
         '{{price_clause}}': (
@@ -317,6 +377,7 @@ def generate_contract_docx(conn, contract, services) -> str:
         '{{duration_clause}}': _duration_clause(contract),
         '{{customer_requisites}}': _requisites_block(contract),
         '{{customer_info}}': _customer_info_block(contract),
+        '{{customer_details}}': _customer_details_block(contract),
         '{{customer_full_name}}': contract['customer_full_name'] or '',
         '{{customer_short_name}}': (
             contract['customer_short_name']
@@ -327,12 +388,14 @@ def generate_contract_docx(conn, contract, services) -> str:
             f"{contract['signatory_position'] or ''} "
             f"{contract['signatory_name'] or ''}"
         ),
+        '{{customer_signatory_position}}': contract['signatory_position'] or '',
+        '{{customer_signatory_name}}': contract['signatory_name'] or '',
         '{{reg_number}}': contract['reg_number'] or '___',
         '{{doc_date}}': (
             '«___» __________ ' +
             str(datetime.utcnow().year) + ' г.'
         ),
-        '{{customer_email}}': contract['contact_email'] or '_______',
+        '{{customer_email}}': _notice_email(contract),
     }
 
     marker_paragraph = None
@@ -350,7 +413,7 @@ def generate_contract_docx(conn, contract, services) -> str:
         # e-mail заказчика: поле с прочерками в п. 1.4
         replaced = re.sub(
             r'Заказчика: _+ на',
-            f"Заказчика: {contract['contact_email'] or '_______'} на",
+            f"Заказчика: {_notice_email(contract)} на",
             replaced
         )
         if replaced != text:
