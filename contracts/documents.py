@@ -16,7 +16,7 @@ from datetime import datetime
 import docx
 
 from paths import UPLOADS_DIR
-from . import positions, pricing
+from . import person_names, positions, pricing, service_texts
 
 CONTRACTS_UPLOAD_DIR = os.path.join(UPLOADS_DIR, 'contracts')
 
@@ -153,9 +153,10 @@ def _preamble(contract) -> str:
             f"({short or full}), именуемый в дальнейшем «Заказчик», "
             f"действующий на основании {sign_basis}, с одной стороны, "
         )
+    sign_name_gen = person_names.genitive_fio(sign_name)
     return (
         f"{full} ({short}), именуемое в дальнейшем «Заказчик», "
-        f"в лице {sign_pos} {sign_name}, действующего на основании "
+        f"в лице {sign_pos} {sign_name_gen}, действующего на основании "
         f"{sign_basis}, с одной стороны, "
     )
 
@@ -269,19 +270,16 @@ def _customer_details_block(contract) -> str:
     """Реквизиты заказчика без названия (метка {{customer_details}}).
 
     Адреса, ОГРН, ИНН/КПП, банковские реквизиты, e-mail организации.
-    Пустые поля пропускаются; если юридический и почтовый адреса
-    совпадают, выводится один.
+    Пустые поля пропускаются; юридический и фактический адреса
+    выводятся отдельными строками даже если совпадают.
     """
     lines = []
     legal = (_field(contract, 'customer_address') or '').strip()
     fact = (_field(contract, 'customer_fact_address') or '').strip()
-    if legal and fact and legal.casefold() == fact.casefold():
-        lines.append(f"Адрес: {legal}")
-    else:
-        if legal:
-            lines.append(f"Юридический адрес: {legal}")
-        if fact:
-            lines.append(f"Почтовый адрес: {fact}")
+    if legal:
+        lines.append(f"Юридический адрес: {legal}")
+    if fact:
+        lines.append(f"Фактический адрес: {fact}")
     ogrn = _field(contract, 'customer_ogrn')
     if ogrn:
         label = 'ОГРНИП' if _field(contract, 'customer_type') == 'ip' else 'ОГРН'
@@ -355,10 +353,10 @@ def generate_contract_docx(conn, contract, services) -> str:
     total_kop = contract['total_kop'] or 0
     vat_kop = pricing.vat_from_total(total_kop, vat_percent)
 
-    service_lines = []
-    for s in services:
-        qty = s['qty'] if 'qty' in s.keys() else None
-        service_lines.append(f"- {s['name']}" + (f" ({qty})" if qty else ''))
+    service_lines = [
+        f"- {text}" + (f" ({qty})" if qty else '')
+        for text, qty in service_texts.contract_service_items(services)
+    ]
     if not service_lines:
         service_lines = ['- Услуги не выбраны']
 
@@ -366,7 +364,8 @@ def generate_contract_docx(conn, contract, services) -> str:
     # без названия, {{customer_signatory_position}} и {{customer_signatory_name}}
     # — должность и ФИО подписанта; ранее: {{customer_info}},
     # {{customer_full_name}}, {{customer_short_name}}, {{object_address}}.
-    # Должность в подписи — в именительном падеже из positions.
+    # Должность в подписи — в именительном падеже из positions,
+    # ФИО в подписи — инициалы перед фамилией (person_names).
     labels = {
         '{{customer_preamble}}': _preamble(contract),
         '{{price_clause}}': (
@@ -392,7 +391,9 @@ def generate_contract_docx(conn, contract, services) -> str:
         '{{customer_signatory_position}}': positions.signature_position(
             contract['signatory_position']
         ),
-        '{{customer_signatory_name}}': contract['signatory_name'] or '',
+        '{{customer_signatory_name}}': person_names.signature_name(
+            contract['signatory_name']
+        ),
         '{{reg_number}}': contract['reg_number'] or '___',
         '{{doc_date}}': (
             '«___» __________ ' +
