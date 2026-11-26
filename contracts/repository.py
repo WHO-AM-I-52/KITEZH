@@ -11,6 +11,8 @@ CONTRACT_FIELDS = [
     'is_free', 'free_basis', 'free_basis_date', 'origin', 'customer_type',
     'customer_full_name', 'customer_short_name', 'customer_opf',
     'customer_inn', 'customer_ogrn', 'customer_kpp', 'customer_address',
+    'customer_fact_address', 'customer_email', 'customer_bank_account',
+    'customer_bank_name', 'customer_bank_bik', 'customer_bank_corr_account',
     'signatory_name', 'signatory_position', 'signatory_basis',
     'contact_name', 'contact_position', 'contact_phone', 'contact_email',
     'directory_org_id', 'directory_contact_id',
@@ -21,6 +23,34 @@ CONTRACT_FIELDS = [
     'act_sign_method', 'incoming_docs_ok', 'incoming_docs_date',
     'vat_percent', 'reg_number', 'reg_date',
 ]
+
+# Колонки, добавленные после первого выпуска раздела. Таблица contracts
+# создаётся в migrations.py командой CREATE TABLE IF NOT EXISTS, поэтому
+# в уже существующей базе недостающие колонки добавляются здесь.
+_ADDED_COLUMNS = (
+    ('customer_fact_address', 'TEXT'),
+    ('customer_email', 'TEXT'),
+    ('customer_bank_account', 'TEXT'),
+    ('customer_bank_name', 'TEXT'),
+    ('customer_bank_bik', 'TEXT'),
+    ('customer_bank_corr_account', 'TEXT'),
+)
+
+
+def ensure_contract_columns(conn) -> bool:
+    """Добавляет недостающие колонки в contracts; True, если что-то добавлено.
+
+    Идемпотентна. commit делает вызывающий код.
+    """
+    existing = {
+        row[1] for row in conn.execute("PRAGMA table_info(contracts)").fetchall()
+    }
+    added = False
+    for name, sql_type in _ADDED_COLUMNS:
+        if name not in existing:
+            conn.execute(f"ALTER TABLE contracts ADD COLUMN {name} {sql_type}")
+            added = True
+    return added
 
 
 def _now() -> str:
@@ -112,7 +142,7 @@ def list_contracts(conn, view_all: bool, user_id: int, filters: dict):
     return conn.execute(sql, params).fetchall()
 
 
-# ─── СОЗДАНИЕ И ОБНОВЛЕНИЕ ──────────────────────────────────────────────────
+# ─── СОЗДАНИЕ И ОБНОВЛЕНИЕ ───────────────────────────────────────────────────────────────
 
 def insert_contract(conn, form, user_id: int) -> int:
     inner_number = next_inner_number(conn)
@@ -230,7 +260,7 @@ def delete_contract(conn, contract_id: int):
     return None
 
 
-# ─── УСЛУГИ ─────────────────────────────────────────────────────────────────
+# ─── УСЛУГИ ─────────────────────────────────────────────────────────────────────────
 
 def get_services(conn, contract_id: int):
     return conn.execute(
@@ -311,7 +341,7 @@ def get_object_types(conn):
     ).fetchall()
 
 
-# ─── ФАЙЛЫ, ОПЛАТЫ, РАССМОТРЕНИЯ, ИСТОРИЯ ─────────────────────────────────
+# ─── ФАЙЛЫ, ОПЛАТЫ, РАССМОТРЕНИЯ, ИСТОРИЯ ────────────────────────────────────
 
 def get_files(conn, contract_id: int):
     return conn.execute(
