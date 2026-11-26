@@ -260,10 +260,12 @@ def generate_contract_docx(conn, contract, services) -> str:
     total_kop = contract['total_kop'] or 0
     vat_kop = pricing.vat_from_total(total_kop, vat_percent)
 
-    service_lines = [
-        f"- {s['name']}" + (f" ({s['qty']})" if s.get('qty') else '')
-        for s in services
-    ] or ['- Услуги не выбраны']
+    service_lines = []
+    for s in services:
+        qty = s['qty'] if 'qty' in s.keys() else None
+        service_lines.append(f"- {s['name']}" + (f" ({qty})" if qty else ''))
+    if not service_lines:
+        service_lines = ['- Услуги не выбраны']
 
     labels = {
         '{{customer_preamble}}': _preamble(contract),
