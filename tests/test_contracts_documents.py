@@ -17,7 +17,7 @@ import docx
 import db as db_module
 import migrations as migrations_module
 
-from contracts import documents, pricing
+from contracts import documents, pricing, repository
 
 
 class DocumentsTestBase(unittest.TestCase):
@@ -38,6 +38,8 @@ class DocumentsTestBase(unittest.TestCase):
 
         self.conn = sqlite3.connect(self.db_path)
         self.conn.row_factory = sqlite3.Row
+        repository.ensure_contract_columns(self.conn)
+        self.conn.commit()
 
         self.conn.execute(
             "INSERT INTO users (username, password, full_name, role)"
@@ -65,6 +67,15 @@ class DocumentsTestBase(unittest.TestCase):
                 'work', 16000000, '22', ?)""",
             (self.uid, self.uid)
         ).lastrowid
+        self.conn.execute(
+            """UPDATE contracts SET customer_fact_address=?,
+               customer_email=?, customer_bank_account=?,
+               customer_bank_name=?, customer_bank_bik=?,
+               customer_bank_corr_account=? WHERE id=?""",
+            ('г. Нижний Новгород, а/я 5', 'info@romashka.example',
+             '40702810000000000001', 'ПАО Банк', '042202603',
+             '30101810900000000603', self.contract_id)
+        )
         self.conn.commit()
 
     def tearDown(self):
@@ -75,6 +86,14 @@ class DocumentsTestBase(unittest.TestCase):
         return self.conn.execute(
             "SELECT * FROM contracts WHERE id=?", (self.contract_id,)
         ).fetchone()
+
+    def _update(self, **fields):
+        sets = ', '.join(f'{name}=?' for name in fields)
+        self.conn.execute(
+            f"UPDATE contracts SET {sets} WHERE id=?",
+            (*fields.values(), self.contract_id)
+        )
+        self.conn.commit()
 
 
 class DocxGenerationTests(DocumentsTestBase):
@@ -114,8 +133,19 @@ class DocxGenerationTests(DocumentsTestBase):
             for r in t.rows:
                 for c in r.cells:
                     tables_text += c.text + '\n'
-        self.assertIn('ИНН: 5250000000', tables_text)
-        self.assertIn('КПП: 525001001', tables_text)
+        self.assertNotIn('{{', tables_text)
+        for token in ('ИНН 5250000000, КПП 525001001',
+                      'ОГРН: 1025200000000',
+                      'Юридический адрес: г. Нижний Новгород, ул. Тестовая, 1',
+                      'Почтовый адрес: г. Нижний Новгород, а/я 5',
+                      'р/с 40702810000000000001 в ПАО Банк',
+                      'БИК 042202603',
+                      'к/с 30101810900000000603',
+                      'e-mail: info@romashka.example',
+                      'Петров Петр Петрович',
+                      'генерального директора'):
+            with self.subTest(token=token):
+                self.assertIn(token, tables_text)
 
     def test_money_in_doc_format(self):
         self.assertEqual(
@@ -147,6 +177,74 @@ class DocxGenerationTests(DocumentsTestBase):
         self.conn.commit()
         text = documents._preamble(self._get())
         self.assertIn('Гражданин Российской Федерации', text)
+
+
+class CustomerDetailsTests(DocumentsTestBase):
+
+    def test_details_block_layout(self):
+        block = documents._customer_details_block(self._get())
+        self.assertEqual(block, '\n'.join([
+            'Юридический адрес: г. Нижний Новгород, ул. Тестовая, 1',
+            'Почтовый адрес: г. Нижний Новгород, а/я 5',
+            'ОГРН: 1025200000000',
+            'ИНН 5250000000, КПП 525001001',
+            'р/с 40702810000000000001 в ПАО Банк,\nБИК 042202603,\nк/с 30101810900000000603',
+            'e-mail: info@romashka.example',
+        ]))
+
+    def test_details_block_ip_uses_ogrnip(self):
+        self._update(customer_type='ip')
+        block = documents._customer_details_block(self._get())
+        self.assertIn('ОГРНИП: 1025200000000', block)
+
+    def test_details_block_merges_equal_addresses(self):
+        self._update(customer_fact_address='г. Нижний Новгород, ул. Тестовая, 1')
+        block = documents._customer_details_block(self._get())
+        self.assertIn('Адрес: г. Нижний Новгород, ул. Тестовая, 1', block)
+        self.assertNotIn('Юридический адрес', block)
+        self.assertNotIn('Почтовый адрес', block)
+
+    def test_details_block_skips_empty_bank(self):
+        self._update(
+            customer_type='individual', customer_bank_account=None,
+            customer_bank_name=None, customer_bank_bik=None,
+            customer_bank_corr_account=None)
+        block = documents._customer_details_block(self._get())
+        for token in ('р/с', 'БИК', 'к/с', 'Банк'):
+            with self.subTest(token=token):
+                self.assertNotIn(token, block)
+
+    def test_notice_email_priority(self):
+        self.assertEqual(documents._notice_email(self._get()),
+                         'petrov@example.com')
+        self._update(contact_email=None)
+        self.assertEqual(documents._notice_email(self._get()),
+                         'info@romashka.example')
+        self._update(customer_email=None)
+        self.assertEqual(documents._notice_email(self._get()), '_______')
+
+    def test_generated_clause_uses_company_email_without_contact(self):
+        self._update(contact_email=None)
+        out = documents.generate_contract_docx(self.conn, self._get(), [])
+        self.addCleanup(os.remove, out)
+        doc = docx.Document(out)
+        clause = next(p.text for p in doc.paragraphs
+                      if p.text.startswith('1.4.'))
+        self.assertIn('info@romashka.example', clause)
+        self.assertNotIn('Заказчика: _', clause)
+
+    def test_old_row_without_new_columns_still_renders(self):
+        class OldRow(dict):
+            pass
+
+        row = self._get()
+        old = OldRow({k: row[k] for k in row.keys()
+                      if k not in {name for name, _t
+                                   in repository._ADDED_COLUMNS}})
+        self.assertEqual(documents._notice_email(old), 'petrov@example.com')
+        block = documents._customer_details_block(old)
+        self.assertIn('ИНН 5250000000, КПП 525001001', block)
+        self.assertNotIn('р/с', block)
 
 
 class FileVersionTests(DocumentsTestBase):
