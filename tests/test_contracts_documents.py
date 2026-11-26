@@ -119,6 +119,10 @@ class DocxGenerationTests(DocumentsTestBase):
                       'petrov@example.com', 'Подготовка бизнес-плана',
                       'НДС 22%'):
             self.assertIn(token, full)
+        # в преамбуле должность остаётся в родительном падеже
+        self.assertIn(
+            'в лице генерального директора Петров Петр Петрович', full
+        )
         # незаменённых меток быть не должно
         self.assertNotIn('{{', full)
         # сумма и НДС по контрольному примеру
@@ -143,7 +147,7 @@ class DocxGenerationTests(DocumentsTestBase):
                       'к/с 30101810900000000603',
                       'e-mail: info@romashka.example',
                       'Петров Петр Петрович',
-                      'генерального директора'):
+                      'Генеральный директор'):
             with self.subTest(token=token):
                 self.assertIn(token, tables_text)
 
