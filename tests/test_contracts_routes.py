@@ -270,7 +270,7 @@ class ActionTests(RoutesTestBase):
         })
         self.assertEqual(r.status_code, 400)
         html = r.get_data(as_text=True)
-        for label in ('Фактический (почтовый) адрес заказчика',
+        for label in ('Почтовый адрес заказчика',
                       'E-mail организации', 'Расчётный счёт',
                       'БИК', 'Корреспондентский счёт'):
             with self.subTest(label=label):
