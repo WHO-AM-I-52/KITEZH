@@ -17,7 +17,7 @@ import docx
 import db as db_module
 import migrations as migrations_module
 
-from contracts import documents, pricing, repository
+from contracts import documents, pricing, repository, service_texts
 
 
 class DocumentsTestBase(unittest.TestCase):
@@ -115,13 +115,13 @@ class DocxGenerationTests(DocumentsTestBase):
 
         doc = docx.Document(out)
         full = '\n'.join(p.text for p in doc.paragraphs)
-        for token in ('ООО «Ромашка»', 'Петров Петр Петрович',
+        for token in ('ООО «Ромашка»',
                       'petrov@example.com', 'Подготовка бизнес-плана',
                       'НДС 22%'):
             self.assertIn(token, full)
-        # в преамбуле должность остаётся в родительном падеже
+        # в преамбуле должность и ФИО — в родительном падеже
         self.assertIn(
-            'в лице генерального директора Петров Петр Петрович', full
+            'в лице генерального директора Петрова Петра Петровича', full
         )
         # незаменённых меток быть не должно
         self.assertNotIn('{{', full)
@@ -141,15 +141,38 @@ class DocxGenerationTests(DocumentsTestBase):
         for token in ('ИНН 5250000000, КПП 525001001',
                       'ОГРН: 1025200000000',
                       'Юридический адрес: г. Нижний Новгород, ул. Тестовая, 1',
-                      'Почтовый адрес: г. Нижний Новгород, а/я 5',
+                      'Фактический адрес: г. Нижний Новгород, а/я 5',
                       'р/с 40702810000000000001 в ПАО Банк',
                       'БИК 042202603',
                       'к/с 30101810900000000603',
                       'e-mail: info@romashka.example',
-                      'Петров Петр Петрович',
+                      'П.П.Петров',
                       'Генеральный директор'):
             with self.subTest(token=token):
                 self.assertIn(token, tables_text)
+
+    def test_package_is_expanded_in_clause_1_1(self):
+        services = [{
+            'code': '2.6', 'qty': '1',
+            'name': 'Полный пакет документов (2.1-2.5), справочная позиция',
+        }]
+        out = documents.generate_contract_docx(
+            self.conn, self._get(), services
+        )
+        self.addCleanup(os.remove, out)
+        doc = docx.Document(out)
+        lines = [p.text for p in doc.paragraphs]
+        for code in service_texts.PACKAGE_CONTENT:
+            with self.subTest(code=code):
+                self.assertIn('- ' + service_texts.SERVICE_TEXTS[code], lines)
+        self.assertNotIn('справочная позиция', '\n'.join(lines))
+
+    def test_legal_preamble_uses_genitive_fio(self):
+        text = documents._preamble(self._get())
+        self.assertIn(
+            'в лице генерального директора Петрова Петра Петровича, '
+            'действующего на основании Устава', text
+        )
 
     def test_money_in_doc_format(self):
         self.assertEqual(
@@ -189,7 +212,7 @@ class CustomerDetailsTests(DocumentsTestBase):
         block = documents._customer_details_block(self._get())
         self.assertEqual(block, '\n'.join([
             'Юридический адрес: г. Нижний Новгород, ул. Тестовая, 1',
-            'Почтовый адрес: г. Нижний Новгород, а/я 5',
+            'Фактический адрес: г. Нижний Новгород, а/я 5',
             'ОГРН: 1025200000000',
             'ИНН 5250000000, КПП 525001001',
             'р/с 40702810000000000001 в ПАО Банк,\nБИК 042202603,\nк/с 30101810900000000603',
@@ -201,11 +224,13 @@ class CustomerDetailsTests(DocumentsTestBase):
         block = documents._customer_details_block(self._get())
         self.assertIn('ОГРНИП: 1025200000000', block)
 
-    def test_details_block_merges_equal_addresses(self):
+    def test_details_block_keeps_both_addresses_when_equal(self):
         self._update(customer_fact_address='г. Нижний Новгород, ул. Тестовая, 1')
         block = documents._customer_details_block(self._get())
-        self.assertIn('Адрес: г. Нижний Новгород, ул. Тестовая, 1', block)
-        self.assertNotIn('Юридический адрес', block)
+        self.assertIn(
+            'Юридический адрес: г. Нижний Новгород, ул. Тестовая, 1', block)
+        self.assertIn(
+            'Фактический адрес: г. Нижний Новгород, ул. Тестовая, 1', block)
         self.assertNotIn('Почтовый адрес', block)
 
     def test_details_block_skips_empty_bank(self):
