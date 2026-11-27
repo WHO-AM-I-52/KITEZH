@@ -7,6 +7,7 @@
 # ║  обязательна до использования в работе.                                ║
 # ╚══════════════════════════════════════════════════════════════════════╝
 
+import copy
 import hashlib
 import os
 import re
@@ -14,6 +15,7 @@ import uuid
 from datetime import datetime
 
 import docx
+from docx.text.paragraph import Paragraph
 
 from paths import UPLOADS_DIR
 from . import person_names, positions, pricing, service_texts
@@ -424,10 +426,14 @@ def generate_contract_docx(conn, contract, services) -> str:
             _replace_paragraph_text(p, replaced)
 
     if marker_paragraph is not None:
-        style = marker_paragraph.style
-        anchor = marker_paragraph
+        # Каждая услуга — копия абзаца-метки: сохраняются шрифт
+        # и отступ шаблона. Вставка перед меткой даёт прямой порядок.
         for line in service_lines:
-            anchor = anchor.insert_paragraph_before(line, style=style)
+            new_p = copy.deepcopy(marker_paragraph._p)
+            marker_paragraph._p.addprevious(new_p)
+            _replace_paragraph_text(
+                Paragraph(new_p, marker_paragraph._parent), line
+            )
         remove_el = marker_paragraph._element
         remove_el.getparent().remove(remove_el)
 
