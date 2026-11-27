@@ -272,7 +272,7 @@ def _customer_details_block(contract) -> str:
     """Реквизиты заказчика без названия (метка {{customer_details}}).
 
     Адреса, ОГРН, ИНН/КПП, банковские реквизиты, e-mail организации.
-    Пустые поля пропускаются; юридический и фактический адреса
+    Пустые поля пропускаются; юридический и почтовый адреса
     выводятся отдельными строками даже если совпадают.
     """
     lines = []
@@ -281,7 +281,7 @@ def _customer_details_block(contract) -> str:
     if legal:
         lines.append(f"Юридический адрес: {legal}")
     if fact:
-        lines.append(f"Фактический адрес: {fact}")
+        lines.append(f"Почтовый адрес: {fact}")
     ogrn = _field(contract, 'customer_ogrn')
     if ogrn:
         label = 'ОГРНИП' if _field(contract, 'customer_type') == 'ip' else 'ОГРН'
